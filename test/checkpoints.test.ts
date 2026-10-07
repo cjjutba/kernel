@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, writeFile, rm, stat } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, writeFile, rm, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -39,6 +39,21 @@ describe('checkpoints', () => {
     expect(await git(dir, 'show', `${c.ref}:src/a.ts`)).toBe('a2\n')
     // Hidden refs: no new branch or tag.
     expect((await git(dir, 'branch', '--list')).trim()).toBe('* main')
+  })
+
+  it('sees a same-size edit that the index stat cache cannot tell apart', async () => {
+    const dir = await tempRepo({ 'a.ts': 'a1\n' })
+    // Make the stat cache blind: ignore ctime, and give the file and the real index the same old mtime, as when
+    // the index was written in the same second as the file. Only git's racy-clean check catches the edit then.
+    await git(dir, 'config', 'core.trustctime', 'false')
+    const old = new Date(Date.now() - 60_000)
+    await utimes(join(dir, 'a.ts'), old, old)
+    await git(dir, 'update-index', '--refresh')
+    await writeFile(join(dir, 'a.ts'), 'a2\n')
+    await utimes(join(dir, 'a.ts'), old, old)
+    await utimes(join(dir, '.git/index'), old, old)
+    const c = await snapshot({ id: 'ws-racy', name: 'racy', path: dir }, { chatId: 'c', title: 'Edit' })
+    expect(await git(dir, 'show', `${c.ref}:a.ts`)).toBe('a2\n')
   })
 
   it('lists turns newest first with what each turn changed', async () => {

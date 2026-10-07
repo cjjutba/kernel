@@ -626,7 +626,9 @@ export class Kernel {
   /** Restore a workspace's files to a checkpoint. Later changes go to a backup branch, and the chat gets a note saying so. */
   async revertCheckpoint(workspaceId: string, checkpointId: string): Promise<{ backupBranch: string }> {
     const ws = this.mustWs(workspaceId)
-    if (this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id))) throw new Error('An agent is still working in this workspace. Stop it, then revert.')
+    // Current-branch workspaces share the checkout with the Lead and each other, so any agent working in the same folder blocks a revert.
+    const sharing = this.store.workspaces().filter((w) => w.path === ws.path && w.status !== 'archived')
+    if (sharing.some((w) => this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id)))) throw new Error('An agent is still working in this workspace. Stop it, then revert.')
     const r = await revertTo(ws, checkpointId)
     bus.push({ type: 'checkpoint', checkpoint: r.checkpoint })
     const time = clock(r.checkpoint.ts)

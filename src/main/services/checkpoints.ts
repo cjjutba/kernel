@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, readdir, rm, rmdir } from 'node:fs/promises'
+import { copyFile, mkdtemp, readdir, rm, rmdir, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Checkpoint, DiffStat } from '@shared/types'
@@ -49,8 +49,11 @@ async function withTempIndex<T>(cwd: string, seed: { index: true } | { tree: str
   try {
     if ('index' in seed) {
       // A copy of the real index carries its stat cache, so `git add -A` only rehashes files that changed.
+      // The copy keeps the real index's mtime: git's racy-clean check compares file mtimes with it, and a newer
+      // copy would make git trust stale stat entries and miss a same-size edit made in the same second.
       const real = resolve(cwd, (await git(cwd, ['rev-parse', '--git-path', 'index'])).trim())
-      await copyFile(real, env.GIT_INDEX_FILE).catch(() => undefined)
+      const copied = await copyFile(real, env.GIT_INDEX_FILE).then(() => true, () => false)
+      if (copied) { const s = await stat(real); await utimes(env.GIT_INDEX_FILE, s.atime, s.mtime) }
     } else if ('tree' in seed) {
       await git(cwd, ['read-tree', seed.tree], env)
     }
