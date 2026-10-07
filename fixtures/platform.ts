@@ -14,7 +14,12 @@ const setup = (checks: PreflightCheck[]) => scene(() => ({
   preflight: checks, ui: onboarding
 }))
 
+// KERNEL-9: the component gallery in both themes. `stage` routes to it in src/renderer/src/main.tsx. No design PNG, so no compare.
+const gallery = (stage: string) => scene(() => ({ rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { stage } }))
+
 export const platformFixtures: Record<string, Fixture> = {
+  DevUi: gallery('dev/ui'),
+  DevUiOverlays: gallery('dev/ui-overlays'),
   SetupClaudeMissing: setup([{ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } }, ghOk, hooksOk]),
   SetupClaudeOld: setup([{ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Kernel needs v2.1.80 or later.', fix: { command: 'claude update' } }, ghOk, hooksOk]),
   SetupGhSignedOut: setup([claudeOk, { id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } }, hooksOk]),
