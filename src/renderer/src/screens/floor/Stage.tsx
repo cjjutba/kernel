@@ -4,17 +4,31 @@ import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { ART, SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
 import floorUrl from '../../floor/floor.svg'
+import { Bubble } from './Briefing'
+import { Walker, anchor } from './motion/Walker'
+import type { Pose } from './motion/useWalks'
+import type { Sequence } from './sequence'
 
-/** The office: art, people at their desks, a tag over each, and the room-level states drawn on top. */
-export function Stage({ room, agents, status, selectedId, onSelect, onTogglePause }: {
-  room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void; onTogglePause: () => void
+const SEATED: Pose = { at: 'seat', moving: false }
+
+/**
+ * The office: art, people at their desks or walking (KERNEL-23), a tag over each, a speech bubble, and the room-level states drawn on top.
+ * `status` is what the floor shows, so someone away from their desk already reads "walking".
+ */
+export function Stage({ room, agents, status, poses, say, instant, selectedId, onSelect, onTogglePause }: {
+  room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; poses: Record<string, Pose>; say?: Sequence['say']; instant: boolean
+  selectedId?: string; onSelect: (id: string) => void; onTogglePause: () => void
 }) {
   const { seated, overflow } = seating(agents, room)
+  const pose = (id: string) => poses[id] ?? SEATED
+  const speaker = say ? seated.findIndex((a) => a.id === say.agentId) : -1
   return (
-    <div className="floor-stage">
+    <div className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={floorUrl} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
-      {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} />)}
-      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
+      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} /> })}
+      {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
       {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} />}
@@ -22,14 +36,14 @@ export function Stage({ room, agents, status, selectedId, onSelect, onTogglePaus
   )
 }
 
-/** Someone at their desk. Working people bob, a person who needs you raises a hand, an offline desk is empty. */
-function Person({ agent, seat, status }: { agent: AgentDef; seat: number; status: AgentStatus }) {
+/** Someone at their desk. Working people bob, a person who needs you raises a hand, an offline desk or one whose owner is up walking is empty. */
+function Person({ agent, seat, status, present }: { agent: AgentDef; seat: number; status: AgentStatus; present: boolean }) {
   const [x, y] = SEATS[seat]
   const look = lookFor(agent, seat)
   return (
     <div aria-hidden="true" className="floor-seat" style={{ ...pct(x - 30, y - 80), zIndex: Math.round(y / 10) }}>
       <svg viewBox="-30 -80 60 88" width="100%" height="100%" style={{ display: 'block', overflow: 'visible' }}>
-        {status !== 'offline' && (
+        {status !== 'offline' && present && (
           <g className={status === 'working' ? 'floor-bob' : undefined}>
             <path d="M-8.9 -24.4 L-8.9 -43.4 Q-8.9 -53.4 2.1 -53.4 Q13.1 -53.4 13.1 -43.4 L13.1 -24.4 Z" fill={look.shirt} />
             <path d="M4.1 -52.4 Q13.1 -52.4 13.1 -43.4 L13.1 -24.4 L6.1 -24.4 Z" fill={ART.shade} fillOpacity={0.16} />
@@ -47,11 +61,10 @@ function Person({ agent, seat, status }: { agent: AgentDef; seat: number; status
 }
 
 /** Name plus a status word. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
-function Tag({ agent, seat, status, selected, onSelect }: { agent: AgentDef; seat: number; status: AgentStatus; selected: boolean; onSelect: () => void }) {
-  const [x, y] = SEATS[seat]
+function Tag({ agent, at, status, selected, onSelect }: { agent: AgentDef; at: [number, number]; status: AgentStatus; selected: boolean; onSelect: () => void }) {
   return (
     <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${WORD[status]}`} onClick={onSelect}
-      style={{ ...pct(x + 2.1, y - 76) }}>
+      style={pct(at[0], at[1])}>
       <span className="floor-tag-pill" data-status={status}>{agent.name}<span>{WORD[status]}</span></span>
     </button>
   )

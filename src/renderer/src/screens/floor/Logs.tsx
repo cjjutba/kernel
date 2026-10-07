@@ -3,13 +3,20 @@ import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { dayLabel, latestWarn } from '../../floor/layout'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
+import { PermCard, PlanCard, ReviewCard } from './Briefing'
 import { FloorCard } from './FloorCard'
+import type { Sequence } from './sequence'
 
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
 
-/** Things waiting on CJ first, as cards in one pattern, then what the team did, newest first. */
-export function Logs({ roomId, agents, status, approvals }: { roomId: string; agents: AgentDef[]; status: Record<string, AgentStatus>; approvals: Approval[] }) {
-  const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId).slice(0, 40))
+/**
+ * Things waiting on CJ first, as cards in one pattern, then what the team did, newest first.
+ * Lines said out loud (`agent.say`) show as the speech bubble on the floor, not here.
+ */
+export function Logs({ roomId, agents, status, approvals, review }: {
+  roomId: string; agents: AgentDef[]; status: Record<string, AgentStatus>; approvals: Approval[]; review?: Sequence['review']
+}) {
+  const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId && e.kind !== 'agent.say').slice(0, 40))
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived'))
   const saying = useStore((s) => s.saying)
   const account = useStore((s) => s.account)
@@ -32,7 +39,10 @@ export function Logs({ roomId, agents, status, approvals }: { roomId: string; ag
     <aside aria-label="Logs" className="floor-logs">
       <div className="floor-logs-head"><h2>Logs</h2></div>
       <div className="floor-logs-body">
-        {approvals.map((a) => <ApprovalCard key={a.id} approval={a} />)}
+        {approvals.map((a) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? <PlanCard key={a.id} approval={a} agents={agents} />
+          : a.kind === 'tool' && !a.agentFile ? <PermCard key={a.id} approval={a} agents={agents} />
+          : <ApprovalCard key={a.id} approval={a} />))}
+        {review && <ReviewCard roomId={roomId} title={review.title} sub={review.sub} />}
         {blocked.map((a) => {
           const ev = latestWarn(events, a.id, ['agent.status', 'tool.failed', 'note'])
           const ws = wsOf(a)

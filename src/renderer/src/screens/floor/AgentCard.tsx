@@ -1,11 +1,10 @@
-import type { AgentDef } from '@shared/types'
+import type { AgentDef, AgentStatus } from '@shared/types'
 import { Icon } from '../../ui'
 import { go, useStore } from '../../store'
 import { ART, LOOKS, WORD, cap, modelLabel } from '../../floor/layout'
 
-/** The selected agent: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. */
-export function AgentCard({ agent, roomId, agents }: { agent: AgentDef; roomId: string; agents: AgentDef[] }) {
-  const status = useStore((s) => s.status[roomId]?.[agent.id] ?? 'idle')
+/** The selected agent: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. `status` is what the floor shows. */
+export function AgentCard({ agent, roomId, agents, status }: { agent: AgentDef; roomId: string; agents: AgentDef[]; status: AgentStatus }) {
   const saying = useStore((s) => s.saying[agent.id])
   const ws = useStore((s) => s.workspaces.find((w) => w.roomId === roomId && w.agentId === agent.id && w.status !== 'archived'))
   const shirt = (agent.look ?? LOOKS[Math.max(0, agents.indexOf(agent)) % LOOKS.length]).shirt

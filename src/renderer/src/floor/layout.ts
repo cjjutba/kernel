@@ -13,8 +13,8 @@ export const LOOKS: AgentLook[] = [
   { shirt: '#4b5560', skin: '#b07f5c', hair: '#2a2422' }, { shirt: '#5f6f7a', skin: '#c9a27e', hair: '#3a2c22' }
 ]
 
-/** Art colors for the seat drawing: desk faces, the person's shade, and the letter on a shirt-colored dot. Fixed, so a light theme leaves the office as it is. */
-export const ART = { shade: '#000000', deskLeft: '#d8d5ce', deskRight: '#c6c3bb', deskTop: '#eeece7', onShirt: '#f7f8f8' } as const
+/** Art colors for the seat drawing: desk faces, the person's shade, a walker's legs, and the letter on a shirt-colored dot. Fixed, so a light theme leaves the office as it is. */
+export const ART = { shade: '#000000', deskLeft: '#d8d5ce', deskRight: '#c6c3bb', deskTop: '#eeece7', onShirt: '#f7f8f8', legLeft: '#2a2b30', legRight: '#24252a' } as const
 
 /** Shirts for agents past the last desk (the overflow strip). */
 const OVERFLOW_SHIRTS = ['#5a6370', '#6d6a5c', '#4f6068', '#645a6e']
