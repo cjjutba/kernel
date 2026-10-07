@@ -115,7 +115,7 @@ export function App() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
-  if (!booted) return <div className="app"><div className="main" style={{ padding: 8 }}><Loading /></div></div>
+  if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
     <div className="app">
       {!fullWindow(route) && <Sidebar />}

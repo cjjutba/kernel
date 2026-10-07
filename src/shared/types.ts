@@ -617,7 +617,8 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] :
 
 // ---------- renderer UI state
 
-export type OnboardingStep = 'welcome' | 'checks' | 'room'
+/** `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. */
+export type OnboardingStep = 'welcome' | 'checks' | 'room' | 'loading'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
