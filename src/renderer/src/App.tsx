@@ -28,6 +28,7 @@ import { WhatsNew } from './screens/update/WhatsNew'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
+import { FocusRail } from './screens/workspace/FocusRail'
 import { Workspace } from './screens/workspace/Workspace'
 import { DevUi } from './ui/DevUi'
 
@@ -105,11 +106,13 @@ export function App() {
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
+  const focus = useStore((s) => s.ui.workspace.focus)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.go({ name: 'settings', page: 'general' }) }
+      if (e.key === '\\') { e.preventDefault(); actions.ui.setWorkspaceView({ focus: !getState().ui.workspace.focus }) }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
     }
     window.addEventListener('keydown', onKey)
@@ -118,7 +121,7 @@ export function App() {
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
     <div className="app">
-      {!fullWindow(route) && <Sidebar />}
+      {!fullWindow(route) && (focus && route.name === 'workspace' ? <FocusRail roomId={currentRoom()} /> : <Sidebar />)}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />
         {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
