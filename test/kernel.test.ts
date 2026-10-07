@@ -4,8 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
-import { bus } from '../src/main/bus'
-import type { ActivityEvent } from '../src/shared/types'
 
 describe('Kernel orchestration (Claude session stubbed)', () => {
   it('adds a room, reads its team, creates and archives a worktree workspace', async () => {
@@ -49,15 +47,6 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const lead = await k.leadChat(room.id)
     expect(k.store.workspace(lead.workspaceId)).toMatchObject({ agentId: 'rowan', mode: 'current', path: repo })
     expect(k.statusOf(room.id)).toEqual({ rowan: 'idle', kai: 'idle' })
-
-    // A brief logs the line the floor's briefing sequence starts from (FloorSent.png).
-    const logged: ActivityEvent[] = []
-    const onActivity = (e: ActivityEvent) => logged.push(e)
-    bus.on('activity', onActivity)
-    await k.handlers()['rooms.brief']({ roomId: room.id, text: 'Add PDF export to invoices. Spec first.' })
-    bus.off('activity', onActivity)
-    expect(logged.find((e) => e.kind === 'brief')).toMatchObject({ roomId: room.id, actor: 'you', agentId: 'rowan', workspaceId: lead.workspaceId, text: 'briefed Rowan', quote: 'Add PDF export to invoices. Spec first.' })
-    expect(sent[sent.length - 1]).toBe('Add PDF export to invoices. Spec first.')
     await k.stop()
   })
 })

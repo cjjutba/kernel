@@ -702,10 +702,6 @@ export class Kernel {
           chat = this.store.chats(ws.id)[0]
         } else chat = await this.leadChat(roomId)
         await this.sessions.send(chat.id, [{ type: 'text', text }])
-        // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
-        const to = this.store.workspace(chat.workspaceId)?.agentId
-        const name = (await this.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
-        bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote: text })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'agents.list': async ({ roomId }) => this.agents(roomId),
