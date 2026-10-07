@@ -134,6 +134,18 @@ const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() =
   ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
 }))
 
+const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, tab } } as const)
+const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
+  ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
+
+/** What Claude Code's own screen prints when it starts in the worktree (WorkspaceTerminal.png). */
+const termScreen = '\r\n'.repeat(24) + [
+  'cjjutba@mac t-14-invoice-table % claude --dangerously-skip-permissions', '',
+  '\x1b[1mClaude Code v2.1\x1b[0m', 'Opus 5.5 with high effort · Claude Max', '~/kernel/worktrees/client-a/t-14-invoice-table', '',
+  'Hooks connected. This session shows up on the floor as Kai.', '', '> Try "fix lint errors"', '',
+  'bypass permissions on · worktree only                    Opus 5.5 · high'
+].join('\r\n')
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -149,6 +161,21 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: true } }
+  })),
+  WorkspaceNewChat: scene((f) => ({
+    chats: [...f.chats, extraChat('chat-new', 'New chat')],
+    items: { 'chat-new': [] },
+    ui: { ...tabsView('chat-new'), menu: 'newTab' }
+  })),
+  WorkspaceTabMenu: scene((f) => ({
+    chats: [...f.chats, extraChat('chat-copy', 'Empty state copy')],
+    items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
+    ui: { ...tabsView('chat-copy'), menu: 'tab' }
+  })),
+  WorkspaceTerminal: scene((f) => ({
+    chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
+    push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
+    ui: tabsView('chat-term')
   })),
   WorkspaceFile: scene(() => ({
     ui: { ...open, workspace: { right: 'files', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, tab: 'file:src/app/invoices/table.tsx' } }

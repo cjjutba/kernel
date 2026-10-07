@@ -9,6 +9,7 @@ import { Composer } from './composer/Composer'
 import { DiffView, FileView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
+import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import './workspace.css'
 
@@ -90,11 +91,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : setup
                   ? <TranscriptSkeleton branch={ws.branch} />
+                  : chat?.kind === 'terminal'
+                    ? <TerminalView id={chat.id} label="Big terminal" />
                   : chat
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} />}
         </section>
         {!view.focus && (
           <aside aria-label="Workspace panels" className="ws-aside">

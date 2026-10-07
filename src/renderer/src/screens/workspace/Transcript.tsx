@@ -204,9 +204,14 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
     <div className="ws-scroll selectable">
       <div className="thread">
         {!items.length && (
-          <div className="col" style={{ alignItems: 'center', gap: 6, padding: '120px 0', textAlign: 'center' }}>
-            <span style={{ fontSize: 18, fontWeight: 600 }}>{chat.kind === 'terminal' ? 'Big terminal' : 'New chat'}</span>
+          <div className="chat-empty">
+            <h2>{chat.kind === 'terminal' ? 'Big terminal' : `New chat with ${agentName}`}</h2>
             <span className="muted">Same worktree and branch, fresh context.</span>
+            <div className="chat-suggest">
+              {['Review the diff so far', 'Write tests for the table', 'Explain this branch'].map((text) => (
+                <button key={text} type="button" onClick={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))}>{text}</button>
+              ))}
+            </div>
           </div>
         )}
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} agentName={agentName} onEdit={onEdit} onFork={fork} onTerminal={terminal} />)}
