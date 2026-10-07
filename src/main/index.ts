@@ -48,6 +48,7 @@ app.whenReady().then(() => {
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => { await shell.openExternal(url); return { ok: true } })
+  ipcMain.handle('system.fixture' satisfies Channel, async () => null)
   ipcMain.handle('system.openInEditor' satisfies Channel, async (_e, { path }) => { const r = await exec('code', [path]); if (r.code !== 0) await shell.openPath(path); return { ok: true } })
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()

@@ -1,14 +1,9 @@
 import { useSyncExternalStore } from 'react'
-import type { ActivityEvent, AgentDef, AgentStatus, Approval, Chat, ChatItem, RateLimit, Room, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentStatus, Approval, Chat, ChatItem, ForcedUi, Modal, RateLimit, Room, Route, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
 
-export type Route =
-  | { name: 'onboarding' } | { name: 'home' } | { name: 'inbox' } | { name: 'history' }
-  | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'team'; roomId: string }
-  | { name: 'workspace'; workspaceId: string }
-
-export type Modal = null | { name: 'newWorkspace'; roomId?: string } | { name: 'search' }
+export type { Modal, Route }
 
 export interface State {
   route: Route
@@ -25,11 +20,13 @@ export interface State {
   activity: ActivityEvent[]
   usage: RateLimit[]
   scripts: Record<string, { kind: string; line: string; stream: string }[]>
+  /** Menu, banner, stage and theme forced by a fixture. Empty in a real run. */
+  ui: ForcedUi
 }
 
 let state: State = {
   route: { name: 'home' }, modal: null, rooms: [], agents: {}, status: {}, saying: {}, workspaces: [], chats: {}, items: {},
-  running: {}, approvals: [], activity: [], usage: [], scripts: {}
+  running: {}, approvals: [], activity: [], usage: [], scripts: {}, ui: {}
 }
 const listeners = new Set<() => void>()
 
@@ -65,11 +62,21 @@ function apply(e: PushEvent) {
 /** Load everything once, then stay live on push events. */
 export async function boot() {
   onPush(apply)
-  const [rooms, workspaces, approvals, activity, usage] = await Promise.all([
-    call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('activity.recent', { limit: 100 }), call('usage.get', undefined)
+  const [rooms, workspaces, approvals, activity, usage, fixture] = await Promise.all([
+    call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
+    call('system.fixture', undefined)
   ])
   setState({ rooms, workspaces, approvals, activity, usage, route: rooms.length ? { name: 'home' } : { name: 'onboarding' } })
   for (const r of rooms) void loadRoom(r.id)
+  if (fixture) applyFixture(fixture.ui, fixture.push)
+}
+
+/** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
+function applyFixture(ui: ForcedUi, push: PushEvent[]) {
+  setState((s) => ({ ui, route: ui.route ?? s.route, modal: ui.modal ?? null }))
+  push.forEach(apply)
+  if (ui.theme) document.documentElement.dataset.theme = ui.theme
+  document.documentElement.dataset.fixture = 'ready'
 }
 
 export async function loadRoom(roomId: string) {
