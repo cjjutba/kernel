@@ -41,6 +41,14 @@ describe('team handlers (KERNEL-19)', () => {
       expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'lumi.md', 'rowan.md'])
       expect(k.store.room(room.id)?.desks).toEqual(['rowan', 'kai', 'lumi'])
 
+      // The profile's model and effort reach the chat a new workspace starts with.
+      await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { model: 'fable', effort: 'xhigh' } })
+      const fable = await k.createWorkspace(room.id, { prompt: 'One', agentId: 'kai', title: 'Model one' })
+      expect(k.store.chats(fable.id)[0]).toMatchObject({ model: 'claude-fable-5-1', effort: 'xhigh' })
+      await h['agents.save']({ roomId: room.id, agentId: 'kai', patch: { model: 'sonnet' } })
+      const sonnet = await k.createWorkspace(room.id, { prompt: 'Two', agentId: 'kai', title: 'Model two' })
+      expect(k.store.chats(sonnet.id)[0].model).toBe('claude-sonnet-5-5')
+
       // Retire moves the file, hands the open workspace to the Lead and frees the desk. The Lead cannot be retired.
       const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
       await expect(h['agents.retire']({ roomId: room.id, agentId: 'rowan' })).rejects.toThrow(/leads this room/)

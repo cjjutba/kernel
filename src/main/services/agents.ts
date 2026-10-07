@@ -42,7 +42,11 @@ export function parseFrontmatter(src: string): { meta: Record<string, string>; b
 }
 
 const EFFORT_IDS: Effort[] = ['low', 'medium', 'high', 'xhigh']
-const stripQuotes = (s: string) => s.replace(/^(['"])(.*)\1$/, '$2')
+const stripQuotes = (s: string) => {
+  const m = /^(['"])(.*)\1$/.exec(s)
+  if (!m) return s
+  return m[1] === '"' ? m[2].replace(/\\(["\\])/g, '$1') : m[2]
+}
 const list = (s?: string) => (s ? s.replace(/^\[|\]$/g, '').split(',').map((x) => x.trim()).filter(Boolean) : undefined)
 const titleCase = (s: string) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 
@@ -90,18 +94,51 @@ export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}
 const MANAGED = ['name', 'description', 'model', 'effort', 'tools', 'role', 'lead', 'skills']
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 
-/** `extra` is frontmatter Kernel does not manage (hooks, color, ...). It is written back untouched. */
-export function renderAgentFile(a: Pick<AgentDef, 'id' | 'description' | 'prompt'> & Partial<AgentDef> & { extra?: Record<string, string> }): string {
-  const lines = ['---', `name: ${a.id}`, `description: ${oneLine(a.description)}`]
-  if (a.model) lines.push(`model: ${a.model}`)
-  if (a.effort) lines.push(`effort: ${a.effort}`)
-  if (a.tools?.length) lines.push(`tools: ${a.tools.join(', ')}`)
-  if (a.role) lines.push(`role: ${oneLine(a.role)}`)
-  if (a.lead) lines.push('lead: true')
-  if (a.skills?.length) lines.push(`skills: ${a.skills.join(', ')}`)
-  for (const [k, v] of Object.entries(a.extra ?? {})) if (!MANAGED.includes(k)) lines.push(`${k}: ${oneLine(v)}`)
+/** A frontmatter value Claude Code's YAML reader takes literally: quoted when it holds ": ", " #", or starts or ends with something YAML reads. */
+export function yamlValue(v: string): string {
+  const t = oneLine(v)
+  if (/: |:$| #|^[#&*!|>'"%@`\[\]{},?-]/.test(t) || /^(true|false|null|yes|no|~)$/i.test(t)) return `"${t.replace(/[\\"]/g, '\\$&')}"`
+  return t
+}
+
+type Managed = Partial<Pick<AgentDef, 'description' | 'model' | 'effort' | 'role' | 'lead'>> & { tools?: string[]; skills?: string[] }
+
+const managedLines = (id: string, a: Managed & { description: string }): [string, string | undefined][] => [
+  ['name', id], ['description', yamlValue(a.description)], ['model', a.model ? yamlValue(a.model) : undefined], ['effort', a.effort],
+  ['tools', a.tools?.length ? yamlValue(a.tools.join(', ')) : undefined], ['role', a.role ? yamlValue(a.role) : undefined],
+  ['lead', a.lead ? 'true' : undefined], ['skills', a.skills?.length ? yamlValue(a.skills.join(', ')) : undefined]
+]
+
+export function renderAgentFile(a: Pick<AgentDef, 'id' | 'description' | 'prompt'> & Partial<AgentDef>): string {
+  const lines = ['---']
+  for (const [k, v] of managedLines(a.id, a)) if (v !== undefined) lines.push(`${k}: ${v}`)
   lines.push('---', '', a.prompt.trim(), '')
   return lines.join('\n')
+}
+
+/**
+ * Rewrites only the managed lines of an existing file. Everything else in the frontmatter (a hooks: block, color, comments)
+ * stays as it was, byte for byte, and so does the order of the lines that remain.
+ */
+export function rewriteAgentFile(src: string, id: string, a: Managed & { description: string; prompt: string }): string {
+  const text = src.replace(/^\uFEFF/, '')
+  const end = text.startsWith('---') ? text.indexOf('\n---', 3) : -1
+  const head = end < 0 ? [] : text.slice(3, end).replace(/^\r?\n/, '').split(/\r?\n/)
+  // `lead` is not editable here, so a lead: line stays as written.
+  const want = new Map(managedLines(id, a).filter(([k]) => k !== 'lead'))
+  const out: string[] = []
+  const done = new Set<string>()
+  for (let i = 0; i < head.length; i++) {
+    const key = /^([A-Za-z_][\w-]*):/.exec(head[i])?.[1]
+    if (!key || !want.has(key)) { out.push(head[i]); continue }
+    while (i + 1 < head.length && /^(\s+|\s*-\s)/.test(head[i + 1]) && head[i + 1].trim() !== '') i++
+    done.add(key)
+    const v = want.get(key)
+    if (v !== undefined) out.push(`${key}: ${v}`)
+  }
+  for (const [k, v] of want) if (!done.has(k) && v !== undefined) out.push(`${k}: ${v}`)
+  while (out.length && !out[out.length - 1].trim()) out.pop()
+  return ['---', ...out, '---', '', a.prompt.trim(), ''].join('\n')
 }
 
 const agentPath = (repoPath: string, id: string) => join(repoPath, '.claude', 'agents', `${id}.md`)
@@ -126,14 +163,13 @@ export async function updateAgent(repoPath: string, id: string, patch: AgentEdit
   const description = patch.description ?? cur.description
   if (!oneLine(description)) throw new Error('Add a description so Rowan knows what to hand this agent.')
   // The name is the file stem, so the display name follows it. Role is the only label that can change.
-  const next = {
-    id: cur.id, description, lead: cur.lead,
-    role: patch.role ?? meta.role ?? (cur.role === 'Agent' ? undefined : cur.role),
+  await writeFile(file, rewriteAgentFile(src, cur.id, {
+    description,
+    role: patch.role ?? meta.role,
     model: patch.model ?? cur.model, effort: patch.effort ?? cur.effort,
     tools: patch.tools ?? cur.tools, skills: patch.skills ?? cur.skills,
-    prompt: patch.prompt ?? cur.prompt, extra: meta
-  }
-  await writeFile(file, renderAgentFile(next))
+    prompt: patch.prompt ?? cur.prompt
+  }))
   return agentFromFile(file, await readFile(file, 'utf8'))
 }
 

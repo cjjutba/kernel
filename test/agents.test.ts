@@ -91,4 +91,21 @@ describe('agents', () => {
       expect(hits).toBeGreaterThan(afterDir)
     } finally { stop() }
   })
+  it('saves an edit without touching nested frontmatter or quoted values', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    const hooks = 'hooks:\n  PreToolUse:\n    - matcher: Bash\n      hooks:\n        - type: command\n          command: ./check.sh'
+    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), `---\nname: kai\ndescription: "Frontend: builds UI"\n# keep this comment\n${hooks}\nmodel: sonnet\n---\nYou are Kai.\n`)
+    const saved = await updateAgent(repo, 'kai', { effort: 'high' })
+    expect(saved).toMatchObject({ description: 'Frontend: builds UI', effort: 'high', model: 'sonnet' })
+    const file = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
+    expect(file).toContain(hooks)
+    expect(file).toContain('# keep this comment')
+    expect(file).toContain('description: "Frontend: builds UI"')
+    // A new colon in a description is quoted so the file stays valid YAML, and the draft does the same.
+    await updateAgent(repo, 'kai', { description: 'Designer: checks # every screen' })
+    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('description: "Designer: checks # every screen"')
+    expect(draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).toContain('description: "A reviewer: checks diffs."')
+    expect(agentFromFile('/r/rex.md', draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).description).toBe('A reviewer: checks diffs.')
+  })
 })

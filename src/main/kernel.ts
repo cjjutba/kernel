@@ -3,6 +3,7 @@ import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
 import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import { MODELS } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -478,7 +479,7 @@ export class Kernel {
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
-    const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
     if (!ready) return this.saveWs({ ...ws, status: 'failed' })
     const done = this.saveWs({ ...ws, status: 'ready' })
@@ -561,8 +562,8 @@ export class Kernel {
   private modelFor(agent: AgentDef): ModelId {
     const m = this.settings.models
     if (agent.model?.startsWith('claude-')) return agent.model as ModelId
-    if (agent.model === 'opus') return 'claude-opus-5-5'
-    if (agent.model === 'haiku') return 'claude-haiku-4-5-20251001'
+    const alias = MODELS.find((x) => x.id.split('-')[1] === agent.model?.toLowerCase())
+    if (alias) return alias.id
     if (agent.lead) return m.lead
     if (/qa/i.test(agent.role)) return m.qa
     if (/review/i.test(agent.role)) return m.reviewer
@@ -579,7 +580,7 @@ export class Kernel {
       const room = this.mustRoom(roomId)
       ws = this.saveWs({ id: newId(), roomId, name: 'lead', branch: await currentBranch(room.path), baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port: await freePort(4300), status: 'ready', prState: 'none', createdAt: Date.now() })
     }
-    return this.store.chats(ws.id)[0] ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.store.chats(ws.id)[0] ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
   private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
