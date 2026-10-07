@@ -8,6 +8,7 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { loadAgents, saveAgent } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
+import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { Sessions } from './services/sessions'
 import { kernelMcpServer } from './services/kernelMcp'
@@ -37,7 +38,6 @@ export const UNBUILT = {
   'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
-  'tasks.list': 'KERNEL-18',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
   'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
@@ -58,6 +58,7 @@ export class Kernel {
   readonly store: Store
   readonly approvals: Approvals
   readonly notifications: Notifications
+  readonly tasks: Tasks
   readonly sessions: Sessions
   settings!: AppSettings
   private hookServer?: Server
@@ -71,6 +72,7 @@ export class Kernel {
   constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
+    this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
     this.notifications = new Notifications({
       store: this.store,
       settings: () => this.settings,
@@ -110,6 +112,7 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
+    this.tasks.attach()
     // A room paused before the app quit is still paused: its agents wait and its sends are held.
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
   }
@@ -157,6 +160,7 @@ export class Kernel {
   async stop() {
     this.unlisten()
     this.notifications.detach()
+    this.tasks.detach()
     clearInterval(this.prTimer)
     this.sessions.stopAll()
     stopAllScripts()
@@ -361,7 +365,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -391,6 +395,9 @@ export class Kernel {
     this.store.saveWorkspace(ws)
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
+    const taskId = o.taskFor?.(ws)
+    if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
@@ -502,7 +509,7 @@ export class Kernel {
       agents: () => this.agents(roomId),
       workspaces: () => this.store.workspaces(roomId),
       createWorkspace: async (o) => {
-        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode })
+        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, taskFor: (w) => this.tasks.link(roomId, o.agentId, w.id)?.id })
         this.linkPlanStep(roomId, o.agentId, ws.id)
         return ws
       },
@@ -793,6 +800,7 @@ export class Kernel {
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId }) => { stopScript(workspaceId, 'run'); return { ok: true } },
+      'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
       'usage.get': async () => this.sessions.usage(),
       'settings.get': async () => this.settings,
