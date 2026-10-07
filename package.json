@@ -11,7 +11,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
-    "test": "vitest run",
+    "test": "ELECTRON_RUN_AS_NODE=1 electron node_modules/vitest/vitest.mjs run",
     "postinstall": "electron-builder install-app-deps",
     "dist:mac": "electron-vite build && electron-builder --mac"
   },
@@ -37,5 +37,12 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.5",
     "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "better-sqlite3@12.11.1": true,
+    "esbuild": false,
+    "fsevents": false,
+    "electron-winstaller": false
   }
 }
