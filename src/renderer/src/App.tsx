@@ -61,7 +61,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
     case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} />
     case 'search': return <CommandPalette />
-    case 'newRoom': return <NewRoom />
+    case 'newRoom': return <NewRoom prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />
     case 'openFolder': return <OpenFolder />
     case 'checkHooks': return <CheckHooks />

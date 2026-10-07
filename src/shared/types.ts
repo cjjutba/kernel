@@ -112,6 +112,16 @@ export interface NewRoomRequest {
   initGit?: boolean
 }
 
+/** Values New room opens with. Fixtures use it to show the filled form. */
+export interface NewRoomPrefill {
+  source: RoomKind
+  name: string
+  desc?: string
+  /** owner/repo, a folder path or a template repo, by `source`. */
+  from: string
+  baseBranch?: string
+}
+
 /** One line of the room setup progress (RoomSetup.png). */
 export interface RoomSetupStep {
   id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'agents'
@@ -644,7 +654,7 @@ export type Modal =
   | null
   | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource }
   | { name: 'search' }
-  | { name: 'newRoom' }
+  | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done' }
   | { name: 'whatsNew' }
