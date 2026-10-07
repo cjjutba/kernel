@@ -68,6 +68,9 @@ export function kernelMcpServer(d: KernelToolDeps) {
         workspace_id: z.string(), text: z.string()
       }, async ({ workspace_id, text: t }) => {
         await d.messageWorkspace(workspace_id, t)
+        const ws = d.workspaces().find((w) => w.id === workspace_id)
+        // The speaker walks to the listener's desk and says the first line (KERNEL-24).
+        if (ws && d.lead) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
         return text('Sent.')
       }),
       tool('say', 'Say one short line out loud on the floor, like a speech bubble.', { text: z.string().max(140) }, async ({ text: t }) => {
@@ -87,4 +90,12 @@ export function kernelMcpServer(d: KernelToolDeps) {
       })
     ]
   })
+}
+
+/** The first sentence of a message, short enough for a speech bubble. */
+export function firstLine(t: string, max = 90): string {
+  const one = t.trim().replace(/\s+/g, ' ')
+  const end = one.search(/[.!?](\s|$)/)
+  const line = end >= 0 ? one.slice(0, end + 1) : one
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line
 }
