@@ -9,7 +9,9 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virt
 - `npm test` runs vitest on Electron's Node (engine tests use real git repos in temp folders). One file: `npm test -- test/kernel.test.ts`. Plain `npx vitest` fails, see D-013
 - `npm run typecheck` checks main, preload and renderer
 - `npm run build` builds all three bundles
-- `npm run shots -- <Screen> [...]` and `npm run shots:compare -- <Screen>` capture the app and compare it to `design/screens/<Screen>.png` (added in KERNEL-7)
+- `npm run shots -- <Screen> [...]` builds, opens each fixture in Electron at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
+- `npm run shots:compare -- <Screen> [...]` writes `shots/compare/<Screen>.png`, the shot on the left and `design/screens/<Screen>.png` on the right
+- `KERNEL_FIXTURES=<Screen> npm run dev` runs the app on one fixture (`fixtures/`), with no kernel, database or sessions
 
 ## Where things are
 
@@ -28,8 +30,8 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 1. Fetch the issue with the Linear MCP, move it to In Progress, and use its `gitBranchName` for the branch.
 2. Open every PNG listed under Screens. Open the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value.
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
-4. Implement. Add or update tests for engine behavior.
-5. Verify: `npm test`, `npm run typecheck`, then capture each screen with the harness and compare it to its PNG. Fix differences that a person would notice.
+4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds.
+5. Verify: `npm test`, `npm run typecheck`, then `npm run shots -- <Screen> ...` and `npm run shots:compare -- <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice.
 6. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
 7. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review. Update the status column in `docs/SCREENS.md`.
 
@@ -43,6 +45,7 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` before changing a deliberate choice, and add an entry when you make a new one.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
+- Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<a side project> npm test -- test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 
 ## Lanes
