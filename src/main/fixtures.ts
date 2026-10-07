@@ -92,9 +92,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.hunks': async ({ workspaceId, path }) => (f.hunks?.[workspaceId] ?? []).filter((h) => !path || h.path === path),
     'workspaces.commit': async () => ok,
     'workspaces.discard': async () => ok,
-    'git.branches': async ({ roomId }) => [...new Set(f.workspaces.filter((w) => w.roomId === roomId).map((w) => w.branch))],
-    'github.prs': async () => [],
-    'issues.list': async ({ roomId }) => (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title })),
+    'git.branches': async ({ roomId }) => f.branches ?? [...new Set(f.workspaces.filter((w) => w.roomId === roomId).map((w) => w.branch))],
+    'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
+    'issues.list': async ({ roomId, query }) => (f.issues ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
     'chats.create': async ({ workspaceId, kind }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)

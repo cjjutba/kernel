@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentStatus, Chat, HookStatus, NewRoomRequest, Room, RoomSetupStep, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentStatus, Chat, ChatPart, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -14,13 +14,14 @@ import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
-import { branchName, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, freeBranch, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from './services/rooms'
 import { exec } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { prMerge, prReady, prReopen, prStateOf, prView } from './services/github'
+import { openPrs, prMerge, prReady, prReopen, prStateOf, prView } from './services/github'
+import { linearToken, searchIssues } from './services/linear'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
@@ -36,7 +37,6 @@ export const UNBUILT = {
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'pr.get': 'KERNEL-15', 'pr.continue': 'KERNEL-15',
-  'git.branches': 'KERNEL-16', 'github.prs': 'KERNEL-16', 'issues.list': 'KERNEL-16',
   'notifications.list': 'KERNEL-17', 'notifications.read': 'KERNEL-17',
   'tasks.list': 'KERNEL-18',
   'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
@@ -307,7 +307,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -322,7 +322,7 @@ export class Kernel {
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
-      branch = await freeBranch(room.path, branchName(repo.workspace.branchPattern ?? s.workspace.branchPattern, { slug: slugify(title) }))
+      branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef, fetch: baseRef.startsWith('origin/') })
       await copyLocalFiles(room.path, path, repo.files.copy)
     } else {
@@ -333,7 +333,7 @@ export class Kernel {
       if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
     }
 
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, prState: 'none', createdAt: Date.now() }
+    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
@@ -343,7 +343,7 @@ export class Kernel {
     if (!ready) return this.saveWs({ ...ws, status: 'failed' })
     const done = this.saveWs({ ...ws, status: 'ready' })
     if (s.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: path, port, root: room.path })
-    await this.sessions.send(chat.id, [{ type: 'text', text: o.prompt }])
+    await this.sessions.send(chat.id, [{ type: 'text', text: o.prompt }, ...(o.parts ?? [])])
     return done
   }
 
@@ -552,6 +552,9 @@ export class Kernel {
       },
       'agents.list': async ({ roomId }) => this.agents(roomId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
+      'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
+      'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
+      'issues.list': async ({ query }) => searchIssues(linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
       'workspaces.archive': async ({ workspaceId, deleteBranch }) => { await this.archiveWorkspace(workspaceId, deleteBranch); return { ok: true } },
