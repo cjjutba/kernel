@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { NewRoomRequest, RoomKind } from '@shared/types'
-import { actions } from '../../store'
+import { actions, getState } from '../../store'
 
 /** Everyone you can seat from docs/starter-agents. Rowan is the Lead and always sits. */
 export const STARTER_TEAM = [
@@ -22,7 +22,13 @@ export interface RoomDraft extends Omit<NewRoomRequest, 'source' | 'from' | 'des
   named: boolean
 }
 
-const blank = (): RoomDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: '', team: STARTER_TEAM.map((m) => m.id), autostart: true })
+/** Who a new room starts with: Settings > Agents > Default team for new rooms. The pair is the Lead and Kai. */
+export function defaultTeam(): string[] {
+  const pair = getState().settings?.team.defaultTemplate === 'pair'
+  return STARTER_TEAM.filter((m) => !pair || m.id === 'rowan' || m.id === 'kai').map((m) => m.id)
+}
+
+const blank = (): RoomDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: '', team: defaultTeam(), autostart: true })
 
 let draft: RoomDraft = blank()
 const listeners = new Set<() => void>()
