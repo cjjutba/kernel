@@ -1,4 +1,5 @@
 import type { Task } from '@shared/types'
+import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, IconButton } from '../../ui'
 import { useEscape } from '../../ui/hooks'
@@ -35,7 +36,7 @@ export function TaskDetail({ roomId, task }: { roomId: string; task: Task }) {
           <dt>Agent</dt><dd>{agent?.name ?? 'Not assigned'}</dd>
           <dt>Workspace</dt>
           <dd>{ws ? <button type="button" className="bd-link mono" onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>{ws.branch}</button> : <span className="ink2">Not started</span>}</dd>
-          <dt>Pull request</dt><dd className="ink2">{pr ?? 'Not opened yet'}</dd>
+          <dt>Pull request</dt><dd className="ink2">{!pr ? 'Not opened yet' : ws?.prUrl ? <button type="button" className="bd-link" onClick={() => void call('system.openExternal', { url: ws.prUrl! })}>{pr}</button> : pr}</dd>
           <dt>Gate</dt><dd className="ink2">{gateText(task, ws, approvals)}</dd>
         </dl>
         {task.spec && <section className="bd-section"><h3>Spec</h3><p className="bd-spec selectable">{task.spec}</p></section>}

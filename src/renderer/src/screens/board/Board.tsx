@@ -97,7 +97,7 @@ function Card({ task, ws, selected }: { task: Task; ws?: Workspace; selected: bo
   const tag = cardTag(task, ws)
   const meta = cardMeta(task, ws)
   return (
-    <button type="button" className="bd-card" data-state={task.state} data-selected={selected ? 'true' : undefined} aria-label={`Open ${task.id}`} onClick={() => go({ name: 'task', roomId: task.roomId, taskId: task.id })}>
+    <button type="button" className="bd-card" data-state={task.state} data-selected={selected ? 'true' : undefined} aria-label={`Open ${task.id}, ${task.title}`} onClick={() => go({ name: 'task', roomId: task.roomId, taskId: task.id })}>
       <span className="row bd-card-top">
         <span className="mono bd-id">{task.id}</span>
         <span className="grow" />

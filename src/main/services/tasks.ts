@@ -63,10 +63,12 @@ export class Tasks {
       } else if (e.type === 'workspace') this.refresh(e.workspace.roomId)
       else if (e.type === 'pr') { const ws = this.d.store.workspace(e.workspaceId); if (ws) this.refresh(ws.roomId) }
     }
-    const onHook = (e: { hook_event_name: string; task_id?: string; task_subject?: string; task_description?: string; teammate_name?: string }, ctx: { roomId?: string; workspaceId?: string; agentId?: string }) => {
+    const onHook = (e: { hook_event_name: string; task_id?: string; task_subject?: string; task_description?: string; teammate_name?: string; team_name?: string; session_id?: string }, ctx: { roomId?: string; workspaceId?: string; agentId?: string }) => {
       if (!ctx.roomId || !e.task_id) return
-      if (e.hook_event_name === 'TaskCreated') this.fromHook(ctx.roomId, 'created', { ...ctx, externalId: e.task_id, subject: e.task_subject, description: e.task_description, teammate: e.teammate_name })
-      else if (e.hook_event_name === 'TaskCompleted') this.fromHook(ctx.roomId, 'completed', { ...ctx, externalId: e.task_id, subject: e.task_subject, description: e.task_description, teammate: e.teammate_name })
+      // Claude Code numbers tasks per task list, so two sessions or teams reuse the same ids. Key by list.
+      const externalId = `${e.team_name ?? e.session_id ?? 'session'}/${e.task_id}`
+      if (e.hook_event_name === 'TaskCreated') this.fromHook(ctx.roomId, 'created', { ...ctx, externalId, subject: e.task_subject, description: e.task_description, teammate: e.teammate_name })
+      else if (e.hook_event_name === 'TaskCompleted') this.fromHook(ctx.roomId, 'completed', { ...ctx, externalId, subject: e.task_subject, description: e.task_description, teammate: e.teammate_name })
     }
     bus.on('push', onPush).on('hook', onHook)
     this.off = () => { bus.off('push', onPush).off('hook', onHook) }

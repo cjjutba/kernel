@@ -129,13 +129,25 @@ describe('tasks service', () => {
   it('makes and closes tasks from hooks of sessions outside Kernel', async () => {
     const { tasks, store } = await setup()
     const ctx = { roomId: 'r', workspaceId: undefined, agentId: undefined }
-    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', task_subject: 'Fix the login redirect', teammate_name: 'kai' }, ctx)
-    expect(tasks.list('r')).toMatchObject([{ id: 'T-01', title: 'Fix the login redirect', column: 'build', state: 'working', agentId: 'kai', externalId: 'abc' }])
-    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', task_subject: 'Fix the login redirect' }, ctx)
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect', teammate_name: 'kai' }, ctx)
+    expect(tasks.list('r')).toMatchObject([{ id: 'T-01', title: 'Fix the login redirect', column: 'build', state: 'working', agentId: 'kai', externalId: 's1/abc' }])
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect' }, ctx)
     expect(tasks.list('r')).toHaveLength(1)
-    bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: 'abc', task_subject: 'Fix the login redirect' }, ctx)
+    bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: 'abc', session_id: 's1', task_subject: 'Fix the login redirect' }, ctx)
     expect(store.task('r', 'T-01')).toMatchObject({ column: 'done', state: 'done' })
     expect(store.task('r', 'T-01')?.completedAt).toBeTypeOf('number')
+  })
+
+  it('keeps tasks from different sessions and teams apart when they reuse an id', async () => {
+    const { tasks, store } = await setup()
+    const ctx = { roomId: 'r' }
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'First', session_id: 's1' }, ctx)
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'Second', session_id: 's2' }, ctx)
+    bus.emit('hook', { hook_event_name: 'TaskCreated', task_id: '1', task_subject: 'Third', session_id: 's3', team_name: 'blue' }, ctx)
+    expect(tasks.list('r').map((t) => t.title)).toEqual(['First', 'Second', 'Third'])
+    bus.emit('hook', { hook_event_name: 'TaskCompleted', task_id: '1', task_subject: 'Second', session_id: 's2' }, ctx)
+    expect(tasks.list('r').map((t) => t.column)).toEqual(['build', 'done', 'build'])
+    expect(store.task('r', 'T-01')?.completedAt).toBeUndefined()
   })
 
   it('opens a task for a completion it never saw created, and ignores hooks without a room', async () => {
