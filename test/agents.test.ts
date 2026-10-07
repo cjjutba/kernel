@@ -4,6 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
 
+// fs.watch timing varies under load, so wait for the callback instead of sleeping a fixed time.
+async function until(ok: () => boolean, ms = 3000): Promise<void> {
+  const end = Date.now() + ms
+  while (!ok() && Date.now() < end) await new Promise((r) => setTimeout(r, 25))
+}
+
 describe('agents', () => {
   it('parses frontmatter including folded lines and lists', () => {
     const { meta, body } = parseFrontmatter('---\nname: lumi\ndescription: Designer. Checks every screen\n  against DESIGN.md.\ntools: Read, Grep\n---\nYou are Lumi.')
@@ -82,12 +88,14 @@ describe('agents', () => {
     let hits = 0
     const stop = watchAgents(repo, () => { hits++ }, 20)
     try {
+      // macOS FSEvents can drop changes made in the first moments after a watch starts.
+      await new Promise((r) => setTimeout(r, 100))
       await mkdir(join(repo, '.claude', 'agents'))
-      await new Promise((r) => setTimeout(r, 200))
+      await until(() => hits > 0)
       const afterDir = hits
       expect(afterDir).toBeGreaterThan(0)
       await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
-      await new Promise((r) => setTimeout(r, 200))
+      await until(() => hits > afterDir)
       expect(hits).toBeGreaterThan(afterDir)
     } finally { stop() }
   })
