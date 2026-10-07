@@ -55,9 +55,15 @@ export async function listHunks(cwd: string, o: { since: string; baselineRef?: s
     ? splitHunks(await git(cwd, 'diff', '--no-color', await headAtStart(cwd, o.baselineRef), o.baselineRef, ...scope), 'mine', seen)
     : []
   const agentAll = splitHunks(await git(cwd, 'diff', '--no-color', o.since, ...scope), 'agent', seen)
-  const pending = splitHunks(await git(cwd, 'diff', '--no-color', 'HEAD', ...scope), 'agent', new Map()).map((h) => `${h.path}\0${changedLines(h.patch)}`)
-  const open = (h: Hunk) => pending.some((p) => p.startsWith(`${h.path}\0`) && p.includes(changedLines(h.patch)))
-  return [...agentAll.filter(open), ...mineAll.filter(open)].sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner))
+  const pending = splitHunks(await git(cwd, 'diff', '--no-color', 'HEAD', ...scope), 'agent', new Map())
+  const keys = pending.map((h) => `${h.path}\0${changedLines(h.patch)}`)
+  const open = (h: Hunk) => keys.some((k) => k.startsWith(`${h.path}\0`) && k.includes(changedLines(h.patch)))
+  const listed = [...agentAll.filter(open), ...mineAll.filter(open)]
+  // A change on or next to a line that was already dirty at start merges with it (or rewrites it), so neither range's hunk
+  // matches. Whatever is still uncommitted and not covered by a listed hunk is offered as its own agent hunk.
+  const covered = (p: Hunk) => listed.some((h) => h.path === p.path && changedLines(p.patch).includes(changedLines(h.patch)))
+  const extra = pending.filter((p) => !covered(p)).map((p, i) => ({ ...p, id: `${p.path}#agent#head${i}` }))
+  return [...listed, ...extra].sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner) || a.id.localeCompare(b.id))
 }
 
 /** Commit exactly the picked hunks. The index starts from HEAD, so anything else stays in the working tree. */

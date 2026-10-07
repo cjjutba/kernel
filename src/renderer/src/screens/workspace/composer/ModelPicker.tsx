@@ -11,7 +11,7 @@ export const EFFORTS: { id: Effort; label: string }[] = [{ id: 'low', label: 'Lo
  */
 export function ModelPicker({ model, effort, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: ModelId; effort: Effort; onModel: (m: ModelId) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
-  const [at, setAt] = useState(0)
+  const [at, setAt] = useState(() => Math.max(0, MODELS.findIndex((m) => m.id === model)))
   const ref = useRef<HTMLDivElement>(null)
   useEscape(onClose)
   useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])

@@ -78,6 +78,28 @@ describe('hunks', () => {
     expect(await listHunks(repo, { since: baseline, baselineRef: baseline })).toEqual([])
   })
 
+  it('still lists a change on or next to a line that was already dirty at start', async () => {
+    const same = await tempRepo({ 'a.ts': lines(30) })
+    await writeFile(join(same, 'a.ts'), lines(30, { 12: 'mine 12' }))
+    const b1 = (await git(same, 'stash', 'create')).trim()
+    await writeFile(join(same, 'a.ts'), lines(30, { 12: 'agent 12' }))
+    const h1 = await listHunks(same, { since: b1, baselineRef: b1 })
+    expect(h1).toHaveLength(1)
+    await commitHunks(same, h1, 'Same line')
+    expect(await git(same, 'show', 'HEAD:a.ts')).toContain('agent 12')
+
+    const next = await tempRepo({ 'b.ts': lines(30) })
+    await writeFile(join(next, 'b.ts'), lines(30, { 12: 'mine 12' }))
+    const b2 = (await git(next, 'stash', 'create')).trim()
+    await writeFile(join(next, 'b.ts'), lines(30, { 12: 'mine 12', 13: 'agent 13' }))
+    const h2 = await listHunks(next, { since: b2, baselineRef: b2 })
+    expect(h2.length).toBeGreaterThan(0)
+    expect(h2.every((h) => h.patch.includes('agent 13') || h.patch.includes('mine 12'))).toBe(true)
+    await commitHunks(next, h2, 'Adjacent')
+    expect(await git(next, 'show', 'HEAD:b.ts')).toContain('agent 13')
+    expect(await listHunks(next, { since: b2, baselineRef: b2 })).toEqual([])
+  })
+
   it('refuses an empty pick', async () => {
     const repo = await tempRepo()
     await expect(commitHunks(repo, [], 'x')).rejects.toThrow('Pick at least one')

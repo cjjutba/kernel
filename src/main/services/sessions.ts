@@ -101,7 +101,7 @@ export class Sessions {
     if (!pick) return this.queued(chatId)
     this.setQueue(chatId, [pick, ...this.queued(chatId).filter((q) => q.id !== id)])
     const live = this.live.get(chatId)
-    if (live?.running) { live.sendNext = true; await this.interrupt(chatId) }
+    if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -141,9 +141,11 @@ export class Sessions {
   }
 
   /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
-  async interrupt(chatId: string) {
+  async interrupt(chatId: string, sendNext = false) {
     const live = this.live.get(chatId)
-    if (!live?.running || live.interrupted) return
+    if (!live?.running) return
+    // A Stop while Send now is already interrupting wins: the queue is dropped.
+    if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
     await live.query.interrupt().catch(() => undefined)
     this.item(this.mustChat(chatId), { kind: 'interrupted', id: randomUUID(), ts: Date.now() })
