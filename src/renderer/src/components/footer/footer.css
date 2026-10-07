@@ -1,0 +1,28 @@
+/* Footer, Ask Rowan and the update pill (KERNEL-21). Tokens only. */
+.ft { padding: 0 12px 0 16px; gap: 10px; }
+.ft-hooks { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+.ft-port { font-size: 12px; margin-left: 2px; }
+.ft-down { height: 24px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
+.ft-down:hover { background: var(--surface-3); }
+.ft-fix { margin-left: 4px; color: var(--ink); text-decoration: underline; }
+.ft-btn, .ft-pill { display: inline-flex; align-items: center; gap: 7px; height: 24px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
+.ft-btn:hover, .ft-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.ft-pill { height: 26px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; color: var(--ink); }
+.ft-pill:hover { background: var(--surface-3); }
+.ft-btn:focus-visible, .ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
+.qa-anchor { position: relative; display: inline-flex; }
+
+.qa { position: absolute; z-index: 60; right: -4px; bottom: calc(100% + 10px); width: 344px; display: flex; flex-direction: column; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.qa-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; }
+.qa-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+.qa-room { font-size: 12.5px; color: var(--muted); }
+.qa-text { height: 80px; margin: 0 12px; padding: 10px 12px; resize: none; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--input-bg); color: var(--ink); font: inherit; font-size: 13px; outline: none; }
+.qa-text:focus { border-color: var(--line-4); }
+.qa-text::placeholder { color: var(--muted); }
+.qa-thread { margin: 0 12px; max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.qa-q { margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--surface-3); color: var(--ink-2); font-size: 13px; }
+.qa-a { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.qa-wait { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 13px; }
+.qa-err { margin: 8px 12px 0; color: var(--danger); font-size: 12.5px; }
+.qa-foot { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; }
+.qa-note { font-size: 12px; color: var(--muted); }

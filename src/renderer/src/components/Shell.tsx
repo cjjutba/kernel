@@ -1,20 +1,8 @@
 import { type ReactNode } from 'react'
 import { Icon } from '../icons'
-import { actions, useStore } from '../store'
 
 export { Sidebar } from './sidebar/Sidebar'
-
-export function Footer() {
-  const usage = useStore((s) => s.usage)
-  const five = usage.find((u) => u.type === 'five_hour')
-  return (
-    <footer className="footer">
-      <span className="row"><Icon name="plug" size={13} />Hooks live</span>
-      <span style={{ flex: 1 }} />
-      {five?.utilization !== undefined && <span>Session {Math.round(five.utilization * 100)}%</span>}
-    </footer>
-  )
-}
+export { Footer } from './footer/Footer'
 
 export function Modal({ title, onClose, children, footer, width }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number }) {
   return (

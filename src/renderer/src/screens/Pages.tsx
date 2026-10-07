@@ -126,27 +126,6 @@ export function TeamScreen({ roomId }: { roomId: string }) {
   )
 }
 
-export function HistoryScreen() {
-  const archived = useStore((s) => s.workspaces.filter((w) => w.status === 'archived').reverse())
-  const rooms = useStore((s) => s.rooms)
-  return (
-    <div className="panel">
-      <header className="header"><Icon name="history" /><h1>History</h1></header>
-      <div className="grow" style={{ overflowY: 'auto', padding: '8px 20px' }}>
-        {archived.map((w) => (
-          <div key={w.id} className="row" style={{ height: 52, gap: 16, padding: '0 8px', borderTop: '1px solid #17181a' }}>
-            <span className="grow" style={{ fontWeight: 500 }}>{w.name}</span>
-            <span className="mono muted" style={{ width: 280, fontSize: 12 }}>{w.branch}</span>
-            <span className="ink2" style={{ width: 120 }}>{rooms.find((r) => r.id === w.roomId)?.name}</span>
-            <span style={{ width: 110, fontSize: 12.5, color: w.prState === 'merged' ? 'var(--merged)' : 'var(--muted)' }}>{w.prNumber ? `#${w.prNumber} ${w.prState}` : 'No PR'}</span>
-          </div>
-        ))}
-        {!archived.length && <p className="muted" style={{ margin: 40 }}>Archived workspaces show up here.</p>}
-      </div>
-    </div>
-  )
-}
-
 export function OnboardingScreen() {
   const [checks, setChecks] = useState<PreflightCheck[] | null>(null)
   const [hooks, setHooks] = useState<string | null>(null)

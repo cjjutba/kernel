@@ -1,0 +1,5 @@
+/* The account button at the top of the sidebar (KERNEL-21). Tokens only. */
+.acct { display: inline-flex; align-items: center; gap: 8px; height: 28px; max-width: 170px; padding: 0 6px 0 4px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font-weight: 500; }
+.acct:hover, .acct[aria-expanded='true'] { background: var(--nav-hover); }
+.acct svg { color: var(--muted); flex-shrink: 0; }
+.acct-av { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--ink); color: var(--canvas); font-size: 9.5px; font-weight: 600; }

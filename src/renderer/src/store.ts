@@ -266,6 +266,10 @@ export async function boot() {
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
+  // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
+  void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
+  void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
+  void call('update.get', undefined).then(actions.system.setUpdate).catch(() => undefined)
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)

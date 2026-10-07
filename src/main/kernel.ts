@@ -15,7 +15,8 @@ import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
@@ -37,7 +38,6 @@ export const UNBUILT = {
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'tasks.list': 'KERNEL-18',
-  'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
   'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
@@ -415,8 +415,38 @@ export class Kernel {
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
     if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) ? ws.branch : undefined })
-    this.saveWs({ ...ws, status: 'archived' })
+    this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
+  }
+
+  /** Brings an archived workspace back: recreates the worktree from its branch and reopens its chats, which Kernel kept. */
+  async restoreWorkspace(id: string): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (ws.status !== 'archived') return ws
+    const room = this.mustRoom(ws.roomId)
+    if (ws.mode === 'worktree') {
+      const path = await stat(ws.path).then(() => undefined, () => ws.path)
+      if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
+      await restoreWorktree({ repo: room.path, path, branch: ws.branch })
+      const repo = await loadRepoSettings(room.path)
+      await copyLocalFiles(room.path, path, repo.files.copy)
+    } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
+      throw new Error('Another workspace is already working on the current branch in this room.')
+    }
+    // Another workspace may have taken this port while it was archived.
+    const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
+    const port = taken.has(ws.port) ? await freePort(4300, taken) : ws.port
+    const { archivedAt: _gone, ...rest } = ws
+    const back = this.saveWs({ ...rest, port, status: 'ready' })
+    bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
+    return back
+  }
+
+  /** A quick question to the room's Lead. The answer arrives in the Lead's chat like any turn; the popover reads it from there. */
+  async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
+    const chat = await this.leadChat(roomId)
+    await this.sessions.send(chat.id, [{ type: 'text', text }])
+    return { chatId: chat.id }
   }
 
   async changes(id: string) {
@@ -715,6 +745,10 @@ export class Kernel {
       'issues.list': async ({ query }) => searchIssues(linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
+      'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
+      'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
+      'account.get': async () => readAccount(),
+      'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch }) => { await this.archiveWorkspace(workspaceId, deleteBranch); return { ok: true } },
       'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
