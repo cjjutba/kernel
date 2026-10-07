@@ -3,7 +3,7 @@ import type { PreflightCheck } from '@shared/types'
 import { call } from '../api'
 import { Icon } from '../icons'
 import { actions, boot, go, loadRoom, pending, useStore } from '../store'
-import { ApprovalCard } from './Floor'
+import { ApprovalCard } from './workspace/cards/ApprovalCard'
 
 export function HomeScreen() {
   const rooms = useStore((s) => s.rooms)
@@ -24,7 +24,7 @@ export function HomeScreen() {
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: 24 }}>
           <div className="col" style={{ gap: 12 }}>
             <span className="muted" style={{ fontSize: 12, fontWeight: 500 }}>Needs you {needs.length || ''}</span>
-            {needs.length ? needs.slice(0, 5).map((a) => <ApprovalCard key={a.id} approval={a} agents={a.roomId ? agents[a.roomId] ?? [] : []} />) : <span className="muted">You're all caught up.</span>}
+            {needs.length ? needs.slice(0, 5).map((a) => <ApprovalCard key={a.id} approval={a} />) : <span className="muted">You're all caught up.</span>}
             <span className="muted" style={{ fontSize: 12, fontWeight: 500, marginTop: 16 }}>Shipped recently</span>
             {shipped.map((w) => <button key={w.id} className="nav-item" onClick={() => go({ name: 'workspace', workspaceId: w.id })}><Icon name="branch" /><span className="grow ellipsis">{w.name}</span><span className="mono" style={{ fontSize: 12, color: 'var(--merged)' }}>#{w.prNumber}</span></button>)}
             {!shipped.length && <span className="muted">Merged work shows up here.</span>}
@@ -68,7 +68,7 @@ export function InboxScreen() {
           })}
         </div>
         <div className="grow" style={{ padding: '28px 40px', overflowY: 'auto' }}>
-          {cur ? (cur.status === 'pending' ? <div style={{ maxWidth: 640 }}><ApprovalCard approval={cur} agents={cur.roomId ? agents[cur.roomId] ?? [] : []} /></div> : <div className="col" style={{ gap: 8, maxWidth: 640 }}><span style={{ fontSize: 18, fontWeight: 600 }}>{cur.title}</span><span className="muted">{cur.status}{cur.answer ? `: ${cur.answer}` : ''}</span></div>)
+          {cur ? (cur.status === 'pending' ? <div style={{ maxWidth: 640 }}><ApprovalCard approval={cur} /></div> : <div className="col" style={{ gap: 8, maxWidth: 640 }}><span style={{ fontSize: 18, fontWeight: 600 }}>{cur.title}</span><span className="muted">{cur.status}{cur.answer ? `: ${cur.answer}` : ''}</span></div>)
             : <div className="col" style={{ alignItems: 'center', gap: 8, paddingTop: 160, textAlign: 'center' }}><span style={{ fontSize: 15, fontWeight: 600 }}>You're all caught up</span><span className="muted">Approvals, plans and questions land here.</span></div>}
         </div>
       </div>

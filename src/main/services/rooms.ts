@@ -115,6 +115,16 @@ export async function seatStarterTeam(starterDir: string, repoPath: string, ids:
   return seated
 }
 
+/** Copy another room's agent files, retired ones excluded. Returns how many were written. */
+export async function copyAgentFiles(fromRepo: string, toRepo: string): Promise<number> {
+  const files = await agentFiles(fromRepo)
+  if (!files.length) return 0
+  const dir = join(toRepo, '.claude', 'agents')
+  await mkdir(dir, { recursive: true })
+  for (const f of files) await copyFile(join(fromRepo, '.claude', 'agents', f), join(dir, f))
+  return files.length
+}
+
 /** The file Kernel writes when a repo has none. Every key has a default, so the file only documents the knobs. */
 export const DEFAULT_REPO_SETTINGS = `# Kernel settings for this repo. Commit it so the whole team shares it.
 # Personal overrides go in .kernel/settings.local.toml, which stays out of git.

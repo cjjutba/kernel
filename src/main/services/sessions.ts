@@ -28,6 +28,8 @@ export class InputQueue<T> implements AsyncIterable<T> {
 
 interface Live {
   query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
+  /** A hook refused a step and the agent has not moved on yet. */
+  blocked?: boolean
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
@@ -54,7 +56,36 @@ export class Sessions {
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
+  /** Rooms CJ (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
+  private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   constructor(private d: SessionDeps) {}
+
+  isPaused(roomId: string) { return this.paused.has(roomId) }
+
+  /**
+   * Freeze a room after its agents' current steps. Nothing is interrupted: a running turn carries on until its next tool call,
+   * where it waits. New sends are held in each chat's queue and go out, in order, on resume.
+   */
+  pause(roomId: string) {
+    if (this.paused.has(roomId)) return
+    let release!: () => void
+    const open = new Promise<void>((resolve) => { release = resolve })
+    this.paused.set(roomId, { open, release })
+  }
+
+  /** Let the room's agents go on and send what was held while it was paused. */
+  resume(roomId: string) {
+    const gate = this.paused.get(roomId)
+    if (!gate) return
+    this.paused.delete(roomId)
+    gate.release()
+    for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
+  }
+
+  private pausedChat(chat: Chat) {
+    const ws = this.d.store.workspace(chat.workspaceId)
+    return !!ws && this.paused.has(ws.roomId)
+  }
 
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
   isManaged(sessionId: string) { return this.managedIds.has(sessionId) }
@@ -81,7 +112,7 @@ export class Sessions {
    */
   async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
     const chat = this.mustChat(chatId)
-    if (this.live.get(chatId)?.running) {
+    if (this.live.get(chatId)?.running || this.pausedChat(chat)) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
       return { queued: true }
     }
@@ -128,7 +159,7 @@ export class Sessions {
   private drain(chatId: string) {
     const [next, ...rest] = this.queued(chatId)
     const chat = this.d.store.chat(chatId)
-    if (!next || !chat) return
+    if (!next || !chat || this.pausedChat(chat)) return
     this.setQueue(chatId, rest)
     this.dispatch(chat, next.parts)
   }
@@ -172,6 +203,16 @@ export class Sessions {
     if (this.queued(chatId).length) this.setQueue(chatId, [])
   }
 
+  /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
+  async restart(chatId: string): Promise<void> {
+    this.mustChat(chatId)
+    // Messages held while the session was down or the room was paused still go out.
+    const held = this.queued(chatId)
+    this.stop(chatId)
+    if (held.length) this.setQueue(chatId, held)
+    await this.send(chatId, [{ type: 'text', text: 'Your session ended unexpectedly. Check the worktree and pick up where you left off.' }])
+  }
+
   stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
   stopAll() { for (const id of [...this.live.keys()]) this.stop(id) }
 
@@ -197,7 +238,8 @@ export class Sessions {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent, chat),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId))),
+      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open),
+      includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
       env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id })
@@ -210,16 +252,23 @@ export class Sessions {
   }
 
   private async consume(chatId: string, ws: Workspace, live: Live) {
+    let ended: string | null = null
     try {
       // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, they are dropped.
       for await (const msg of live.query) if (!this.replaced(chatId, live)) this.handle(chatId, ws, live, msg)
+      // Nobody asked it to stop, so the process went away on its own.
+      if (!live.abort.signal.aborted) ended = ''
     } catch (err) {
-      if (!live.abort.signal.aborted) this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${String((err as Error).message ?? err)}` })
+      if (!live.abort.signal.aborted) {
+        ended = String((err as Error).message ?? err)
+        this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
+      }
     } finally {
       const replaced = this.replaced(chatId, live)
       if (this.live.get(chatId) === live) this.live.delete(chatId)
       const chat = this.d.store.chat(chatId)
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
+      if (chat && !replaced && ended !== null) this.offline(ws, ended)
     }
   }
 
@@ -245,10 +294,12 @@ export class Sessions {
           this.billing.set(chatId, msg.apiKeySource)
           this.setRunning(chat, ws, live, true)
         }
+        if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, live, msg.hook_event, msg.stderr || msg.output || msg.stdout)
         return
       }
       case 'assistant': {
         if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
+        if (live.blocked) { live.blocked = false; this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working') }
         msg.message.content.forEach((block: any, i: number) => {
           const id = `${msg.uuid}:${i}`
           if (block.type === 'text' && block.text?.trim()) this.item(chat, { kind: 'text', id, ts: now, text: block.text })
@@ -284,6 +335,7 @@ export class Sessions {
         const stopped = live.interrupted && !live.sendNext
         live.interrupted = false
         live.sendNext = false
+        live.blocked = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat)
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
@@ -353,8 +405,28 @@ export class Sessions {
     bus.push({ type: 'usage', limits: [...this.limits.values()] })
   }
 
+  /** A paused room shows everyone as paused, except an agent waiting on CJ. */
   private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus, activity?: string) {
-    if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status, activity })
+    const shown = this.paused.has(ws.roomId) && status !== 'needs' ? 'paused' : status
+    if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown, activity })
+  }
+
+  /** The session ended without being stopped: the agent goes offline and the logs say where and why. */
+  private offline(ws: Workspace, reason: string) {
+    const detail = `Claude Code exited in ${ws.name}${reason ? ` (${reason.slice(0, 120)})` : ''}. The worktree and chat are saved.`
+    this.setStatus(ws, this.d.agentFor(ws), 'offline', `Session ended in ${ws.name}`)
+    bus.activity({ kind: 'session.end', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'went offline in', object: ws.name, warn: true, data: { detail, crashed: true } })
+  }
+
+  /** A hook exited with code 2: it refused the step. The agent shows as blocked with the hook's own words. */
+  private blocked(ws: Workspace, live: Live, event: string, output: string) {
+    live.blocked = true
+    const lines = output.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4)
+    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${event} hook`)
+    bus.activity({
+      kind: 'agent.status', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'was blocked on', object: ws.name, warn: true,
+      data: { status: 'blocked', detail: `The ${event} hook refused the last step. Read its output, then fix it or ask the agent to.`, output: lines.length ? lines : undefined }
+    })
   }
 
   private item(chat: Chat, item: ChatItem) {
@@ -409,7 +481,7 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
  * In-process hooks. Every event feeds the room log the same way http hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of CJ's own Claude Code settings.
  */
-function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -424,11 +496,24 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
     if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
     return {}
   }
+  // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
+  const hold: HookCallback = async (_input, _id, { signal }) => {
+    const open = held()
+    // A Stop ends the wait too, so no promise is left pending.
+    if (open) await Promise.race([open, new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }) })])
+    return {}
+  }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
-  hooks.PreToolUse!.push({ matcher: 'Bash', hooks: [guard] })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] })
   return hooks
 }
+
+/** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
+export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
+
+/** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
+const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
 
 export type BashVerdict = 'deny' | 'allow' | 'ask' | undefined
 
