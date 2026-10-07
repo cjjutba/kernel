@@ -433,8 +433,11 @@ export class Kernel {
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
     }
+    // Another workspace may have taken this port while it was archived.
+    const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
+    const port = taken.has(ws.port) ? await freePort(4300, taken) : ws.port
     const { archivedAt: _gone, ...rest } = ws
-    const back = this.saveWs({ ...rest, status: 'ready' })
+    const back = this.saveWs({ ...rest, port, status: 'ready' })
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
     return back
   }

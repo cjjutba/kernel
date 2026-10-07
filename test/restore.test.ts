@@ -35,6 +35,12 @@ describe('restore and Ask Rowan', () => {
     expect((await stat(ws.path)).isDirectory()).toBe(true)
     expect(k.store.chats(ws.id).map((c) => c.id)).toEqual(chats)
 
+    // A workspace made while this one was archived may take its port. Restore picks another.
+    const other = await k.createWorkspace(room.id, { prompt: 'Another', agentId: 'kai', title: 'Other' })
+    k.store.saveWorkspace({ ...other, port: ws.port })
+    await k.archiveWorkspace(ws.id, false)
+    expect((await k.restoreWorkspace(ws.id)).port).not.toBe(ws.port)
+
     // A branch deleted on archive cannot come back, and the message says so.
     await k.archiveWorkspace(ws.id, true)
     await expect(k.restoreWorkspace(ws.id)).rejects.toThrow(/no longer exists/)

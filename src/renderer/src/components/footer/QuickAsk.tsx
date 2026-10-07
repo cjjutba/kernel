@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Avatar, Button, Icon, Spinner } from '../../ui'
@@ -11,7 +11,7 @@ function answerOf(items: { kind: string; ts: number; text?: string }[], since: n
 }
 
 /** QuickAsk.png: a question to the room's Lead from anywhere. The answer shows here, with a way into the full chat. */
-export function QuickAsk({ onClose }: { onClose: () => void }) {
+export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRef: RefObject<HTMLElement | null> }) {
   const route = useStore((s) => s.ui.route)
   const rooms = useStore((s) => s.rooms)
   const workspaces = useStore((s) => s.workspaces)
@@ -22,7 +22,7 @@ export function QuickAsk({ onClose }: { onClose: () => void }) {
   const [asked, setAsked] = useState<{ chatId: string; since: number; question: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef: undefined })
+  useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   const items = useStore((s) => (asked ? s.items[asked.chatId] : undefined))
   const running = useStore((s) => (asked ? !!s.running[asked.chatId] : false))
   const failed = items?.some((i) => i.kind === 'result' && i.ts >= (asked?.since ?? 0) && !i.ok)
@@ -89,10 +89,11 @@ export function AskRowanButton() {
   const agents = useStore((s) => s.agents)
   const room = roomInView(route, rooms, workspaces)
   const name = (room && agents[room.id]?.find((a) => a.lead)?.name) ?? 'Rowan'
+  const anchor = useRef<HTMLSpanElement>(null)
   return (
-    <span className="qa-anchor">
+    <span ref={anchor} className="qa-anchor">
       <button type="button" className="ft-btn" aria-haspopup="dialog" aria-expanded={open} onClick={() => actions.ui.toggleMenu('quickAsk')}><Icon name="send" size={12} />Ask {name}</button>
-      {open && <QuickAsk onClose={actions.ui.closeMenu} />}
+      {open && <QuickAsk onClose={actions.ui.closeMenu} anchorRef={anchor} />}
     </span>
   )
 }
