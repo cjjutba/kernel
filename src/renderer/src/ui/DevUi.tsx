@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames } from './index'
 import type { BannerKind, DevUiPage } from '@shared/types'
 
@@ -72,6 +72,7 @@ function Display() {
 
 function Overlays() {
   const noop = () => undefined
+  const anchor = useRef<HTMLSpanElement>(null)
   return (
     <>
       <Section title="Menu with shortcuts and a submenu">
@@ -87,8 +88,8 @@ function Overlays() {
       </Section>
       <Section title="Popover">
         <div className="devui-stage" style={{ minHeight: 140 }}>
-          <Button aria-expanded="true">Branch</Button>
-          <Popover open onClose={noop} label="Branch">Base branch <span className="mono">origin/main</span></Popover>
+          <span ref={anchor}><Button aria-expanded="true">Branch</Button></span>
+          <Popover open onClose={noop} label="Branch" anchorRef={anchor}>Base branch <span className="mono">origin/main</span></Popover>
         </div>
       </Section>
       <Section title="Toast, bottom right, 2.6s">

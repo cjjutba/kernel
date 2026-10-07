@@ -26,7 +26,7 @@
 .menu-anchor { position: absolute; z-index: 60; }
 .menu-anchor .menu, .submenu .menu { position: static; }
 .menu-row { position: relative; }
-.submenu { position: absolute; z-index: 61; left: calc(100% + 4px); top: -7px; }
+.submenu { position: absolute; z-index: 61; left: 100%; top: -7px; padding-left: 4px; }
 .menu-item { padding: 0 8px; }
 .menu-item:disabled { color: var(--faint); cursor: default; background: transparent; }
 .menu-item svg { color: var(--muted); flex-shrink: 0; }

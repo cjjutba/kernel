@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
 import { useLayer } from './hooks'
@@ -65,9 +65,9 @@ function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (Me
  * A menu with shortcuts and submenus. Position it by placing it in a `position: relative` parent (see Popover),
  * or pass `style`. Escape and a press outside call `onClose`.
  */
-export function Menu({ items, onClose, label, style, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; style?: React.CSSProperties; initiallyOpen?: string }) {
+export function Menu({ items, onClose, label, style, initiallyOpen, anchorRef }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; style?: React.CSSProperties; initiallyOpen?: string; anchorRef?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDivElement>(null)
-  useLayer({ onEscape: onClose, onOutside: onClose, ref })
+  useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   return <div ref={ref} className="menu-anchor" style={style}><MenuList items={items} onClose={onClose} label={label} initiallyOpen={initiallyOpen} /></div>
 }
 
@@ -82,10 +82,10 @@ export function MenuItem({ icon, shortcut, children, ...rest }: React.ButtonHTML
   )
 }
 
-/** Anything anchored below a trigger: a small panel that closes on Escape or an outside press. */
-export function Popover({ open, onClose, children, label, align = 'left' }: { open: boolean; onClose: () => void; children: ReactNode; label: string; align?: 'left' | 'right' }) {
+/** Anything anchored below a trigger: a small panel that closes on Escape or an outside press. Pass the trigger's wrapper as `anchorRef` so pressing the trigger toggles it instead of closing then reopening. */
+export function Popover({ open, onClose, children, label, align = 'left', anchorRef }: { open: boolean; onClose: () => void; children: ReactNode; label: string; align?: 'left' | 'right'; anchorRef?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDivElement>(null)
-  useLayer({ onEscape: onClose, onOutside: onClose, ref }, open)
+  useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef }, open)
   if (!open) return null
   return <div ref={ref} role="dialog" aria-label={label} className="popover" style={{ [align]: 0 }}>{children}</div>
 }

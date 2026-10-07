@@ -58,6 +58,8 @@ const P = {
   context: 'M2.5 4.5h11M2.5 8h11M2.5 11.5h6',
   wifioff: 'M3 3l10 10M5.2 7.6a4 4 0 0 1 2-1M10.8 7.6a4 4 0 0 0-.9-.6M2.5 5.5a8 8 0 0 1 3-1.6M13.5 5.5a8 8 0 0 0-4.7-1.9M6.6 10a2 2 0 0 1 2.8 0',
   key: 'M10 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM7.6 8.4 2.5 13.5M4 12l1.5 1.5M5.5 10.5 7 12',
+  // Board.dc.html draws this at 10px ("You approve this step"); scaled 1.6x to the 16px grid.
+  lock: 'M4.48 7.2h7.04a1.6 1.6 0 0 1 1.6 1.6v3.52a1.6 1.6 0 0 1-1.6 1.6H4.48a1.6 1.6 0 0 1-1.6-1.6V8.8a1.6 1.6 0 0 1 1.6-1.6ZM5.12 7.2V5.28a2.88 2.88 0 0 1 5.76 0V7.2',
   warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1'
 } satisfies Record<string, string>
 
