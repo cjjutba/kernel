@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ChangedFile } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadWorkspace, useStore } from '../../store'
@@ -13,6 +13,8 @@ import { Transcript, TranscriptSkeleton } from './Transcript'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
+/** The workspace the stored tab and diff belong to. */
+let viewOwner: string | undefined
 
 /** Header, tabs, transcript, composer, and the right and bottom panels (Workspace.png). */
 export function Workspace({ workspaceId }: { workspaceId: string }) {
@@ -32,13 +34,14 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
 
-  // Leaving for another workspace clears its tabs. The first mount keeps what a fixture or a restored view set.
-  const previous = useRef(workspaceId)
+  // The open tab and diff live in the store, so they outlast this screen. Whenever the screen shows a different workspace
+  // than the one they belong to, clear them. The very first mount keeps what a fixture or a restored view set.
   useEffect(() => {
-    if (previous.current === workspaceId) return
-    previous.current = workspaceId
-    setOpenFiles([]); setLastChat(undefined)
-    actions.ui.setWorkspaceView({ tab: undefined, diff: undefined })
+    if (viewOwner !== undefined && viewOwner !== workspaceId) {
+      setOpenFiles([]); setLastChat(undefined)
+      actions.ui.setWorkspaceView({ tab: undefined, diff: undefined })
+    }
+    viewOwner = workspaceId
   }, [workspaceId])
 
   useEffect(() => { void loadWorkspace(workspaceId) }, [workspaceId])

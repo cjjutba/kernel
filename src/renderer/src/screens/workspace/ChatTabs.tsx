@@ -24,6 +24,16 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
     await loadWorkspace(workspaceId)
     onSelect(c.id)
   })
+  // Arrow keys move between tabs, like Tabs in ui/controls.tsx. Only the selected tab is in the tab order.
+  const arrow = (e: React.KeyboardEvent<HTMLButtonElement>, id: string) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+    if (!step) return
+    e.preventDefault()
+    const i = tabs.findIndex((t) => t.id === id)
+    const next = tabs[(i + step + tabs.length) % tabs.length]
+    onSelect(next.id)
+    requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
+  }
   const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'terminal'; path?: string }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p }))
@@ -35,7 +45,7 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
           const on = t.id === active
           return (
             <span key={t.id} className="tab-group hv">
-              <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} className="ws-tab" onClick={() => onSelect(t.id)}>
+              <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)} onKeyDown={(e) => arrow(e, t.id)}>
                 <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' ? 'doc' : 'chat'} size={14} />
                 <span className="ellipsis">{t.title}</span>
               </button>
