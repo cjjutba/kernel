@@ -290,7 +290,8 @@ function applyFixture(ui: ForcedUi, push: PushEvent[]) {
 }
 
 export async function loadRoom(roomId: string) {
-  const [agents, status] = await Promise.all([call('agents.list', { roomId }), call('agents.status', { roomId })])
+  const [agents, status, tasks] = await Promise.all([call('agents.list', { roomId }), call('agents.status', { roomId }), call('tasks.list', { roomId })])
+  actions.tasks.set(roomId, tasks)
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
 }
 
