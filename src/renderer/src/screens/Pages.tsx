@@ -104,28 +104,6 @@ export function BoardScreen({ roomId }: { roomId: string }) {
   )
 }
 
-export function TeamScreen({ roomId }: { roomId: string }) {
-  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
-  const agents = useStore((s) => s.agents[roomId] ?? [])
-  const status = useStore((s) => s.status[roomId] ?? {})
-  return (
-    <div className="panel">
-      <header className="header"><span className="ink2">{room?.name}</span><Icon name="right" size={12} /><h1>Team</h1></header>
-      <div className="grow" style={{ overflowY: 'auto', padding: '20px 28px' }}>
-        <p className="muted" style={{ margin: '0 0 16px' }}>Agents come from <span className="mono ink2">.claude/agents</span> in this repo. Ask the Lead to hire someone and they take a desk on the floor.</p>
-        {agents.map((a) => (
-          <div key={a.id} className="row" style={{ height: 64, borderTop: '1px solid #17181a', gap: 16, padding: '0 12px' }}>
-            <span className="col grow"><span><span style={{ fontWeight: 500 }}>{a.name}</span> <span className="muted" style={{ fontSize: 12 }}>{a.role}{a.lead ? ' · Lead' : ''}</span></span><span className="muted ellipsis" style={{ fontSize: 12 }}>{a.description}</span></span>
-            <span className="ink2" style={{ width: 110 }}>{a.model ?? 'default model'}</span>
-            <span className="ink2" style={{ width: 90 }}>{status[a.id] ?? 'idle'}</span>
-            <span className="mono muted ellipsis" style={{ width: 240, fontSize: 12 }}>{a.file.split('/.claude/')[1] ? '.claude/' + a.file.split('/.claude/')[1] : a.file}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 export function OnboardingScreen() {
   const [checks, setChecks] = useState<PreflightCheck[] | null>(null)
   const [hooks, setHooks] = useState<string | null>(null)

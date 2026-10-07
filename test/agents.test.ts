@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { mkdtemp, mkdir, writeFile, readdir } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { agentFromFile, loadAgents, parseFrontmatter, renderAgentFile, retireAgent, saveAgent } from '../src/main/services/agents'
+import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
 
 describe('agents', () => {
   it('parses frontmatter including folded lines and lists', () => {
@@ -35,5 +35,77 @@ describe('agents', () => {
     await mkdir(join(repo, '.claude'))
     await writeFile(join(repo, '.claude', 'settings.json'), '{}')
     expect(await loadAgents(repo)).toEqual([])
+  })
+
+  it('round-trips effort and keeps frontmatter Kernel does not manage when saving an edit', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), '---\nname: kai\ndescription: Frontend engineer.\nmodel: sonnet\ncolor: green\ntools: Read, Edit\n---\nYou are Kai.\n')
+    const saved = await updateAgent(repo, 'kai', { description: 'UI work.\nFollows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], prompt: 'New instructions.' })
+    expect(saved).toMatchObject({ id: 'kai', description: 'UI work. Follows DESIGN.md.', effort: 'xhigh', tools: ['Read', 'Bash'], skills: ['/verify'], model: 'sonnet', prompt: 'New instructions.' })
+    const file = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
+    expect(file).toContain('color: green')
+    expect(file).toContain('effort: xhigh')
+    await expect(updateAgent(repo, 'kai', { description: '  ' })).rejects.toThrow(/description/)
+    await expect(updateAgent(repo, 'nobody', {})).rejects.toThrow(/not in/)
+  })
+  it('drafts a file from a description and creates it once', async () => {
+    const d = draftAgent({ description: 'a designer who checks every screen against DESIGN.md', name: 'Lumi', model: 'opus' })
+    expect(d).toMatchObject({ id: 'lumi', name: 'Lumi', model: 'opus', file: '.claude/agents/lumi.md' })
+    expect(d.text).toContain('name: lumi')
+    expect(d.text).toContain('role: Designer')
+    expect(draftAgent({ description: 'Reviews security in every diff' }).id).toBe('reviewer')
+    expect(() => draftAgent({ description: '   ' })).toThrow(/Describe/)
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    const made = await createAgent(repo, d)
+    expect(made).toMatchObject({ id: 'lumi', role: 'Designer', model: 'opus' })
+    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['lumi'])
+    await expect(createAgent(repo, d)).rejects.toThrow(/already on the team/)
+    await expect(createAgent(repo, { ...d, text: '---\nname: Bad Name\ndescription: x\n---\nbody' })).rejects.toThrow(/lowercase/)
+    await expect(createAgent(repo, { ...d, text: '---\nname: ok\n---\nbody' })).rejects.toThrow(/description/)
+  })
+  it('lists retired agents and restores one, refusing when the name is taken', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
+    await retireAgent(repo, 'kai')
+    expect((await loadAgents(repo, { retired: true })).map((a) => [a.id, a.retired])).toEqual([['kai', true]])
+    await saveAgent(repo, { id: 'kai', description: 'A newer Kai.', prompt: 'x' })
+    await expect(restoreAgent(repo, 'kai')).rejects.toThrow(/already an agent/)
+    await retireAgent(repo, 'kai')
+    await restoreAgent(repo, 'kai')
+    expect((await loadAgents(repo)).map((a) => a.id)).toEqual(['kai'])
+    await expect(retireAgent(repo, 'ghost')).rejects.toThrow(/not in/)
+  })
+  it('tells the watcher about files added outside Kernel, even before the folder exists', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude'))
+    let hits = 0
+    const stop = watchAgents(repo, () => { hits++ }, 20)
+    try {
+      await mkdir(join(repo, '.claude', 'agents'))
+      await new Promise((r) => setTimeout(r, 200))
+      const afterDir = hits
+      expect(afterDir).toBeGreaterThan(0)
+      await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
+      await new Promise((r) => setTimeout(r, 200))
+      expect(hits).toBeGreaterThan(afterDir)
+    } finally { stop() }
+  })
+  it('saves an edit without touching nested frontmatter or quoted values', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    const hooks = 'hooks:\n  PreToolUse:\n    - matcher: Bash\n      hooks:\n        - type: command\n          command: ./check.sh'
+    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), `---\nname: kai\ndescription: "Frontend: builds UI"\n# keep this comment\n${hooks}\nmodel: sonnet\n---\nYou are Kai.\n`)
+    const saved = await updateAgent(repo, 'kai', { effort: 'high' })
+    expect(saved).toMatchObject({ description: 'Frontend: builds UI', effort: 'high', model: 'sonnet' })
+    const file = await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')
+    expect(file).toContain(hooks)
+    expect(file).toContain('# keep this comment')
+    expect(file).toContain('description: "Frontend: builds UI"')
+    // A new colon in a description is quoted so the file stays valid YAML, and the draft does the same.
+    await updateAgent(repo, 'kai', { description: 'Designer: checks # every screen' })
+    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('description: "Designer: checks # every screen"')
+    expect(draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).toContain('description: "A reviewer: checks diffs."')
+    expect(agentFromFile('/r/rex.md', draftAgent({ description: 'a reviewer: checks diffs', name: 'Rex' }).text).description).toBe('A reviewer: checks diffs.')
   })
 })

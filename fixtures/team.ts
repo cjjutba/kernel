@@ -1,9 +1,9 @@
-import type { ActivityEvent, AgentDef, Approval, Notification, Room, RoomSetupStep, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentDraft, Approval, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
-import { at, ids, scene, team, withWorkspace } from './base'
+import { agent, at, ids, scene, team, withWorkspace } from './base'
 import { floorFixtures } from './floor'
 
-// Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20).
+// Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -168,6 +168,61 @@ const boardScene = (f: Fixture): Partial<Fixture> => {
   return { activity, workspaces, tasks: { [A]: tasks }, status: { [A]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'working' } } }
 }
 
+
+/** Team.png and AgentProfile.png: six agents in Client A with the canvas's models, states and workspaces. Kai's recent work is four tasks. */
+const teamScene = (f: Fixture): Partial<Fixture> => {
+  const A = ids.roomA
+  const who = (id: string, name: string, role: string, model: string, description: string, o: Partial<AgentDef> = {}): AgentDef =>
+    ({ ...agent(id, name, role, model, !!o.lead), description, effort: 'high', prompt: `You are ${name}, the ${role.toLowerCase()} in this room. ${description} Work in your own worktree and tell Rowan when you finish.`, ...o })
+  const crew: AgentDef[] = [
+    who('rowan', 'Rowan', 'Lead', 'opus', 'Plans, splits tasks, hands them out. Never edits code.', { lead: true, tools: ['Read', 'Grep', 'Glob'], skills: ['/plan'] }),
+    who('kai', 'Kai', 'Frontend', 'sonnet', 'UI work. Follows DESIGN.md.', {
+      tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'], skills: ['/feature', '/verify', '/image'],
+      prompt: 'You are Kai, the frontend engineer in this room. Build the screens in the plan exactly as the PNGs show them.\n\nFollow DESIGN.md: tokens only, no hex values, hairlines instead of shadows.\nOpen the compare image after every change and fix what a person would notice.\nAdd a Playwright test for each state before you ask for review.'
+    }),
+    who('noor', 'Noor', 'Backend', 'sonnet', 'Schema, API and migrations.', { tools: ['Read', 'Edit', 'Write', 'Bash', 'Grep', 'Glob'] }),
+    who('ivy', 'Ivy', 'QA', 'sonnet', 'Runs tests and attaches the output.', { tools: ['Read', 'Bash', 'Grep', 'Glob'], skills: ['/verify'] }),
+    who('theo', 'Theo', 'Reviewer', 'opus', 'Types at boundaries, security, tenant isolation.', { tools: ['Read', 'Grep', 'Glob'] }),
+    who('lumi', 'Lumi', 'Designer', 'sonnet', 'Checks every screen against DESIGN.md.', { tools: ['Read', 'Grep', 'Glob', 'Bash'], joinedAt: Date.now() - 2 * HOUR })
+  ]
+  const table = f.workspaces.find((w) => w.id === ids.table)!
+  const open = (id: string, name: string, agentId: string, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId, prState: 'none', prNumber: undefined, prUrl: undefined, stat: undefined, createdAt: at(10, mins) })
+  const done = (id: string, name: string, n: number, mins: number): Workspace => ({ ...table, id, name, branch: `wt/${name}`, agentId: 'kai', status: 'archived', prState: 'merged', prNumber: n, createdAt: at(8, mins), archivedAt: at(8, mins + 30) })
+  const workspaces = [
+    ...f.workspaces,
+    open('ws-pdf-button', 'invoice-pdf-button', 'kai', 41), open('ws-pdf-renderer', 'invoice-pdf-renderer', 'noor', 42), open('ws-pdf-tests', 'invoice-pdf-tests', 'ivy', 43), open('ws-pdf-review', 'invoice-pdf-review', 'theo', 44),
+    done('ws-t14', 'invoice-table-v1', 42, 5), done('ws-t09', 'org-settings-page', 38, 3), done('ws-t06', 'sign-in-screens', 31, 1)
+  ]
+  const task = (id: string, title: string, column: Task['column'], agentId: string, workspaceId: string | undefined, hour: number, min: number): Task =>
+    ({ id, roomId: A, title, column, state: column === 'done' ? 'done' : 'working', agentId, workspaceId, steps: [], createdAt: at(8, 0), updatedAt: at(hour, min) })
+  const skills: Skill[] = [['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image']].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
+  return {
+    agents: { [A]: crew, [ids.roomB]: crew.slice(0, 1), [ids.roomOwn]: crew.filter((a) => ['rowan', 'kai', 'ivy'].includes(a.id)), [ids.roomPortfolio]: crew.slice(0, 1) },
+    status: { [A]: { rowan: 'idle', kai: 'working', noor: 'needs', ivy: 'working', theo: 'idle', lumi: 'idle' } },
+    workspaces, skills,
+    // The other rooms only seat some of the crew, so a question from someone who is not there comes from Rowan.
+    approvals: f.approvals.map((a) => (a.roomId === ids.roomB || a.roomId === ids.roomPortfolio ? { ...a, agentId: 'rowan' } : a)),
+    tasks: { [A]: [
+      task('T-15b', 'Download PDF button', 'build', 'kai', 'ws-pdf-button', 10, 41), task('T-14', 'Invoice table', 'done', 'kai', 'ws-t14', 9, 40),
+      task('T-09', 'Org settings page', 'done', 'kai', 'ws-t09', 9, 10), task('T-06', 'Sign-in screens', 'done', 'kai', 'ws-t06', 8, 40)
+    ] }
+  }
+}
+
+/** The team as it is before Lumi is hired, behind the New agent modal. */
+const beforeLumi = (f: Fixture): Partial<Fixture> => {
+  const t = teamScene(f)
+  const { lumi: _, ...status } = t.status![ids.roomA]
+  return { ...t, agents: { ...t.agents, [ids.roomA]: t.agents![ids.roomA].filter((a) => a.id !== 'lumi') }, status: { [ids.roomA]: status } }
+}
+
+const lumiDraft: AgentDraft = {
+  id: 'lumi', name: 'Lumi', model: 'sonnet', tools: ['Read', 'Grep', 'Glob', 'Bash(pnpm screenshot:*)'], file: '.claude/agents/lumi.md',
+  description: 'A designer who checks every screen against DESIGN.md before review.',
+  text: '---\nname: lumi\ndescription: A designer who checks every screen against DESIGN.md before review.\nmodel: sonnet\ntools: Read, Grep, Glob, Bash(pnpm screenshot:*)\n---\nYou are Lumi. Before Theo reviews a PR, open each changed screen, compare it with DESIGN.md, and list drift in spacing, type and color with file and line.\n'
+}
+const lumiPrefill = { name: 'Lumi', description: 'A designer who checks every screen against DESIGN.md before review.', model: 'sonnet' }
+
 const home = { route: { name: 'home' } } as const
 
 export const teamFixtures: Record<string, Fixture> = {
@@ -179,6 +234,12 @@ export const teamFixtures: Record<string, Fixture> = {
   Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
   BoardEmpty: scene((f) => ({ ...boardScene(f), tasks: { [ids.roomA]: [] }, ui: { route: { name: 'board', roomId: ids.roomA } } })),
+  Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
+  AgentProfile: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' } } })),
+  NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
+  NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
+  NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
+  ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
