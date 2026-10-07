@@ -44,6 +44,21 @@ describe('briefing sequence', () => {
     expect(s.say).toBeUndefined()
   })
 
+  it('goes back to planning at the wall when CJ requests changes on the plan', () => {
+    const denied = planApproval('denied', 200)
+    const waiting = sequence(input({ status: { rowan: 'planning' }, approvals: [denied], activity: [brief] }))
+    expect(waiting.stage).toBe('sent')
+    const revising = sequence(input({
+      status: { rowan: 'planning' }, approvals: [denied],
+      activity: [ev('say', 260, { kind: 'agent.say', agentId: 'rowan', text: 'Revising the plan.' }), ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), brief]
+    }))
+    expect(revising.stage).toBe('planning')
+    expect(revising.legs).toEqual([{ key: 'wall:plan:p', to: 'wall' }])
+    expect(revising.say?.text).toBe('Revising the plan.')
+    // The first round's wall walk is a different leg, so the Lead walks to the wall again after sitting down for the plan.
+    expect(sequence(input({ status: { rowan: 'planning' }, activity: [ev('read', 102, { kind: 'tool.end', workspaceId: 'lead' }), brief] })).legs[0].key).not.toBe(revising.legs[0].key)
+  })
+
   it('walks the Lead to each assignee in the order create_workspace ran, and follows the newest one', () => {
     const activity = [ev('say', 320, { kind: 'agent.say', agentId: 'rowan', text: 'Kai, T-15b is yours.' }), handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor'), brief]
     const s = sequence(input({ status: { rowan: 'working', noor: 'working', kai: 'planning' }, approvals: [planApproval('allowed', 200)], activity }))

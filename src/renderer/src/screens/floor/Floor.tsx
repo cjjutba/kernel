@@ -43,7 +43,7 @@ export function Floor({ roomId }: { roomId: string }) {
     return lead?.lead ? [{ id: lead.id, desk: DESK_SPOTS[0], legs: seq.legs }] : []
   }, [live, desks, seq.legs])
   const instant = reduced || !!settings?.appearance.reduceMotion || settings?.experimental.walking === false
-  const poses = useWalks(walks, instant)
+  const { poses, jumping } = useWalks(walks, instant)
   const shown = useMemo(() => {
     const out = { ...status }
     for (const [id, p] of Object.entries(poses)) if (p.at !== 'seat') out[id] = 'walking'
@@ -81,7 +81,7 @@ export function Floor({ roomId }: { roomId: string }) {
       <div className="floor-body">
         <main className="floor-main">
           {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} />}
-          <Stage room={room} agents={live} status={shown} poses={poses} say={seq.say} instant={instant}
+          <Stage room={room} agents={live} status={shown} poses={poses} say={seq.say} instant={instant || jumping}
             selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
           <Brief roomId={roomId} agents={live} />
         </main>

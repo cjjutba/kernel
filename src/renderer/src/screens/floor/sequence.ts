@@ -47,7 +47,8 @@ export const isStage = (s: string | undefined): s is Stage => !!s && (STAGES as 
  * Which stage the room is in, and what the floor draws for it.
  * - plan: the Lead's plan approval (`request_plan_approval`) is pending
  * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`
- * - sent, then planning: a brief (`rooms.brief`) the Lead is on; planning once the Lead acts on it in plan mode
+ * - sent, then planning: a brief (`rooms.brief`) the Lead is on; planning once the Lead acts on it in plan mode.
+ *   A plan sent back with changes reopens the brief, so the Lead plans at the wall again
  * - needs: an approval is pending or an agent needs CJ
  * - review: a PR in the room is ready to merge
  * - working: anyone is busy
@@ -75,12 +76,19 @@ export function sequence(i: SequenceInput): Sequence {
     .reverse()
   const ready = i.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && w.prState === 'ready')
 
+  // A plan sent back (changes requested) or left to expire keeps the brief open: the Lead plans again. The planning
+  // round then starts at that plan, so the wall walk, the "started" check and the bubble count from there.
+  const revising = !!lastPlan && lastPlan.status !== 'allowed' && lastPlan.status !== 'pending'
+  const reopened = revising && planAt >= briefAt
+  const openAt = reopened ? planAt : briefAt
+  const round = reopened ? `plan:${lastPlan!.id}` : brief?.id ?? 'stage'
+
   let stage: Stage
-  const onBrief = !!brief && busy(leadStatus) && planAt < briefAt
+  const onBrief = !!brief && busy(leadStatus) && (planAt < briefAt || revising)
   if (plans.some((a) => a.status === 'pending')) stage = 'plan'
   else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt) stage = 'handoff'
   else if (onBrief) {
-    const started = events.some((e) => e !== brief && e.ts >= briefAt && byLead(e) && !QUIET.includes(e.kind))
+    const started = events.some((e) => e !== brief && e.ts >= openAt && byLead(e) && !QUIET.includes(e.kind))
     stage = started && leadStatus === 'planning' ? 'planning' : 'sent'
   } else if (approvals.some((a) => a.status === 'pending') || i.agents.some((a) => i.status[a.id] === 'needs')) stage = 'needs'
   else if (ready.length) stage = 'review'
@@ -95,7 +103,7 @@ export function sequence(i: SequenceInput): Sequence {
     return seat >= 0 ? DESK_SPOTS[seat] : undefined
   }
   let legs: Leg[] = [{ key: 'seat', to: 'seat' }]
-  if (stage === 'planning') legs = [{ key: `wall:${brief?.id ?? 'stage'}`, to: 'wall' }]
+  if (stage === 'planning') legs = [{ key: `wall:${round}`, to: 'wall' }]
   if (stage === 'handoff') {
     const stops = handoffs.flatMap((e) => { const to = deskOf(agentOf(e.data?.assignee)); return to ? [{ key: e.id, to }] : [] })
     if (stops.length) legs = stops
@@ -105,7 +113,7 @@ export function sequence(i: SequenceInput): Sequence {
   const focus = stage === 'handoff' ? assignees[assignees.length - 1] : stage === 'working' || stage === 'needs' ? assignees[0] : undefined
 
   // The bubble shows the newest line said since the stage began, and only in the stages that talk.
-  const since = stage === 'sent' || stage === 'planning' ? briefAt : stage === 'handoff' ? planAt : stage === 'review' ? Math.max(briefAt, planAt) : null
+  const since = stage === 'sent' || stage === 'planning' ? openAt : stage === 'handoff' ? planAt : stage === 'review' ? Math.max(briefAt, planAt) : null
   const said = events.find((e) => e.kind === 'agent.say' && e.agentId)
   const say = said && since !== null && said.ts >= since ? { id: said.id, agentId: said.agentId!, text: said.text } : undefined
 

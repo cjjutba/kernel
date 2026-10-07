@@ -36,11 +36,13 @@ export function useReducedMotion(): boolean {
  * `instant` (reduced motion, or walking turned off) jumps straight to each destination instead.
  * A person seen for the first time starts where their legs end, so a fixture or a reload never replays old walks.
  */
-export function useWalks(walks: Walk[], instant: boolean): Record<string, Pose> {
+export function useWalks(walks: Walk[], instant: boolean): { poses: Record<string, Pose>; jumping: boolean } {
   const tracks = useRef<Map<string, Track> | null>(null)
   if (!tracks.current) tracks.current = new Map(walks.map((w) => [w.id, start(w.legs)]))
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const [, render] = useReducer((n: number) => n + 1, 0)
+  // True for the frames of a catch-up, so the stage drops its 0.9s glides and people jump instead of sliding through furniture.
+  const [jumping, setJumping] = useState(false)
 
   const stop = (id: string) => {
     const t = timers.current.get(id)
@@ -60,8 +62,11 @@ export function useWalks(walks: Walk[], instant: boolean): Record<string, Pose> 
     }, ms))
   }
   const catchUp = () => {
+    if (![...tracks.current!.values()].some((t) => t.queue.length)) return
     for (const [id, t] of tracks.current!) { stop(id); tracks.current!.set(id, settle(t)) }
+    setJumping(true)
     render()
+    requestAnimationFrame(() => requestAnimationFrame(() => setJumping(false)))
   }
 
   const key = JSON.stringify(walks)
@@ -99,5 +104,5 @@ export function useWalks(walks: Walk[], instant: boolean): Record<string, Pose> 
 
   const out: Record<string, Pose> = {}
   for (const [id, t] of tracks.current) out[id] = { at: t.at, moving: t.queue.length > 0 }
-  return out
+  return { poses: out, jumping }
 }
