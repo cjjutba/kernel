@@ -44,26 +44,23 @@ async function headAtStart(cwd: string, baselineRef: string): Promise<string> {
 }
 
 /**
- * Uncommitted hunks of tracked files. `mine` hunks are changes that predate the workspace (HEAD at start to the baseline
- * snapshot); `agent` hunks are everything since (baseline, or `since` without one, to the working tree). Both ranges are
- * fixed, so a hunk that was committed is dropped by checking it against HEAD to the working tree, not by moving a range.
+ * Uncommitted hunks of tracked files. Every hunk, and its patch, comes from `git diff HEAD`, so a patch always applies to the
+ * index `commitHunks` builds from HEAD, whatever was committed before. The ranges only decide the owner: a hunk whose changed
+ * lines exactly match one that predates the workspace (HEAD at start to the baseline snapshot) is `mine`, anything else is `agent`.
+ * A change within a few lines of an earlier edit merges with it into one `agent` hunk.
  */
-export async function listHunks(cwd: string, o: { since: string; baselineRef?: string }, path?: string): Promise<Hunk[]> {
+export async function listHunks(cwd: string, o: { baselineRef?: string }, path?: string): Promise<Hunk[]> {
   const scope = path ? ['--', path] : []
-  const seen = new Map<string, number>()
-  const mineAll = o.baselineRef
-    ? splitHunks(await git(cwd, 'diff', '--no-color', await headAtStart(cwd, o.baselineRef), o.baselineRef, ...scope), 'mine', seen)
+  const mine = o.baselineRef
+    ? splitHunks(await git(cwd, 'diff', '--no-color', await headAtStart(cwd, o.baselineRef), o.baselineRef, ...scope), 'mine', new Map()).map((h) => `${h.path}\0${changedLines(h.patch)}`)
     : []
-  const agentAll = splitHunks(await git(cwd, 'diff', '--no-color', o.since, ...scope), 'agent', seen)
-  const pending = splitHunks(await git(cwd, 'diff', '--no-color', 'HEAD', ...scope), 'agent', new Map())
-  const keys = pending.map((h) => `${h.path}\0${changedLines(h.patch)}`)
-  const open = (h: Hunk) => keys.some((k) => k.startsWith(`${h.path}\0`) && k.includes(changedLines(h.patch)))
-  const listed = [...agentAll.filter(open), ...mineAll.filter(open)]
-  // A change on or next to a line that was already dirty at start merges with it (or rewrites it), so neither range's hunk
-  // matches. Whatever is still uncommitted and not covered by a listed hunk is offered as its own agent hunk.
-  const covered = (p: Hunk) => listed.some((h) => h.path === p.path && changedLines(p.patch).includes(changedLines(h.patch)))
-  const extra = pending.filter((p) => !covered(p)).map((p, i) => ({ ...p, id: `${p.path}#agent#head${i}` }))
-  return [...listed, ...extra].sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner) || a.id.localeCompare(b.id))
+  const seen = new Map<string, number>()
+  return splitHunks(await git(cwd, 'diff', '--no-color', 'HEAD', ...scope), 'agent', new Map()).map((h) => {
+    const owner: Hunk['owner'] = mine.includes(`${h.path}\0${changedLines(h.patch)}`) ? 'mine' : 'agent'
+    const n = seen.get(`${h.path}#${owner}`) ?? 0
+    seen.set(`${h.path}#${owner}`, n + 1)
+    return { ...h, owner, id: `${h.path}#${owner}#${n}` }
+  }).sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner) || a.id.localeCompare(b.id, undefined, { numeric: true }))
 }
 
 /** Commit exactly the picked hunks. The index starts from HEAD, so anything else stays in the working tree. */

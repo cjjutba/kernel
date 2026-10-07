@@ -379,8 +379,7 @@ export class Kernel {
 
   async hunks(id: string, path?: string) {
     const ws = this.mustWs(id)
-    const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
-    return listHunks(ws.path, { since, baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
+    return listHunks(ws.path, { baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
   }
 
   // ---------- chats
