@@ -37,7 +37,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits') {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -47,7 +47,7 @@ async function setup(mode = 'acceptEdits') {
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 } } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
+    store, approvals, settings: () => settings, agentFor: () => undefined, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -70,6 +70,22 @@ describe('questions to CJ', () => {
     approvals.decide(pending.id, { behavior: 'allow' })
     expect(await answer).toMatchObject({ behavior: 'allow' })
     expect(store.items('chat').find((i) => i.kind === 'approval')).toMatchObject({ approvalId: pending.id })
+  })
+
+  it('hands the MCP builder the chat that is running, so Rowan\'s cards land there', async () => {
+    const seen: string[] = []
+    const { chat } = await setup('acceptEdits', { mcpFor: (_ws, _agent, c) => { seen.push(c.id); return undefined } })
+    expect(seen).toEqual([chat.id])
+  })
+
+  it('leaves plan mode once the plan is approved', async () => {
+    const { options, approvals, store } = await setup()
+    store.saveChat({ ...store.chat('chat')!, plan: true })
+    const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Go' }, { signal: new AbortController().signal, toolUseID: 'p2', requestId: 'r3' })
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
+    await answer
+    expect(store.chat('chat')?.plan).toBe(false)
   })
 
   it('still lets bypass answer an ordinary tool', async () => {

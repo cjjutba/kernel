@@ -41,7 +41,7 @@ export interface SessionDeps {
   settings: () => AppSettings
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
-  mcpFor: (ws: Workspace, agent: AgentDef | undefined) => Options['mcpServers']
+  mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
   /** Bash rules CJ allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
   allowInRoom: (roomId: string, rule: string) => void
@@ -196,7 +196,7 @@ export class Sessions {
       canUseTool: this.canUseTool(chat, ws, agent, commands),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
-      mcpServers: this.d.mcpFor(ws, agent),
+      mcpServers: this.d.mcpFor(ws, agent, chat),
       hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId))),
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -330,6 +330,8 @@ export class Sessions {
       const result = await decision
       this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
+      // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
+      if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers to questions travel back as the denial message, which the model reads as the user's reply.

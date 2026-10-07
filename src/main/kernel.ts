@@ -78,7 +78,7 @@ export class Kernel {
       approvals: this.approvals,
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
-      mcpFor: (ws, agent) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent) } : undefined),
+      mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) } : undefined),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
@@ -412,7 +412,7 @@ export class Kernel {
     return this.store.chats(ws.id)[0] ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
-  private leadTools(roomId: string, lead: AgentDef) {
+  private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
     return kernelMcpServer({
       roomId, lead,
       agents: () => this.agents(roomId),
@@ -424,8 +424,7 @@ export class Kernel {
       },
       messageWorkspace: async (workspaceId, text) => { const chat = this.store.chats(workspaceId)[0]; if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
       askUser: async (o) => {
-        // The Lead's questions belong in the Lead's own chat, so the card shows there and in the Inbox.
-        const chat = await this.leadChat(roomId)
+        // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.agents(roomId)
         const { approval, decision } = this.approvals.request({
           kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options,

@@ -12,6 +12,10 @@ const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result
 const prScene = (prState: 'draft' | 'cifail' | 'changes' | 'merged' | 'closed') =>
   scene((f) => ({ workspaces: withWorkspace(f, ids.table, { ...pr, prState }), ui: open }))
 
+const PLAN = [
+  'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
+].map((t, i) => `${i + 1}. ${t}`).join('\n')
+
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
@@ -90,7 +94,7 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
     workspaces: withWorkspace(f, id, patch),
     chats: f.chats.map((c) => (c.id === chatId ? { ...c, title, ...chat } : c)),
     // The engine writes an approval item where the request was made, so the card keeps its place once answered.
-    items: { [chatId]: [...items, ...(extra.approvals ? [{ kind: 'approval' as const, id: `item-${extra.approvals[0].id}`, ts: at(10, 30), approvalId: extra.approvals[0].id }] : [])] },
+    items: { [chatId]: [...items, ...(extra.approvals ? [{ kind: 'approval' as const, id: `approval-${extra.approvals[0].id}`, ts: at(10, 30), approvalId: extra.approvals[0].id }] : [])] },
     approvals: extra.approvals && [{ ...extra.approvals[0], workspaceId: id, chatId }, ...extra.approvals.slice(1)],
     ui: { route: { name: 'workspace', workspaceId: id } }
   }
@@ -138,9 +142,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
     tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
   ], {
-    approvals: [pending('plan', 'kai', { title: 'Plan for T-15b', steps: [
-      'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
-    ].map((title) => ({ title })) }), ...f.approvals]
+    approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
   }, { plan: true, model: 'claude-opus-5-5' })),
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
