@@ -20,7 +20,8 @@ import { OpenFolder } from './screens/rooms/OpenFolder'
 import { Rooms } from './screens/rooms/Rooms'
 import { RoomSetup } from './screens/rooms/RoomSetup'
 import { CommandPalette } from './screens/search/CommandPalette'
-import { Settings } from './screens/settings/Settings'
+import { Settings, SettingsNav } from './screens/settings/Settings'
+import { useAppearance } from './screens/settings/appearance'
 import { ConfirmRetire } from './screens/team/ConfirmRetire'
 import { NewAgent } from './screens/team/NewAgent'
 import { Team } from './screens/team/Team'
@@ -103,6 +104,7 @@ function useDevUiHash() {
 
 export function App() {
   useDevUiHash()
+  useAppearance()
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
@@ -121,6 +123,7 @@ export function App() {
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
     <div className="app">
+      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} />}
       {!fullWindow(route) && (focus && route.name === 'workspace' ? <FocusRail roomId={currentRoom()} /> : <Sidebar />)}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />

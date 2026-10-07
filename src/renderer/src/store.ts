@@ -279,10 +279,20 @@ export async function boot() {
   if (checks) actions.system.setPreflight(checks)
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
-  else go(checks?.some((c) => !c.ok) ? { name: 'onboarding', step: 'checks' } : { name: 'home' })
+  else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' })
+  else go(homeRoute(settings, rooms))
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
+}
+
+/** Settings > General > Default home view: where the app opens. */
+function homeRoute(settings: AppSettings, rooms: Room[]): Route {
+  const { homeView } = settings.general
+  const first = rooms.find((r) => !r.hidden && !r.archived)
+  if (homeView === 'inbox') return { name: 'inbox' }
+  if (homeView === 'lastRoom' && first) return { name: 'floor', roomId: first.id }
+  return { name: 'home' }
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */

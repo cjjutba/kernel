@@ -1,4 +1,5 @@
-import type { DevUiPage, HookStatus, PreflightCheck } from '@shared/types'
+import type { DevUiPage, HookStatus, PreflightCheck, RateLimit, SettingsPage } from '@shared/types'
+import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { at, base, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -43,7 +44,24 @@ const withChat = (f: Fixture, change: Partial<Fixture['chats'][number]>) => f.ch
 // KERNEL-9: the component gallery in both themes. the `devUi` route shows it. No design PNG, so no compare.
 const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { name: 'devUi', page } } }))
 
+// KERNEL-25: the app-wide settings pages. The seed's rooms fill the nav; Account adds the three usage windows the canvas shows.
+const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
+const accountUsage: RateLimit[] = [
+  { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
+  { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
+  { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextMonday()), model: 'claude-fable-5-1' }
+]
+
 export const platformFixtures: Record<string, Fixture> = {
+  Settings: settingsPage('general'),
+  SettingsAppearance: settingsPage('appearance'),
+  SettingsNotifications: settingsPage('notifications'),
+  SettingsAccount: settingsPage('account', { usage: accountUsage }),
+  SettingsShortcuts: settingsPage('shortcuts'),
+  SettingsModels: settingsPage('models'),
+  SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/cj'), permissions: { ...DEFAULT_SETTINGS('/Users/cj').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
+  SettingsExperimental: settingsPage('experimental'),
+  SettingsAbout: settingsPage('about', { preflight: [] }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),

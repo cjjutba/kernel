@@ -1,0 +1,49 @@
+/* Settings shell and app pages (KERNEL-25). Tokens only. */
+.set-nav { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow-y: auto; }
+.set-back { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
+.set-back:hover { background: var(--nav-hover); }
+.set-search { position: relative; margin: 8px 0 6px; }
+.set-search svg { position: absolute; left: 10px; top: 9px; color: var(--muted); }
+.set-search input { width: 100%; height: 32px; padding: 0 10px 0 30px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); outline: none; user-select: text; }
+.set-search input:focus { border-color: var(--line-4); }
+.set-group { margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.nav-item.set-item { height: 28px; }
+.set-letter { width: 15px; height: 15px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid var(--line-3); font-size: 8.5px; font-weight: 600; }
+
+.set-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.set-page { max-width: 748px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px; }
+.set-page h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px; }
+.set-intro { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+.set-section { display: flex; flex-direction: column; gap: 10px; }
+.set-section h2 { margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500; }
+.set-card { border-radius: var(--r-md); border: 1px solid var(--pill-line); background: var(--surface); }
+.set-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 24px; row-gap: 10px; min-height: 58px; padding: 12px 18px; border-top: 1px solid var(--panel-line); }
+.set-row:first-child { border-top: 0; }
+.set-text { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.set-label { font-size: 13.5px; font-weight: 500; }
+.set-desc { font-size: 12.5px; color: var(--muted); }
+.set-value { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+.set-full { flex-basis: 100%; }
+.set-card .select select { height: 30px; border-radius: 7px; background: var(--surface-2); font-weight: 400; font-size: 13px; }
+.set-card .select select:hover { background: var(--surface-3); }
+.set-card .segmented button { height: 26px; font-weight: 500; }
+.set-card .btn { height: 30px; font-size: 13px; }
+.set-meter { display: flex; flex-direction: column; gap: 6px; }
+.set-meter-note { font-size: 12px; color: var(--muted); }
+.set-lines { width: 100%; resize: none; padding: 10px 12px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--code-bg); color: var(--ink-2); font: 12.5px/1.7 var(--mono); outline: none; white-space: pre; overflow: hidden; user-select: text; }
+.set-lines:focus { border-color: var(--line-4); }
+.set-inline { width: 260px; max-width: 100%; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid transparent; background: transparent; color: var(--ink-2); font: 12.5px var(--mono); text-align: right; outline: none; user-select: text; }
+.set-inline:hover { border-color: var(--line-2); }
+.set-inline:focus { border-color: var(--line-4); background: var(--surface-2); text-align: left; }
+.set-keys { display: inline-flex; gap: 4px; }
+.set-keys .kbd { min-width: 22px; height: 22px; justify-content: center; padding: 0 6px; font: 12px var(--font); color: var(--ink-2); background: var(--surface-2); }
+
+/* Appearance: applied to <html> by appearance.ts */
+html[data-font='small'] #root { zoom: 0.92; height: calc(100vh / 0.92); }
+html[data-font='large'] #root { zoom: 1.1; height: calc(100vh / 1.1); }
+html[data-density='compact'] .nav-item { height: 26px; }
+html[data-density='compact'] .set-row { min-height: 48px; padding-top: 8px; padding-bottom: 8px; }
+html:not([data-pointer='true']) button, html:not([data-pointer='true']) select, html:not([data-pointer='true']) summary { cursor: default; }
+html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, html[data-reduce-motion='true'] *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0s !important; }
+
+.set-card .select svg { width: 16px; height: 16px; right: 7px; }
