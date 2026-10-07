@@ -3,6 +3,7 @@
 //   npm run shots -- Workspace Main       build, then capture shots/<Screen>.png for each fixture
 //   npm run shots -- --all                every fixture with a PNG in design/screens
 //   npm run shots -- --no-build Main      reuse the last build
+//   npm run shots -- --theme light Main   capture in the light theme, saved as shots/<Screen>.light.png
 //   npm run shots:compare -- Workspace    shot left, design right, in shots/compare/<Screen>.png
 
 import { spawnSync } from 'node:child_process'
@@ -23,7 +24,11 @@ const GAP = 16
 
 const args = process.argv.slice(2)
 const flags = new Set(args.filter((a) => a.startsWith('--')))
-const names = args.filter((a) => !a.startsWith('--') && a !== 'compare')
+const themeAt = args.indexOf('--theme')
+const theme = themeAt >= 0 ? args[themeAt + 1] : undefined
+if (theme !== undefined && theme !== 'light' && theme !== 'dark') throw new Error('--theme takes light or dark')
+const suffix = theme === 'light' ? '.light' : ''
+const names = args.filter((a, i) => !a.startsWith('--') && a !== 'compare' && (themeAt < 0 || i !== themeAt + 1))
 const allDesigns = () => readdirSync(designDir).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)).sort()
 // Plain Node cannot import fixtures/index.ts (extensionless imports), so read the keys: one `  Name:` line per fixture.
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
@@ -33,6 +38,7 @@ async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
   env.KERNEL_FIXTURES = name
+  if (theme) env.KERNEL_FIXTURE_THEME = theme
   // Electron's own cache and storage for this launch. Deleted after close, since Chromium writes to it until exit.
   const data = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
   env.KERNEL_FIXTURE_DATA = data
@@ -46,8 +52,8 @@ async function capture(name: string): Promise<boolean> {
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
-    await page.screenshot({ path: join(shotsDir, `${name}.png`) })
-    console.log(`shots/${name}.png`)
+    await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
+    console.log(`shots/${name}${suffix}.png`)
     return true
   } catch (err) {
     console.error(`${name}: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`)
