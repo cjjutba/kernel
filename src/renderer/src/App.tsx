@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import type { Modal, Route } from '@shared/types'
+import type { DevUiPage, Modal, Route } from '@shared/types'
 import { Footer, Sidebar } from './components/Shell'
 import { actions, getState, useStore } from './store'
 import { AgentProfile } from './screens/agent/AgentProfile'
@@ -29,9 +29,10 @@ import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { Workspace } from './screens/workspace/Workspace'
+import { DevUi } from './ui/DevUi'
 
 /** Routes drawn full window, without the sidebar, like Welcome.png, Setup*.png and Settings*.png. */
-const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'settings'
+const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'settings' || r.name === 'devUi'
 
 /** One branch per screen family. Each family's component lives in screens/<family>/, owned by its lane (docs/SCREENS.md). */
 function Screen({ route }: { route: Route }): ReactNode {
@@ -51,6 +52,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
     case 'settings': return <Settings page={route.page} roomId={route.roomId} />
+    case 'devUi': return <DevUi page={route.page} />
   }
 }
 
@@ -81,7 +83,25 @@ function currentRoom(): string | undefined {
   if (r.name === 'workspace') return s.workspaces.find((w) => w.id === r.workspaceId)?.roomId
 }
 
+/** Dev builds only: `#/dev/ui` and `#/dev/ui/<page>` open the component gallery. Production has no way to reach it except a fixture forcing the route. */
+const devUiPages: DevUiPage[] = ['components', 'display', 'overlays', 'dialogs']
+function useDevUiHash() {
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const on = () => {
+      const m = /^#\/dev\/ui(?:\/(\w+))?$/.exec(location.hash)
+      if (!m) return
+      const page = devUiPages.find((p) => p === m[1]) ?? 'components'
+      actions.ui.go({ name: 'devUi', page })
+    }
+    on()
+    window.addEventListener('hashchange', on)
+    return () => window.removeEventListener('hashchange', on)
+  }, [])
+}
+
 export function App() {
+  useDevUiHash()
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
@@ -101,7 +121,7 @@ export function App() {
       {!fullWindow(route) && <Sidebar />}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />
-        {route.name !== 'onboarding' && <Footer />}
+        {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
       </div>
       {modal && <ModalView modal={modal} />}
     </div>

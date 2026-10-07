@@ -1,4 +1,4 @@
-import type { PreflightCheck } from '@shared/types'
+import type { DevUiPage, PreflightCheck } from '@shared/types'
 import type { Fixture } from './types'
 import { at, base, ids, scene, withWorkspace } from './base'
 
@@ -14,7 +14,14 @@ const setup = (checks: PreflightCheck[]) => scene(() => ({
   preflight: checks, ui: onboarding
 }))
 
+// KERNEL-9: the component gallery in both themes. the `devUi` route shows it. No design PNG, so no compare.
+const gallery = (page: DevUiPage) => scene(() => ({ rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [], ui: { route: { name: 'devUi', page } } }))
+
 export const platformFixtures: Record<string, Fixture> = {
+  DevUi: gallery('components'),
+  DevUiDisplay: gallery('display'),
+  DevUiOverlays: gallery('overlays'),
+  DevUiDialogs: gallery('dialogs'),
   SetupClaudeMissing: setup([{ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } }, ghOk, hooksOk]),
   SetupClaudeOld: setup([{ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Kernel needs v2.1.80 or later.', fix: { command: 'claude update' } }, ghOk, hooksOk]),
   SetupGhSignedOut: setup([claudeOk, { id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } }, hooksOk]),

@@ -7,8 +7,8 @@ import { fixtureHandlers } from '../src/main/fixtures'
 const entries = Object.entries(fixtures)
 
 describe('fixtures', () => {
-  it('every fixture key has a PNG in design/screens', () => {
-    const missing = entries.map(([name]) => name).filter((name) => !existsSync(join('design/screens', `${name}.png`)))
+  it('every fixture key has a PNG in design/screens, except the DevUi component gallery', () => {
+    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !existsSync(join('design/screens', `${name}.png`)))
     expect(missing).toEqual([])
   })
 

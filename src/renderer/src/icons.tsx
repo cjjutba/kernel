@@ -1,4 +1,4 @@
-const P: Record<string, string> = {
+const P = {
   search: 'M11.3 11.3 14 14M7 11.3a4.3 4.3 0 1 0 0-8.6 4.3 4.3 0 0 0 0 8.6Z',
   home: 'M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z',
   inbox: 'M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9ZM2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1',
@@ -20,17 +20,60 @@ const P: Record<string, string> = {
   bulb: 'M6 13.5h4M6.5 11.5h3M8 2.5a4 4 0 0 0-2.4 7.2c.5.4.9 1 .9 1.8h3c0-.8.4-1.4.9-1.8A4 4 0 0 0 8 2.5Z',
   plug: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14',
   doc: 'M4 2.5h5.5L12.5 5.5v8H4ZM9.5 2.5v3h3',
-  image: 'M2.5 4.5a1.5 1.5 0 0 1 1.5-1.5h8a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5ZM3 11.5l3.5-3.5 2.5 2.5 1.5-1.5 2.5 2.5',
+  image: 'M4 3h8a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 12 13H4a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 4 3ZM3 11.5 6.5 8 9 10.5 10.5 9l2.5 2.5',
   pause: 'M5 3v10M11 3v10',
   play: 'M4.5 2.5 13 8l-8.5 5.5Z',
   ext: 'M5 11 11 5M6 5h5v5',
-  code: 'M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5'
-}
+  code: 'M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5',
+  // Everything below is copied from the canvas templates (design/canvas/source/templates), circles and rects turned into paths.
+  more: 'M2.5 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0ZM7 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0ZM11.5 8a1 1 0 1 0 2 0 1 1 0 1 0-2 0Z',
+  left: 'M10 3.5 5.5 8l4.5 4.5',
+  folder: 'M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z',
+  trash: 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2',
+  send: 'M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6ZM7.6 8.6l2.4-2.4',
+  pr: 'M4.5 5.3v5.4M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10.7V6.5A1.5 1.5 0 0 0 10 5H7.5',
+  fork: 'M4.5 5.3v5.4M11.5 10.7V6.5a1.5 1.5 0 0 0-1.5-1.5H7.5M8.8 3.6 7.4 5l1.4 1.4M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
+  sliders: 'M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M11.5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7.5 11a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
+  half: 'M8 2.5a5.5 5.5 0 1 0 0 11ZM8 2.5a5.5 5.5 0 0 1 0 11',
+  bell: 'M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3ZM6.5 13.5a1.5 1.5 0 0 0 3 0',
+  user: 'M10.5 5.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM3 13.5c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5',
+  keyboard: 'M2 4.5h12v7H2ZM4.5 7h1M7.5 7h1M10.5 7h1M5 9.5h6',
+  chip: 'M5 5h6v6H5ZM6.5 2.5V5M9.5 2.5V5M6.5 11v2.5M9.5 11v2.5M2.5 6.5H5M2.5 9.5H5M11 6.5h2.5M11 9.5h2.5',
+  shield: 'M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z',
+  sparkle: 'M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z',
+  copy: 'M5.5 5.5h7v8h-7ZM3.5 10.5v-8h7',
+  link: 'M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7',
+  flask: 'M6 2.5h4M6.8 2.5v4L3.3 12.2a.9.9 0 0 0 .8 1.3h7.8a.9.9 0 0 0 .8-1.3L9.2 6.5v-4M4.8 9.8h6.4',
+  info: 'M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1',
+  burst: 'M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9',
+  archive: 'M2.5 3.5h11v3h-11ZM3.5 6.5v6h9v-6M6.5 9h3',
+  chat: 'M2.5 4a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 13.5 4v5.5A1.5 1.5 0 0 1 12 11H7l-3 2.5V11A1.5 1.5 0 0 1 2.5 9.5Z',
+  chevrons: 'm5 6 3-3 3 3M5 10l3 3 3-3',
+  forward: 'm3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5',
+  eyeoff: 'M2.5 8s2-4 5.5-4c1 0 1.9.3 2.7.8M13.5 8s-2 4-5.5 4c-1 0-1.9-.3-2.7-.8M3 3l10 10',
+  reply: 'M13 3.5v4a2 2 0 0 1-2 2H3.5M6 7 3.5 9.5 6 12',
+  sidebar: 'M4 3h8a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H4a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 4 3ZM6.5 3v10',
+  minus: 'M4 8h8',
+  clock: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM8 5v3.2l2.1 1.3',
+  context: 'M2.5 4.5h11M2.5 8h11M2.5 11.5h6',
+  wifioff: 'M3 3l10 10M5.2 7.6a4 4 0 0 1 2-1M10.8 7.6a4 4 0 0 0-.9-.6M2.5 5.5a8 8 0 0 1 3-1.6M13.5 5.5a8 8 0 0 0-4.7-1.9M6.6 10a2 2 0 0 1 2.8 0',
+  key: 'M10 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM7.6 8.4 2.5 13.5M4 12l1.5 1.5M5.5 10.5 7 12',
+  // Board.dc.html draws this at 10px ("You approve this step"); scaled 1.6x to the 16px grid.
+  lock: 'M4.48 7.2h7.04a1.6 1.6 0 0 1 1.6 1.6v3.52a1.6 1.6 0 0 1-1.6 1.6H4.48a1.6 1.6 0 0 1-1.6-1.6V8.8a1.6 1.6 0 0 1 1.6-1.6ZM5.12 7.2V5.28a2.88 2.88 0 0 1 5.76 0V7.2',
+  warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1'
+} satisfies Record<string, string>
 
-export function Icon({ name, size = 16, stroke = 1.4 }: { name: keyof typeof P | string; size?: number; stroke?: number }) {
+/** Icons the canvas draws as solid shapes. */
+const FILLED: string[] = ['more']
+
+export function Icon({ name, size = 16, stroke = 1.4 }: { name: IconName | (string & {}); size?: number; stroke?: number }) {
+  const filled = FILLED.includes(name)
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
-      <path d={P[name] ?? ''} />
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+      <path d={(P as Record<string, string>)[name] ?? ''} />
     </svg>
   )
 }
+
+export type IconName = keyof typeof P
+export const iconNames = (): IconName[] => Object.keys(P) as IconName[]
