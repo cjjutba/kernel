@@ -126,11 +126,14 @@ export const actions = {
     /** Opens the menu, or closes it when it is already open. */
     toggleMenu: (menu: MenuId) => setState((s) => ({ ui: { ...s.ui, menu: s.ui.menu === menu ? null : menu } })),
     closeMenu: () => setUi({ menu: null }),
-    /** Shows a toast and drops it after 2.6s (DESIGN.md). Returns its id. */
-    toast: (t: Omit<Toast, 'id'>, ms = 2600) => {
+    /**
+     * Shows a toast. Returns its id. `components/Toasts.tsx` drops it after 2.6s (DESIGN.md) and holds it while hovered,
+     * so the store sets no timer of its own unless `ms` asks for one.
+     */
+    toast: (t: Omit<Toast, 'id'>, ms?: number) => {
       const toast = { ...t, id: `toast-${++toastSeq}` }
       setState((s) => ({ ui: { ...s.ui, toasts: [...s.ui.toasts, toast] } }))
-      if (ms > 0) setTimeout(() => actions.ui.dismissToast(toast.id), ms)
+      if (ms && ms > 0) setTimeout(() => actions.ui.dismissToast(toast.id), ms)
       return toast.id
     },
     dismissToast: (id: string) => setState((s) => ({ ui: { ...s.ui, toasts: s.ui.toasts.filter((t) => t.id !== id) } })),

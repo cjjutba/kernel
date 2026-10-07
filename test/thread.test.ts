@@ -16,6 +16,14 @@ describe('transcript thread', () => {
     expect(meta.kind === 'meta' && meta.text.startsWith('4m 12s · ')).toBe(true)
   })
 
+  it('puts a note written after the turn ended below its duration', () => {
+    const note = { kind: 'note' as const, id: 'n1', ts: tableItems[tableItems.length - 1].ts + 1, text: 'PR #42 was squashed into main.' }
+    const blocks = buildThread([...tableItems, note])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'files', 'meta', 'item'])
+    const last = blocks[5]
+    expect(last.kind === 'item' && last.item.id).toBe('n1')
+  })
+
   it('shows every item of a turn that is still running', () => {
     const running = tableItems.filter((i) => i.kind !== 'result' && i.id !== 'x1')
     const blocks = buildThread(running)

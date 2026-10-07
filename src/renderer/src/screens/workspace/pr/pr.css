@@ -1,0 +1,24 @@
+/* Pull request header states and the PR cards in the transcript (WorkspacePRMenu, DraftPR, CIFailed, ChangesRequested, Merged, PRClosed). */
+.pr-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); color: var(--ink-2); text-decoration: none; font: 12px var(--mono); }
+.pr-link:hover { background: var(--surface-3); }
+.pr-link[data-merged] { border-color: color-mix(in srgb, var(--merged-solid) 60%, var(--panel)); color: var(--merged); }
+.pr-status { padding: 0 4px; font-size: 12.5px; color: var(--muted); }
+.pr-status[data-tone='del'] { color: var(--del); }
+.pr-status[data-tone='ink2'] { color: var(--ink-2); }
+.pr-status.merged-label { font-size: 13px; font-weight: 500; color: var(--merged); }
+.btn.continue { border-style: dashed; border-color: color-mix(in srgb, var(--merged-solid) 85%, var(--panel)); color: var(--merged); }
+.btn.pr-strong { border-color: var(--line-4); }
+.btn.pr-busy:disabled { opacity: 1; background: var(--surface-3); color: var(--ink-3); }
+
+/* Create PR: a squared right edge, then the caret that opens the menu. */
+.pr-split { display: inline-flex; align-items: center; }
+.btn.split-main { border-radius: 7px 0 0 7px; }
+.pr-caret-anchor { position: relative; display: inline-flex; }
+.split-caret { width: 26px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-left: 1px solid var(--ink-2); border-radius: 0 7px 7px 0; background: var(--ink); color: var(--on-ink); }
+.split-caret:hover { background: var(--ink-hover); }
+
+/* "create-pr.md sent": an instruction file Kernel sent for CJ. */
+.pr-sent { align-self: flex-end; width: 82%; border-radius: 10px; background: var(--line); overflow: hidden; }
+.pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: 12.5px; color: var(--ink-2); }
+.pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--ink-3); }
+.pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }

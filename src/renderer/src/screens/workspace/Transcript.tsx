@@ -8,6 +8,9 @@ import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, copyText, MessageActions } from './MessageActions'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
+import { InstructionCard } from './pr/InstructionCard'
+import { instructionOf } from './pr/model'
+import { ReviewCard } from './pr/ReviewCard'
 
 const EMPTY: ChatItem[] = []
 
@@ -140,7 +143,7 @@ function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: 
   }
   const item = block.item
   switch (item.kind) {
-    case 'user': return <UserMessage item={item} onEdit={onEdit} />
+    case 'user': { const sent = instructionOf(item); return sent ? <InstructionCard part={sent} /> : <UserMessage item={item} onEdit={onEdit} /> }
     case 'text': return <ReplyMessage item={item} chat={chat} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
@@ -173,6 +176,8 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
   const running = useStore((s) => !!s.running[chat.id])
   const approvals = useStore((s) => s.approvals)
   const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
+  const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
+  const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items), [items])
   // A pending request shows even before the engine has placed a card for it in the transcript.
   const loose = useMemo(() => {
@@ -206,6 +211,7 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
         )}
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} agentName={agentName} onEdit={onEdit} onFork={fork} onTerminal={terminal} />)}
         {loose.map((a) => <ApprovalCard key={a.id} approval={a} />)}
+        {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
         {running && <Elapsed since={since} />}
         <div ref={end} />
       </div>

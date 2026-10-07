@@ -1,4 +1,4 @@
-import type { Approval, Chat, ChatItem, FileEntry, Hunk, Skill, Workspace } from '@shared/types'
+import type { Approval, Chat, ChatItem, FileEntry, Hunk, PrInfo, Skill, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -9,8 +9,29 @@ const pr = { prNumber: 42, prUrl: 'https://github.com/cjjutba/client-a/pull/42' 
 /** The transcript up to the last tool call, before Kai's summary. */
 const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result')
 
-const prScene = (prState: 'draft' | 'cifail' | 'changes' | 'merged' | 'closed') =>
-  scene((f) => ({ workspaces: withWorkspace(f, ids.table, { ...pr, prState }), ui: open }))
+const prTitle = 'feat(invoices): table and empty states'
+
+/** The "create-pr.md sent" card, the agent's tool calls, its reply and the end of its turn. */
+const prTurn = (id: string, lines: string[], tools: number, reply: string): ChatItem[] => [
+  { kind: 'user', id: `${id}-md`, ts: at(10, 33), parts: [{ type: 'file', name: 'create-pr.md', text: lines.join('\n') }] },
+  ...folded(id, tools, 0),
+  { kind: 'text', id: `${id}-reply`, ts: at(10, 34), text: reply },
+  { kind: 'result', id: `${id}-res`, ts: at(10, 34), durationMs: 65_000, ok: true }
+]
+const prNote = (id: string, text: string): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text })
+
+/** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
+const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'checks' = 'changes') =>
+  scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }),
+    items: { [ids.tableChat]: [...tableItems, ...items] },
+    ...extra,
+    ui: { ...open, workspace: { right, bottom: 'run', focus: false, checkpoints: false, toolsOpen: false }, ...extra.ui }
+  }))
+
+const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
+  [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
+})
 
 const PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
@@ -218,11 +239,43 @@ export const workspaceFixtures: Record<string, Fixture> = {
     }, { plan: false, model: 'claude-opus-5-5' }),
     changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
   })),
-  WorkspaceDraftPR: prScene('draft'),
-  WorkspaceCIFailed: prScene('cifail'),
-  WorkspaceChangesRequested: prScene('changes'),
-  WorkspaceMerged: prScene('merged'),
-  WorkspacePRClosed: prScene('closed'),
+  WorkspacePRMenu: scene(() => ({ ui: { ...open, menu: 'pr' } })),
+  WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
+  WorkspaceCIFailed: prScene('cifail', [
+    ...prTurn('c', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42.'),
+    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.')
+  ], {
+    prs: prInfo('cifail', {
+      checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }],
+      comments: [
+        { id: 'rc1', author: 'Theo', body: 'Empty state copy', resolved: true },
+        { id: 'rc2', author: 'Theo', body: 'Shorten empty state copy', resolved: false }
+      ]
+    })
+  }, 'checks'),
+  WorkspaceChangesRequested: prScene('changes', [
+    ...prTurn('r', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42 and asked Theo for review.')
+  ], {
+    prs: prInfo('changes', {
+      reviewDecision: 'changes',
+      comments: [
+        { id: 'rv1', author: 'Theo', path: 'src/app/invoices/table.tsx', line: 42, body: 'Use the shared EmptyState from components/ui.', resolved: false },
+        { id: 'rv2', author: 'Theo', path: 'src/app/invoices/page.tsx', line: 18, body: 'Keep the skeleton up for at least 200ms to avoid flashing.', resolved: false }
+      ]
+    })
+  }),
+  WorkspaceMerged: prScene('merged', [
+    ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Theo approved it and every check passed.'),
+    prNote('m-note', 'PR #42 was squashed into main.')
+  ], { prs: prInfo('merged') }),
+  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.')], { prs: prInfo('closed') }),
+  WorkspaceToast: prScene('merged', [], {
+    prs: prInfo('merged'),
+    ui: { toasts: [
+      { id: 't1', title: 'PR #42 merged', sub: 'Squashed into main', action: { label: 'View', href: pr.prUrl } },
+      { id: 't2', title: 'Copied', sub: 'Message copied to clipboard' }
+    ] }
+  }),
   WorkspacePaste: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
