@@ -12,6 +12,8 @@ import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
 import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
+import { useBanner, WorkspaceBanner } from './banners/Banners'
+import { onRefreshChanges } from './changesBus'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
@@ -35,6 +37,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const chat = filePath ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
+  const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
+  const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
   // The open tab and diff live in the store, so they outlast this screen. Whenever the screen shows a different workspace
   // than the one they belong to, clear them. The very first mount keeps what a fixture or a restored view set.
@@ -50,10 +54,11 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const refresh = () => call('workspaces.changes', { workspaceId }).then(setChanges).catch(() => setChanges([]))
   useEffect(() => { void refresh() }, [workspaceId])
   useEffect(() => { if (!running) void refresh() }, [running])
+  useEffect(() => onRefreshChanges((id) => { if (id === workspaceId) void refresh() }), [workspaceId])
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
-  const blocked = setup || ws.status === 'failed'
+  const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const select = (id: string) => {
     if (!id.startsWith('file:')) setLastChat(id)
@@ -92,13 +97,16 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : setup
                   ? <TranscriptSkeleton branch={ws.branch} />
+                  // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
+                  : ws.status === 'failed' && empty
+                    ? <div className="grow" />
                   : chat?.kind === 'terminal'
                     ? <TerminalView id={chat.id} label="Big terminal" />
                   : chat
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
                     : <div className="grow" />}
           </div>
-          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} />}
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
           {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
         </section>
         {!view.focus && (

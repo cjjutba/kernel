@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../../api'
 import { actions, loadWorkspace, useStore } from '../../../store'
-import { Button, Icon, IconButton, Menu, Spinner } from '../../../ui'
+import { Button, Icon, IconButton, Menu } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { baseName, dirName, filterSkills, isLongPaste, mentionAt, pasteLines, slashAt } from './autocomplete'
-import { onAddToComposer } from './bus'
+import { onAddToComposer, onComposerCommand } from './bus'
 import { HunkCard } from './HunkCard'
 import { EFFORTS, ModelPicker } from './ModelPicker'
 import { QueueList } from './QueueList'
@@ -58,7 +58,7 @@ const imageSize = (src: string) => new Promise<{ width: number; height: number }
  * files, skills, diff hunks) in the order they were added, then the live text box. Enter sends, Shift+Enter breaks the line,
  * Backspace in an empty box takes the last chip back. While the agent works, a sent message waits in the queue above the box.
  */
-export function Composer({ chat, agent, blocked, running, prefill }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number } }) {
+export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
@@ -207,7 +207,14 @@ export function Composer({ chat, agent, blocked, running, prefill }: { chat: Cha
   const effort = EFFORTS.find((x) => x.id === chat.effort)?.label ?? chat.effort
   const hasDraft = !!draft.trim() || segs.length > 0
   const placeholder = segs.length || draft ? '' : blocked ? 'Paused until this is resolved' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
-  const retry = useStore((s) => s.retry[chat.id])
+
+  // A banner's "Queue message" sends what is typed (main holds it while the limit lasts), "Switch model" opens the picker.
+  // Subscribed on every render, so the listener always sees the current draft.
+  useEffect(() => onComposerCommand((c) => {
+    if (c === 'model') { setMenu('model'); return }
+    if (sendParts().length) void send()
+    else input.current?.focus()
+  }))
 
   return (
     <div className="composer-wrap">
@@ -219,6 +226,7 @@ export function Composer({ chat, agent, blocked, running, prefill }: { chat: Cha
           onNow={(q) => void attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id })))}
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
         />
+        {banner}
         <div className="cmp-box">
           {acOpen && rows.length > 0 && (
             <div role="listbox" aria-label={mention ? 'Files' : 'Skills'} className="cmp-ac">
@@ -261,7 +269,6 @@ export function Composer({ chat, agent, blocked, running, prefill }: { chat: Cha
               </span>
               {chat.plan && <Button className="cmp-plan" aria-label="Turn off plan mode" onClick={() => void configure({ plan: false })}>Plan mode<Icon name="close" size={9} stroke={2} /></Button>}
               {chat.context ? <span className="ink2" style={{ fontSize: 12 }}>Context {chat.context}%</span> : null}
-              {retry && <span className="ink2" style={{ fontSize: 12 }}><Spinner label="Retrying" /> Retrying {retry.attempt} of {retry.of}</span>}
               <span className="grow" />
               <span ref={plusAnchor} style={{ position: 'relative' }}>
                 <IconButton icon="plus" label="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')} />

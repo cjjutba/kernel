@@ -1,0 +1,5 @@
+/* ConfirmArchive.png and ConfirmDiscard.png: the facts box and the option under the body. */
+.wsc-facts { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--r); background: var(--panel); font-size: 12px; color: var(--ink-3); }
+.wsc-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
+.wsc-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
+.wsc-error { margin: 0; color: var(--del); }
