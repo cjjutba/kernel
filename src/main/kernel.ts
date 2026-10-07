@@ -26,6 +26,7 @@ import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './serv
 import { commitHunks, listHunks } from './services/hunks'
 import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
+import { Overlaps } from './services/overlap'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
@@ -35,8 +36,7 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
-    'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
+  'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
@@ -60,6 +60,7 @@ export class Kernel {
   readonly notifications: Notifications
   readonly tasks: Tasks
   readonly sessions: Sessions
+  readonly overlaps: Overlaps
   settings!: AppSettings
   private hookServer?: Server
   private agentCache = new Map<string, AgentDef[]>()
@@ -92,7 +93,12 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws) => { void this.refreshPr(ws.id).catch(() => undefined) }
+      onTurnDone: (ws) => { void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined) }
+    })
+    this.overlaps = new Overlaps({
+      workspaces: (roomId) => this.store.workspaces(roomId),
+      since: async (ws) => (ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)),
+      leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id
     })
     const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
     const onHook = (e: { hook_event_name: string }) => this.hookSeen.set(e.hook_event_name, Date.now())
@@ -346,6 +352,7 @@ export class Kernel {
       stopScript(ws.id, 'run')
       if (deleteWorktrees && ws.mode === 'worktree' && ws.status !== 'archived') await removeWorktree(room.path, ws.path, { force: true }).catch(() => undefined)
     }
+    this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
@@ -369,18 +376,26 @@ export class Kernel {
     this.agentWatchers.set(roomId, watchAgents(room.path, () => {
       void (async () => {
         if (!this.store.room(roomId)) return
-        const before = JSON.stringify(this.agentCache.get(roomId))
+        const was = this.agentCache.get(roomId)
+        const before = JSON.stringify(was)
         const list = await this.agents(roomId)
-        if (JSON.stringify(list) !== before) this.announceTeam(roomId, list)
+        if (JSON.stringify(list) !== before) this.announceTeam(roomId, list, was)
       })().catch(() => undefined)
     }))
   }
 
-  private announceTeam(roomId: string, list: AgentDef[]) {
+  /** `was` is the team before the change: whoever is new walks in. Leave it out to announce no one. */
+  private announceTeam(roomId: string, list: AgentDef[], was?: AgentDef[]) {
+    const had = new Set((was ?? list).map((a) => a.id))
     const room = this.mustRoom(roomId)
     const known = this.statuses.get(roomId) ?? {}
     bus.push({ type: 'agents', roomId, agents: list })
-    for (const a of list) if (!known[a.id]) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+    for (const a of list) {
+      if (known[a.id]) continue
+      bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+      // A new agent file, from hire_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
+      if (!a.retired && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
+    }
   }
 
   /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
@@ -394,11 +409,11 @@ export class Kernel {
   /** New agent > Create agent. The file joins .claude/agents and the agent takes a desk (the next free one, or the end of `room.desks`). */
   async hireFromDraft(roomId: string, draft: AgentDraft): Promise<AgentDef> {
     const room = this.mustRoom(roomId)
+    const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
     const def = await createAgent(room.path, draft)
     if (room.desks && !room.desks.includes(def.id)) await this.updateRoom(roomId, { desks: [...room.desks, def.id] })
     const list = await this.agents(roomId)
-    this.announceTeam(roomId, list)
-    bus.activity({ kind: 'agent.joined', roomId, agentId: def.id, actor: 'you', text: 'joined the team', object: def.name })
+    this.announceTeam(roomId, list, was)
     return list.find((a) => a.id === def.id) ?? def
   }
 
@@ -504,6 +519,7 @@ export class Kernel {
     if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) ? ws.branch : undefined })
     this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
+    void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
 
   /** Brings an archived workspace back: recreates the worktree from its branch and reopens its chats, which Kernel kept. */
@@ -534,6 +550,24 @@ export class Kernel {
     const chat = await this.leadChat(roomId)
     await this.sessions.send(chat.id, [{ type: 'text', text }])
     return { chatId: chat.id }
+  }
+
+  /**
+   * "Let Rowan sort it": the Lead gets both workspaces and the file, and the card leaves the floor.
+   * The overlap itself clears on its own once the agents stop touching the same file.
+   */
+  async sortOverlap(overlapId: string): Promise<void> {
+    const o = this.overlaps.get(overlapId)
+    if (!o) throw new Error('That overlap is gone already.')
+    const agents = await this.agents(o.roomId)
+    const parts = o.parties.map((p) => `${agents.find((a) => a.id === p.agentId)?.name ?? p.agentId} in ${this.store.workspace(p.workspaceId)?.name ?? p.workspaceId} (${p.lines})`)
+    const chat = await this.leadChat(o.roomId)
+    const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.`
+    await this.sessions.send(chat.id, [{ type: 'text', text }])
+    this.overlaps.resolve(overlapId)
+    // A note, not a brief: a brief to the Lead would restart the briefing sequence on the floor.
+    const lead = agents.find((a) => a.id === this.store.workspace(chat.workspaceId)?.agentId)
+    bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
 
   async changes(id: string) {
@@ -604,7 +638,12 @@ export class Kernel {
         this.sessions.placeApproval(chat.id, approval.id)
         return decision
       },
-      hireAgent: async (a) => { const file = await saveAgent(this.mustRoom(roomId).path, a); await this.agents(roomId); return file }
+      hireAgent: async (a) => {
+        const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
+        const file = await saveAgent(this.mustRoom(roomId).path, a)
+        this.announceTeam(roomId, await this.agents(roomId), was)
+        return file
+      }
     })
   }
 
@@ -706,7 +745,7 @@ export class Kernel {
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
       const text = prNote(next, info, this.mergedWith.get(id))
       if (text) this.note(id, text)
-      if (next.prState === 'merged') this.mergedWith.delete(id)
+      if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
     return next
   }
@@ -811,6 +850,8 @@ export class Kernel {
       'rooms.setPaused': async ({ roomId, paused }) => (paused ? this.pauseRoom(roomId, 'you') : this.resumeRoom(roomId)),
       'agents.seed': async ({ roomId, template }) => this.seedAgents(roomId, template),
       'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
+      'rooms.overlaps': async ({ roomId }) => this.overlaps.check(roomId),
+      'rooms.resolveOverlap': async ({ overlapId }) => { await this.sortOverlap(overlapId); return { ok: true } },
       'rooms.brief': async ({ roomId, text, agentId }) => {
         let chat: Chat
         if (agentId) {

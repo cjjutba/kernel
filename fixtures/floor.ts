@@ -3,7 +3,7 @@ import type { PushEvent } from '@shared/ipc'
 import type { Fixture } from './types'
 import { agent, at, ids, scene, team } from './base'
 
-// Floor lane: the floor and its room states (KERNEL-22), and the briefing sequence (KERNEL-23).
+// Floor lane: the floor and its room states (KERNEL-22), the briefing sequence (KERNEL-23) and the floor moments (KERNEL-24).
 // Seating, roles and models follow the canvas roster: Rowan, Kai, Noor, Ivy, Theo.
 
 const floor = { route: { name: 'floor', roomId: ids.roomA } } as const
@@ -164,6 +164,71 @@ const briefing: Record<string, Fixture> = {
     }
   })
 }
+
+// ---------- floor moments (KERNEL-24): FloorQuestion, FloorTalk, FloorOverlap and FloorHired.
+
+/** Rowan's own workspace on the moment screens (the canvas card reads "plan-invoice-pdf"). Listed first so the agent card finds it. */
+const planWs = (f: Fixture): Workspace => ({
+  ...f.workspaces[1], id: 'ws-plan-invoice-pdf', name: 'plan-invoice-pdf', branch: 'feat/t-15-plan-invoice-pdf', agentId: 'rowan', port: 4320,
+  path: '/Users/cj/kernel/worktrees/client-a/plan-invoice-pdf', createdAt: clock(11, 1, 50)
+})
+const question: Approval = {
+  id: 'ap-scope', kind: 'question', source: 'sdk', roomId: A, workspaceId: 'ws-plan-invoice-pdf', agentId: 'rowan',
+  title: 'Should PDF export cover credit notes too, or only invoices?', options: ['Invoices only', 'Invoices and credit notes', 'Decide in the plan'],
+  status: 'pending', createdAt: clock(11, 2, 50)
+}
+const lumi: AgentDef = { ...agent('lumi', 'Lumi', 'Designer', 'sonnet'), description: 'Checks every screen against DESIGN.md.', joinedAt: clock(11, 2, 50) }
+
+const moments: Record<string, Fixture> = {
+  FloorQuestion: scene((f) => floorScene(f, {
+    status: { [A]: { ...calm, rowan: 'needs' } },
+    says: { rowan: 'Asking before planning' },
+    // The Inbox keeps its count of 3: this room's question takes the place of Client B's migration.
+    approvals: [...f.approvals.filter((a) => a.id !== 'ap-migrate'), question],
+    workspaces: [planWs(f), ...f.workspaces],
+    extra: [
+      say('b-say-q', 11, 2, 45, 'Quick question before I plan.'),
+      ev('b-asked-q', 11, 2, 50, { agentId: 'rowan', workspaceId: 'ws-plan-invoice-pdf', kind: 'approval.requested', text: 'asked', object: 'scope question', warn: true }),
+      brief
+    ]
+  })),
+  FloorTalk: scene((f) => floorScene(f, {
+    status: { [A]: { ...calm, rowan: 'working' } },
+    says: { rowan: 'Chatting with you' },
+    workspaces: [planWs(f), ...f.workspaces],
+    extra: [
+      ev('b-replied', 11, 2, 40, { agentId: 'rowan', workspaceId: 'ws-plan-invoice-pdf', kind: 'turn.done', text: 'replied in', object: 'plan-invoice-pdf' }),
+      ev('b-chat', 11, 2, 30, { actor: 'you', agentId: 'rowan', workspaceId: 'ws-plan-invoice-pdf', kind: 'prompt', text: 'opened a chat with Rowan in', object: 'plan-invoice-pdf' })
+    ]
+  })),
+  FloorOverlap: scene((f) => ({
+    ...floorScene(f, {
+      extra: [ev('b-overlap', 11, 2, 30, {
+        agentId: 'rowan', kind: 'overlap', text: 'flagged an overlap in', object: 'invoices.ts', warn: true,
+        data: { overlapId: 'ov-invoices', path: 'src/app/invoices/invoices.ts', workspaceIds: [ids.table, ids.schema] }
+      })]
+    }),
+    overlaps: [{
+      id: 'ov-invoices', roomId: A, path: 'src/app/invoices/invoices.ts', ts: clock(11, 2, 30),
+      parties: [
+        { agentId: 'kai', workspaceId: ids.table, lines: 'lines 20-34' },
+        { agentId: 'noor', workspaceId: ids.schema, lines: 'lines 18-40' }
+      ]
+    }]
+  })),
+  FloorHired: scene((f) => floorScene(f, {
+    agents: { ...f.agents, [A]: [...seatTeam, lumi] },
+    status: { [A]: { ...calm, lumi: 'idle' } },
+    says: { lumi: 'Joining the room' },
+    extra: [
+      ev('b-joined', 11, 2, 50, { agentId: 'lumi', kind: 'agent.joined', text: 'joined from', object: '.claude/agents/lumi.md' }),
+      ev('b-created-lumi', 11, 2, 45, { agentId: 'rowan', workspaceId: ids.lead, kind: 'tool.end', text: 'created', object: '.claude/agents/lumi.md' }),
+      ev('b-hire-ask', 11, 2, 30, { actor: 'you', agentId: 'rowan', kind: 'note', text: 'asked Rowan to', object: 'hire a designer' })
+    ],
+    // The arrival is held at the door so the shot is the same every run.
+    ui: staged('hired')
+  }))
+}
 const roomWith = (f: Fixture, change: Partial<Fixture['rooms'][number]>) => f.rooms.map((r) => (r.id === A ? { ...r, ...change } : r))
 
 export const floorFixtures: Record<string, Fixture> = {
@@ -208,6 +273,7 @@ export const floorFixtures: Record<string, Fixture> = {
     }]
   })),
   ...briefing,
+  ...moments,
   FloorFull: scene((f) => {
     const crowd = [...seatTeam, agent('sol', 'Sol', 'Security', 'sonnet'), agent('pax', 'Pax', 'Docs', 'haiku')]
     return floorScene(f, {

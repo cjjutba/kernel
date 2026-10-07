@@ -1,3 +1,4 @@
+import { firstLine } from './kernelMcp'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent } from '@shared/types'
@@ -69,7 +70,15 @@ export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent
     case 'SessionStart': return { ...base, kind: 'session.start', text: 'started a session' }
     case 'SessionEnd': return { ...base, kind: 'session.end', text: 'ended the session', data: { reason: e.reason } }
     case 'UserPromptSubmit': return { ...base, kind: 'prompt', text: 'got a message', data: { prompt: e.prompt.slice(0, 280) } }
-    case 'PreToolUse': { const d = describeTool(e.tool_name, e.tool_input); return { ...base, kind: 'tool.start', text: verb(e.tool_name), object: objectOf(e.tool_name, e.tool_input) ?? d.title, data: { toolUseId: e.tool_use_id } } }
+    case 'PreToolUse': {
+      // A subagent delegation is one agent talking to another: the floor walks the speaker to the listener (KERNEL-24).
+      const input = (e.tool_input ?? {}) as Record<string, unknown>
+      if ((e.tool_name === 'Task' || e.tool_name === 'Agent') && typeof input.subagent_type === 'string') {
+        const line = typeof input.description === 'string' ? input.description : typeof input.prompt === 'string' ? input.prompt : ''
+        return { ...base, kind: 'agent.talk', text: 'delegated to', object: input.subagent_type, quote: line.slice(0, 280) || undefined, data: { from: ctx.agentId, to: input.subagent_type, line: firstLine(line), toolUseId: e.tool_use_id } }
+      }
+      const d = describeTool(e.tool_name, e.tool_input); return { ...base, kind: 'tool.start', text: verb(e.tool_name), object: objectOf(e.tool_name, e.tool_input) ?? d.title, data: { toolUseId: e.tool_use_id } }
+    }
     case 'PostToolUse': return { ...base, kind: 'tool.end', text: verb(e.tool_name, true), object: objectOf(e.tool_name, e.tool_input), data: { toolUseId: e.tool_use_id, durationMs: e.duration_ms } }
     case 'PostToolUseFailure': return { ...base, kind: 'tool.failed', text: `${verb(e.tool_name)} failed`, object: objectOf(e.tool_name, e.tool_input) }
     case 'Stop': return { ...base, kind: 'turn.done', text: 'finished its turn' }

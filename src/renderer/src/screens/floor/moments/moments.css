@@ -1,0 +1,13 @@
+/* Floor moments (KERNEL-24). Values from design/canvas/project/FloorQuestion.dc.html and FloorOverlap.dc.html, colors as tokens. */
+.fopts { display: flex; flex-direction: column; gap: 6px; }
+.fopt { height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--ink); font-size: 12.5px; text-align: left; cursor: pointer; }
+.fopt:hover { background: var(--hover); }
+.fopt-send { align-self: flex-end; height: 30px; }
+.fcard-grid { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 6px; background: var(--code-bg); font-size: 11.5px; line-height: 1.6; color: var(--ink-3); }
+.fcard-grid-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; column-gap: 12px; white-space: pre; }
+.fcard-grid-row > :last-child { text-align: right; }
+.fcard-link { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--line-4); text-underline-offset: 2px; cursor: pointer; }
+.fcard-link:hover { color: var(--ink); text-decoration-color: currentColor; }
+.fcard-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.log-links { margin: 0; display: flex; gap: 12px; font-size: 11.5px; color: var(--muted); }
+.floor-bubble-link { display: block; margin: 2px 0 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

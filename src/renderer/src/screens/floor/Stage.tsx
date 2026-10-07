@@ -7,7 +7,8 @@ import floorUrl from '../../floor/floor.svg'
 import { Bubble } from './Briefing'
 import { Walker, anchor } from './motion/Walker'
 import type { Pose } from './motion/useWalks'
-import type { Sequence } from './sequence'
+import type { Say } from './moments/moments'
+import './moments/moments.css'
 
 const SEATED: Pose = { at: 'seat', moving: false }
 
@@ -15,8 +16,8 @@ const SEATED: Pose = { at: 'seat', moving: false }
  * The office: art, people at their desks or walking (KERNEL-23), a tag over each, a speech bubble, and the room-level states drawn on top.
  * `status` is what the floor shows, so someone away from their desk already reads "walking".
  */
-export function Stage({ room, agents, status, poses, say, instant, selectedId, onSelect, onTogglePause }: {
-  room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; poses: Record<string, Pose>; say?: Sequence['say']; instant: boolean
+export function Stage({ room, agents, status, words, poses, say, instant, selectedId, onSelect, onTogglePause }: {
+  room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; /** A word to show instead of the status, for a new hire. */ words?: Record<string, string>; poses: Record<string, Pose>; say?: Say; instant: boolean
   selectedId?: string; onSelect: (id: string) => void; onTogglePause: () => void
 }) {
   const { seated, overflow } = seating(agents, room)
@@ -27,8 +28,8 @@ export function Stage({ room, agents, status, poses, say, instant, selectedId, o
       <img src={floorUrl} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
       {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} /> })}
-      {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
-      {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} />}
+      {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
       {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} />}
@@ -61,11 +62,12 @@ function Person({ agent, seat, status, present }: { agent: AgentDef; seat: numbe
 }
 
 /** Name plus a status word. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
-function Tag({ agent, at, status, selected, onSelect }: { agent: AgentDef; at: [number, number]; status: AgentStatus; selected: boolean; onSelect: () => void }) {
+function Tag({ agent, at, status, word: shown, selected, onSelect }: { agent: AgentDef; at: [number, number]; status: AgentStatus; word?: string; selected: boolean; onSelect: () => void }) {
+  const word = shown ?? WORD[status]
   return (
-    <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${WORD[status]}`} onClick={onSelect}
+    <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
       style={pct(at[0], at[1])}>
-      <span className="floor-tag-pill" data-status={status}>{agent.name}<span>{WORD[status]}</span></span>
+      <span className="floor-tag-pill" data-status={status}>{agent.name}<span>{word}</span></span>
     </button>
   )
 }
