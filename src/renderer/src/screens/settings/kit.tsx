@@ -67,3 +67,17 @@ export function ListField({ label, value, onSave }: { label: string; value: stri
   }
   return <input className="set-inline" aria-label={label} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }
+
+/** Free text, kept as typed (blank lines and all): instructions and scripts. Saved when the field loses focus. */
+export function TextField({ label, value, onSave, placeholder }: { label: string; value: string; onSave: (text: string) => void; placeholder?: string }) {
+  const [text, setText] = useState(value)
+  const ref = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { setText(value) }, [value])
+  useEffect(() => { const el = ref.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight + 2}px` } }, [text])
+  return <textarea ref={ref} className="set-lines" aria-label={label} placeholder={placeholder} rows={Math.max(1, text.split('\n').length)} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={() => text !== value && onSave(text)} />
+}
+
+/** A page for a repo's settings when there is no repo to read them from yet. */
+export function NoRoom() {
+  return <Page title="No room yet" intro="These settings belong to a repo. Add a room first and they show up here.">{null}</Page>
+}

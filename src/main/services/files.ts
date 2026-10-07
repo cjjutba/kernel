@@ -109,7 +109,7 @@ export const BUILT_IN_COMMANDS: Skill[] = [
 ]
 
 /** Skills and commands the / menu offers: the repo's `.claude/skills/<name>/SKILL.md` and `.claude/commands/**.md`, then the built-ins. */
-export async function discoverSkills(root: string): Promise<Skill[]> {
+export async function discoverSkills(root: string, home?: string): Promise<Skill[]> {
   const found = new Map<string, Skill>()
   const add = (s: Skill) => { if (!found.has(s.name)) found.set(s.name, s) }
   const skillsDir = join(root, '.claude', 'skills')
@@ -118,6 +118,14 @@ export async function discoverSkills(root: string): Promise<Skill[]> {
     if (text === null) continue
     const { data, body } = frontmatter(text)
     add({ name: data.name || dir, description: data.description || firstLine(body), source: 'project', enabled: true })
+  }
+  // The user's own skills (Settings > Skills and MCP lists them next to the repo's). A repo skill of the same name wins.
+  const userDir = home ? join(home, '.claude', 'skills') : undefined
+  for (const dir of userDir ? await readdir(userDir).catch(() => []) : []) {
+    const text = await readFile(join(userDir!, dir, 'SKILL.md'), 'utf8').catch(() => null)
+    if (text === null) continue
+    const { data, body } = frontmatter(text)
+    add({ name: data.name || dir, description: data.description || firstLine(body), source: 'user', enabled: true })
   }
   const commandsDir = join(root, '.claude', 'commands')
   const walk = async (dir: string, prefix: string): Promise<void> => {

@@ -1,7 +1,6 @@
 import './settings.css'
 import type { ReactNode } from 'react'
 import type { SettingsPage } from '@shared/types'
-import { PlaceholderPage } from '../../components/Placeholder'
 import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { Account } from './pages/Account'
@@ -11,12 +10,21 @@ import { General } from './pages/General'
 import { Models } from './pages/Models'
 import { Notifications } from './pages/Notifications'
 import { Permissions } from './pages/Permissions'
+import { Files } from './pages/Files'
+import { Git } from './pages/Git'
+import { Hooks } from './pages/Hooks'
+import { Integrations } from './pages/Integrations'
+import { PRs } from './pages/PRs'
+import { Room } from './pages/Room'
+import { Scripts } from './pages/Scripts'
 import { Shortcuts } from './pages/Shortcuts'
+import { Skills } from './pages/Skills'
+import { Team } from './pages/Team'
 
 export { SettingsNav } from './SettingsNav'
 
-/** The page to the right of the Settings nav. Pages for projects and rooms are KERNEL-26's and show their placeholder in the same shell. */
-export function Settings({ page }: { page: SettingsPage; roomId?: string }) {
+/** The page to the right of the Settings nav. */
+export function Settings({ page, roomId }: { page: SettingsPage; roomId?: string }) {
   const settings = useSettings()
   let body: ReactNode
   if (page === 'shortcuts') body = <Shortcuts />
@@ -29,6 +37,14 @@ export function Settings({ page }: { page: SettingsPage; roomId?: string }) {
   else if (page === 'models') body = <Models s={settings} />
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'experimental') body = <Experimental s={settings} />
-  else body = <PlaceholderPage title={`Settings: ${page}`} issue="KERNEL-26" />
+  else if (page === 'git') body = <Git s={settings} />
+  else if (page === 'scripts') body = <Scripts s={settings} />
+  else if (page === 'prs') body = <PRs s={settings} />
+  else if (page === 'files') body = <Files />
+  else if (page === 'hooks') body = <Hooks s={settings} />
+  else if (page === 'agents') body = <Team s={settings} />
+  else if (page === 'skills') body = <Skills />
+  else if (page === 'integrations') body = <Integrations />
+  else if (page === 'room') body = <Room roomId={roomId} s={settings} />
   return <div className="panel">{body}</div>
 }

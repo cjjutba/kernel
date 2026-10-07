@@ -1,4 +1,5 @@
-import type { AppSettings, DeepPartial } from '@shared/types'
+import { useEffect } from 'react'
+import type { AppSettings, DeepPartial, Room, RoomSettings, RoomSettingsPatch } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 
@@ -26,6 +27,48 @@ export async function patchSettings(patch: DeepPartial<AppSettings>) {
     actions.settings.set(await call('settings.set', { patch }))
   } catch (e) {
     actions.settings.set(before)
+    actions.ui.toast({ title: 'Could not save the setting', sub: (e as Error).message })
+  }
+}
+
+/**
+ * The room the repo pages (Scripts, Files, Skills, Agents) read. They belong to a repo, and Settings has no room in its route,
+ * so it is the room opened last (the store's own "last room" key), or the first one.
+ */
+export function useProjectRoom(): Room | undefined {
+  return useStore((s) => {
+    const rooms = s.rooms.filter((r) => !r.archived)
+    let last: string | null = null
+    try { last = localStorage.getItem('kernel.lastRoom') } catch { /* blocked */ }
+    return rooms.find((r) => r.id === last) ?? rooms[0]
+  })
+}
+
+/** A room's settings from its .kernel files. Null until the first read. */
+export function useRoomSettings(roomId?: string): RoomSettings | null {
+  const rs = useStore((s) => (roomId ? s.roomSettings[roomId] ?? null : null))
+  useEffect(() => {
+    if (!roomId) return
+    void call('settings.room', { roomId }).then((r) => actions.settings.setRoom(roomId, r)).catch(() => undefined)
+  }, [roomId])
+  return rs
+}
+
+/** Apply a room patch the way main writes it: a `null` removes the key. */
+export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): RoomSettings {
+  const out: Record<string, Record<string, unknown>> = { scripts: { ...rs.scripts }, files: { ...rs.files }, workspace: { ...rs.workspace }, disabled: { ...(rs.disabled ?? { skills: [], mcp: [] }) } }
+  for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete out[group][k]; else out[group][k] = v }
+  return out as unknown as RoomSettings
+}
+
+/** Save a change to a room's .kernel settings (the shared file when `shared`, else the personal one). Rolls back and says so on a failure. */
+export async function patchRoomSettings(roomId: string, patch: RoomSettingsPatch, shared = false) {
+  const before = getState().roomSettings[roomId]
+  if (before) actions.settings.setRoom(roomId, applyRoomPatch(before, patch))
+  try {
+    actions.settings.setRoom(roomId, await call('settings.setRoom', { roomId, patch, shared }))
+  } catch (e) {
+    if (before) actions.settings.setRoom(roomId, before)
     actions.ui.toast({ title: 'Could not save the setting', sub: (e as Error).message })
   }
 }

@@ -158,9 +158,16 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
-    'settings.setRoom': async ({ roomId }) => roomSettings(roomId),
-    'mcp.list': async () => [],
-    'integrations.list': async () => [],
+    'settings.setRoom': async ({ roomId, patch }) => {
+      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing.
+      const cur = roomSettings(roomId) as unknown as Record<string, Record<string, unknown>>
+      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled } }
+      for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
+      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
+      return roomSettings(roomId)
+    },
+    'mcp.list': async () => f.mcp ?? [],
+    'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
     'update.get': async () => update,
     'update.check': async () => update,

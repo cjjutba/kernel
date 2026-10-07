@@ -22,7 +22,7 @@ import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings,
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
-import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { copyLocalFiles, linkNodeModules, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
@@ -518,7 +518,12 @@ export class Kernel {
   }
 
   async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>>): Promise<Room> {
-    const room = this.store.saveRoom({ ...this.mustRoom(roomId), ...patch })
+    const before = this.mustRoom(roomId)
+    // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
+    if (patch.archived && !before.archived) {
+      for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) await this.archiveWorkspace(ws.id).catch(() => this.sessions.stopWorkspace(ws.id))
+    }
+    const room = this.store.saveRoom({ ...before, ...patch })
     bus.push({ type: 'room', room })
     return room
   }
@@ -661,6 +666,7 @@ export class Kernel {
       branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef, fetch: baseRef.startsWith('origin/') })
       await copyLocalFiles(room.path, path, repo.files.copy)
+      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else {
       if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
         throw new Error('Another workspace is already working on the current branch in this room.')
@@ -761,6 +767,7 @@ export class Kernel {
       await restoreWorktree({ repo: room.path, path, branch: ws.branch })
       const repo = await loadRepoSettings(room.path)
       await copyLocalFiles(room.path, path, repo.files.copy)
+      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
     }
@@ -1255,7 +1262,7 @@ export class Kernel {
       },
       'skills.list': async ({ roomId }) => {
         const off = (await loadRepoSettings(this.mustRoom(roomId).path)).disabled?.skills ?? []
-        return (await discoverSkills(this.mustRoom(roomId).path)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
+        return (await discoverSkills(this.mustRoom(roomId).path, this.home)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
       },
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
