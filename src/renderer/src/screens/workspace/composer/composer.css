@@ -31,10 +31,16 @@
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
-.cmp-pop { left: 0; bottom: calc(100% + 8px); width: 300px; }
-.pick-search { display: flex; align-items: center; gap: 8px; height: 32px; margin-bottom: 4px; padding: 0 8px; border-bottom: 1px solid var(--line-3); color: var(--muted); }
-.pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13px; }
+.cmp-pop { left: 0; bottom: calc(100% + 8px); }
+.model-pop { width: 340px; padding: 0; overflow: hidden; background: var(--surface-2); }
+.pick-search { display: block; width: 100%; height: 42px; box-sizing: border-box; padding: 0 14px; border: 0; border-bottom: 1px solid var(--card-line); outline: none; background: transparent; color: var(--ink); font-size: 13.5px; }
+.pick-search::placeholder { color: var(--muted); }
+.pick-body { display: flex; flex-direction: column; padding: 6px; }
+.pick-row { height: 36px; padding: 0 10px; gap: 8px; }
 .pick-row[data-active='true'] { background: var(--hover); }
+.pick-foot { display: flex; align-items: center; justify-content: space-between; height: 38px; padding: 0 14px; border-top: 1px solid var(--card-line); font-size: 12px; color: var(--muted); }
+.pick-link { padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; }
+.pick-link:hover { color: var(--ink); }
 
 .queue { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .queue-row { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 8px; border: 1px dashed var(--line-4); font-size: 13px; }

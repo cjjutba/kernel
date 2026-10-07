@@ -229,4 +229,18 @@ describe('session runner (SDK scripted)', () => {
     expect(users).toHaveLength(2)
     await expect(sessions.retry(chat.id, 'nope')).rejects.toThrow('no longer')
   })
+
+  it('drops the queue when the turn is stopped, instead of starting the next message', async () => {
+    const { sessions, call, options, chat, kinds } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await sessions.send(chat.id, [{ type: 'text', text: 'later' }])
+    expect(sessions.queued(chat.id)).toHaveLength(1)
+    await sessions.interrupt(chat.id)
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    expect(sessions.queued(chat.id)).toEqual([])
+    expect(sessions.isRunning(chat.id)).toBe(false)
+    expect(kinds().filter((k) => k === 'user')).toHaveLength(1)
+  })
 })

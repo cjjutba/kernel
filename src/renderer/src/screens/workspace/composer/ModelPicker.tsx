@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MODELS, type Effort, type ModelId } from '@shared/types'
-import { Icon, useEscape } from '../../../ui'
+import { actions } from '../../../store'
+import { useEscape } from '../../../ui'
 
 export const EFFORTS: { id: Effort; label: string }[] = [{ id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' }, { id: 'xhigh', label: 'Extra high' }]
 
-/** Model and effort, with a search box. Arrow keys move, Enter picks, Escape closes. */
+/**
+ * Model and effort (NewWorkspaceModel.png). Type to search the models, arrow keys move, Enter picks.
+ * Ctrl+Cmd+1 to 4 pick a model and Cmd+Shift+/ cycles the effort while it is open.
+ */
 export function ModelPicker({ model, effort, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: ModelId; effort: Effort; onModel: (m: ModelId) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
   useEscape(onClose)
+  useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
   useEffect(() => {
     const down = (e: MouseEvent) => {
       const t = e.target as Node
@@ -18,32 +23,40 @@ export function ModelPicker({ model, effort, onModel, onEffort, onClose, anchorR
     document.addEventListener('mousedown', down)
     return () => document.removeEventListener('mousedown', down)
   }, [onClose, anchorRef])
-  useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
 
+  const effortLabel = EFFORTS.find((x) => x.id === effort)?.label ?? effort
+  const cycle = () => onEffort(EFFORTS[(EFFORTS.findIndex((x) => x.id === effort) + 1) % EFFORTS.length].id)
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    const models = MODELS.filter((m) => !needle || m.label.toLowerCase().includes(needle)).map((m) => ({ key: m.id, label: m.label, on: m.id === model, pick: () => onModel(m.id) }))
-    const efforts = EFFORTS.filter((e) => !needle || `effort ${e.label}`.toLowerCase().includes(needle)).map((e) => ({ key: `effort-${e.id}`, label: `Effort: ${e.label}`, on: e.id === effort, pick: () => onEffort(e.id) }))
-    return [...models, ...efforts]
-  }, [q, model, effort, onModel, onEffort])
+    return MODELS.map((m, i) => ({ ...m, n: i + 1 })).filter((m) => !needle || m.label.toLowerCase().includes(needle))
+  }, [q])
 
   const onKey = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) { e.preventDefault(); const m = MODELS[Number(e.key) - 1]; if (m) onModel(m.id); return }
+    if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) { e.preventDefault(); cycle(); return }
     if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(rows.length - 1, i + 1)) }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)) }
-    else if (e.key === 'Enter') { e.preventDefault(); rows[at]?.pick() }
+    else if (e.key === 'Enter') { e.preventDefault(); if (rows[at]) onModel(rows[at].id) }
   }
 
   return (
-    <div ref={ref} className="menu cmp-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey}>
-      <div className="pick-search"><Icon name="search" size={13} /><input aria-label="Search models and effort" placeholder="Search" autoComplete="off" value={q} onChange={(e) => { setQ(e.target.value); setAt(0) }} /></div>
-      <div role="listbox" aria-label="Models and effort">
-        {rows.map((r, i) => (
-          <button key={r.key} type="button" role="option" aria-selected={r.on} className="menu-item pick-row" data-active={i === at} onMouseEnter={() => setAt(i)} onClick={r.pick}>
-            <span className="grow ellipsis">{r.label}</span>
-            {r.on && <Icon name="check" size={13} />}
+    <div ref={ref} className="menu cmp-pop model-pop" role="dialog" aria-label="Model and effort" onKeyDown={onKey}>
+      <input className="pick-search" aria-label="Search models" placeholder="Search models" autoComplete="off" value={q} onChange={(e) => { setQ(e.target.value); setAt(0) }} />
+      <div className="pick-body" role="listbox" aria-label="Models">
+        {rows.map((m, i) => (
+          <button key={m.id} type="button" role="option" aria-selected={m.id === model} className="menu-item pick-row" data-active={i === at} onMouseEnter={() => setAt(i)} onClick={() => onModel(m.id)}>
+            <span style={{ fontWeight: 500 }}>{m.label}</span>
+            <span className="grow muted">{m.id === model ? effortLabel : ''}</span>
+            <span className="muted" style={{ fontSize: 12 }}>{m.id === model ? 'Selected' : `^⌘${m.n}`}</span>
           </button>
         ))}
-        {!rows.length && <p className="muted" style={{ margin: '8px', fontSize: 12.5 }}>Nothing matches “{q}”.</p>}
+        {!rows.length && <p className="muted" style={{ margin: '8px', fontSize: 12.5 }}>No model matches “{q}”.</p>}
+        <div className="menu-sep" />
+        <button type="button" className="menu-item pick-row" onClick={cycle}><span className="grow">Effort</span><span className="muted">{effortLabel}</span></button>
+      </div>
+      <div className="pick-foot">
+        <button type="button" className="pick-link" onClick={() => { onClose(); actions.ui.go({ name: 'settings', page: 'models' }) }}>Edit defaults</button>
+        <span>⌘⇧/ cycle effort</span>
       </div>
     </div>
   )

@@ -55,6 +55,27 @@ describe('hunks', () => {
     expect(committed).not.toContain('mine 12')
     expect(await readFile(join(repo, 'checkout.ts'), 'utf8')).toContain('mine 12')
     expect((await git(repo, 'log', '-1', '--format=%s')).trim()).toBe('Round once')
+
+    // HEAD moved past the baseline. The committed hunk is gone, and the earlier change is still "mine", not reversed.
+    const after = await listHunks(repo, { since: baseline, baselineRef: baseline })
+    expect(after.map((h) => [h.owner, h.lines, h.added, h.removed])).toEqual([['mine', '9-15', 1, 1]])
+    expect(after[0].patch).toContain('+mine 12')
+    await commitHunks(repo, after, 'Mine too')
+    expect(await git(repo, 'show', 'HEAD:checkout.ts')).toContain('mine 12')
+    expect(await listHunks(repo, { since: baseline, baselineRef: baseline })).toEqual([])
+  })
+
+  it('treats a clean start as having no earlier changes, and lists agent hunks again after a commit', async () => {
+    const repo = await tempRepo({ 'a.ts': lines(30) })
+    const baseline = (await git(repo, 'rev-parse', 'HEAD')).trim()
+    await writeFile(join(repo, 'a.ts'), lines(30, { 3: 'one', 25: 'two' }))
+    const hunks = await listHunks(repo, { since: baseline, baselineRef: baseline })
+    expect(hunks.map((h) => h.owner)).toEqual(['agent', 'agent'])
+    await commitHunks(repo, [hunks[0]], 'First')
+    const rest = await listHunks(repo, { since: baseline, baselineRef: baseline })
+    expect(rest.map((h) => h.lines)).toEqual(['22-28'])
+    await commitHunks(repo, rest, 'Second')
+    expect(await listHunks(repo, { since: baseline, baselineRef: baseline })).toEqual([])
   })
 
   it('refuses an empty pick', async () => {

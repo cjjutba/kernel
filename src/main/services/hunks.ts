@@ -31,18 +31,33 @@ export function splitHunks(diff: string, owner: Hunk['owner'], seen: Map<string,
   return out
 }
 
+/** The +/- lines of a patch, without line numbers or context, so a hunk can be recognised after its context moves. */
+const changedLines = (patch: string) => patch.split('\n').filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---) /.test(l)).join('\n')
+
 /**
- * Hunks of tracked files. `mine` hunks are changes that predate the workspace (HEAD to the baseline snapshot);
- * `agent` hunks are everything since. Without a baseline every hunk is the agent's.
+ * HEAD when the workspace started. A baseline from `git stash create` is a commit on top of it (its first parent);
+ * a clean tree has no stash, and the baseline is HEAD itself.
  */
-export async function listHunks(cwd: string, o: { since: string; baselineRef?: string; head?: string }, path?: string): Promise<Hunk[]> {
+async function headAtStart(cwd: string, baselineRef: string): Promise<string> {
+  const subject = (await git(cwd, 'log', '-1', '--format=%s', baselineRef)).trim()
+  return /^(WIP on|On) /.test(subject) ? (await git(cwd, 'rev-parse', `${baselineRef}^1`)).trim() : baselineRef
+}
+
+/**
+ * Uncommitted hunks of tracked files. `mine` hunks are changes that predate the workspace (HEAD at start to the baseline
+ * snapshot); `agent` hunks are everything since (baseline, or `since` without one, to the working tree). Both ranges are
+ * fixed, so a hunk that was committed is dropped by checking it against HEAD to the working tree, not by moving a range.
+ */
+export async function listHunks(cwd: string, o: { since: string; baselineRef?: string }, path?: string): Promise<Hunk[]> {
   const scope = path ? ['--', path] : []
   const seen = new Map<string, number>()
-  const mine = o.baselineRef && o.baselineRef !== (o.head ?? 'HEAD')
-    ? splitHunks(await git(cwd, 'diff', '--no-color', o.head ?? 'HEAD', o.baselineRef, ...scope), 'mine', seen)
+  const mineAll = o.baselineRef
+    ? splitHunks(await git(cwd, 'diff', '--no-color', await headAtStart(cwd, o.baselineRef), o.baselineRef, ...scope), 'mine', seen)
     : []
-  const agent = splitHunks(await git(cwd, 'diff', '--no-color', o.since, ...scope), 'agent', seen)
-  return [...agent, ...mine].sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner))
+  const agentAll = splitHunks(await git(cwd, 'diff', '--no-color', o.since, ...scope), 'agent', seen)
+  const pending = splitHunks(await git(cwd, 'diff', '--no-color', 'HEAD', ...scope), 'agent', new Map()).map((h) => `${h.path}\0${changedLines(h.patch)}`)
+  const open = (h: Hunk) => pending.some((p) => p.startsWith(`${h.path}\0`) && p.includes(changedLines(h.patch)))
+  return [...agentAll.filter(open), ...mineAll.filter(open)].sort((a, b) => a.path.localeCompare(b.path) || a.owner.localeCompare(b.owner))
 }
 
 /** Commit exactly the picked hunks. The index starts from HEAD, so anything else stays in the working tree. */

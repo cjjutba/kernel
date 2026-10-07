@@ -28,6 +28,8 @@ export class InputQueue<T> implements AsyncIterable<T> {
 
 interface Live {
   query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
+  /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
+  sendNext?: boolean
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
@@ -98,7 +100,8 @@ export class Sessions {
     const pick = this.queued(chatId).find((q) => q.id === id)
     if (!pick) return this.queued(chatId)
     this.setQueue(chatId, [pick, ...this.queued(chatId).filter((q) => q.id !== id)])
-    if (this.live.get(chatId)?.running) await this.interrupt(chatId)
+    const live = this.live.get(chatId)
+    if (live?.running) { live.sendNext = true; await this.interrupt(chatId) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -276,10 +279,14 @@ export class Sessions {
         const ok = msg.subtype === 'success'
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
         if (ok || !live.interrupted) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
+        const stopped = live.interrupted && !live.sendNext
         live.interrupted = false
+        live.sendNext = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat)
-        this.drain(chatId)
+        // Stop means stop: held messages are dropped, not sent. Send now keeps them.
+        if (stopped) this.setQueue(chatId, [])
+        else this.drain(chatId)
         return
       }
       case 'rate_limit_event': {
