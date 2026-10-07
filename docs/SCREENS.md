@@ -6,17 +6,17 @@ Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src
 
 | Screen | Title on canvas | PNG | Markup | Issue | Lane | Route | Component | Status |
 |---|---|---|---|---|---|---|---|---|
-| Welcome | Welcome | [png](../design/screens/Welcome.png) | [dc.html](../design/canvas/project/Welcome.dc.html) | KERNEL-27 | Platform | onboarding/welcome | `screens/onboarding/Welcome.tsx` | todo |
-| LoadingApp | Starting up | [png](../design/screens/LoadingApp.png) | [dc.html](../design/canvas/project/LoadingApp.dc.html) | KERNEL-27 | Platform | before boot (`system.booted`) | `screens/onboarding/Loading.tsx` | todo |
+| Welcome | Welcome | [png](../design/screens/Welcome.png) | [dc.html](../design/canvas/project/Welcome.dc.html) | KERNEL-27 | Platform | onboarding/welcome | `screens/onboarding/Welcome.tsx` | done |
+| LoadingApp | Starting up | [png](../design/screens/LoadingApp.png) | [dc.html](../design/canvas/project/LoadingApp.dc.html) | KERNEL-27 | Platform | before boot (`system.booted`) | `screens/onboarding/Loading.tsx` | done |
 | HomeEmpty | Home before any rooms | [png](../design/screens/HomeEmpty.png) | [dc.html](../design/canvas/project/HomeEmpty.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | todo |
 | ConnectRepo | Connect a repo | [png](../design/screens/ConnectRepo.png) | [dc.html](../design/canvas/project/ConnectRepo.dc.html) | KERNEL-20 | Team | modal connectRepo | `screens/rooms/ConnectRepo.tsx` | todo |
 | OpenFolder | Open a folder | [png](../design/screens/OpenFolder.png) | [dc.html](../design/canvas/project/OpenFolder.dc.html) | KERNEL-20 | Team | modal openFolder | `screens/rooms/OpenFolder.tsx` | todo |
-| CheckHooks | Check hooks | [png](../design/screens/CheckHooks.png) | [dc.html](../design/canvas/project/CheckHooks.dc.html) | KERNEL-27 | Platform | modal checkHooks | `screens/onboarding/CheckHooks.tsx` | todo |
-| SetupClaudeMissing | Claude Code not installed | [png](../design/screens/SetupClaudeMissing.png) | [dc.html](../design/canvas/project/SetupClaudeMissing.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | todo |
-| SetupClaudeOld | Claude Code too old | [png](../design/screens/SetupClaudeOld.png) | [dc.html](../design/canvas/project/SetupClaudeOld.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | todo |
-| SetupTeamsOff | Agent teams turned off | [png](../design/screens/SetupTeamsOff.png) | [dc.html](../design/canvas/project/SetupTeamsOff.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | todo |
-| SetupGhSignedOut | GitHub CLI signed out | [png](../design/screens/SetupGhSignedOut.png) | [dc.html](../design/canvas/project/SetupGhSignedOut.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | todo |
-| SetupPortBusy | Hook port in use | [png](../design/screens/SetupPortBusy.png) | [dc.html](../design/canvas/project/SetupPortBusy.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | todo |
+| CheckHooks | Check hooks | [png](../design/screens/CheckHooks.png) | [dc.html](../design/canvas/project/CheckHooks.dc.html) | KERNEL-27 | Platform | modal checkHooks | `screens/onboarding/CheckHooks.tsx` | done |
+| SetupClaudeMissing | Claude Code not installed | [png](../design/screens/SetupClaudeMissing.png) | [dc.html](../design/canvas/project/SetupClaudeMissing.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
+| SetupClaudeOld | Claude Code too old | [png](../design/screens/SetupClaudeOld.png) | [dc.html](../design/canvas/project/SetupClaudeOld.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
+| SetupTeamsOff | Agent teams turned off | [png](../design/screens/SetupTeamsOff.png) | [dc.html](../design/canvas/project/SetupTeamsOff.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
+| SetupGhSignedOut | GitHub CLI signed out | [png](../design/screens/SetupGhSignedOut.png) | [dc.html](../design/canvas/project/SetupGhSignedOut.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
+| SetupPortBusy | Hook port in use | [png](../design/screens/SetupPortBusy.png) | [dc.html](../design/canvas/project/SetupPortBusy.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
 | RoomSetup | Setting up a new room | [png](../design/screens/RoomSetup.png) | [dc.html](../design/canvas/project/RoomSetup.dc.html) | KERNEL-20 | Team | onboarding/room | `screens/rooms/RoomSetup.tsx` | todo |
 | Home | Home | [png](../design/screens/Home.png) | [dc.html](../design/canvas/project/Home.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | todo |
 | Inbox | Inbox | [png](../design/screens/Inbox.png) | [dc.html](../design/canvas/project/Inbox.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | todo |

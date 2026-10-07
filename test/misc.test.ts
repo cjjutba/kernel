@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { withKernelHooks, withoutKernelHooks, installedEvents, KERNEL_HOOK_EVENTS } from '../src/main/services/hooksInstaller'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { installHooks, withKernelHooks, withoutKernelHooks, installedEvents, KERNEL_HOOK_EVENTS } from '../src/main/services/hooksInstaller'
 import { prStateOf } from '../src/main/services/github'
-import { compareVersions, parseClaudeVersion } from '../src/main/services/preflight'
+import { compareVersions, nextFreePort, parseClaudeVersion, parseLsof, planName } from '../src/main/services/preflight'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { matchesRule, describeTool, Approvals } from '../src/main/services/approvals'
 import { InputQueue, toUserMessage } from '../src/main/services/sessions'
@@ -37,11 +40,35 @@ describe('pull request state', () => {
   })
 })
 
+describe('installHooks', () => {
+  it('keeps the old file as a backup and moves the port on a second install', async () => {
+    const file = join(mkdtempSync(join(tmpdir(), 'kernel-hooks-')), 'settings.json')
+    writeFileSync(file, JSON.stringify({ theme: 'dark' }))
+    expect(await installHooks(file, 7420, 300)).toHaveLength(KERNEL_HOOK_EVENTS.length)
+    expect(JSON.parse(readFileSync(file + '.kernel-backup', 'utf8'))).toEqual({ theme: 'dark' })
+    await installHooks(file, 7421, 300)
+    const text = readFileSync(file, 'utf8')
+    expect(text).toContain('localhost:7421/hooks')
+    expect(text).not.toContain('localhost:7420/hooks')
+  })
+})
+
 describe('preflight', () => {
   it('compares versions', () => {
     expect(compareVersions('2.1.284', '2.1.80')).toBe(1)
     expect(compareVersions('2.0.14', '2.1.80')).toBe(-1)
     expect(parseClaudeVersion('2.1.284 (Claude Code)')).toBe('2.1.284')
+  })
+  it('finds the next free port', async () => {
+    const taken = new Set([7420, 7421])
+    expect(await nextFreePort(7420, async (p) => taken.has(p))).toBe(7422)
+    await expect(nextFreePort(7420, async () => true)).rejects.toThrow('No free port')
+  })
+  it('reads the process on a busy port and the plan name', () => {
+    expect(parseLsof('p4821\ncnode\n')).toEqual({ pid: 4821, name: 'node' })
+    expect(parseLsof('')).toBeNull()
+    expect(planName('max')).toBe('Claude Max')
+    expect(planName(undefined)).toBe('Claude account')
   })
 })
 
