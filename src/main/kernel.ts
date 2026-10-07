@@ -2,11 +2,11 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
-import { loadAgents, saveAgent } from './services/agents'
+import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
@@ -35,7 +35,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  */
 export const UNBUILT = {
   'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
-  'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
@@ -63,6 +62,7 @@ export class Kernel {
   settings!: AppSettings
   private hookServer?: Server
   private agentCache = new Map<string, AgentDef[]>()
+  private agentWatchers = new Map<string, () => void>()
   private statuses = new Map<string, Record<string, AgentStatus>>()
   private prTimer?: NodeJS.Timeout
   /** When each hook event last arrived from a real session. The test event is not counted. */
@@ -162,6 +162,8 @@ export class Kernel {
     this.notifications.detach()
     this.tasks.detach()
     clearInterval(this.prTimer)
+    for (const close of this.agentWatchers.values()) close()
+    this.agentWatchers.clear()
     this.sessions.stopAll()
     stopAllScripts()
     await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
@@ -344,6 +346,8 @@ export class Kernel {
       if (deleteWorktrees && ws.mode === 'worktree' && ws.status !== 'archived') await removeWorktree(room.path, ws.path, { force: true }).catch(() => undefined)
     }
     this.store.deleteRoom(roomId)
+    this.agentWatchers.get(roomId)?.()
+    this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
     this.statuses.delete(roomId)
   }
@@ -352,7 +356,82 @@ export class Kernel {
     const room = this.mustRoom(roomId)
     const list = await loadAgents(room.path)
     this.agentCache.set(roomId, list)
+    this.watchTeam(roomId)
     return list
+  }
+
+  /** Files in .claude/agents changed from outside Kernel (or from here). Reload, and tell the renderer when the team differs. */
+  private watchTeam(roomId: string) {
+    if (this.agentWatchers.has(roomId)) return
+    const room = this.store.room(roomId)
+    if (!room) return
+    this.agentWatchers.set(roomId, watchAgents(room.path, () => {
+      void (async () => {
+        if (!this.store.room(roomId)) return
+        const before = JSON.stringify(this.agentCache.get(roomId))
+        const list = await this.agents(roomId)
+        if (JSON.stringify(list) !== before) this.announceTeam(roomId, list)
+      })().catch(() => undefined)
+    }))
+  }
+
+  private announceTeam(roomId: string, list: AgentDef[]) {
+    const room = this.mustRoom(roomId)
+    const known = this.statuses.get(roomId) ?? {}
+    bus.push({ type: 'agents', roomId, agents: list })
+    for (const a of list) if (!known[a.id]) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+  }
+
+  /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
+  async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit): Promise<AgentDef> {
+    const room = this.mustRoom(roomId)
+    const saved = await updateAgent(room.path, agentId, patch)
+    this.announceTeam(roomId, await this.agents(roomId))
+    return saved
+  }
+
+  /** New agent > Create agent. The file joins .claude/agents and the agent takes a desk (the next free one, or the end of `room.desks`). */
+  async hireFromDraft(roomId: string, draft: AgentDraft): Promise<AgentDef> {
+    const room = this.mustRoom(roomId)
+    const def = await createAgent(room.path, draft)
+    if (room.desks && !room.desks.includes(def.id)) await this.updateRoom(roomId, { desks: [...room.desks, def.id] })
+    const list = await this.agents(roomId)
+    this.announceTeam(roomId, list)
+    bus.activity({ kind: 'agent.joined', roomId, agentId: def.id, actor: 'you', text: 'joined the team', object: def.name })
+    return list.find((a) => a.id === def.id) ?? def
+  }
+
+  /**
+   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo` or the Lead, and the desk frees up.
+   * A turn already running keeps its own copy of the agent and finishes. The Lead cannot be retired, because nobody would plan.
+   */
+  async retire(roomId: string, agentId: string, handoffTo?: string): Promise<void> {
+    const room = this.mustRoom(roomId)
+    const team = await this.agents(roomId)
+    const agent = team.find((a) => a.id === agentId)
+    if (!agent) throw new Error(`${agentId} is not on this team.`)
+    if (agent.lead) throw new Error(`${agent.name} leads this room. Mark another agent with "lead: true" first.`)
+    const heir = team.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId) ?? team.find((a) => a.lead)
+    await retireAgent(room.path, agentId)
+    for (const ws of this.store.workspaces(roomId)) {
+      if (ws.agentId === agentId && ws.status !== 'archived' && heir) this.saveWs({ ...ws, agentId: heir.id })
+    }
+    if (room.desks?.includes(agentId)) await this.updateRoom(roomId, { desks: room.desks.filter((d) => d !== agentId) })
+    const statuses = this.statuses.get(roomId)
+    if (statuses) delete statuses[agentId]
+    const list = await this.agents(roomId)
+    bus.push({ type: 'agents', roomId, agents: list })
+    bus.activity({ kind: 'agent.retired', roomId, agentId, actor: 'you', text: 'retired', object: agent.name })
+  }
+
+  async restore(roomId: string, agentId: string): Promise<AgentDef> {
+    const room = this.mustRoom(roomId)
+    await restoreAgent(room.path, agentId)
+    const list = await this.agents(roomId)
+    this.announceTeam(roomId, list)
+    const def = list.find((a) => a.id === agentId)
+    if (!def) throw new Error(`${agentId} could not be restored.`)
+    return def
   }
 
   private agentsSync(roomId: string) { return this.agentCache.get(roomId) ?? [] }
@@ -745,7 +824,12 @@ export class Kernel {
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote: text })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
-      'agents.list': async ({ roomId }) => this.agents(roomId),
+      'agents.list': async ({ roomId, retired }) => (retired ? loadAgents(this.mustRoom(roomId).path, { retired: true }) : this.agents(roomId)),
+      'agents.save': async ({ roomId, agentId, patch }) => this.saveAgentEdit(roomId, agentId, patch),
+      'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
+      'agents.create': async ({ roomId, draft }) => this.hireFromDraft(roomId, draft),
+      'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
+      'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),

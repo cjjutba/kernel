@@ -2,6 +2,7 @@ import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, Workspace } f
 import type { Fixture } from '../../fixtures'
 import type { Handlers } from './kernel'
 import { DEFAULT_SETTINGS } from './services/settings'
+import { agentFromFile, draftAgent } from './services/agents'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }
@@ -68,11 +69,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.list': async ({ roomId, retired }) => (f.agents[roomId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ roomId }) => f.status[roomId] ?? {},
     'agents.save': async ({ roomId, agentId, patch }) => ({ ...agentOf(roomId, agentId), ...patch }),
-    'agents.draft': async ({ description, name, model }) => {
-      const id = (name ?? 'new-agent').toLowerCase().replace(/[^a-z0-9]+/g, '-')
-      return { id, name: name ?? 'New agent', description, model: model ?? 'sonnet', tools: [], text: `---\nname: ${id}\ndescription: ${description}\n---\n`, file: `.claude/agents/${id}.md` }
-    },
-    'agents.create': async ({ draft }) => ({ id: draft.id, name: draft.name, role: draft.name, description: draft.description, model: draft.model, tools: draft.tools, lead: false, prompt: '', file: draft.file }),
+    'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
+    'agents.create': async ({ draft }) => ({ ...agentFromFile(draft.file, draft.text), joinedAt: Date.now() }),
     'agents.retire': async () => ok,
     'agents.restore': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), retired: false }),
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
