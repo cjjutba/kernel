@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -17,7 +17,7 @@ import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
-import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from './services/rooms'
+import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
@@ -34,12 +34,10 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
 export const UNBUILT = {
   'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
   'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
-  'agents.seed': 'KERNEL-22',
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'tasks.list': 'KERNEL-18',
   'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
-  'chats.restart': 'KERNEL-22',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
   'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
@@ -112,6 +110,8 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
+    // A room paused before the app quit is still paused: its agents wait and its sends are held.
+    for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -275,6 +275,48 @@ export class Kernel {
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
       return { detail: list.length ? `${list.map((a) => a.name).join(', ')} from .claude/agents` : 'No agents in .claude/agents' }
     })
+  }
+
+  /**
+   * Pause a room: every agent finishes the step it is on, then waits, and sends are held until Resume.
+   * `by` is who asked. A limit pause (`limit`) is lifted by whoever detects the reset, with `resumeRoom`.
+   */
+  pauseRoom(roomId: string, by: 'you' | 'limit'): Room {
+    const room = this.store.saveRoom({ ...this.mustRoom(roomId), paused: true, pausedBy: by })
+    this.sessions.pause(roomId)
+    for (const a of this.agentsSync(roomId)) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
+    bus.push({ type: 'room', room })
+    bus.activity({ kind: 'room.paused', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'paused' : 'paused the room for', object: by === 'you' ? room.name : 'a usage limit' })
+    return room
+  }
+
+  resumeRoom(roomId: string): Room {
+    const { pausedBy: _by, ...rest } = this.mustRoom(roomId)
+    const room = this.store.saveRoom({ ...rest, paused: false })
+    this.sessions.resume(roomId)
+    const live = new Map(this.store.workspaces(roomId).map((w) => [w.agentId, this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id))]))
+    for (const a of this.agentsSync(roomId)) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: live.get(a.id) ? 'working' : 'idle' })
+    bus.push({ type: 'room', room })
+    bus.activity({ kind: 'room.resumed', roomId, actor: 'you', text: 'resumed', object: room.name })
+    return room
+  }
+
+  /** Empty room: write a team into .claude/agents and seat it. Refuses a room that already has agents. */
+  async seedAgents(roomId: string, template: TeamTemplate): Promise<AgentDef[]> {
+    const room = this.mustRoom(roomId)
+    if ((await agentFiles(room.path)).length) throw new Error('This room already has agents.')
+    if (template.kind === 'copy') {
+      const from = this.mustRoom(template.fromRoomId)
+      if (from.id === room.id) throw new Error('Pick a different room to copy from.')
+      if (!(await copyAgentFiles(from.path, room.path))) throw new Error(`${from.name} has no agents to copy.`)
+    } else {
+      if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
+      await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : ['kai', 'noor', 'ivy', 'theo'])
+    }
+    const list = await this.agents(roomId)
+    bus.push({ type: 'agents', roomId, agents: list })
+    for (const a of list) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
+    return list
   }
 
   async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks'>>): Promise<Room> {
@@ -646,12 +688,9 @@ export class Kernel {
       'rooms.inspectFolder': async ({ path }) => inspectFolder(path, this.home),
       'rooms.recentFolders': async () => recentFolders(this.store.rooms().map((r) => r.path), this.home),
       'github.repos': async ({ query }) => listRepos(query),
-      'rooms.setPaused': async ({ roomId, paused }) => {
-        const room = this.store.saveRoom({ ...this.mustRoom(roomId), paused })
-        if (paused) for (const ws of this.store.workspaces(roomId)) for (const c of this.store.chats(ws.id)) await this.sessions.interrupt(c.id)
-        for (const a of this.agentsSync(roomId)) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: paused ? 'paused' : 'idle' })
-        return room
-      },
+      'rooms.setPaused': async ({ roomId, paused }) => (paused ? this.pauseRoom(roomId, 'you') : this.resumeRoom(roomId)),
+      'agents.seed': async ({ roomId, template }) => this.seedAgents(roomId, template),
+      'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
       'rooms.brief': async ({ roomId, text, agentId }) => {
         let chat: Chat
         if (agentId) {
