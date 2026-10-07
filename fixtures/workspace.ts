@@ -1,4 +1,4 @@
-import type { Approval, Chat, ChatItem, FileEntry, Hunk, PrInfo, Skill, Workspace } from '@shared/types'
+import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -134,6 +134,18 @@ const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() =
   ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
 }))
 
+/** The invoice table's turns, newest first, as the Checkpoints drawer lists them (WorkspaceCheckpoints.png). */
+const checkpoints: Checkpoint[] = ([
+  ['4', 10, 31, 'Done. The table sorts by date, client and amount', [4, 412, 38]],
+  ['3', 10, 24, 'Added the empty and error states', [2, 88, 9]],
+  ['2', 10, 18, 'Sorting on the table header', [1, 96, 12]],
+  ['1', 10, 14, 'Read the plan and the current table', [0, 0, 0]],
+  ['0', 10, 12, 'Build T-14 from the plan', [0, 0, 0]]
+] as const).map(([id, h, m, title, [files, added, removed]]) => ({
+  id, workspaceId: ids.table, chatId: ids.tableChat, ts: at(h, m), title, stat: { files, added, removed },
+  ref: `refs/kernel/checkpoints/${ids.table}/${id}`, current: id === '4', ...(id === '0' ? { start: true } : {})
+}))
+
 const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, tab } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
   ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
@@ -161,6 +173,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: true } }
+  })),
+  WorkspaceCheckpoints: scene(() => ({
+    checkpoints: { [ids.table]: checkpoints },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: true, toolsOpen: false } }
   })),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],

@@ -29,6 +29,7 @@ import { commitHunks, listHunks } from './services/hunks'
 import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
+import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 
 const COPY = 'fork:'
 
@@ -43,7 +44,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
   'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
@@ -102,7 +102,10 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws) => { void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined) }
+      onTurnDone: (ws, chat) => {
+        void this.checkpoint(ws, chat).catch(() => undefined)
+        void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined)
+      }
     })
     this.overlaps = new Overlaps({
       workspaces: (roomId) => this.store.workspaces(roomId),
@@ -517,6 +520,8 @@ export class Kernel {
     if (!ready) return this.saveWs({ ...ws, status: 'failed' })
     const done = this.saveWs({ ...ws, status: 'ready' })
     if (s.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: path, port, root: room.path })
+    // The start of chat: reverting to it undoes everything the agent did.
+    await snapshot(ws, { chatId: chat.id, title: o.prompt, start: true }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }), () => undefined)
     await this.sessions.send(chat.id, [{ type: 'text', text: o.prompt }, ...(o.parts ?? [])])
     return done
   }
@@ -604,6 +609,37 @@ export class Kernel {
   async hunks(id: string, path?: string) {
     const ws = this.mustWs(id)
     return listHunks(ws.path, { baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
+  }
+
+  // ---------- checkpoints
+
+  /** Save the worktree after a turn, titled with the prompt that started the turn. */
+  async checkpoint(ws: Workspace, chat: Chat) {
+    const items = this.store.items(chat.id)
+    const user = [...items].reverse().find((i) => i.kind === 'user')
+    const text = user?.kind === 'user' ? user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ') : ''
+    const c = await snapshot(ws, { chatId: chat.id, title: text || chat.title })
+    bus.push({ type: 'checkpoint', checkpoint: c })
+    return c
+  }
+
+  /** Restore a workspace's files to a checkpoint. Later changes go to a backup branch, and the chat gets a note saying so. */
+  async revertCheckpoint(workspaceId: string, checkpointId: string): Promise<{ backupBranch: string }> {
+    const ws = this.mustWs(workspaceId)
+    if (this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id))) throw new Error('An agent is still working in this workspace. Stop it, then revert.')
+    const r = await revertTo(ws, checkpointId)
+    bus.push({ type: 'checkpoint', checkpoint: r.checkpoint })
+    const time = clock(r.checkpoint.ts)
+    const tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
+    const chat = tabs.find((c) => c.id === r.checkpoint.chatId) ?? tabs[0]
+    const what = r.checkpoint.start ? 'the start of the chat' : `${time}, "${checkpointTitle(r.checkpoint.title)}"`
+    if (chat) {
+      const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text: `Reverted files to ${what}. Later changes are saved on ${r.backupBranch}.` }
+      this.store.saveItem(chat.id, item)
+      bus.push({ type: 'chat.item', chatId: chat.id, item })
+    }
+    bus.activity({ kind: 'checkpoint.reverted', actor: 'you', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `reverted files to ${time} in`, object: ws.name, data: { backupBranch: r.backupBranch } })
+    return { backupBranch: r.backupBranch }
   }
 
   // ---------- chats
@@ -985,6 +1021,8 @@ export class Kernel {
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : 'New chat', { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
+      'checkpoints.list': async ({ workspaceId }) => listCheckpoints(this.mustWs(workspaceId)),
+      'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId),
       'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
       'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {

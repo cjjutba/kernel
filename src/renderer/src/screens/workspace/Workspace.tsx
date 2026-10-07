@@ -5,6 +5,7 @@ import { actions, go, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, fileTab } from './ChatTabs'
+import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { Composer } from './composer/Composer'
 import { DiffView, FileView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
@@ -98,6 +99,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} />}
+          {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
         </section>
         {!view.focus && (
           <aside aria-label="Workspace panels" className="ws-aside">
