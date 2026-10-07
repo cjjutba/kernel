@@ -14,7 +14,7 @@ const SOURCES: { id: RoomKind; icon: IconName; title: string; sub: string }[] = 
 
 /** NewRoom.png: name it, pick where it comes from, pick the team, create. Connect a repo and Open a folder fill the source. */
 export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
-  useLayoutEffect(() => { if (prefill) resetDraft({ ...prefill, desc: prefill.desc ?? '', baseBranch: prefill.baseBranch ?? 'main', named: true }) }, [])
+  useLayoutEffect(() => { if (prefill) resetDraft({ ...prefill, desc: prefill.desc ?? '', baseBranch: prefill.baseBranch ?? '', named: true }) }, [])
   const d = useDraft()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,7 +78,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
             {SOURCES.map((s) => (
               <button
                 key={s.id} type="button" role="radio" aria-checked={d.source === s.id} className="nr-source"
-                onClick={() => patchDraft({ source: s.id, from: s.id === d.source ? d.from : '', baseBranch: s.id === 'folder' ? '' : 'main', initGit: false, cloneTo: undefined })}
+                onClick={() => patchDraft({ source: s.id, from: s.id === d.source ? d.from : '', baseBranch: '', initGit: false, cloneTo: undefined })}
               >
                 <Icon name={s.icon} size={16} />
                 <span className="col" style={{ gap: 2 }}><span className="nr-source-title">{s.title}</span><span className="nr-source-sub">{s.sub}</span></span>
@@ -100,7 +100,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
           </div>
           <div className="col" style={{ gap: 6 }}>
             <label htmlFor={`${id}b`} className="nr-label">Base branch</label>
-            <input id={`${id}b`} className="nr-field mono nr-branch" autoComplete="off" value={d.baseBranch} placeholder="main" onChange={(e) => patchDraft({ baseBranch: e.target.value })} />
+            <input id={`${id}b`} className="nr-field mono nr-branch" autoComplete="off" value={d.baseBranch} placeholder={d.source === 'folder' ? 'Current branch' : 'Detected after clone'} onChange={(e) => patchDraft({ baseBranch: e.target.value })} />
           </div>
         </div>
 

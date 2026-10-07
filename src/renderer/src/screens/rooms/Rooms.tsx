@@ -3,6 +3,7 @@ import type { Room } from '@shared/types'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
+import { openNewRoom } from './draft'
 import { ago, initial, roomLetter, roomState, sourceOf, stateLabel } from './roomInfo'
 import './rooms.css'
 
@@ -55,7 +56,7 @@ export function Rooms() {
         <Icon name="rooms" />
         <h1>All rooms</h1>
         <span className="grow" />
-        <Button variant="primary" icon="plus" onClick={() => actions.ui.openModal({ name: 'newRoom' })}>New room</Button>
+        <Button variant="primary" icon="plus" onClick={() => openNewRoom()}>New room</Button>
       </header>
       <div className="rm-tabs" role="group" aria-label="Filter rooms">
         {tabs.map(([id, label, n]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="rm-n">{n}</span></Pill>)}

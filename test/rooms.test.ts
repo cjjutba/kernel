@@ -98,6 +98,16 @@ describe('Kernel rooms', () => {
     await k.stop()
   })
 
+  it('detects the default branch when the request names none', async () => {
+    const { k } = await kernel()
+    const repo = await tempRepo()
+    await exec('git', ['-C', repo, 'branch', '-m', 'master'])
+    const room = await k.createRoom({ source: 'folder', name: 'Old repo', from: repo, baseBranch: '', team: [], autostart: false })
+    await setupDone(room.id)
+    expect(k.store.room(room.id)?.defaultBranch).toBe('master')
+    await k.stop()
+  })
+
   it('asks before turning a plain folder into a repo, and initializes git when told to', async () => {
     const { k } = await kernel()
     const plain = await mkdtemp(join(tmpdir(), 'plain-'))

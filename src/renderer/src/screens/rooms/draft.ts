@@ -22,7 +22,7 @@ export interface RoomDraft extends Omit<NewRoomRequest, 'source' | 'from' | 'des
   named: boolean
 }
 
-const blank = (): RoomDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: 'main', team: STARTER_TEAM.map((m) => m.id), autostart: true })
+const blank = (): RoomDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: '', team: STARTER_TEAM.map((m) => m.id), autostart: true })
 
 let draft: RoomDraft = blank()
 const listeners = new Set<() => void>()

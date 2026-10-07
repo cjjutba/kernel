@@ -38,7 +38,7 @@ export function ConnectRepo() {
   const where = cloneFolder({ cloneTo, from: picked, name: '', source: 'repo' })
   const connect = () => {
     const d = getDraft()
-    patchDraft({ source: 'repo', from: picked, cloneTo, baseBranch: 'main', initGit: false, name: d.named ? d.name : titleOf(repoName) })
+    patchDraft({ source: 'repo', from: picked, cloneTo, baseBranch: '', initGit: false, name: d.named ? d.name : titleOf(repoName) })
     actions.ui.openModal({ name: 'newRoom' })
   }
   const chooseFolder = async () => {

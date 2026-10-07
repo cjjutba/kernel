@@ -1,7 +1,7 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { Button, Modal } from '../../ui'
+import { ConfirmDialog } from '../../ui'
 import { tilde } from './draft'
 import './rooms.css'
 
@@ -14,7 +14,6 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   const [worktrees, setWorktrees] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const id = useId()
   const cancel = actions.ui.closeModal
   if (!room) return null
 
@@ -32,17 +31,13 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   const n = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
 
   return (
-    <Modal
-      title={`Remove ${room.name}?`} onClose={cancel} width={460} top={222} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={cancel}>Cancel</Button><Button variant="danger" size="lg" disabled={busy} onClick={() => void remove()}>Remove room</Button></>}
+    <ConfirmDialog
+      title={`Remove ${room.name}?`} danger busy={busy} confirmLabel="Remove room" onConfirm={() => void remove()} onCancel={cancel}
+      body={`Kernel stops ${n(agents, 'agent')} and removes ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
     >
-      <div className="confirm-body" style={{ paddingBottom: 18 }}>
-        <h2 id={`${id}t`}>Remove {room.name}?</h2>
-        <p id={`${id}b`}>Kernel stops {n(agents, 'agent')} and removes {n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.</p>
-        <div className="rm-box mono"><span>{tilde(room.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>
-        <label className="rm-check"><input type="checkbox" checked={worktrees} onChange={(e) => setWorktrees(e.target.checked)} />Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</label>
-        {error && <p role="alert" className="del" style={{ color: 'var(--del)' }}>{error}</p>}
-      </div>
-    </Modal>
+      <div className="rm-box mono"><span>{tilde(room.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>
+      <label className="rm-check"><input type="checkbox" checked={worktrees} onChange={(e) => setWorktrees(e.target.checked)} />Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</label>
+      {error && <p role="alert" style={{ color: 'var(--del)' }}>{error}</p>}
+    </ConfirmDialog>
   )
 }

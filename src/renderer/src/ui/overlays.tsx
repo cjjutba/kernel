@@ -134,16 +134,17 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
 }
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
-export function ConfirmDialog({ title, body, confirmLabel, cancelLabel = 'Cancel', danger, onConfirm, onCancel }: { title: string; body: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, body, children, confirmLabel, cancelLabel = 'Cancel', danger, busy, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** Disables the confirm button while the action runs. */ busy?: boolean; onConfirm: () => void; onCancel: () => void }) {
   const id = useId()
   return (
     <Modal
       title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" onClick={onConfirm}>{confirmLabel}</Button></>}
+      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" disabled={busy} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>
         <p id={`${id}b`}>{body}</p>
+        {children}
       </div>
     </Modal>
   )
