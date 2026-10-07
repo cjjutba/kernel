@@ -20,13 +20,15 @@ beforeAll(async () => {
 afterAll(() => new Promise<void>((r) => server.close(() => r())))
 
 describe('hook server', () => {
-  it('turns tool events into room activity', async () => {
+  it('turns tool events into room activity, starting the session on its first event', async () => {
     const seen: any[] = []
     const off = (e: any) => seen.push(e)
     bus.on('activity', off)
     await post({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: '/repo/src/table.tsx' }, tool_response: {}, tool_use_id: 't1' })
+    await post({ ...base, hook_event_name: 'Stop' })
     bus.off('activity', off)
-    expect(seen[0]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', roomId: 'room', agentId: 'kai' })
+    expect(seen.map((e) => e.kind)).toEqual(['session.start', 'tool.end', 'turn.done'])
+    expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', roomId: 'room', agentId: 'kai', sessionId: 'outside' })
   })
 
   it('holds a permission request until it is approved', async () => {

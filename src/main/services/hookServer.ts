@@ -22,6 +22,7 @@ export interface HookServerOptions {
  * empty response lets Claude Code show its normal prompt in the terminal.
  */
 export function startHookServer(o: HookServerOptions): Promise<Server> {
+  const sessions = new Set<string>()
   const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') return json(res, 200, { ok: true })
     if (req.method !== 'POST' || !req.url?.startsWith('/hooks')) return json(res, 404, { error: 'not found' })
@@ -33,6 +34,13 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (o.isManaged(e.session_id)) return json(res, 200, {})
     const ctx = o.resolve(e.cwd, e.session_id)
     bus.emit('hook', e, ctx)
+    // Claude Code skips http hooks for SessionStart, so the first event from a new session stands in for it.
+    if (e.hook_event_name === 'SessionEnd') sessions.delete(e.session_id)
+    else if (!sessions.has(e.session_id)) {
+      sessions.add(e.session_id)
+      const start = toActivity({ ...e, hook_event_name: 'SessionStart' } as HookPayload, ctx)
+      if (start && e.hook_event_name !== 'SessionStart') bus.activity(start)
+    }
     if (!parsed.known) return json(res, 200, {})
 
     const ev = parsed.event as HookPayload

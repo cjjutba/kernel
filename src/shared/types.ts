@@ -29,6 +29,8 @@ export interface Room {
   repo?: string
   defaultBranch: string
   paused: boolean
+  /** Bash rules CJ chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
+  allow?: string[]
   createdAt: number
 }
 

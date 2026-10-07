@@ -6,7 +6,7 @@ Kernel listens on `http://localhost:7420/hooks` (port configurable). "Install ho
 
 | Event | Matcher | Used for |
 |---|---|---|
-| SessionStart, SessionEnd | none | agent online and offline on the floor |
+| SessionStart, SessionEnd | none | agent online and offline on the floor. Claude Code skips http hooks for SessionStart, so the first event from a new session id counts as its start (D-020) |
 | UserPromptSubmit | none | "got a message" in the logs |
 | PreToolUse, PostToolUse, PostToolUseFailure | `*` | live activity: reading, editing, running |
 | PermissionRequest | `*` | approvals from outside sessions (held, see below) |
@@ -14,7 +14,7 @@ Kernel listens on `http://localhost:7420/hooks` (port configurable). "Install ho
 | Stop | none | turn finished |
 | TaskCreated, TaskCompleted, TeammateIdle | none | Board tasks and status for agent teams sessions |
 
-Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, so newer Claude Code fields never break parsing. Unknown events still parse against the base shape and are logged.
+Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, so newer Claude Code fields never break parsing. Unknown events still parse against the base shape and are logged. CLI 2.1.292 also sends `prompt_id` on every event, and `last_assistant_message`, `background_tasks` and `session_crons` on Stop; the loose schemas pass them through.
 
 ## Example entry
 

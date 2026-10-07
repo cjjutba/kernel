@@ -29,15 +29,16 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 `services/sessions.ts` runs each chat as a Claude Agent SDK `query()` in streaming input mode, with:
 - `cwd` set to the workspace path, `settingSources: ['user','project','local']` so CLAUDE.md, agents and skills load
 - `systemPrompt: { type: 'preset', preset: 'claude_code', append: <agent instructions + workspace context> }`
-- `canUseTool` routing every permission through `approvals.ts` (with the always-ask and never-allow rules from settings)
-- in-process `hooks` reporting activity, the same shape as the http hooks
+- `canUseTool` routing whatever Claude Code would prompt for through `approvals.ts`. CJ's own allow rules still apply, so on his machine that is mostly Always ask commands (D-016)
+- in-process `hooks` reporting activity, the same shape as the http hooks, plus a Bash guard that applies Never allow (`deny`) and Always ask (`ask`) and lets room "Always allow" rules through
+- `thinking: { type: 'adaptive', display: 'summarized' }` so thinking rows have text, a preset `sessionId` for new chats, and an env without API keys (D-018, D-019)
 - `mcpServers.kernel` for the Lead only (`services/kernelMcp.ts`): list_agents, list_workspaces, request_plan_approval, ask_user, create_workspace, message_agent, say, hire_agent
 - `resume` with the stored session id so chats survive restarts
-- `rate_limit_event` messages feed usage meters and limit banners
+- `rate_limit_event` messages feed usage meters and limit banners; `usage.get` also asks a live session's experimental usage call on demand (D-017)
 
 ## Hooks
 
-Sessions started outside Kernel (a normal terminal, the big terminal) report through http hooks installed in `~/.claude/settings.json`. See `docs/HOOKS.md`. Sessions Kernel started itself are ignored by the hook server, since in-process hooks already report them.
+Sessions started outside Kernel (a normal terminal, the big terminal) report through http hooks installed in `~/.claude/settings.json`. See `docs/HOOKS.md`. Sessions Kernel started itself are ignored by the hook server, since in-process hooks already report them. Claude Code doesn't send http SessionStart hooks, so the hook server treats a session's first event as its start (D-020).
 
 ## Workspaces
 
@@ -55,4 +56,4 @@ Creating, fixing and resolving PRs is delegated to the agent with instruction fi
 
 ## Testing
 
-Vitest. Engine tests use real git repos in temp folders and a real hook server on a random port. The session runner is tested through its helpers; live sessions are covered by KERNEL-6 and the screenshot harness with fixtures (KERNEL-7).
+Vitest. Engine tests use real git repos in temp folders and a real hook server on a random port. The session runner is tested through its helpers. `test/live.test.ts` runs the real round trip (room, worktree, approvals, interrupt, usage, an outside `claude -p` through http hooks written to a temp settings file) and only runs with `KERNEL_LIVE=1 KERNEL_LIVE_REPO=<repo with .claude/agents>`. The screenshot harness with fixtures comes in KERNEL-7.
