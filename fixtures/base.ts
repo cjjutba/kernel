@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, ChatItem, Room, Workspace } from '@shared/types'
+import type { AgentDef, Approval, ChatItem, FileEntry, Room, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 
 // The seed every fixture starts from. Names, branches and times follow the canvas (Main.png, Workspace.png).
@@ -31,25 +31,60 @@ const ws = (id: string, name: string, branch: string, agentId: string, port: num
   agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), ...extra
 })
 
-const tool = (n: number, name: string, label: string, detail: string, ms: number): ChatItem =>
-  ({ kind: 'tool', id: `t${n}`, ts: at(10, 27, n * 10), toolUseId: `toolu_${n}`, name, label, detail, status: 'done', durationMs: ms })
+type ToolItem = Extract<ChatItem, { kind: 'tool' }>
+let tick = 0
+const tool = (name: string, label: string, detail: string, ms: number, extra: Partial<ToolItem> = {}): ChatItem => {
+  const n = ++tick
+  return { kind: 'tool', id: `t${n}`, ts: at(10, 27, 20 + n * 10), toolUseId: `toolu_${n}`, name, label, detail, status: 'done', durationMs: ms, ...extra }
+}
+const think = (n: number, text: string): ChatItem => ({ kind: 'thinking', id: `th${n}`, ts: at(10, 27, 15 + n * 20), text })
 
+/** The finished turn on Workspace.png: 14 tool calls and 3 messages folded into one row, then the reply. */
 export const tableItems: ChatItem[] = [
   { kind: 'user', id: 'u1', ts: at(10, 27), parts: [
     { type: 'text', text: 'Build T-14 from the plan: invoice table with sorting, plus empty, loading and error states. Follow DESIGN.md and add Playwright coverage.' },
     { type: 'file', name: 'plan.md', path: 'docs/plan.md', lines: 42 }
   ] },
-  tool(1, 'Read', 'Read', 'DESIGN.md', 40),
-  tool(2, 'Read', 'Read', 'docs/plan.md', 30),
-  tool(3, 'Edit', 'Edit', 'src/app/invoices/table.tsx', 120),
-  tool(4, 'Write', 'Write', 'src/app/invoices/empty-state.tsx', 90),
-  tool(5, 'Edit', 'Edit', 'src/app/invoices/page.tsx', 80),
-  tool(6, 'Write', 'Write', 'tests/invoices.spec.ts', 110),
-  tool(7, 'Bash', 'Ran', 'pnpm vitest run', 8400),
-  tool(8, 'Bash', 'Ran', 'pnpm playwright test invoices', 21300),
+  think(1, 'The plan splits the work into the table, its states and the tests.'),
+  tool('Read', 'Read the plan', 'cat plans/t-14-invoice-table.md', 100),
+  tool('Read', 'Read DESIGN.md', 'cat DESIGN.md', 60),
+  tool('Bash', 'Find the invoices page', 'rg -n "InvoiceTable" src', 200, { output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
+  tool('Read', 'Read the list component', 'cat src/app/invoices/list.tsx', 50),
+  tool('Read', 'Read the sort hook', 'cat src/lib/use-sorted-rows.ts', 40),
+  { kind: 'text', id: 'x0', ts: at(10, 28), text: 'I will build the table first, then the empty state and the tests.' },
+  tool('Edit', 'Edit table.tsx', 'src/app/invoices/table.tsx', 120),
+  tool('Write', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', 90),
+  tool('Edit', 'Edit page.tsx', 'src/app/invoices/page.tsx', 80),
+  think(2, 'Sorting needs a stable fallback so equal dates keep their order.'),
+  tool('Write', 'Create invoices.spec.ts', 'tests/invoices.spec.ts', 110),
+  tool('Bash', 'Run unit tests', 'pnpm vitest run invoices', 8400, { output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
+  tool('Bash', 'Run Playwright', 'pnpm playwright test invoices', 41_000, { output: '4 passed (38.2s)' }),
+  tool('Bash', 'Check types', 'pnpm tsc --noEmit', 6100),
+  tool('Bash', 'Run the linter', 'pnpm eslint src/app/invoices', 3200),
+  tool('Bash', 'Attach the output for Ivy', 'cp playwright-report/summary.txt .kernel/handoff/ivy.txt', 40),
   { kind: 'text', id: 'x1', ts: at(10, 31), text: 'Done. The table sorts by date, client and amount, and each state has its own component. Vitest and Playwright pass locally, and I attached the output for Ivy.' },
-  { kind: 'result', id: 'r1', ts: at(10, 31), durationMs: 252_000, ok: true }
+  { kind: 'result', id: 'r1', ts: at(10, 31), durationMs: 252_000, ok: true, files: [
+    { path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 },
+    { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 },
+    { path: 'src/app/invoices/page.tsx', status: 'M', added: 18, removed: 9 },
+    { path: 'tests/invoices.spec.ts', status: 'A', added: 118, removed: 9 }
+  ] }
 ]
+
+/** The All files tree on the canvas. Folders without children are collapsed and empty here. */
+const tableTree: FileEntry[] = [
+  ...['.claude', '.claude/agents', '.claude/skills', '.kernel', 'src', 'src/app', 'src/app/invoices'].map((path) => ({ path, dir: true })),
+  { path: 'src/app/invoices/empty-state.tsx', dir: false, status: 'A' }, { path: 'src/app/invoices/page.tsx', dir: false, status: 'M' }, { path: 'src/app/invoices/table.tsx', dir: false, status: 'M' },
+  ...['src/components', 'src/db', 'tests'].map((path) => ({ path, dir: true })),
+  { path: 'CLAUDE.md', dir: false }, { path: 'DESIGN.md', dir: false }, { path: 'package.json', dir: false }
+]
+
+const tableSource = [
+  "import { useState } from 'react'", 'import { EmptyState } from "./empty-state"', 'import { SortableHeader } from "./sortable-header"', '',
+  'type Props = { invoices: Invoice[] }', '', 'export function InvoiceTable({ invoices }: Props) {', "  const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' })", '',
+  '  if (invoices.length === 0) {', '    return <EmptyState title="No invoices yet" action="Create invoice" />', '  }', '', '  const rows = useSortedRows(invoices, sort)', '',
+  '  return (', '    <table className="w-full text-sm" aria-label="Invoices">'
+].join('\n') + '\n'
 
 /** Pending in other rooms, so the Inbox shows 3 while Client A's floor shows nothing waiting (Main.png). */
 const waiting: Approval[] = [
@@ -116,6 +151,8 @@ export const base: Fixture = {
       ''
     ].join('\n')
   },
+  tree: { [ids.table]: tableTree },
+  fileText: { [ids.table]: { 'src/app/invoices/table.tsx': tableSource } },
   ui: { route: { name: 'home' } },
   push: [
     { type: 'script.output', workspaceId: ids.table, kind: 'run', line: '$ pnpm dev --port $KERNEL_PORT', stream: 'stdout' },

@@ -18,6 +18,7 @@ import { branchName, changedFiles, createWorktree, currentBranch, defaultBranch,
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from './services/rooms'
 import { exec } from './services/exec'
+import { listTree, readWorkspaceFile } from './services/files'
 import { prMerge, prReady, prReopen, prStateOf, prView } from './services/github'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
@@ -31,7 +32,6 @@ export const UNBUILT = {
   'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
   'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
   'agents.seed': 'KERNEL-22',
-  'workspaces.tree': 'KERNEL-10', 'workspaces.readFile': 'KERNEL-10',
   'workspaces.files': 'KERNEL-11', 'workspaces.hunks': 'KERNEL-11', 'workspaces.commit': 'KERNEL-11', 'skills.list': 'KERNEL-11',
   'chats.retry': 'KERNEL-11', 'chats.queue': 'KERNEL-11', 'chats.unqueue': 'KERNEL-11', 'chats.sendNow': 'KERNEL-11',
   'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
@@ -532,6 +532,8 @@ export class Kernel {
       'workspaces.archive': async ({ workspaceId, deleteBranch }) => { await this.archiveWorkspace(workspaceId, deleteBranch); return { ok: true } },
       'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
+      'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
+      'workspaces.readFile': async ({ workspaceId, path }) => readWorkspaceFile(this.mustWs(workspaceId).path, path),
       'chats.list': async ({ workspaceId }) => this.store.chats(workspaceId),
       'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : 'New chat', { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
