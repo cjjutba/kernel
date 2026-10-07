@@ -1,5 +1,5 @@
 import { exec, run } from './exec'
-import type { PrState } from '@shared/types'
+import type { PrState, PrSummary } from '@shared/types'
 
 // Pull requests go through the GitHub CLI, which already holds CJ's auth.
 
@@ -64,4 +64,19 @@ export async function prReviewComments(cwd: string, number: number, repo: string
 export async function ghUser(): Promise<string | null> {
   const r = await exec('gh', ['api', 'user', '--jq', '.login'], { timeoutMs: 10000 })
   return r.code === 0 ? r.stdout.trim() : null
+}
+
+/** `gh pr list --json number,title,headRefName,author` rows as the From popover shows them. */
+export function parsePrList(json: string): PrSummary[] {
+  try {
+    return (JSON.parse(json) as { number: number; title: string; headRefName: string; author?: { login?: string } }[])
+      .map((p) => ({ number: p.number, title: p.title, branch: p.headRefName, author: p.author?.login }))
+  } catch { return [] }
+}
+
+/** Open pull requests, newest first. `query` is a GitHub search (title, number or author). Empty when gh is missing or signed out. */
+export async function openPrs(cwd: string, query?: string): Promise<PrSummary[]> {
+  const q = query?.trim()
+  const r = await exec('gh', ['pr', 'list', '--state', 'open', '--limit', '50', '--json', 'number,title,headRefName,author', ...(q ? ['--search', q.replace(/^#/, '')] : [])], { cwd, timeoutMs: 20000 })
+  return r.code === 0 ? parsePrList(r.stdout) : []
 }

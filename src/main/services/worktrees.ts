@@ -14,6 +14,22 @@ export function branchName(pattern: string, vars: { slug: string; task?: string 
   return pattern.replace('{slug}', vars.slug).replace('{task}', vars.task ? vars.task.toLowerCase() : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, '')
 }
 
+/**
+ * The branch for a task. With a task id (a Linear issue) the id leads the slug, `feat/{task}-{slug}`,
+ * even when the configured pattern only has `{slug}`.
+ */
+export function taskBranch(pattern: string, title: string, task?: string): string {
+  const p = task && !pattern.includes('{task}') ? pattern.replace('{slug}', '{task}-{slug}') : pattern
+  return branchName(p, { slug: slugify(title), task })
+}
+
+/** Local and remote branches, newest first, for the From popover and the target branch menu. `origin/HEAD` is left out. */
+export async function listBranches(repo: string): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', 'refs/remotes')
+  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== 'origin' && !l.endsWith('/HEAD'))
+  return [...new Set(names)]
+}
+
 export async function currentBranch(repo: string): Promise<string> {
   return (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 }

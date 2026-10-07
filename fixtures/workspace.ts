@@ -100,7 +100,25 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   }
 }
 
+/** The new workspace modal over Client A's floor (NewWorkspace.png and its four popovers). */
+const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
+  branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
+  openPrs: [
+    { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'cjjutba' },
+    { number: 43, title: 'fix(auth): invite links expire after 7 days', branch: 'fix/invite-expiry', author: 'abdel' },
+    { number: 41, title: 'feat(org): invite members by email', branch: 'feat/org-invites', author: 'cjjutba' },
+    { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'abdel' }
+  ],
+  issues: [{ id: 'T-16', title: 'Client portal login' }, { id: 'T-17', title: 'Bulk export for accountants' }, { id: 'T-18', title: 'Dark mode for invoice PDFs' }],
+  ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
+}))
+
 export const workspaceFixtures: Record<string, Fixture> = {
+  NewWorkspace: newWorkspace(),
+  NewWorkspaceBranch: newWorkspace('branch'),
+  NewWorkspaceFrom: newWorkspace('from'),
+  NewWorkspaceModel: newWorkspace('model'),
+  NewWorkspacePlus: newWorkspace('plus'),
   Workspace: scene(() => ({ ui: open })),
   WorkspaceLoading: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),

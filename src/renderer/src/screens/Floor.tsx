@@ -61,7 +61,7 @@ export function FloorScreen({ roomId }: { roomId: string }) {
         </button>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <main className="col grow" style={{ position: 'relative', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '12px 24px 18px' }}>
+        <main className="col grow" style={{ position: 'relative', isolation: 'isolate', alignItems: 'center', justifyContent: 'center', gap: 12, padding: '12px 24px 18px' }}>
           {sel && (
             <div className="card col" style={{ position: 'absolute', top: 14, left: 14, zIndex: 90, width: 248, padding: '12px 14px', gap: 4, background: 'rgba(20,21,22,.95)' }}>
               <div className="row" style={{ gap: 10 }}>
