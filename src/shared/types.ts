@@ -365,6 +365,8 @@ export interface PlanStep {
   title: string
   taskId?: string
   agentId?: string
+  /** The workspace the Lead created for this step, set once the plan is approved and handed off. */
+  workspaceId?: string
 }
 
 export interface Approval {

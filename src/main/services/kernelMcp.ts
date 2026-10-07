@@ -2,6 +2,7 @@ import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
+import { renderAgentFile } from './agents'
 
 export interface KernelToolDeps {
   roomId: string
@@ -10,7 +11,8 @@ export interface KernelToolDeps {
   workspaces: () => Workspace[]
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string }) => Promise<Workspace>
   messageWorkspace: (workspaceId: string, text: string) => Promise<void>
-  askUser: (o: { kind: 'plan' | 'question'; title: string; detail?: string; options?: string[] }) => Promise<Decision | null>
+  /** `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. */
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
 }
 
@@ -39,7 +41,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
         steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
       }, async ({ title, steps }) => {
         bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
-        const decision = await d.askUser({ kind: 'plan', title, detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n') })
+        const decision = await d.askUser({ kind: 'plan', title, detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n'), steps })
         if (!decision) return text('No answer yet. Wait and ask again later.')
         if (decision.behavior === 'allow') return text('approved')
         return text(`changes requested: ${decision.behavior === 'deny' ? decision.message ?? 'no details' : decision.text}`)
@@ -77,7 +79,8 @@ export function kernelMcpServer(d: KernelToolDeps) {
         id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
         model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
       }, async (a) => {
-        const decision = await d.askUser({ kind: 'plan', title: `Add ${a.id} to the team`, detail: `${a.description}\n\n${a.prompt}` })
+        const agentFile = { path: `.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }) }
+        const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
         if (!decision || decision.behavior !== 'allow') return text('CJ did not approve this agent.')
         const file = await d.hireAgent(a)
         return text(`Saved ${file}. ${a.id} joins the floor.`)

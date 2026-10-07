@@ -1,4 +1,4 @@
-import type { ChatItem, FileEntry, Hunk, Skill } from '@shared/types'
+import type { Approval, Chat, ChatItem, FileEntry, Hunk, Skill, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -12,10 +12,21 @@ const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result
 const prScene = (prState: 'draft' | 'cifail' | 'changes' | 'merged' | 'closed') =>
   scene((f) => ({ workspaces: withWorkspace(f, ids.table, { ...pr, prState }), ui: open }))
 
-const request = (kind: 'tool' | 'plan' | 'question', extra: object) => scene((f) => ({
-  approvals: [{ id: `ap-${kind}`, kind, source: 'sdk' as const, roomId: ids.roomA, workspaceId: ids.table, agentId: 'kai', status: 'pending' as const, createdAt: at(10, 30), title: '', ...extra }, ...f.approvals],
-  ui: open
-}))
+const PLAN = [
+  'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
+].map((t, i) => `${i + 1}. ${t}`).join('\n')
+
+const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
+  ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
+
+const userMsg = (id: string, text: string, plan = false): ChatItem =>
+  ({ kind: 'user', id, ts: at(10, 27), parts: [{ type: 'text', text }, ...(plan ? [{ type: 'file' as const, name: 'plan.md', path: 'docs/plan.md', lines: 42 }] : [])] })
+
+/** `tools` tool calls and `messages` thinking rows, which a finished turn folds into one "N tool calls" row. */
+const folded = (prefix: string, tools: number, messages: number): ChatItem[] => [
+  ...Array.from({ length: tools }, (_, i) => tool(`${prefix}-f${i}`, `Step ${i + 1}`, 'rg -n "invoice" src')),
+  ...Array.from({ length: messages }, (_, i): ChatItem => ({ kind: 'thinking', id: `${prefix}-fm${i}`, ts: at(10, 28), text: 'Checking the next step.' }))
+]
 
 const tool = (id: string, label: string, detail: string, extra: Partial<Extract<ChatItem, { kind: 'tool' }>> = {}): ChatItem =>
   ({ kind: 'tool', id, ts: at(10, 28), toolUseId: `toolu_${id}`, name: 'Bash', label, detail, status: 'done', durationMs: 100, ...extra })
@@ -74,6 +85,21 @@ const queuedItems = (): ChatItem[] => {
   ]
 }
 
+/** The invoice-table workspace (or the Lead's) retitled for one agent request: its name, chat title and transcript. */
+function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatItem[], extra: Partial<Fixture>, chat: Partial<Chat> = {}): Partial<Fixture> {
+  const id = ws.id ?? ids.table
+  const chatId = id === ids.lead ? ids.leadChat : ids.tableChat
+  const { id: _id, ...patch } = ws
+  return {
+    workspaces: withWorkspace(f, id, patch),
+    chats: f.chats.map((c) => (c.id === chatId ? { ...c, title, ...chat } : c)),
+    // The engine writes an approval item where the request was made, so the card keeps its place once answered.
+    items: { [chatId]: [...items, ...(extra.approvals ? [{ kind: 'approval' as const, id: `approval-${extra.approvals[0].id}`, ts: at(10, 30), approvalId: extra.approvals[0].id }] : [])] },
+    approvals: extra.approvals && [{ ...extra.approvals[0], workspaceId: id, chatId }, ...extra.approvals.slice(1)],
+    ui: { route: { name: 'workspace', workspaceId: id } }
+  }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   WorkspaceLoading: scene((f) => ({
@@ -102,20 +128,77 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: { ...open, workspace: { right: 'files', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false } }
   })),
-  WorkspacePerm: request('tool', { toolName: 'Bash', input: { command: 'pnpm add @tanstack/react-table' }, title: 'Run pnpm add @tanstack/react-table', detail: 'Adds a dependency to package.json.' }),
-  WorkspacePlan: request('plan', { title: 'Plan for the invoice table', detail: '1. Build the table with sorting\n2. Add empty, loading and error states\n3. Cover each state with Playwright' }),
-  WorkspaceQuestion: request('question', { title: 'Should the table remember the sort order?', options: ['Remember it per user', 'Reset on every visit'] }),
+  WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. The schema needs a pdf_url column, so I need to push it to the dev database.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
+  })),
+  WorkspacePlan: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
+    userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
+    { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
+    tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
+    tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
+  ], {
+    approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
+  }, { plan: true, model: 'claude-opus-5-5' })),
+  WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('q1', 'Build T-15b from the approved plan.', true),
+    ...folded('q', 6, 0),
+    { kind: 'result', id: 'q-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
+  })),
   WorkspaceInterrupted: scene(() => ({
-    items: { [ids.tableChat]: [...midTurn.slice(0, 6), { kind: 'interrupted', id: 'i1', ts: at(10, 29) }] },
+    items: { [ids.tableChat]: [
+      userMsg('i0', 'Refactor the invoice table to use the shared DataTable component.'),
+      { kind: 'thinking', id: 'i-th', ts: at(10, 28), text: 'DataTable expects column defs. The sorting hook will need to move.' },
+      tool('i-t1', 'Read the shared DataTable', 'cat src/components/data-table.tsx', { name: 'Read' }),
+      tool('i-t2', 'Rewrite the invoice columns', "python3 - <<'EOF' p='src/app/invoices/columns.ts'"),
+      { kind: 'interrupted', id: 'i1', ts: at(10, 44) },
+      { kind: 'result', id: 'i-res', ts: at(10, 44), durationMs: 28_000, ok: false, error: 'Interrupted' },
+      userMsg('i2', 'Stop, keep the current table. Only fix the empty state copy.')
+    ] },
     ui: open
   })),
   WorkspaceError: scene(() => ({
     items: { [ids.tableChat]: [
-      ...midTurn.slice(0, 7),
-      { kind: 'tool', id: 't8', ts: at(10, 29), toolUseId: 'toolu_8', name: 'Bash', label: 'Ran', detail: 'pnpm playwright test invoices', status: 'failed', durationMs: 19_800, output: '2 failed\n  invoices.spec.ts:24 sorts by amount\n  invoices.spec.ts:41 shows the empty state' },
-      { kind: 'result', id: 'r1', ts: at(10, 30), durationMs: 184_000, ok: false, error: 'Tests failed' }
+      userMsg('e0', 'Run the full test suite before I open the PR.'),
+      tool('e-t1', 'Run unit tests', 'pnpm vitest run', { status: 'failed', durationMs: 19_800, output: 'FAIL tests/invoices.spec.ts > sorts by date\n  Expected: 2026-10-01  Received: 01/10/2026\nFAIL tests/invoices.spec.ts > empty state\n  Snapshot mismatch: 1 line changed' }),
+      { kind: 'result', id: 'e-res', ts: at(10, 30), durationMs: 184_000, ok: false, error: '2 tests failed' }
     ] },
     ui: open
+  })),
+  WorkspaceLead: scene((f) => ({
+    ...scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree' }, 'Export invoices as PDF', [
+      userMsg('l1', 'Add PDF export to invoices. Spec first.'),
+      { kind: 'note', id: 'l-note', ts: at(10, 28), text: 'Rowan is at the task wall on the floor.', link: { label: 'View floor', href: `kernel://floor/${ids.roomA}` } },
+      { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
+      tool('l-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
+      tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
+      { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' }
+    ], {
+      approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: [
+        { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
+        { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
+      ] }), ...f.approvals]
+    }, { plan: true, model: 'claude-opus-5-5' }),
+    changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
+  })),
+  WorkspaceHire: scene((f) => ({
+    ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan' }, 'Hire a designer', [
+      userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
+      { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
+      tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
+      { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi will take the open desk on the floor.' }
+    ], {
+      approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', text: [
+        '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'
+      ].join('\n') } }), ...f.approvals]
+    }, { plan: false, model: 'claude-opus-5-5' }),
+    changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
   })),
   WorkspaceDraftPR: prScene('draft'),
   WorkspaceCIFailed: prScene('cifail'),

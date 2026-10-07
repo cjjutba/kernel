@@ -6,6 +6,8 @@ export type ThreadBlock =
   | { kind: 'group'; id: string; tools: Extract<ChatItem, { kind: 'tool' }>[]; messages: number; items: ChatItem[] }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   | { kind: 'meta'; id: string; text: string }
+  /** A turn that ended badly. `output` is what the last failed tool printed. */
+  | { kind: 'error'; id: string; message: string; output?: string }
 
 export const fmtDuration = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000))
@@ -33,9 +35,12 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
   const finish = () => {
     const result = turn.find((i): i is Extract<ChatItem, { kind: 'result' }> => i.kind === 'result')
     if (!result?.ok) {
+      const stopped = turn.some((i) => i.kind === 'interrupted')
+      const failedTool = [...turn].reverse().find((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool' && i.status === 'failed')
       for (const item of turn) {
-        if (item.kind === 'result') blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)}${item.ok ? '' : ` · ${item.error ?? 'stopped'}`}` })
-        else blocks.push({ kind: 'item', item })
+        if (item.kind !== 'result') blocks.push({ kind: 'item', item })
+        else if (stopped || item.ok) blocks.push({ kind: 'meta', id: item.id, text: `${fmtDuration(item.durationMs)} · ${fmtClock(item.ts)}` })
+        else blocks.push({ kind: 'error', id: item.id, message: item.error ?? 'The turn failed', output: failedTool?.output })
       }
       turn = []
       return
