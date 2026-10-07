@@ -45,11 +45,12 @@ For each issue in the queue:
 2. **Reset to main.** Run `git checkout main && git pull --ff-only`. If the tree is dirty or the pull fails, stop.
 3. **Hand it to a worker.** Start a fresh subagent of the type in the queue table with this prompt and nothing more: `Work KERNEL-N. Follow the Worker section of docs/AUTOPILOT.md.` Wait for it to finish. Don't poll.
 4. **Read the result block.** Anything other than `RESULT: PR_OPENED` stops the run. Report the block as the worker wrote it.
-5. **Review with theo.** Start the theo subagent with: `Review PR #P for KERNEL-N. Fetch the issue from Linear and read the diff with gh pr diff P. Check it against the acceptance criteria, CLAUDE.md and DESIGN.md. Start your reply with "BLOCKERS: none" or "BLOCKERS: <count>", then list blockers (file, line, what to change), then nits.` Only blockers count. Nits stay in theo's reply for CJ to read on the PR later; the coordinator doesn't act on them.
-6. **One fix round.** If theo found blockers, send them to the same worker with SendMessage: `Theo found blockers on PR #P. Fix them following the Worker section of docs/AUTOPILOT.md (fix round):` followed by theo's blocker list. If the worker can't be resumed, start a fresh worker of the same type with that message. Then run theo again on the PR, fresh. If any blocker remains, stop. There is no second fix round.
-7. **Merge.** Run `gh pr merge P --squash --delete-branch`. If it fails for any reason (conflict, checks, anything), stop. Then `git checkout main && git pull --ff-only`.
-8. **Confirm Done.** Fetch the issue from Linear. Merging normally moves it to Done. If it hasn't moved, move it to Done yourself and add `(moved by hand)` to the status line.
-9. **Print one status line** and go to the next issue:
+5. **Review with theo.** Start the theo subagent with: `Review PR #P for KERNEL-N. Fetch the issue from Linear and read the diff with gh pr diff P. Check it against the acceptance criteria, CLAUDE.md and DESIGN.md. A blocker is only one of these: an acceptance criterion not met, a CLAUDE.md or DESIGN.md rule broken, a failing test, or a real bug. Everything else is a nit, however useful. Start your reply with "BLOCKERS: none" or "BLOCKERS: <count>", then list blockers (file, line, what to change, and which of the four kinds it is), then nits.` Only blockers count toward the merge. Keep every nit theo lists, from every review of this PR, for step 7.
+6. **Up to two fix rounds.** If theo found blockers, send them to the same worker with SendMessage: `Theo found blockers on PR #P. Fix them following the Worker section of docs/AUTOPILOT.md (fix round):` followed by theo's blocker list. If the worker can't be resumed, start a fresh worker of the same type with that message. Then run theo again on the PR, fresh. If blockers remain, do one more fix round the same way. If any blocker remains after the second round, stop.
+7. **File the nits.** If theo listed any nits, post them as one comment on the PR (`gh pr comment P --body-file`), then file one Linear issue for them in team Kernel, project "Kernel v1", with the same lane label as KERNEL-N, titled `Review nits from PR #P (KERNEL-N)`. Nits never block the merge.
+8. **Merge.** Run `gh pr merge P --squash --delete-branch`. If it fails for any reason (conflict, checks, anything), stop. Then `git checkout main && git pull --ff-only`.
+9. **Confirm Done.** Fetch the issue from Linear. Merging normally moves it to Done. If it hasn't moved, move it to Done yourself and add `(moved by hand)` to the status line.
+10. **Print one status line** and go to the next issue:
 
    ```
    KERNEL-8 | PR #5 | merged
@@ -63,7 +64,7 @@ Stop the whole run and report. Never skip to the next issue. Stop when:
 
 - `npm test`, `npm run typecheck` or `npm run build` still fails after two fix attempts (the worker returns `FAILED`)
 - a merge conflicts or `gh pr merge` fails
-- theo's blockers survive one fix round
+- theo's blockers survive two fix rounds (the stop report lists each one with file and line)
 - an issue needs a decision from CJ (the worker returns `NEEDS_DECISION`)
 - a change would touch anything outside this repo (the worker returns `OUTSIDE_REPO`)
 - the working tree is dirty, `git pull` fails, or an issue is already half done from an earlier run
