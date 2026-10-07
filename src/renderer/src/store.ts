@@ -164,7 +164,11 @@ export const actions = {
     appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: [...(s.scripts[workspaceId] ?? []), line].slice(-400) } })),
     scriptExited: (workspaceId: string, kind: ScriptKind, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...(s.scriptExit[workspaceId] ?? {}), [kind]: code } } })),
     setCheckpoints: (workspaceId: string, list: Checkpoint[]) => setState((s) => ({ checkpoints: { ...s.checkpoints, [workspaceId]: list } })),
-    upsertCheckpoint: (c: Checkpoint) => setState((s) => ({ checkpoints: { ...s.checkpoints, [c.workspaceId]: upsert(s.checkpoints[c.workspaceId] ?? [], c) } }))
+    /** Only one checkpoint is where the worktree is now, so a new current one clears the flag on the rest. */
+    upsertCheckpoint: (c: Checkpoint) => setState((s) => {
+      const list = (s.checkpoints[c.workspaceId] ?? []).map((x) => (c.current && x.current && x.id !== c.id ? { ...x, current: false } : x))
+      return { checkpoints: { ...s.checkpoints, [c.workspaceId]: upsert(list, c) } }
+    })
   },
   chats: {
     set: (workspaceId: string, list: Chat[]) => setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })),

@@ -10,7 +10,7 @@ const base = (path: string) => path.split('/').pop() ?? path
 
 /**
  * The row of chat, terminal and file tabs, with the new tab menu, the tab menu (rename, fork, close, close others) and the Checkpoints button.
- * KERNEL-13 draws the drawer the Checkpoints button opens.
+ * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
 export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseFile }: {
   workspaceId: string; chats: Chat[]; files: string[]; active?: string; onSelect: (tab: string) => void; onCloseFile: (path: string) => void
