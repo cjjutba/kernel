@@ -1,3 +1,4 @@
+import { firstLine } from './kernelMcp'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent } from '@shared/types'
@@ -74,7 +75,7 @@ export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent
       const input = (e.tool_input ?? {}) as Record<string, unknown>
       if ((e.tool_name === 'Task' || e.tool_name === 'Agent') && typeof input.subagent_type === 'string') {
         const line = typeof input.description === 'string' ? input.description : typeof input.prompt === 'string' ? input.prompt : ''
-        return { ...base, kind: 'agent.talk', text: 'delegated to', object: input.subagent_type, quote: line.slice(0, 280) || undefined, data: { from: ctx.agentId, to: input.subagent_type, line: line.split(/[.\n]/)[0].slice(0, 90) } }
+        return { ...base, kind: 'agent.talk', text: 'delegated to', object: input.subagent_type, quote: line.slice(0, 280) || undefined, data: { from: ctx.agentId, to: input.subagent_type, line: firstLine(line), toolUseId: e.tool_use_id } }
       }
       const d = describeTool(e.tool_name, e.tool_input); return { ...base, kind: 'tool.start', text: verb(e.tool_name), object: objectOf(e.tool_name, e.tool_input) ?? d.title, data: { toolUseId: e.tool_use_id } }
     }

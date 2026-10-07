@@ -51,7 +51,7 @@ export interface Moments {
 
 /** A hire walks in when the engine logs it (the agent file appeared) and for this long after. Older ones are already at their desks. */
 export const HIRE_FRESH_MS = 20_000
-const HIRE_KEEP_MS = 120_000
+export const HIRE_KEEP_MS = 120_000
 const BUSY: AgentStatus[] = ['working', 'planning']
 const BRIEFING = ['sent', 'planning', 'plan', 'handoff']
 
@@ -74,8 +74,13 @@ export function moments(i: MomentInput): Moments {
     const from = find(e.data?.from ?? e.agentId)
     const to = find(e.data?.to)
     if (!from || !to || from.id === to.id) continue
-    const done = events.some((x) => x.kind === 'turn.done' && x.agentId === to.id && x.ts > e.ts)
-    out.talks.push({ id: e.id, from: from.id, to: to.id, line: typeof e.data?.line === 'string' ? e.data.line : '', live: BUSY.includes(i.status[to.id] ?? 'idle') && !done })
+    // A delegation runs inside the speaker's own session, so it lasts until that tool call returns (or the speaker's turn ends).
+    // A message to another workspace lasts while the listener works on it.
+    const toolUseId = e.data?.toolUseId
+    const live = typeof toolUseId === 'string'
+      ? !events.some((x) => x.ts >= e.ts && ((x.kind === 'tool.end' && x.data?.toolUseId === toolUseId) || (x.kind === 'turn.done' && x.agentId === from.id)))
+      : BUSY.includes(i.status[to.id] ?? 'idle') && !events.some((x) => x.kind === 'turn.done' && x.agentId === to.id && x.ts > e.ts)
+    out.talks.push({ id: e.id, from: from.id, to: to.id, line: typeof e.data?.line === 'string' ? e.data.line : '', live })
   }
 
   // A new hire: the newest `agent.joined` for someone on the floor.

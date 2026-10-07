@@ -11,7 +11,7 @@ import { Stage } from './Stage'
 import { DESK_SPOTS } from './motion/waypoints'
 import { useReducedMotion, useWalks, type Walk } from './motion/useWalks'
 import { sequence } from './sequence'
-import { deskSpot, moments, talkLegs } from './moments/moments'
+import { HIRE_FRESH_MS, HIRE_KEEP_MS, deskSpot, moments, talkLegs } from './moments/moments'
 import type { Spot } from './motion/walks'
 import './floor.css'
 
@@ -43,9 +43,19 @@ export function Floor({ roomId }: { roomId: string }) {
     () => sequence({ room: { id: roomId, desks }, agents: live, status, approvals: roomApprovals, activity, workspaces, tasks, forced }),
     [roomId, desks, live, status, roomApprovals, activity, workspaces, tasks, forced]
   )
+  // Time only matters for a new hire: the hello and the walk from the door end on their own, so tick when each window closes.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const joined = activity.find((e) => e.kind === 'agent.joined')?.ts
+    if (joined === undefined) return
+    const waits = [joined + HIRE_FRESH_MS, joined + HIRE_KEEP_MS].map((t) => t - Date.now()).filter((ms) => ms > 0)
+    if (!waits.length) return
+    const timer = setTimeout(() => setNow(Date.now()), Math.min(...waits) + 50)
+    return () => clearTimeout(timer)
+  }, [activity, now])
   const mo = useMemo(
-    () => moments({ agents: live, status, approvals: roomApprovals, activity, overlaps, stage: seq.stage, forced, room: { desks }, now: Date.now() }),
-    [live, status, roomApprovals, activity, overlaps, seq.stage, forced, desks]
+    () => moments({ agents: live, status, approvals: roomApprovals, activity, overlaps, stage: seq.stage, forced, room: { desks }, now }),
+    [live, status, roomApprovals, activity, overlaps, seq.stage, forced, desks, now]
   )
   // The Lead walks the briefing sequence. Anyone who talked to someone walks to their desk while the talk is on, and a new hire
   // walks in from the door. Walking turned off, or reduced motion, makes every move a jump.

@@ -33,6 +33,14 @@ describe('floor moments', () => {
     expect(talkLegs(done.talks, 'rowan', spot, 'seat')).toEqual([{ key: 'talk:t', to: 'kai' }, { key: 'talk:t:end', to: 'seat' }])
   })
 
+  it('keeps a delegation live until its tool call returns, whatever the listener is doing', () => {
+    const talk = ev('t', 900, { kind: 'agent.talk', agentId: 'rowan', data: { from: 'rowan', to: 'kai', line: 'Review this.', toolUseId: 'tu1' } })
+    expect(moments(input({ activity: [talk], status: { kai: 'idle' } })).say?.text).toBe('Review this.')
+    const busy = moments(input({ activity: [talk, ev('e', 950, { kind: 'tool.end', agentId: 'rowan', data: { toolUseId: 'tu1' } })], status: { kai: 'working' } }))
+    expect(busy.talks[0].live).toBe(false)
+    expect(moments(input({ activity: [talk, ev('d', 950, { kind: 'turn.done', agentId: 'rowan' })] })).talks[0].live).toBe(false)
+  })
+
   it('shows a chat with CJ unless the Lead is on a brief', () => {
     const chat = ev('c', 900, { kind: 'prompt', actor: 'you', agentId: 'rowan', workspaceId: 'w', object: 'plan' })
     const m = moments(input({ activity: [chat], status: { rowan: 'working' } }))
