@@ -10,7 +10,7 @@ const devHash = '#/dev/ui'
 
 /**
  * The component gallery. In dev it lives at `#/dev/ui`. The screenshot harness has no dev server, so its fixtures
- * (DevUi, DevUiDisplay, DevUiOverlays, DevUiDialogs) force `ui.stage` instead. Stage is fixture-only, so a real run never shows it.
+ * (DevUi, DevUiDisplay, DevUiOverlays, DevUiDialogs) force `ui.stage` instead. The gallery borrows the `dev/ui` prefix of `ui.stage`, which the floor briefing also uses (types.ts), so the Floor lane must never use a stage that starts with `dev/ui`.
  */
 function Gate() {
   const stage = useStore((s) => s.ui.stage)

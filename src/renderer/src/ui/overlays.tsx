@@ -155,15 +155,21 @@ export interface ToastProps { title: string; sub?: string; action?: { label: str
 /** One toast (WorkspaceToast.png). It calls `onDismiss` after 2.6s, and stays while hovered or focused. */
 export function Toast({ title, sub, action, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
+  // Callers pass inline closures and re-render often. Keep the latest one in a ref so a render doesn't restart the timer.
+  const dismiss = useRef(onDismiss)
+  dismiss.current = onDismiss
+  const timed = !!onDismiss
   useEffect(() => {
-    if (held || !onDismiss) return
-    const t = setTimeout(onDismiss, TOAST_MS)
+    if (held || !timed) return
+    const t = setTimeout(() => dismiss.current?.(), TOAST_MS)
     return () => clearTimeout(t)
-  }, [held, onDismiss])
+  }, [held, timed])
   return (
     <div className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
       <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{sub}</span>}</span>
-      {action && <a className="toast-action" href={action.href ?? '#'} onClick={(e) => { if (!action.href) e.preventDefault(); action.onClick?.() }}>{action.label}</a>}
+      {action && (action.href
+        ? <a className="toast-action" href={action.href} onClick={action.onClick}>{action.label}</a>
+        : <button type="button" className="toast-action" onClick={action.onClick}>{action.label}</button>)}
       <button type="button" className="toast-x" aria-label="Dismiss" onClick={onDismiss}><Icon name="close" size={10} stroke={2} /></button>
     </div>
   )
