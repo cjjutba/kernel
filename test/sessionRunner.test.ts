@@ -4,21 +4,30 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
 import type { Chat, ChatItem, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
+// After an abort it yields what was already fed, then throws, as the real one does.
 const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; interrupts: number }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: ({ options }: { options: unknown }) => {
+  query: ({ options }: { options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
-    const waiters: ((r: IteratorResult<unknown>) => void)[] = []
-    const call = { options, interrupts: 0, feed: (m: unknown) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) } }
+    const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
+    const signal = options.abortController?.signal
+    const aborted = () => new Error('Claude Code process aborted by user')
+    signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
+    const call = { options, interrupts: 0, feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } }
     sdk.calls.push(call)
     return {
-      [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((r) => waiters.push(r))) }),
+      [Symbol.asyncIterator]: () => ({
+        next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
+          : signal?.aborted ? Promise.reject(aborted()) : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
+      }),
       interrupt: async () => { call.interrupts++ },
       setModel: async () => {},
       setPermissionMode: async () => {}
@@ -102,6 +111,56 @@ describe('session runner (SDK scripted)', () => {
     await flush()
     expect(kinds().slice(-3)).toEqual(['user', 'text', 'result'])
     expect(sessions.isRunning(chat.id)).toBe(false)
+  })
+
+  it('keeps the new session when a stopped one ends after the next send', async () => {
+    const { sessions, call, options, chat } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    const running: boolean[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.running' && e.chatId === chat.id) running.push(e.running) }
+    bus.on('push', onPush)
+    try {
+      const before = sdk.calls.length
+      // send() starts the new session before the stopped loop gets to clean up.
+      sessions.stop(chat.id)
+      await sessions.send(chat.id, [{ type: 'text', text: 'Actually, add it to invoices' }])
+      await flush()
+      expect(sdk.calls.length).toBe(before + 1)
+      expect(sessions.isRunning(chat.id)).toBe(true)
+      expect(running).toEqual([true])
+
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'And backfill it' }])).toEqual({ queued: true })
+      expect(sdk.calls.length).toBe(before + 1)
+
+      sessions.stop(chat.id)
+      await flush()
+      expect(sessions.isRunning(chat.id)).toBe(false)
+      expect(running).toEqual([true, false])
+    } finally {
+      bus.off('push', onPush)
+    }
+  })
+
+  it('drops what a stopped session still delivers once a new one owns the chat', async () => {
+    const { sessions, call, options, chat, kinds } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    const running: boolean[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.running' && e.chatId === chat.id) running.push(e.running) }
+    bus.on('push', onPush)
+    try {
+      // The old process wrote its result before it was stopped; the loop reads it after the new send.
+      call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'late', duration_ms: 900 })
+      sessions.stop(chat.id)
+      await sessions.send(chat.id, [{ type: 'text', text: 'Start over' }])
+      await flush()
+      expect(sessions.isRunning(chat.id)).toBe(true)
+      expect(running).toEqual([true])
+      expect(kinds()).toEqual(['user', 'user'])
+    } finally {
+      bus.off('push', onPush)
+    }
   })
 
   it('flags a session billed to an API key', async () => {

@@ -152,14 +152,22 @@ export class Sessions {
 
   private async consume(chatId: string, ws: Workspace, live: Live) {
     try {
-      for await (const msg of live.query) this.handle(chatId, ws, live, msg)
+      // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, they are dropped.
+      for await (const msg of live.query) if (!this.replaced(chatId, live)) this.handle(chatId, ws, live, msg)
     } catch (err) {
       if (!live.abort.signal.aborted) this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${String((err as Error).message ?? err)}` })
     } finally {
+      const replaced = this.replaced(chatId, live)
+      if (this.live.get(chatId) === live) this.live.delete(chatId)
       const chat = this.d.store.chat(chatId)
-      if (chat) this.setRunning(chat, ws, live, false)
-      this.live.delete(chatId)
+      if (chat && !replaced) this.setRunning(chat, ws, live, false)
     }
+  }
+
+  /** True once a send right after stop() has started a newer session under this chat. */
+  private replaced(chatId: string, live: Live) {
+    const current = this.live.get(chatId)
+    return !!current && current !== live
   }
 
   private handle(chatId: string, ws: Workspace, live: Live, msg: SDKMessage) {
