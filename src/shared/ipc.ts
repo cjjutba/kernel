@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -23,13 +23,15 @@ export interface KernelApi {
   'hooks.test': { req: void; res: HookStatus }
   /** Restart the hook server, on the given port when set (SetupPortBusy "Use 7421", WorkspaceHooksDown "Reconnect"). */
   'hooks.restart': { req: { port?: number }; res: HookStatus }
+  /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
+  'hooks.uninstall': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
   'rooms.add': { req: { path: string; name?: string }; res: Room }
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
-  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks'>> }; res: Room }
+  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
   /** Floor composer: send a brief to the room's Lead, or a message to one agent. */
@@ -147,11 +149,12 @@ export interface KernelApi {
   'settings.get': { req: void; res: AppSettings }
   'settings.set': { req: { patch: DeepPartial<AppSettings> }; res: AppSettings }
   'settings.room': { req: { roomId: string }; res: RoomSettings }
-  /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. */
-  'settings.setRoom': { req: { roomId: string; patch: DeepPartial<RoomSettings>; shared?: boolean }; res: RoomSettings }
+  /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
+  'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
-  'integrations.connect': { req: { id: Integration['id'] }; res: Integration }
+  /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
+  'integrations.connect': { req: { id: Integration['id']; token?: string }; res: Integration }
 
   // app (KERNEL-25, 30)
   'update.get': { req: void; res: AppUpdate }

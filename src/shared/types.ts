@@ -647,6 +647,13 @@ export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
+  /** Skills and MCP servers switched off for this room, by name. */
+  disabled?: { skills: string[]; mcp: string[] }
+}
+
+/** A patch to a room's settings file. `null` removes the key so the app default applies again. */
+export type RoomSettingsPatch = {
+  [K in keyof RoomSettings]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 }
 
 /** Recursive partial for settings patches. */
