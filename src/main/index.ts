@@ -2,10 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electr
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import electronUpdater from 'electron-updater'
 import { bus } from './bus'
 import { Kernel } from './kernel'
 import { fixtureHandlers } from './fixtures'
 import { exec } from './services/exec'
+import { Updater } from './updater'
 import { probeNetwork } from './services/health'
 import type { Channel } from '@shared/ipc'
 
@@ -63,12 +65,17 @@ app.whenReady().then(async () => {
   let started: Promise<void> = Promise.resolve()
   if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
   else {
+    // Only a packaged, signed app can update itself. Dev runs report no update.
+    const updater = app.isPackaged
+      ? new Updater({ current: app.getVersion(), dataDir: app.getPath('userData'), engine: electronUpdater.autoUpdater })
+      : undefined
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
       probeNetwork: () => probeNetwork(),
       version: app.getVersion(),
+      updater,
       // A dev run must not register the dev Electron as a login item.
       onSettings: (s) => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.openAtLogin }) },
       showNotification: (n, { silent }) => {
@@ -78,10 +85,11 @@ app.whenReady().then(async () => {
         banner.show()
       }
     })
-    app.on('before-quit', () => { void kernel.stop() })
+    app.on('before-quit', () => { updater?.stop(); void kernel.stop() })
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     started = kernel.start()
     started.catch(bootFailed)
+    void started.then(() => updater?.start(), () => undefined)
     handlers = kernel.handlers() as typeof handlers
   }
   for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, async (_e, req) => { await started; return fn(req) })

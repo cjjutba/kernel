@@ -81,7 +81,21 @@ const integrationRows: Integration[] = [
 /** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
 const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'light' } })
 
+// What's new (KERNEL-30): the canvas's four notes on a ready 0.2.0, over UpdateReady's home.
+const whatsNewNotes = [
+  { title: 'Checkpoints', body: 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.' },
+  { title: 'Pause room', body: 'Freeze every agent in a room with one click. They finish the current step, then wait.' },
+  { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T. It shows up on the floor like any other session.' },
+  { title: 'Overlap warnings', body: 'Rowan flags it when two agents edit the same file in different worktrees.' }
+]
+const whatsNew: Fixture = {
+  ...teamFixtures.UpdateReady,
+  update: { status: 'ready', current: '0.1.0', version: '0.2.0', notes: whatsNewNotes },
+  ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
+}
+
 export const platformFixtures: Record<string, Fixture> = {
+  WhatsNew: whatsNew,
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   Settings: settingsPage('general'),

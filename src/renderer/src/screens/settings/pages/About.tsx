@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react'
+import type { AppUpdate } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button } from '../../../ui'
 import { Page, Row, Section } from '../kit'
+
+/** What Check for updates says. A failed check (offline, or no releases reachable) is not "up to date". */
+const checkResult = (u: AppUpdate) =>
+  u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? 'Could not check for updates' : 'Kernel is up to date'
 
 const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: (e as Error).message })
 
@@ -17,7 +22,7 @@ export function About() {
         <Row label="Version"><span className="set-value">{info?.version ?? ''}</span></Row>
         {claude?.ok && claude.meta && <Row label="Claude Code"><span className="set-value">{claude.meta}</span></Row>}
         <Row label="Updates">
-          <Button onClick={() => void call('update.check', undefined).then((u) => actions.ui.toast({ title: u.status === 'ready' ? `Version ${u.version} is ready` : 'Kernel is up to date' })).catch(fail('Could not check for updates'))}>Check for updates</Button>
+          <Button onClick={() => void call('update.check', undefined).then((u) => actions.ui.toast({ title: checkResult(u) })).catch(fail('Could not check for updates'))}>Check for updates</Button>
         </Row>
         <Row label="Data"><span className="set-value selectable">{info?.dataDir ?? ''}</span></Row>
         <Row label="Logs">
