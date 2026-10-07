@@ -601,6 +601,8 @@ export interface AppUpdate {
   notes?: { title: string; body: string }[]
   progress?: number
   error?: string
+  /** True on the first `update.get` after Kernel starts on a newly installed version, so What's new opens once. `notes` are that version's. */
+  installed?: boolean
 }
 
 export interface Integration {
@@ -688,7 +690,8 @@ export type Modal =
   | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
-  | { name: 'whatsNew' }
+  /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
+  | { name: 'whatsNew'; update?: AppUpdate }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }

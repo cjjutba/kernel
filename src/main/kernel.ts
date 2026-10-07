@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
@@ -45,17 +45,16 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
 /**
  * Channels no lane has built yet, and the issue that builds each. They reject with NotImplemented.
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
+ * Empty since KERNEL-30 built the last ones (update.*).
  */
-export const UNBUILT = {
-  'update.get': 'KERNEL-30', 'update.check': 'KERNEL-30', 'update.install': 'KERNEL-30'
-} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
+export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
 type Unbuilt = keyof typeof UNBUILT
 
 /** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
 function unbuilt(): Pick<Handlers, Unbuilt> {
   const out: Record<string, () => Promise<never>> = {}
-  for (const [channel, issue] of Object.entries(UNBUILT)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
+  for (const [channel, issue] of Object.entries(UNBUILT as Record<string, string>)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
   return out as unknown as Pick<Handlers, Unbuilt>
 }
 
@@ -94,6 +93,8 @@ export class Kernel {
     version?: string
     /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */
     onSettings?: (s: AppSettings) => void
+    /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
+    updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
@@ -1162,6 +1163,9 @@ export class Kernel {
   handlers(): Handlers {
     return {
       ...unbuilt(),
+      'update.get': async () => this.o.updater?.get() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
+      'update.check': async () => this.o.updater?.check() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
+      'update.install': async () => { if (!this.o.updater) throw new Error('No update to install'); this.o.updater.install(); return { ok: true } },
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
         if (id === 'teams') {
