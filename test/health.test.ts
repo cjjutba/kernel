@@ -293,4 +293,63 @@ describe('kernel recovery paths', () => {
     expect((await h['checkpoints.list']({ workspaceId: ws.id })).some((c) => c.title === 'Before discarding changes')).toBe(true)
     await k.stop()
   })
+
+  it('keeps a branch with unpushed commits on archive, even when asked to delete it', async () => {
+    const { k, room } = await kernel()
+    const h = k.handlers()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Keep me' })
+    await writeFile(join(ws.path, 'c.ts'), 'c\n')
+    await run('git', ['-C', ws.path, 'add', '-A'])
+    await run('git', ['-C', ws.path, 'commit', '-q', '-m', 'only here'])
+    expect((await h['workspaces.gitStatus']({ workspaceId: ws.id })).ahead).toBe(1)
+    await h['workspaces.archive']({ workspaceId: ws.id, deleteBranch: true })
+    expect((await run('git', ['-C', room.path, 'branch', '--list', ws.branch])).trim()).toContain(ws.branch)
+    // With nothing unpushed, the branch goes as asked.
+    const empty = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Drop me' })
+    await h['workspaces.archive']({ workspaceId: empty.id, deleteBranch: true })
+    expect((await run('git', ['-C', room.path, 'branch', '--list', empty.branch])).trim()).toBe('')
+    await k.stop()
+  })
+
+  it('lifts a sign-out when the CLI is signed in again from a terminal', async () => {
+    const { k, room } = await kernel()
+    const { pushes, off } = listen()
+    let signedIn = false
+    k.accountReader = async () => (signedIn ? { signedIn: true, name: 'CJ Jutba' } : { signedIn: false })
+    const chat = await k.leadChat(room.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 's' })
+    await flush()
+    expect(k.sessions.heldFor()).toEqual(['auth'])
+    await k.handlers()['account.get'](undefined)
+    expect(k.sessions.heldFor()).toEqual(['auth'])
+    signedIn = true
+    expect(await k.handlers()['account.get'](undefined)).toMatchObject({ signedIn: true })
+    expect(k.sessions.heldFor()).toEqual([])
+    expect(pushes.filter((e) => e.type === 'account').pop()).toMatchObject({ account: { signedIn: true, name: 'CJ Jutba' } })
+    off()
+    await k.stop()
+  })
+
+  it('lifts a limit pause left from the last run, and keeps a pause CJ chose', async () => {
+    const { k, room } = await kernel()
+    const other = await k.addRoom(await tempRepo())
+    k.pauseRoom(room.id, 'limit')
+    k.pauseRoom(other.id, 'you')
+    await k.stop()
+    const again = new Kernel({ dataDir: (k as unknown as { o: { dataDir: string } }).o.dataDir })
+    await again.start()
+    expect(again.store.room(room.id)).toMatchObject({ paused: false })
+    expect(again.store.room(room.id)?.pausedBy).toBeUndefined()
+    expect(again.sessions.isPaused(room.id)).toBe(false)
+    expect(again.store.room(other.id)).toMatchObject({ paused: true, pausedBy: 'you' })
+    expect(again.sessions.isPaused(other.id)).toBe(true)
+    await again.stop()
+  })
+
+  it('only promises a reset notification for a limit it has a reset time for', async () => {
+    const { k } = await kernel()
+    await expect(k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).rejects.toThrow('does not know when')
+    await k.stop()
+  })
 })

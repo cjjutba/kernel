@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
@@ -159,8 +159,12 @@ export class Kernel {
       this.network.start()
     }
     this.tasks.attach()
-    // A room paused before the app quit is still paused: its agents wait and its sends are held.
-    for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    // A room paused before the app quit is still paused: its agents wait and its sends are held. A limit pause is not:
+    // the limits and their reset timers lived in memory, so nothing would lift it. The next rejection pauses it again.
+    for (const r of this.store.rooms()) {
+      if (r.paused && r.pausedBy === 'limit') { const { pausedBy: _by, ...rest } = r; bus.push({ type: 'room', room: this.store.saveRoom({ ...rest, paused: false }) }) }
+      else if (r.paused) this.sessions.pause(r.id)
+    }
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -212,15 +216,32 @@ export class Kernel {
     else this.sessions.holdAll('offline')
   }
 
-  /** A session reported an auth failure: Claude Code is signed out. Everything waits until Sign in works. */
+  /** Reads `claude auth status`. Tests swap it for a stub. */
+  accountReader: () => Promise<ClaudeAccount> = readAccount
+  private authTimer?: NodeJS.Timeout
+
+  /**
+   * A session reported an auth failure: Claude Code is signed out. Everything waits until the CLI is signed in again,
+   * by Sign in here or by `claude /login` in a terminal, which a check every 10 seconds picks up.
+   */
   private signedOut() {
     this.sessions.holdAll('auth')
     bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
+    if (this.authTimer) return
+    this.authTimer = setInterval(() => void this.readAccount().catch(() => undefined), 10_000)
+    this.authTimer.unref?.()
   }
 
-  private async readAccount() {
-    const account = await readAccount()
-    if (account.signedIn) this.account = account
+  /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
+  async readAccount() {
+    const account = await this.accountReader()
+    if (!account.signedIn) return account
+    this.account = account
+    if (this.sessions.heldFor().includes('auth')) {
+      clearInterval(this.authTimer); this.authTimer = undefined
+      this.sessions.releaseAll('auth')
+      bus.push({ type: 'account', account })
+    }
     return account
   }
 
@@ -230,7 +251,6 @@ export class Kernel {
     const account = await this.readAccount()
     bus.push({ type: 'account', account })
     if (!account.signedIn) throw new Error('Sign in did not finish. Open a terminal and run claude /login.')
-    this.sessions.releaseAll('auth')
     return account
   }
 
@@ -297,6 +317,7 @@ export class Kernel {
     this.tasks.detach()
     clearInterval(this.prTimer)
     this.network?.stop()
+    clearInterval(this.authTimer)
     for (const t of this.limitTimers.values()) clearTimeout(t.timer)
     this.limitTimers.clear()
     for (const close of this.agentWatchers.values()) close()
@@ -645,8 +666,17 @@ export class Kernel {
     return done
   }
 
+  /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
+  private settingUp = new Set<string>()
+
   /** "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. */
   async retrySetup(workspaceId: string): Promise<Workspace> {
+    if (this.settingUp.has(workspaceId)) return this.mustWs(workspaceId)
+    this.settingUp.add(workspaceId)
+    try { return await this.rerunSetup(workspaceId) } finally { this.settingUp.delete(workspaceId) }
+  }
+
+  private async rerunSetup(workspaceId: string): Promise<Workspace> {
     const ws = this.mustWs(workspaceId)
     const room = this.mustRoom(ws.roomId)
     const repo = await loadRepoSettings(room.path)
@@ -681,7 +711,10 @@ export class Kernel {
     stopScript(id, 'run')
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
-    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) ? ws.branch : undefined })
+    // Commits that never left this machine live only on the branch, so it stays whatever was asked.
+    const unpushed = ws.mode === 'worktree' ? (await gitStatus(ws.path, ws.branch, ws.baseRef).catch(() => null))?.ahead ?? 0 : 0
+    const drop = (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) && unpushed === 0
+    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: drop ? ws.branch : undefined })
     this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -1159,7 +1192,11 @@ export class Kernel {
       'workspaces.gitStatus': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
-      'usage.notifyOnReset': async ({ type }) => { this.notifyReset.add(type); return { ok: true } },
+      'usage.notifyOnReset': async ({ type }) => {
+        if (!this.limitTimers.has(type)) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
+        this.notifyReset.add(type)
+        return { ok: true }
+      },
       'account.signIn': async () => this.signIn(),
       'app.openTerminal': async ({ cwd, command }) => { await this.openTerminal(cwd, command); return { ok: true } },
       'app.checkOnline': async () => ({ online: this.network ? await this.network.check() : true }),

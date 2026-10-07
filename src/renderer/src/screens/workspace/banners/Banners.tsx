@@ -41,6 +41,13 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
   const mine = settled?.id === view.id ? settled : null
   // A failed setup opens its log, which is where the reason is.
   useEffect(() => { if (view.id === 'setup') actions.ui.setWorkspaceView({ bottom: 'setup' }) }, [view.id])
+  // Signed out: coming back from a terminal where CJ ran `claude /login` checks again at once. Main also checks every 10s.
+  useEffect(() => {
+    if (view.id !== 'signedOut') return
+    const check = () => void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
+    window.addEventListener('focus', check)
+    return () => window.removeEventListener('focus', check)
+  }, [view.id])
 
   const run = (id: BannerAction, label: string, fn: () => Promise<unknown>) => {
     setBusy(id)

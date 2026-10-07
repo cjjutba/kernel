@@ -29,7 +29,8 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   const archive = async (push: boolean) => {
     setBusy(true); setError(null)
     try {
-      await call('workspaces.archive', { workspaceId, deleteBranch: current ? false : deleteBranch, push })
+      // Archive anyway keeps the branch: it holds the only copy of the unpushed commits. Main refuses to delete it too.
+      await call('workspaces.archive', { workspaceId, deleteBranch: current || (!push && unpushed > 0) ? false : deleteBranch, push })
       actions.ui.closeModal()
       actions.ui.toast({ title: push ? `Pushed ${plural(unpushed, 'commit')} and archived ${ws.name}.` : unpushed ? 'Archived without pushing. The commits are on the local branch.' : `Archived ${ws.name}.` })
     } catch (e) { setError(clean(e)); setBusy(false) }
