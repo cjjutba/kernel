@@ -36,10 +36,10 @@ export const floorFixtures: Record<string, Fixture> = {
     ui: floor
   })),
   FloorFull: scene((f) => {
-    const crowd = [...team, agent('mira', 'Mira', 'Backend', 'sonnet'), agent('sol', 'Sol', 'Design', 'sonnet'), agent('jun', 'Jun', 'Docs', 'haiku')]
+    const crowd = [...team, agent('sol', 'Sol', 'Security', 'sonnet'), agent('pax', 'Pax', 'Docs', 'haiku')]
     return {
       agents: { ...f.agents, [ids.roomA]: crowd },
-      status: { [ids.roomA]: { ...busy, mira: 'working', sol: 'idle', jun: 'working' } },
+      status: { [ids.roomA]: { ...busy, sol: 'working', pax: 'idle' } },
       ui: floor
     }
   })

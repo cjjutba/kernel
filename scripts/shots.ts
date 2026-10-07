@@ -6,7 +6,8 @@
 //   npm run shots:compare -- Workspace    shot left, design right, in shots/compare/<Screen>.png
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright-core'
@@ -32,6 +33,9 @@ async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
   env.KERNEL_FIXTURES = name
+  // Electron's own cache and storage for this launch. Deleted after close, since Chromium writes to it until exit.
+  const data = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
+  env.KERNEL_FIXTURE_DATA = data
   const app = await electron.launch({ args: ['.', '--force-device-scale-factor=1'], cwd: root, env })
   let logs = ''
   app.process().stderr?.on('data', (d: Buffer) => { logs += d.toString() })
@@ -51,6 +55,7 @@ async function capture(name: string): Promise<boolean> {
     return false
   } finally {
     await app.close().catch(() => undefined)
+    rmSync(data, { recursive: true, force: true })
   }
 }
 

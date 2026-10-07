@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
-import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,12 +13,9 @@ let win: BrowserWindow | null = null
 
 // Fixture mode serves one screen's data with no kernel (D-021). Its own userData keeps Electron's
 // cache and storage out of the real profile, so a fixture run can't collide with a running Kernel.
+// The shots harness passes a folder per launch and deletes it; manual runs reuse one temp folder.
 const fixtureName = process.env.KERNEL_FIXTURES
-if (fixtureName) {
-  const dir = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
-  app.setPath('userData', dir)
-  app.on('quit', () => rmSync(dir, { recursive: true, force: true }))
-}
+if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
 
 function createWindow() {
   win = new BrowserWindow({
