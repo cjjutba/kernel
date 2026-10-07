@@ -42,7 +42,8 @@ describe('chat tabs', () => {
     const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const hookPort = 18000 + Math.floor(Math.random() * 900)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
     const k = new Kernel({ dataDir, home })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
@@ -65,14 +66,14 @@ describe('chat tabs', () => {
     await expect(h['chats.rename']({ chatId: first.id, title: ' ' })).rejects.toThrow('Give the chat a name')
 
     const whole = await h['chats.fork']({ chatId: first.id })
-    expect(whole).toMatchObject({ title: 'Docs pass (fork)', sessionId: 'forked-session', kind: 'chat' })
-    expect(forks[0]).toEqual(['src-session', { dir: ws.path, upToMessageId: undefined, title: 'Docs pass (fork)' }])
+    expect(whole).toMatchObject({ title: 'Fork of Docs pass', sessionId: 'forked-session', kind: 'chat' })
+    expect(forks[0]).toEqual(['src-session', { dir: ws.path, upToMessageId: undefined, title: 'Fork of Docs pass' }])
     expect(k.store.items(whole.id)).toHaveLength(4)
     expect(k.store.items(first.id).map((i) => i.id)).toEqual(['u1', 'm1:0', 'u2', 'm2:0'])
 
     // Forking after a user message ends at the assistant message before it.
     const part = await h['chats.fork']({ chatId: first.id, itemId: 'u2' })
-    expect(forks[1]).toEqual(['src-session', { dir: ws.path, upToMessageId: 'm1', title: 'Docs pass (fork)' }])
+    expect(forks[1]).toEqual(['src-session', { dir: ws.path, upToMessageId: 'm1', title: 'Fork of Docs pass' }])
     expect(k.store.items(part.id)).toHaveLength(2)
     await expect(h['chats.fork']({ chatId: part.id, itemId: k.store.items(part.id)[1].id })).rejects.toThrow('Fork the original chat')
 
@@ -83,6 +84,24 @@ describe('chat tabs', () => {
     await h['chats.close']({ chatId: term.id })
     expect(k.ptys.has(term.id)).toBe(false)
     await expect(h['terminal.write']({ chatId: first.id, data: 'x' })).rejects.toThrow('not a terminal')
+
+    // With a big terminal still open, closing the last chat must still leave a chat to talk to.
+    const term2 = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })
+    for (const c of (await h['chats.list']({ workspaceId: ws.id })).filter((c) => c.kind === 'chat')) await h['chats.close']({ chatId: c.id })
+    const withTerm = await h['chats.list']({ workspaceId: ws.id })
+    expect(withTerm.map((c) => c.kind).sort()).toEqual(['chat', 'terminal'])
+    await h['chats.close']({ chatId: term2.id })
+
+    // Hooks from the big terminal move the agent on the floor.
+    const statuses: string[] = []
+    const onPush = (e: any) => { if (e.type === 'agent.status' && e.agentId === 'kai') statuses.push(e.status) }
+    bus.on('push', onPush)
+    const hook = (name: string, extra: object = {}) => fetch(`http://127.0.0.1:${hookPort}/hooks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session_id: 'big-terminal', transcript_path: '/t', cwd: ws.path, hook_event_name: name, ...extra }) })
+    await hook('UserPromptSubmit', { prompt: 'go' })
+    await hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: 't1' })
+    await hook('Stop')
+    bus.off('push', onPush)
+    expect(statuses).toEqual(['working', 'working', 'idle'])
 
     // Closed tabs leave the list but keep their transcript.
     for (const c of await h['chats.list']({ workspaceId: ws.id })) await h['chats.close']({ chatId: c.id })

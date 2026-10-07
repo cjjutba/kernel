@@ -32,6 +32,9 @@ import { Overlaps } from './services/overlap'
 
 const COPY = 'fork:'
 
+/** How a hook from an outside session moves its agent on the floor. */
+const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
+
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
 
@@ -107,7 +110,14 @@ export class Kernel {
       leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id
     })
     const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
-    const onHook = (e: { hook_event_name: string }) => this.hookSeen.set(e.hook_event_name, Date.now())
+    const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => {
+      this.hookSeen.set(e.hook_event_name, Date.now())
+      // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
+      const status = HOOK_STATUS[e.hook_event_name]
+      if (!status || !ctx?.roomId || !ctx.agentId) return
+      if (this.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
+      bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
+    }
     const onPush = (e: PushEvent) => {
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
     }
@@ -618,7 +628,7 @@ export class Kernel {
     this.sessions.stop(chatId)
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
-    if (!this.chatTabs(chat.workspaceId).length) this.saveChat(this.newChat(chat.workspaceId, 'New chat', { model: chat.model, effort: chat.effort, plan: false }))
+    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, 'New chat', { model: chat.model, effort: chat.effort, plan: false }))
   }
 
   private saveChat(chat: Chat): Chat {
@@ -646,8 +656,8 @@ export class Kernel {
       if (anchor) { items = items.slice(0, items.findIndex((i) => i.id === anchor.id) + 1); upTo = anchor.id.split(':')[0] } else items = []
     }
     let sessionId: string | undefined
-    if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `${chat.title} (fork)` })).sessionId
-    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `${chat.title} (fork)`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
+    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
     for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
     return fork
   }
@@ -935,7 +945,9 @@ export class Kernel {
         if (agentId) {
           const ws = this.store.workspaces(roomId).find((w) => w.agentId === agentId && w.status !== 'archived')
           if (!ws) throw new Error('That agent has no open workspace. Brief the Lead instead.')
-          chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')!
+          const first = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+          if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief the Lead instead.')
+          chat = first
         } else chat = await this.leadChat(roomId)
         await this.sessions.send(chat.id, [{ type: 'text', text }])
         // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).

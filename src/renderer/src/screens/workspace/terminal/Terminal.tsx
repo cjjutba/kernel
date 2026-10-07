@@ -61,6 +61,11 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
     if (!compact) term.focus()
     return () => { live.current = undefined; ro.disconnect(); term.dispose() }
   }, [id, compact])
+  // The terminal colours follow the theme, which changes after the terminal was made.
+  useEffect(() => {
+    const l = live.current
+    if (l) l.term.options.theme = { background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4') }
+  }, [theme])
   // New output goes to the open terminal. The store keeps the buffer, so a remount replays it above.
   useEffect(() => {
     const l = live.current
