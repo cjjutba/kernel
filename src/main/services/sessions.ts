@@ -4,7 +4,7 @@ import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, QueuedMessage, Ra
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Store } from '../db'
 import { bus } from '../bus'
-import { describeTool, matchesRule, type Approvals } from './approvals'
+import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
 import { toActivity } from './hookServer'
 import type { AppSettings } from './settings'
 
@@ -193,7 +193,7 @@ export class Sessions {
       // Without display: 'summarized' the CLI sends thinking blocks with empty text.
       thinking: { type: 'adaptive', display: 'summarized' },
       permissionMode: chat.plan ? 'plan' : this.baseMode(),
-      canUseTool: this.canUseTool(ws, agent, commands),
+      canUseTool: this.canUseTool(chat, ws, agent, commands),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent),
@@ -305,7 +305,7 @@ export class Sessions {
    * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
    * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then CJ decides.
    */
-  private canUseTool(ws: Workspace, agent: AgentDef | undefined, commands: Map<string, string>): CanUseTool {
+  private canUseTool(chat: Chat, ws: Workspace, agent: AgentDef | undefined, commands: Map<string, string>): CanUseTool {
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
       const p = this.d.settings().permissions
       if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
@@ -313,17 +313,20 @@ export class Sessions {
       const verdict = command ? bashVerdict(command, p, this.d.roomAllow(ws.roomId)) : undefined
       if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
       if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
       const d = describeTool(toolName, shown)
       const options = isQuestion ? ((input as any).questions?.[0]?.options ?? []).map((o: any) => String(o.label ?? o)) : undefined
       this.setStatus(ws, agent, 'needs', d.title)
-      const { decision } = this.d.approvals.request({
-        kind: isQuestion ? 'question' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id,
-        toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : d.title, detail: d.detail, options
+      const isPlan = toolName === 'ExitPlanMode'
+      const { approval, decision } = this.d.approvals.request({
+        kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
+        toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : isPlan ? `Plan for ${ws.name}` : d.title,
+        detail: isPlan ? String((input as any).plan ?? '') : d.detail, options
       }, { signal })
+      this.placeApproval(chat.id, approval.id)
       const result = await decision
       this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
@@ -355,6 +358,11 @@ export class Sessions {
   private item(chat: Chat, item: ChatItem) {
     this.d.store.saveItem(chat.id, item)
     bus.push({ type: 'chat.item', chatId: chat.id, item })
+  }
+
+  /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
+  placeApproval(chatId: string, approvalId: string) {
+    this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
   }
 
   private mustChat(id: string) { const c = this.d.store.chat(id); if (!c) throw new Error(`Unknown chat ${id}`); return c }

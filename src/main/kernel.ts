@@ -7,7 +7,7 @@ import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@s
 import { Store, newId } from './db'
 import { bus } from './bus'
 import { loadAgents, saveAgent } from './services/agents'
-import { Approvals } from './services/approvals'
+import { Approvals, parsePlanSteps } from './services/approvals'
 import { Sessions } from './services/sessions'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
@@ -417,11 +417,33 @@ export class Kernel {
       roomId, lead,
       agents: () => this.agents(roomId),
       workspaces: () => this.store.workspaces(roomId),
-      createWorkspace: (o) => this.createWorkspace(roomId, { ...o, mode: o.mode }),
+      createWorkspace: async (o) => {
+        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode })
+        this.linkPlanStep(roomId, o.agentId, ws.id)
+        return ws
+      },
       messageWorkspace: async (workspaceId, text) => { const chat = this.store.chats(workspaceId)[0]; if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
-      askUser: async (o) => (await this.approvals.request({ kind: o.kind, source: 'sdk', roomId, agentId: lead.id, title: o.title, detail: o.detail, options: o.options })).decision,
+      askUser: async (o) => {
+        // The Lead's questions belong in the Lead's own chat, so the card shows there and in the Inbox.
+        const chat = await this.leadChat(roomId)
+        const agents = await this.agents(roomId)
+        const { approval, decision } = this.approvals.request({
+          kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options,
+          steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
+        })
+        this.sessions.placeApproval(chat.id, approval.id)
+        return decision
+      },
       hireAgent: async (a) => { const file = await saveAgent(this.mustRoom(roomId).path, a); await this.agents(roomId); return file }
     })
+  }
+
+  /** Point the first unlinked step for this agent in the room's latest approved plan at the new workspace (the card's Open workspace link). */
+  private linkPlanStep(roomId: string, agentId: string, workspaceId: string) {
+    const plan = this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && a.steps?.some((s) => s.agentId === agentId && !s.workspaceId)).sort((a, b) => b.createdAt - a.createdAt)[0]
+    if (!plan?.steps) return
+    const at = plan.steps.findIndex((s) => s.agentId === agentId && !s.workspaceId)
+    this.approvals.update(plan.id, { steps: plan.steps.map((s, i) => (i === at ? { ...s, workspaceId } : s)) })
   }
 
   // ---------- pull requests

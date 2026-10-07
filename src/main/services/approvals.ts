@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Approval, Decision } from '@shared/types'
+import type { Approval, Decision, PlanStep } from '@shared/types'
 import type { Store } from '../db'
 import { bus } from '../bus'
 
@@ -35,6 +35,16 @@ export class Approvals {
 
   isPending(id: string) { return this.pending.has(id) }
 
+  /** Change a saved approval and tell every window, for example to link a plan step to the workspace it was handed to. */
+  update(id: string, patch: Partial<Approval>): Approval | undefined {
+    const prev = this.store?.approvals().find((x) => x.id === id)
+    if (!prev) return undefined
+    const next = { ...prev, ...patch }
+    this.store?.saveApproval(next)
+    bus.push({ type: 'approval', approval: next })
+    return next
+  }
+
   private finish(id: string, decision: Decision | null, status: Approval['status']): Approval | undefined {
     const p = this.pending.get(id)
     if (!p) return undefined
@@ -49,6 +59,20 @@ export class Approvals {
     bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `${status} ${next.title}`, object: next.toolName })
     return next
   }
+}
+
+/** Tools that are a question to CJ, not a permission. No setting may answer them for him. */
+export const needsUser = (toolName: string) => toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
+
+/** "T-15a PDF renderer · Noor" becomes a step with the agent's id. Lines without a known name stay as plain text. */
+export function parsePlanSteps(lines: string[], agents: { id: string; name: string }[]): PlanStep[] {
+  return lines.map((line) => {
+    const at = line.lastIndexOf(' · ')
+    const agent = at < 0 ? undefined : agents.find((a) => a.name.toLowerCase() === line.slice(at + 3).trim().toLowerCase() || a.id === line.slice(at + 3).trim().toLowerCase())
+    const title = agent ? line.slice(0, at).trim() : line.trim()
+    const id = /^(T-\d+[a-z]?)\b/.exec(title)?.[1]
+    return { title, ...(id ? { taskId: id } : {}), ...(agent ? { agentId: agent.id } : {}) }
+  })
 }
 
 /** Short human title for a tool call, used in the Inbox and on the floor card. */
