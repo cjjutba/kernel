@@ -158,7 +158,10 @@ export interface KernelApi {
   'update.check': { req: void; res: AppUpdate }
   /** Restart into the downloaded version. Running agents pause first. */
   'update.install': { req: void; res: Ok }
+  /** Writes the activity log to a file in the data folder and returns where (Settings > About). */
   'app.exportLogs': { req: void; res: { path: string } }
+  /** What Settings > About shows: Kernel's version and where its data lives. */
+  'app.info': { req: void; res: { version: string; dataDir: string } }
   /** A terminal window in a folder, optionally running a command (Open terminal, Sign in). */
   'app.openTerminal': { req: { cwd: string; command?: string }; res: Ok }
   /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */

@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
-import type { AppSettings, RoomSettings } from '@shared/types'
+import type { AppSettings, DeepPartial, RoomSettings } from '@shared/types'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
@@ -38,6 +38,15 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
 export async function saveAppSettings(file: string, s: AppSettings) {
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, JSON.stringify(s, null, 2))
+}
+
+/** Merge a patch from Settings and keep the numbers in a range the engine can use. */
+export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
+  const next = deepMerge(current, patch)
+  const whole = (n: unknown, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n as number))) : fallback)
+  next.models.maxConcurrent = whole(next.models.maxConcurrent, 1, 12, current.models.maxConcurrent)
+  next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
+  return next
 }
 
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
