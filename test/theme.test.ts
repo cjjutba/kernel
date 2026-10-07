@@ -37,7 +37,7 @@ describe('theme contrast', () => {
   const dark = tokens(":root, [data-theme='dark']")
   it('light text, diff, merged and terminal colors reach 4.5:1 on every surface', () => {
     const fails: string[] = []
-    for (const t of [...TEXT, 'faint', ...TERM]) for (const s of SURFACES) if (contrast(light[t], light[s]) < 4.5) fails.push(`${t} on ${s}: ${contrast(light[t], light[s]).toFixed(2)}`)
+    for (const t of [...TEXT, 'faint', 'danger', ...TERM]) for (const s of SURFACES) if (contrast(light[t], light[s]) < 4.5) fails.push(`${t} on ${s}: ${contrast(light[t], light[s]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
   it('dark text, diff, merged and terminal colors reach 4.5:1 on the main surfaces', () => {
@@ -58,7 +58,7 @@ describe('theme contrast', () => {
 describe('no hardcoded colors', () => {
   const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = join(dir, e.name)
-    if (e.isDirectory()) return e.name === 'floor' ? [] : files(p)
+    if (e.isDirectory()) return p === join(root, 'src/renderer/src/floor') ? [] : files(p)
     return /\.(tsx?|css)$/.test(e.name) && e.name !== 'tokens.css' ? [p] : []
   })
   it('renderer code uses tokens, except tokens.css and the floor art', () => {

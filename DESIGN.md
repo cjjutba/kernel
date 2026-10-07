@@ -52,7 +52,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | add | #166a45 | diff additions, passing checks |
 | del | #b32e2e | diff deletions, errors |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
-| danger | #c9302f | destructive confirm buttons |
+| danger | #bd2b2b | destructive confirm buttons |
 
 The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, made by `scripts/floor-light.mjs`) follow the theme. Colors live in `tokens.css` and the floor art only; `test/theme.test.ts` fails on a hex or rgb value anywhere else in the renderer.
 

@@ -13,7 +13,7 @@ const xtermTheme = () => {
   return {
     background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4'),
     black: c('black'), red: c('red'), green: c('green'), yellow: c('yellow'), blue: c('blue'), magenta: c('magenta'), cyan: c('cyan'), white: c('white'),
-    brightBlack: c('black'), brightRed: c('red'), brightGreen: c('green'), brightYellow: c('yellow'), brightBlue: c('blue'), brightMagenta: c('magenta'), brightCyan: c('cyan'), brightWhite: c('white')
+    brightBlack: css('--muted'), brightRed: c('red'), brightGreen: c('green'), brightYellow: c('yellow'), brightBlue: c('blue'), brightMagenta: c('magenta'), brightCyan: c('cyan'), brightWhite: c('white')
   }
 }
 
