@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
+import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
 import { Icon, Skeleton, Spinner } from '../../ui'
 import { actions, loadWorkspace, useStore } from '../../store'
+import { ApprovalCard } from './cards/ApprovalCard'
+import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, copyText, MessageActions } from './MessageActions'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
@@ -44,6 +46,13 @@ function ReplyMessage({ item, chat, onFork }: { item: Extract<ChatItem, { kind: 
       ]} />
     </div>
   )
+}
+
+/** `kernel://floor/<roomId>` goes to that room's floor. Anything else is a normal link. */
+function NoteLink({ link }: { link: { label: string; href: string } }) {
+  const floor = /^kernel:\/\/floor\/(.+)$/.exec(link.href)
+  if (!floor) return <a href={link.href}>{link.label}</a>
+  return <a href={link.href} onClick={(e) => { e.preventDefault(); actions.ui.go({ name: 'floor', roomId: floor[1] }) }}>{link.label}</a>
 }
 
 function ThinkingRow({ item }: { item: Extract<ChatItem, { kind: 'thinking' }> }) {
@@ -106,7 +115,19 @@ function Elapsed({ since }: { since: number }) {
   return <span className="running"><Spinner label="Working" />{fmtDuration(now - since)}</span>
 }
 
-function Block({ block, chat, changes, onEdit, onFork }: { block: ThreadBlock; chat: Chat; changes: ChangedFile[]; onEdit: (text: string) => void; onFork: (itemId: string) => void }) {
+function ApprovalRow({ id }: { id: string }) {
+  const a = useStore((s) => s.approvals.find((x) => x.id === id))
+  return a ? <ApprovalCard approval={a} /> : null
+}
+
+function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: { block: ThreadBlock; chat: Chat; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => void; onTerminal: () => void }) {
+  if (block.kind === 'error') {
+    return (
+      <ErrorCard message={block.message} output={block.output} agentName={agentName} onTerminal={onTerminal}
+        onFix={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text: `Fix this: ${block.message}` }] }))}
+        onRetry={() => void attempt('Could not retry', () => call('chats.retry', { chatId: chat.id, itemId: block.id }))} />
+    )
+  }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
   if (block.kind === 'meta') return <span className="meta">{block.text}</span>
   if (block.kind === 'files') {
@@ -123,10 +144,11 @@ function Block({ block, chat, changes, onEdit, onFork }: { block: ThreadBlock; c
     case 'text': return <ReplyMessage item={item} chat={chat} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
-    case 'note': return <div className="note"><span className="grow">{item.text}</span>{item.link && <a href={item.link.href}>{item.link.label}</a>}</div>
+    case 'note': return <div className="note"><span className="grow">{item.text}</span>{item.link && <NoteLink link={item.link} />}</div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
-    // Result is folded into a meta row by buildThread. Approval cards come with KERNEL-14.
-    case 'result': case 'approval': return null
+    case 'approval': return <ApprovalRow id={item.approvalId} />
+    // Result is folded into a meta row or an error card by buildThread.
+    case 'result': return null
   }
 }
 
@@ -149,15 +171,28 @@ export function TranscriptSkeleton({ branch }: { branch: string }) {
 export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { chat: Chat; workspaceId: string; changes: ChangedFile[]; onEdit: (text: string) => void; onForked: (chatId: string) => void }) {
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
+  const approvals = useStore((s) => s.approvals)
+  const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
   const blocks = useMemo(() => buildThread(items), [items])
+  // A pending request shows even before the engine has placed a card for it in the transcript.
+  const loose = useMemo(() => {
+    const placed = new Set(items.flatMap((i) => (i.kind === 'approval' ? [i.approvalId] : [])))
+    return approvals.filter((a: Approval) => a.status === 'pending' && !placed.has(a.id) && a.workspaceId === workspaceId && (!a.chatId || a.chatId === chat.id))
+  }, [approvals, items, workspaceId, chat.id])
   const end = useRef<HTMLDivElement>(null)
-  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [items.length, running, chat.id])
+  useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [items.length, loose.length, running, chat.id])
   const since = [...items].reverse().find((i) => i.kind === 'user')?.ts ?? Date.now()
 
   const fork = (itemId: string) => void attempt('Could not fork', async () => {
     const forked = await call('chats.fork', { chatId: chat.id, itemId })
     await loadWorkspace(workspaceId)
     onForked(forked.id)
+  })
+
+  const terminal = () => void attempt('Could not open a terminal', async () => {
+    const t = await call('chats.create', { workspaceId, kind: 'terminal' })
+    await loadWorkspace(workspaceId)
+    onForked(t.id)
   })
 
   return (
@@ -169,7 +204,8 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
             <span className="muted">Same worktree and branch, fresh context.</span>
           </div>
         )}
-        {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} onEdit={onEdit} onFork={fork} />)}
+        {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} agentName={agentName} onEdit={onEdit} onFork={fork} onTerminal={terminal} />)}
+        {loose.map((a) => <ApprovalCard key={a.id} approval={a} />)}
         {running && <Elapsed since={since} />}
         <div ref={end} />
       </div>

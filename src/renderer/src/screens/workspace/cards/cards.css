@@ -1,0 +1,19 @@
+.tcard { display: flex; flex-direction: column; gap: 10px; padding: 14px; margin: 6px 0 0; }
+.tcard h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--ink); display: flex; align-items: center; gap: 8px; }
+.tcard h3 .err { color: var(--del); display: inline-flex; }
+.tcard .sub { color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+.tcard .code { font-size: 12px; line-height: 19.5px; padding: 10px 11px; max-height: 220px; overflow: auto; }
+.tcard .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.tcard .acts .btn { height: 30px; }
+.tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--code-bg); color: var(--ink); font-size: 13px; }
+.tcard textarea.grow-input { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.5; }
+.tcard .grow-input:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: 13.5px; color: var(--ink); }
+.steps .n { color: var(--muted); font-size: 12px; }
+.steps .open { border: 0; background: transparent; padding: 0 0 0 12px; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.opts { display: flex; flex-direction: column; gap: 6px; }
+.opt { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 11px; border-radius: 7px; border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: 13.5px; text-align: left; }
+.opt:hover { background: var(--surface-3); }
+.opt .n { color: var(--muted); font-size: 12px; }
+.tcard .done-line { color: var(--muted); font-size: 12.5px; }
