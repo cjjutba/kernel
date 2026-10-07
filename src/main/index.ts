@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -53,7 +53,17 @@ app.whenReady().then(async () => {
   let started: Promise<void> = Promise.resolve()
   if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
   else {
-    const kernel = new Kernel({ dataDir: app.getPath('userData'), starterDir: join(app.getAppPath(), 'docs', 'starter-agents') })
+    const kernel = new Kernel({
+      dataDir: app.getPath('userData'),
+      starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
+      inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+      showNotification: (n) => {
+        if (!Notification.isSupported()) return
+        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent: false })
+        banner.on('click', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.show(); w.focus() } })
+        banner.show()
+      }
+    })
     app.on('before-quit', () => { void kernel.stop() })
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     started = kernel.start()

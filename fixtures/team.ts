@@ -1,4 +1,4 @@
-import type { AgentDef, Room, RoomSetupStep } from '@shared/types'
+import type { AgentDef, Approval, Notification, Room, RoomSetupStep } from '@shared/types'
 import type { Fixture } from './types'
 import { ids, scene, team, withWorkspace } from './base'
 
@@ -53,11 +53,58 @@ const repos = [
   ['client-c', true, 2 * HOUR], ['cjjutba.dev', false, DAY], ['upnext', true, 3 * DAY], ['kalinga', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
 ].map(([name, priv, age]) => ({ fullName: `cjjutba/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
 
+/** Local time today or yesterday, so Home groups rows under Today and Yesterday whatever day the shots run. */
+const clock = (daysAgo: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime() }
+
+/** The three things waiting on CJ in Client A (Inbox.png, Home.png): two approvals and a PR ready to merge. */
+const homeApprovals: Approval[] = [
+  { id: 'ap-push', kind: 'tool', source: 'sdk', roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Kai is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
+  { id: 'ap-plan15', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
+]
+const note = (n: Partial<Notification> & Pick<Notification, 'id' | 'title' | 'sub' | 'createdAt'>): Notification => ({ kind: 'system', roomId: ids.roomA, needsYou: false, read: false, ...n })
+const homeNotifications: Notification[] = [
+  note({ id: 'n1', kind: 'approval', agentId: 'noor', approvalId: 'ap-push', title: 'Wants to run drizzle-kit push', sub: 'Permission · Client A', heading: 'Noor wants to run a command that changes the database', needsYou: true, createdAt: ago(2 * MIN) }),
+  note({ id: 'n2', kind: 'approval', agentId: 'rowan', approvalId: 'ap-plan15', title: 'Plan ready: Export invoices as PDF', sub: 'Plan review · Client A', heading: 'Rowan has a plan for you to review', needsYou: true, createdAt: ago(6 * MIN) }),
+  note({ id: 'n3', kind: 'merge', agentId: 'theo', workspaceId: ids.invites, title: 'PR #41 is ready to merge', sub: 'Merge · Client A', heading: 'PR #41 is ready to merge', body: 'org-invites has passing checks and no open review comments.', needsYou: true, createdAt: ago(12 * MIN) }),
+  note({ id: 'n4', kind: 'blocked', agentId: 'ivy', title: 'T-11 was blocked by a hook', sub: 'Check failed · Client A', heading: 'T-11 was blocked by a hook', body: 'The test-output hook stopped Ivy. She needs the run output attached.', createdAt: ago(18 * MIN) }),
+  note({ id: 'n5', kind: 'finished', agentId: 'kai', workspaceId: ids.table, title: 'Finished T-14 invoice table', sub: 'Workspace ready · Client A', heading: 'Finished T-14 invoice table', body: 'Kai pushed the table, its states and the tests. Vitest and Playwright pass.', createdAt: ago(31 * MIN) }),
+  note({ id: 'n6', kind: 'standup', agentId: 'rowan', title: 'Daily standup', sub: 'Summary · Client A', heading: 'Daily standup', body: 'T-11 passed, T-12 and T-14 are in progress, T-09 waits on your merge.', read: true, createdAt: ago(9 * HOUR) }),
+  note({ id: 'n7', title: 'Hooks reconnected', sub: 'System', roomId: undefined, heading: 'Hooks reconnected', body: 'Kernel is listening on localhost:7420 again.', read: true, createdAt: ago(11 * HOUR) })
+]
+
+/** Home.png: four rooms (A needs you), five merged PRs, three things waiting. */
+const homeScene = (f: Fixture): Partial<Fixture> => {
+  const merged = (id: string, roomId: string, agentId: string, title: string, added: number, removed: number, at: number) =>
+    ({ id, roomId, name: id, title, prTitle: title, branch: `feat/${id}`, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/${id}`, mode: 'worktree' as const, agentId, port: 4400, status: 'archived' as const, prState: 'merged' as const, prNumber: 30, stat: { files: 3, added, removed }, createdAt: at - HOUR, mergedAt: at })
+  const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)
+  return {
+    ...roomsScene(f),
+    rooms: roomsScene(f).rooms!.filter((r) => !r.archived),
+    approvals: homeApprovals,
+    notifications: homeNotifications,
+    agents: { [ids.roomA]: team, [ids.roomB]: crew('rowan', 'kai'), [ids.roomOwn]: crew('rowan', 'kai', 'ivy'), [ids.roomPortfolio]: crew('rowan', 'kai') },
+    status: {
+      [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'idle', ivy: 'idle' },
+      [ids.roomB]: { rowan: 'working', kai: 'working' },
+      [ids.roomOwn]: { rowan: 'working', kai: 'working', ivy: 'working' },
+      [ids.roomPortfolio]: { rowan: 'idle', kai: 'idle' }
+    },
+    workspaces: [
+      ...f.workspaces,
+      merged('ws-m1', ids.roomA, 'kai', 'feat(invoices): table and empty states', 412, 38, clock(0, 10, 31)),
+      merged('ws-m2', ids.roomA, 'noor', 'fix(auth): invite links expire after 7 days', 26, 9, clock(0, 9, 58)),
+      merged('ws-m3', ids.roomOwn, 'kai', 'chore(db): seed realistic data', 188, 4, clock(0, 9, 12)),
+      merged('ws-m4', ids.roomPortfolio, 'kai', 'Landing page polish', 926, 383, clock(1, 18, 40)),
+      merged('ws-m5', ids.roomB, 'rowan', 'docs: onboarding questions', 18, 11, clock(1, 16, 5))
+    ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
+  }
+}
+
 export const teamFixtures: Record<string, Fixture> = {
-  Home: scene(() => ({ ui: { route: { name: 'home' } } })),
+  Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
-  Inbox: scene(() => ({ ui: { route: { name: 'inbox' } } })),
-  InboxEmpty: scene(() => ({ approvals: [], ui: { route: { name: 'inbox' } } })),
+  Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
+  InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
     ...roomsScene(f),

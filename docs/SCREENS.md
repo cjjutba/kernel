@@ -8,7 +8,7 @@ Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src
 |---|---|---|---|---|---|---|---|---|
 | Welcome | Welcome | [png](../design/screens/Welcome.png) | [dc.html](../design/canvas/project/Welcome.dc.html) | KERNEL-27 | Platform | onboarding/welcome | `screens/onboarding/Welcome.tsx` | done |
 | LoadingApp | Starting up | [png](../design/screens/LoadingApp.png) | [dc.html](../design/canvas/project/LoadingApp.dc.html) | KERNEL-27 | Platform | before boot (`system.booted`) | `screens/onboarding/Loading.tsx` | done |
-| HomeEmpty | Home before any rooms | [png](../design/screens/HomeEmpty.png) | [dc.html](../design/canvas/project/HomeEmpty.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | todo |
+| HomeEmpty | Home before any rooms | [png](../design/screens/HomeEmpty.png) | [dc.html](../design/canvas/project/HomeEmpty.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | done |
 | ConnectRepo | Connect a repo | [png](../design/screens/ConnectRepo.png) | [dc.html](../design/canvas/project/ConnectRepo.dc.html) | KERNEL-20 | Team | modal connectRepo | `screens/rooms/ConnectRepo.tsx` | done |
 | OpenFolder | Open a folder | [png](../design/screens/OpenFolder.png) | [dc.html](../design/canvas/project/OpenFolder.dc.html) | KERNEL-20 | Team | modal openFolder | `screens/rooms/OpenFolder.tsx` | done |
 | CheckHooks | Check hooks | [png](../design/screens/CheckHooks.png) | [dc.html](../design/canvas/project/CheckHooks.dc.html) | KERNEL-27 | Platform | modal checkHooks | `screens/onboarding/CheckHooks.tsx` | done |
@@ -18,9 +18,9 @@ Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src
 | SetupGhSignedOut | GitHub CLI signed out | [png](../design/screens/SetupGhSignedOut.png) | [dc.html](../design/canvas/project/SetupGhSignedOut.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
 | SetupPortBusy | Hook port in use | [png](../design/screens/SetupPortBusy.png) | [dc.html](../design/canvas/project/SetupPortBusy.dc.html) | KERNEL-27 | Platform | onboarding/checks | `screens/onboarding/Checks.tsx` | done |
 | RoomSetup | Setting up a new room | [png](../design/screens/RoomSetup.png) | [dc.html](../design/canvas/project/RoomSetup.dc.html) | KERNEL-20 | Team | onboarding/room | `screens/rooms/RoomSetup.tsx` | done |
-| Home | Home | [png](../design/screens/Home.png) | [dc.html](../design/canvas/project/Home.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | todo |
-| Inbox | Inbox | [png](../design/screens/Inbox.png) | [dc.html](../design/canvas/project/Inbox.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | todo |
-| InboxEmpty | Inbox · all caught up | [png](../design/screens/InboxEmpty.png) | [dc.html](../design/canvas/project/InboxEmpty.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | todo |
+| Home | Home | [png](../design/screens/Home.png) | [dc.html](../design/canvas/project/Home.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | done |
+| Inbox | Inbox | [png](../design/screens/Inbox.png) | [dc.html](../design/canvas/project/Inbox.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
+| InboxEmpty | Inbox · all caught up | [png](../design/screens/InboxEmpty.png) | [dc.html](../design/canvas/project/InboxEmpty.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
 | CommandPalette | Search · ⌘K | [png](../design/screens/CommandPalette.png) | [dc.html](../design/canvas/project/CommandPalette.dc.html) | KERNEL-21 | Team | modal search | `screens/search/CommandPalette.tsx` | todo |
 | Rooms | All rooms | [png](../design/screens/Rooms.png) | [dc.html](../design/canvas/project/Rooms.dc.html) | KERNEL-20 | Team | rooms | `screens/rooms/Rooms.tsx` | done |
 | NewRoom | New room | [png](../design/screens/NewRoom.png) | [dc.html](../design/canvas/project/NewRoom.dc.html) | KERNEL-20 | Team | modal newRoom | `screens/rooms/NewRoom.tsx` | done |

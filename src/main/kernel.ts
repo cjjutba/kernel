@@ -8,6 +8,7 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { loadAgents, saveAgent } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
+import { Notifications } from './services/notifications'
 import { Sessions } from './services/sessions'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
@@ -37,7 +38,6 @@ export const UNBUILT = {
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'pr.get': 'KERNEL-15', 'pr.continue': 'KERNEL-15',
-  'notifications.list': 'KERNEL-17', 'notifications.read': 'KERNEL-17',
   'tasks.list': 'KERNEL-18',
   'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
   'chats.restart': 'KERNEL-22',
@@ -60,6 +60,7 @@ function unbuilt(): Pick<Handlers, Unbuilt> {
 export class Kernel {
   readonly store: Store
   readonly approvals: Approvals
+  readonly notifications: Notifications
   readonly sessions: Sessions
   settings!: AppSettings
   private hookServer?: Server
@@ -70,9 +71,16 @@ export class Kernel {
   private hookSeen = new Map<string, number>()
   private unlisten: () => void = () => undefined
 
-  constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string }) {
+  constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification) => void; inBackground?: () => boolean }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
+    this.notifications = new Notifications({
+      store: this.store,
+      settings: () => this.settings,
+      agentName: (roomId, agentId) => (roomId ? this.agentsSync(roomId).find((a) => a.id === agentId)?.name : undefined),
+      show: o.showNotification,
+      inBackground: o.inBackground
+    })
     this.sessions = new Sessions({
       store: this.store,
       approvals: this.approvals,
@@ -104,6 +112,7 @@ export class Kernel {
     await saveAppSettings(this.settingsFile, this.settings)
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
+    this.notifications.attach()
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -148,6 +157,7 @@ export class Kernel {
 
   async stop() {
     this.unlisten()
+    this.notifications.detach()
     clearInterval(this.prTimer)
     this.sessions.stopAll()
     stopAllScripts()
@@ -474,7 +484,8 @@ export class Kernel {
   async refreshPr(id: string): Promise<Workspace> {
     const ws = this.mustWs(id)
     const pr = await prView(ws.path, ws.branch)
-    const next = this.saveWs({ ...ws, prNumber: pr?.number ?? ws.prNumber, prUrl: pr?.url ?? ws.prUrl, prState: pr ? prStateOf(pr) : ws.prState === 'checks' ? 'checks' : 'none' })
+    const state: Workspace['prState'] = pr ? prStateOf(pr) : ws.prState === 'checks' ? 'checks' : 'none'
+    const next = this.saveWs({ ...ws, prNumber: pr?.number ?? ws.prNumber, prUrl: pr?.url ?? ws.prUrl, prState: state, ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {}) })
     if (next.prState !== ws.prState) { bus.push({ type: 'pr', workspaceId: id, state: next.prState }); bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: pr ? `#${pr.number}` : undefined }) }
     return next
   }
@@ -581,6 +592,8 @@ export class Kernel {
       'chats.send': async ({ chatId, parts }) => this.sessions.send(chatId, parts),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),
+      'notifications.list': async () => this.notifications.list(),
+      'notifications.read': async ({ ids }) => this.notifications.read(ids),
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, decision); if (!a) throw new Error('This request already timed out or was answered.'); return a },
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
