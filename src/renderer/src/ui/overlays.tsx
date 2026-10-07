@@ -12,6 +12,8 @@ export interface MenuEntry {
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
   disabled?: boolean
+  /** Red text and icon. For the one destructive entry, such as Remove room (SidebarRoomMenu.png). */
+  danger?: boolean
   onSelect?: () => void
 }
 
@@ -42,7 +44,7 @@ function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (Me
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >

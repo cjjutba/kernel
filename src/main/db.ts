@@ -31,6 +31,19 @@ export class Store {
   room(id: string): Room | undefined { return this.one('select data from rooms where id = ?', id) }
   saveRoom(r: Room) { this.db.prepare('insert or replace into rooms (id, data, created_at) values (?, ?, ?)').run(r.id, JSON.stringify(r), r.createdAt); return r }
 
+  /** Kernel's record of a room: the room, its workspaces, chats, approvals and activity. Nothing on disk. */
+  deleteRoom(id: string) {
+    this.db.transaction(() => {
+      const ws = 'select id from workspaces where room_id = ?'
+      this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${ws}))`).run(id)
+      this.db.prepare(`delete from chats where workspace_id in (${ws})`).run(id)
+      this.db.prepare('delete from workspaces where room_id = ?').run(id)
+      this.db.prepare('delete from approvals where room_id = ?').run(id)
+      this.db.prepare('delete from activity where room_id = ?').run(id)
+      this.db.prepare('delete from rooms where id = ?').run(id)
+    })()
+  }
+
   // workspaces
   workspaces(roomId?: string): Workspace[] {
     return roomId ? this.all('select data from workspaces where room_id = ? order by created_at', roomId) : this.all('select data from workspaces order by created_at')

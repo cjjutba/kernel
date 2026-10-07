@@ -28,6 +28,7 @@
 .menu-row { position: relative; }
 .submenu { position: absolute; z-index: 61; left: 100%; top: -7px; padding-left: 4px; }
 .menu-item { padding: 0 8px; }
+.menu-item[data-danger], .menu-item[data-danger] svg { color: var(--danger); }
 .menu-item:disabled { color: var(--faint); cursor: default; background: transparent; }
 .menu-item svg { color: var(--muted); flex-shrink: 0; }
 .menu-item:focus-visible { outline: 0; background: var(--hover); }
