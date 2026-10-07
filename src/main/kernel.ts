@@ -1,5 +1,5 @@
 import { basename, join } from 'node:path'
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
 import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
@@ -18,7 +18,7 @@ import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
+import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
@@ -46,7 +46,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
   'settings.setRoom': 'KERNEL-26', 'mcp.list': 'KERNEL-26', 'integrations.list': 'KERNEL-26', 'integrations.connect': 'KERNEL-26',
   'update.get': 'KERNEL-30', 'update.check': 'KERNEL-30', 'update.install': 'KERNEL-30'
 } as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
@@ -91,6 +90,10 @@ export class Kernel {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
     /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
     probeNetwork?: () => Promise<boolean>
+    /** Kernel's version, for Settings > About. */
+    version?: string
+    /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */
+    onSettings?: (s: AppSettings) => void
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
@@ -151,6 +154,7 @@ export class Kernel {
   async start() {
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
+    this.o.onSettings?.(this.settings)
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
@@ -199,6 +203,31 @@ export class Kernel {
     }
     if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec)
     return this.pushHooks()
+  }
+
+  /**
+   * Settings > any app page. Saves to settings.json and applies at once: running sessions read the permission lists on their
+   * next tool call, the mode moves to them now, a higher limit on agents working at once starts what was waiting, and a new
+   * approval timeout restarts the hook server so the hooks on disk and the server agree.
+   */
+  private async setSettings(patch: Parameters<typeof applySettingsPatch>[1]): Promise<AppSettings> {
+    const before = this.settings
+    this.settings = applySettingsPatch(before, patch)
+    await saveAppSettings(this.settingsFile, this.settings)
+    this.sessions.applySettings()
+    this.o.onSettings?.(this.settings)
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && this.hookServer) await this.restartHooks(this.settings.hookPort).catch(() => undefined)
+    return this.settings
+  }
+
+  /** The activity log as plain text, one line per event, saved in the data folder. */
+  private async exportLogs(): Promise<{ path: string }> {
+    const dir = join(this.o.dataDir, 'logs')
+    await mkdir(dir, { recursive: true })
+    const path = join(dir, `kernel-${new Date().toISOString().replace(/[:.]/g, '-')}.log`)
+    const lines = this.store.activity(undefined, 5000).reverse().map((e) => `${new Date(e.ts).toISOString()} ${[e.actor, e.text, e.object].filter(Boolean).join(' ')}`)
+    await writeFile(path, lines.join('\n') + '\n')
+    return { path }
   }
 
   private async pushHooks(): Promise<HookStatus> {
@@ -1255,6 +1284,9 @@ export class Kernel {
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
       'usage.get': async () => this.sessions.usage(),
       'settings.get': async () => this.settings,
+      'settings.set': async ({ patch }) => this.setSettings(patch),
+      'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
+      'app.exportLogs': async () => this.exportLogs(),
       'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path)
     }
   }

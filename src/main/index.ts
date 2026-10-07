@@ -66,6 +66,9 @@ app.whenReady().then(async () => {
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
       probeNetwork: () => probeNetwork(),
+      version: app.getVersion(),
+      // A dev run must not register the dev Electron as a login item.
+      onSettings: (s) => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.openAtLogin }) },
       showNotification: (n, { silent }) => {
         if (!Notification.isSupported()) return
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })

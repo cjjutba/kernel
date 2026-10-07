@@ -165,7 +165,7 @@ export class Sessions {
    */
   async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
     const chat = this.mustChat(chatId)
-    if (this.live.get(chatId)?.running || this.pausedChat(chat)) {
+    if (this.live.get(chatId)?.running || this.pausedChat(chat) || this.atCapacity(chatId)) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
       return { queued: true }
     }
@@ -212,9 +212,32 @@ export class Sessions {
   private drain(chatId: string) {
     const [next, ...rest] = this.queued(chatId)
     const chat = this.d.store.chat(chatId)
-    if (!next || !chat || this.pausedChat(chat)) return
+    if (!next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
     this.setQueue(chatId, rest)
     this.dispatch(chat, next.parts)
+  }
+
+  /** Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher limit starts waiting work. */
+  applySettings() {
+    for (const [id, l] of this.live) {
+      if (this.d.store.chat(id)?.plan) continue
+      void l.query.setPermissionMode(this.baseMode()).catch(() => undefined)
+    }
+    this.drainWaiting()
+  }
+
+  /** Settings > Models: agents working at once. Read on every call, so a change applies to the next send. */
+  private atCapacity(chatId: string): boolean {
+    const max = this.d.settings().models?.maxConcurrent
+    if (!max || max < 1) return false
+    let running = 0
+    for (const [id, l] of this.live) if (l.running && id !== chatId) running++
+    return running >= max
+  }
+
+  /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
+  drainWaiting() {
+    for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
   }
 
   private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
@@ -321,6 +344,7 @@ export class Sessions {
       if (this.live.get(chatId) === live) this.live.delete(chatId)
       const chat = this.d.store.chat(chatId)
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
+      if (chat && !replaced) this.drainWaiting()
       if (chat && !replaced && ended !== null) this.offline(ws, ended)
     }
   }
@@ -406,6 +430,7 @@ export class Sessions {
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
         if (stopped) this.setQueue(chatId, [])
         else this.drain(chatId)
+        this.drainWaiting()
         return
       }
       case 'rate_limit_event': {
@@ -613,11 +638,22 @@ export type BashVerdict = 'deny' | 'allow' | 'ask' | undefined
  * Kernel's say on one Bash command: Never allow, then the room's Always allow rules, then Always ask.
  * Undefined leaves it to Claude Code's own settings, so CJ's allow list still covers everyday commands.
  */
-export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[] }, roomAllow: string[]): BashVerdict {
-  if (matchesRule(command, p.neverAllow)) return 'deny'
+export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[] }, roomAllow: string[]): BashVerdict {
+  if (matchesRule(command, p.neverAllow) || pushesTo(command, p.protectedBranches ?? [])) return 'deny'
   if (roomAllow.some((r) => matchesRoomRule(command, r))) return 'allow'
   if (matchesRule(command, p.alwaysAsk)) return 'ask'
   return undefined
+}
+
+/** A `git push` that names a protected branch (`origin main`, `origin HEAD:main`, `+main`). A bare `git push` names none, so it is left alone. */
+export function pushesTo(command: string, branches: string[]): boolean {
+  if (!branches.length) return false
+  return command.split(/&&|\|\||[;|\n]/).some((part) => {
+    const t = part.trim().split(/\s+/)
+    const at = t.findIndex((w, i) => w === 'push' && t[i - 1] === 'git')
+    if (at < 0) return false
+    return t.slice(at + 1).filter((w) => !w.startsWith('-')).some((w) => branches.includes(w.replace(/^\+/, '').split(':').pop() ?? ''))
+  })
 }
 
 /**

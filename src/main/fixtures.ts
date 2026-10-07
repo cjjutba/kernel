@@ -1,7 +1,8 @@
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
+import { join } from 'node:path'
 import type { Handlers } from './kernel'
-import { DEFAULT_SETTINGS } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 
 const ok = { ok: true } as const
@@ -32,7 +33,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
-  const settings = f.settings ?? DEFAULT_SETTINGS('/Users/cj')
+  let settings = f.settings ?? DEFAULT_SETTINGS('/Users/cj')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount
@@ -154,7 +155,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'account.signIn': async () => account,
     'account.signOut': async () => ({ signedIn: false }),
     'settings.get': async () => settings,
-    'settings.set': async () => settings,
+    'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
     'settings.setRoom': async ({ roomId }) => roomSettings(roomId),
     'mcp.list': async () => [],
@@ -164,6 +165,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'update.check': async () => update,
     'update.install': async () => ok,
     'app.exportLogs': async () => ({ path: '(fixture)' }),
+    'app.info': async () => ({ version: '0.1.0', dataDir: join('~', 'Library', 'Application Support', 'Kernel') }),
     'app.openTerminal': async () => ok,
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) })
   }
