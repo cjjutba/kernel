@@ -122,6 +122,16 @@ export interface NewRoomPrefill {
   baseBranch?: string
 }
 
+/** Values New agent opens with. Fixtures use it to show the filled form, the drafted file and the joined step. */
+export interface NewAgentPrefill {
+  name?: string
+  description?: string
+  /** An alias: sonnet, opus or haiku. */
+  model?: string
+  /** The drafted file. Shown by the review and joined steps. */
+  draft?: AgentDraft
+}
+
 /** One line of the room setup progress (RoomSetup.png). */
 export interface RoomSetupStep {
   id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'agents'
@@ -664,7 +674,7 @@ export type Modal =
   | { name: 'search' }
   | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
-  | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done' }
+  | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   | { name: 'whatsNew' }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }

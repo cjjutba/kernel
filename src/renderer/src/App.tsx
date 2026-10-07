@@ -66,7 +66,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'connectRepo': return <ConnectRepo />
     case 'openFolder': return <OpenFolder />
     case 'checkHooks': return <CheckHooks />
-    case 'newAgent': return <NewAgent roomId={modal.roomId} step={modal.step} />
+    case 'newAgent': return <NewAgent roomId={modal.roomId} step={modal.step} prefill={modal.prefill} />
     case 'whatsNew': return <WhatsNew />
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
