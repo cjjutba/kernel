@@ -255,7 +255,7 @@ export function watchAgents(repoPath: string, onChange: () => void, delay = 150)
     if (watcher) { parent?.close(); parent = undefined; return }
     if (parent) return
     try {
-      parent = watch(join(repoPath, '.claude'), { persistent: false }, (_e, name) => { if (name === 'agents') { arm(); fire() } })
+      parent = watch(join(repoPath, '.claude'), { persistent: false }, (_e, name) => { if (!name || name === 'agents') { arm(); if (name || watcher) fire() } })
       parent.on('error', () => { parent?.close(); parent = undefined })
     } catch { parent = undefined }
   }
