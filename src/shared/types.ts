@@ -620,6 +620,8 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] :
 export type OnboardingStep = 'welcome' | 'checks' | 'room'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
+export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
+
 export type Route =
   | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
   | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
@@ -627,6 +629,8 @@ export type Route =
   | { name: 'team'; roomId: string } | { name: 'agent'; roomId: string; agentId: string }
   | { name: 'workspace'; workspaceId: string }
   | { name: 'settings'; page: SettingsPage; roomId?: string }
+  /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
+  | { name: 'devUi'; page: DevUiPage }
 
 export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire'
 

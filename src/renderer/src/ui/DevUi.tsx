@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Avatar, Banner, Button, Card, Chip, CodeBlock, ConfirmDialog, EmptyState, Icon, IconButton, Kbd, Menu, MENU_SEPARATOR, Meter, Modal, Pill, Popover, SegmentedControl, Select, Skeleton, Spinner, Tabs, Toast, Toggle, bannerIcon, iconNames } from './index'
-import type { BannerKind } from '@shared/types'
+import type { BannerKind, DevUiPage } from '@shared/types'
 
 const kinds = Object.keys(bannerIcon) as BannerKind[]
 const bannerCopy: Record<BannerKind, string> = {
@@ -116,7 +116,6 @@ function Dialogs() {
   )
 }
 
-export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
 const pages = { components: Controls, display: Display, overlays: Overlays, dialogs: Dialogs }
 
 /** Every component in both themes (`#/dev/ui` in dev; fixtures DevUi, DevUiDisplay, DevUiOverlays and DevUiDialogs for the harness). */
