@@ -6,6 +6,7 @@ import { bus } from './bus'
 import { Kernel } from './kernel'
 import { fixtureHandlers } from './fixtures'
 import { exec } from './services/exec'
+import { probeNetwork } from './services/health'
 import type { Channel } from '@shared/ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -64,6 +65,7 @@ app.whenReady().then(async () => {
       dataDir: app.getPath('userData'),
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+      probeNetwork: () => probeNetwork(),
       showNotification: (n, { silent }) => {
         if (!Notification.isSupported()) return
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })

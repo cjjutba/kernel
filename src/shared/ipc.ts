@@ -161,6 +161,8 @@ export interface KernelApi {
   'app.exportLogs': { req: void; res: { path: string } }
   /** A terminal window in a folder, optionally running a command (Open terminal, Sign in). */
   'app.openTerminal': { req: { cwd: string; command?: string }; res: Ok }
+  /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */
+  'app.checkOnline': { req: void; res: { online: boolean } }
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }

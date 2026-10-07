@@ -79,6 +79,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
     'workspaces.gitStatus': async ({ workspaceId }) => {
+      if (f.gitStatus?.[workspaceId]) return f.gitStatus[workspaceId]
       const files = f.changes[workspaceId] ?? []
       return { branch: workspace(workspaceId).branch, ahead: 0, behind: 0, dirty: { files: files.length, added: files.reduce((n, c) => n + c.added, 0), removed: files.reduce((n, c) => n + c.removed, 0) } }
     },
@@ -163,6 +164,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'update.check': async () => update,
     'update.install': async () => ok,
     'app.exportLogs': async () => ({ path: '(fixture)' }),
-    'app.openTerminal': async () => ok
+    'app.openTerminal': async () => ok,
+    'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) })
   }
 }

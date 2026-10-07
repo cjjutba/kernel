@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
@@ -30,6 +30,8 @@ import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './servi
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
+import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
+import { discardChanges, gitStatus, pushBranch } from './services/archive'
 
 const COPY = 'fork:'
 
@@ -44,8 +46,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
-  'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
   'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
   'settings.setRoom': 'KERNEL-26', 'mcp.list': 'KERNEL-26', 'integrations.list': 'KERNEL-26', 'integrations.connect': 'KERNEL-26',
   'update.get': 'KERNEL-30', 'update.check': 'KERNEL-30', 'update.install': 'KERNEL-30'
@@ -79,8 +79,19 @@ export class Kernel {
   /** When each hook event last arrived from a real session. The test event is not counted. */
   private hookSeen = new Map<string, number>()
   private unlisten: () => void = () => undefined
+  private network?: NetworkMonitor
+  /** One timer per rejected usage window, at its reset time. */
+  private limitTimers = new Map<RateLimit['type'], { at: number; timer: NodeJS.Timeout }>()
+  /** The last account read, so a sign-out keeps the name on the account menu. */
+  private account?: import('@shared/types').ClaudeAccount
+  /** Windows CJ asked to hear about when they reset ("Notify me"). */
+  private notifyReset = new Set<RateLimit['type']>()
 
-  constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean }) {
+  constructor(private o: {
+    dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
+    /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
+    probeNetwork?: () => Promise<boolean>
+  }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
@@ -105,7 +116,12 @@ export class Kernel {
       onTurnDone: (ws, chat) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
         void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined)
-      }
+      },
+      onFailure: (failure) => {
+        if (failure === 'auth') this.signedOut()
+        else if (failure === 'network') void this.network?.check()
+      },
+      onLimits: (limits) => this.applyLimits(limits)
     })
     this.overlaps = new Overlaps({
       workspaces: (roomId) => this.store.workspaces(roomId),
@@ -138,9 +154,17 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
+    if (this.o.probeNetwork) {
+      this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
+      this.network.start()
+    }
     this.tasks.attach()
-    // A room paused before the app quit is still paused: its agents wait and its sends are held.
-    for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    // A room paused before the app quit is still paused: its agents wait and its sends are held. A limit pause is not:
+    // the limits and their reset timers lived in memory, so nothing would lift it. The next rejection pauses it again.
+    for (const r of this.store.rooms()) {
+      if (r.paused && r.pausedBy === 'limit') { const { pausedBy: _by, ...rest } = r; bus.push({ type: 'room', room: this.store.saveRoom({ ...rest, paused: false }) }) }
+      else if (r.paused) this.sessions.pause(r.id)
+    }
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -153,6 +177,10 @@ export class Kernel {
         isManaged: (id) => this.sessions.isManaged(id),
         resolve: (cwd) => this.resolveCwd(cwd)
       })
+      // A server that closes or errors on its own takes the floor and the logs with it (WorkspaceHooksDown.png).
+      const server = this.hookServer
+      server.on('close', () => { if (this.hookServer === server) void this.pushHooks() })
+      server.on('error', () => void this.pushHooks())
       return true
     } catch { return false }
   }
@@ -170,7 +198,107 @@ export class Kernel {
       await saveAppSettings(this.settingsFile, this.settings)
     }
     if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec)
-    return this.hooksStatus()
+    return this.pushHooks()
+  }
+
+  private async pushHooks(): Promise<HookStatus> {
+    const status = await this.hooksStatus()
+    bus.push({ type: 'hooks', status })
+    return status
+  }
+
+  // ---------- failures (KERNEL-28)
+
+  /** Main's view of the network. Offline holds every room like a pause; back online sends what queued. */
+  private setOnline(online: boolean) {
+    bus.push({ type: 'online', online })
+    if (online) this.sessions.releaseAll('offline')
+    else this.sessions.holdAll('offline')
+  }
+
+  /** Reads `claude auth status`. Tests swap it for a stub. */
+  accountReader: () => Promise<ClaudeAccount> = readAccount
+  private authTimer?: NodeJS.Timeout
+
+  /**
+   * A session reported an auth failure: Claude Code is signed out. Everything waits until the CLI is signed in again,
+   * by Sign in here or by `claude /login` in a terminal, which a check every 10 seconds picks up.
+   */
+  private signedOut() {
+    this.sessions.holdAll('auth')
+    bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
+    if (this.authTimer) return
+    this.authTimer = setInterval(() => void this.readAccount().catch(() => undefined), 10_000)
+    this.authTimer.unref?.()
+  }
+
+  /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
+  async readAccount() {
+    const account = await this.accountReader()
+    if (!account.signedIn) return account
+    this.account = account
+    if (this.sessions.heldFor().includes('auth')) {
+      clearInterval(this.authTimer); this.authTimer = undefined
+      this.sessions.releaseAll('auth')
+      bus.push({ type: 'account', account })
+    }
+    return account
+  }
+
+  /** Runs Claude Code's own login (it opens the browser), then reads the account back. */
+  async signIn() {
+    await exec('claude', ['auth', 'login'], { timeoutMs: 5 * 60_000 })
+    const account = await this.readAccount()
+    bus.push({ type: 'account', account })
+    if (!account.signedIn) throw new Error('Sign in did not finish. Open a terminal and run claude /login.')
+    return account
+  }
+
+  /**
+   * A 5-hour or weekly rejection pauses every room by `limit` (FloorLimit.png); its end resumes them. Each rejected
+   * window gets a timer at its reset time, which marks it allowed again and sends "Notify me".
+   */
+  private applyLimits(limits: RateLimit[]) {
+    const now = Date.now()
+    const rooms = this.store.rooms().filter((r) => !r.archived)
+    if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.pauseRoom(r.id, 'limit') }
+    else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.resumeRoom(r.id, 'limit')
+    for (const l of limits) {
+      const at = l.resetsAt ? l.resetsAt * 1000 : undefined
+      const held = this.limitTimers.get(l.type)
+      if (l.status !== 'rejected' || !at) { if (held) { clearTimeout(held.timer); this.limitTimers.delete(l.type) } continue }
+      if (held?.at === at) continue
+      if (held) clearTimeout(held.timer)
+      const timer = setTimeout(() => this.limitReset(l.type), Math.min(Math.max(0, at - now), 2 ** 31 - 1))
+      timer.unref?.()
+      this.limitTimers.set(l.type, { at, timer })
+    }
+  }
+
+  private limitReset(type: RateLimit['type']) {
+    this.limitTimers.delete(type)
+    this.sessions.resetLimit(type)
+    if (!this.notifyReset.delete(type)) return
+    const name = type === 'five_hour' ? '5-hour limit' : type === 'seven_day_opus' ? 'Opus limit' : type === 'seven_day_sonnet' ? 'Sonnet limit' : 'weekly limit'
+    this.o.showNotification?.({ id: `limit-${type}-${Date.now()}`, kind: 'system', title: `Your ${name} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: Date.now() }, { silent: false })
+  }
+
+  /** Opens Terminal.app in `cwd` and runs `command` there. */
+  async openTerminal(cwd: string, command?: string) {
+    const r = await exec('osascript', ['-e', terminalScript(cwd, command)], { timeoutMs: 15_000 })
+    if (r.code !== 0) throw new Error(`Could not open Terminal: ${r.stderr.trim() || 'osascript failed'}`)
+  }
+
+  /** Throws away uncommitted changes, after a checkpoint so they can still come back from the drawer. */
+  async discard(workspaceId: string) {
+    const ws = this.mustWs(workspaceId)
+    if (ws.mode === 'current') throw new Error('Discard is off on the current branch, because it would throw away your own changes too. Revert to a checkpoint instead.')
+    const chats = this.store.chats(workspaceId)
+    if (chats.some((c) => this.sessions.isRunning(c.id))) throw new Error('The agent is still working. Stop it first, then discard.')
+    const chat = chats.find((c) => c.kind !== 'terminal')
+    if (chat) await snapshot(ws, { chatId: chat.id, title: 'Before discarding changes' }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }))
+    await discardChanges(ws.path)
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
   }
 
   private async hooksStatus(): Promise<HookStatus> {
@@ -188,6 +316,10 @@ export class Kernel {
     this.notifications.detach()
     this.tasks.detach()
     clearInterval(this.prTimer)
+    this.network?.stop()
+    clearInterval(this.authTimer)
+    for (const t of this.limitTimers.values()) clearTimeout(t.timer)
+    this.limitTimers.clear()
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
     this.sessions.stopAll()
@@ -325,7 +457,7 @@ export class Kernel {
     return room
   }
 
-  resumeRoom(roomId: string): Room {
+  resumeRoom(roomId: string, by: 'you' | 'limit' = 'you'): Room {
     const { pausedBy: _by, ...rest } = this.mustRoom(roomId)
     const room = this.store.saveRoom({ ...rest, paused: false })
     const before = this.statusOf(roomId)
@@ -333,7 +465,7 @@ export class Kernel {
     const live = new Map(this.store.workspaces(roomId).map((w) => [w.agentId, this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id))]))
     for (const a of this.agentsSync(roomId)) if (before[a.id] === 'paused') bus.push({ type: 'agent.status', roomId, agentId: a.id, status: live.get(a.id) ? 'working' : 'idle' })
     bus.push({ type: 'room', room })
-    bus.activity({ kind: 'room.resumed', roomId, actor: 'you', text: 'resumed', object: room.name })
+    bus.activity({ kind: 'room.resumed', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'resumed' : 'resumed after the usage limit reset', object: by === 'you' ? room.name : undefined })
     return room
   }
 
@@ -516,20 +648,59 @@ export class Kernel {
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    const parts: ChatPart[] = [{ type: 'text', text: o.prompt }, ...(o.parts ?? [])]
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
-    if (!ready) return this.saveWs({ ...ws, status: 'failed' })
+    // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
+    if (!ready) { this.sessions.hold(chat.id, parts); return this.saveWs({ ...ws, status: 'failed' }) }
+    return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts) })
+  }
+
+  /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
+  private async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
+    const repo = await loadRepoSettings(room.path)
     const done = this.saveWs({ ...ws, status: 'ready' })
-    if (s.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: path, port, root: room.path })
+    if (this.settings.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
     // The start of chat: reverting to it undoes everything the agent did.
-    await snapshot(ws, { chatId: chat.id, title: o.prompt, start: true }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }), () => undefined)
-    await this.sessions.send(chat.id, [{ type: 'text', text: o.prompt }, ...(o.parts ?? [])])
+    await snapshot(ws, { chatId: chat.id, title: prompt, start: true }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }), () => undefined)
+    await start()
     return done
+  }
+
+  /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
+  private settingUp = new Set<string>()
+
+  /** "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. */
+  async retrySetup(workspaceId: string): Promise<Workspace> {
+    if (this.settingUp.has(workspaceId)) return this.mustWs(workspaceId)
+    this.settingUp.add(workspaceId)
+    try { return await this.rerunSetup(workspaceId) } finally { this.settingUp.delete(workspaceId) }
+  }
+
+  private async rerunSetup(workspaceId: string): Promise<Workspace> {
+    const ws = this.mustWs(workspaceId)
+    const room = this.mustRoom(ws.roomId)
+    const repo = await loadRepoSettings(room.path)
+    const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+    if (repo.scripts.setup) {
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
+      if (!this.setupPassed(ws, code)) return this.mustWs(workspaceId)
+    }
+    if (!chat) return this.saveWs({ ...ws, status: 'ready' })
+    const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
+    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id))
   }
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
     const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
-    return code === 0
+    return this.setupPassed(ws, code)
+  }
+
+  /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
+  private setupPassed(ws: Workspace, code: number | null) {
+    if (code === 0) return true
+    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`, stream: 'stderr' })
+    return false
   }
 
   async archiveWorkspace(id: string, deleteBranch?: boolean) {
@@ -540,7 +711,10 @@ export class Kernel {
     stopScript(id, 'run')
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
-    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) ? ws.branch : undefined })
+    // Commits that never left this machine live only on the branch, so it stays whatever was asked.
+    const unpushed = ws.mode === 'worktree' ? (await gitStatus(ws.path, ws.branch, ws.baseRef).catch(() => null))?.ahead ?? 0 : 0
+    const drop = (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) && unpushed === 0
+    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: drop ? ws.branch : undefined })
     this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -1008,9 +1182,24 @@ export class Kernel {
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
-      'account.get': async () => readAccount(),
+      'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
-      'workspaces.archive': async ({ workspaceId, deleteBranch }) => { await this.archiveWorkspace(workspaceId, deleteBranch); return { ok: true } },
+      'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
+        if (push) { const ws = this.mustWs(workspaceId); await pushBranch(ws.path, ws.branch) }
+        await this.archiveWorkspace(workspaceId, deleteBranch)
+        return { ok: true }
+      },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
+      'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
+      'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
+      'usage.notifyOnReset': async ({ type }) => {
+        if (!this.limitTimers.has(type)) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
+        this.notifyReset.add(type)
+        return { ok: true }
+      },
+      'account.signIn': async () => this.signIn(),
+      'app.openTerminal': async ({ cwd, command }) => { await this.openTerminal(cwd, command); return { ok: true } },
+      'app.checkOnline': async () => ({ online: this.network ? await this.network.check() : true }),
       'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
@@ -1057,6 +1246,7 @@ export class Kernel {
         const ws = this.mustWs(workspaceId); const room = this.mustRoom(ws.roomId); const repo = await loadRepoSettings(room.path)
         const script = repo.scripts[kind]
         if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
+        if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
         void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
         return { ok: true }
       },

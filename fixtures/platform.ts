@@ -1,6 +1,6 @@
 import type { DevUiPage, HookStatus, PreflightCheck } from '@shared/types'
 import type { Fixture } from './types'
-import { at, base, ids, scene, withWorkspace } from './base'
+import { at, base, ids, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
 // Check copy matches src/main/services/preflight.ts.
@@ -32,6 +32,14 @@ const hookEvents: HookStatus['events'] = [
   ['SessionStart', 2], ['UserPromptSubmit', 12], ['PreToolUse', 0], ['PostToolUse', 0], ['PermissionRequest', 2], ['Notification', 2], ['Stop', 6], ['TaskCreated', 6], ['TaskCompleted', 18], ['TeammateIdle', null]
 ].map(([name, m]) => ({ name: name as string, installed: true, lastSeen: eventsAgo(m as number | null) }))
 
+/** `resetsAt` is epoch seconds, as rate_limit_event sends it. */
+const secs = (ms: number) => Math.round(ms / 1000)
+/** The next h:m from now, so a reset is always ahead and within a day ("Resets at 3:40 PM"). */
+const next = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.getTime() }
+const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return d.getTime() }
+/** The invoice table chat with a change. */
+const withChat = (f: Fixture, change: Partial<Fixture['chats'][number]>) => f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ...change } : c))
+
 // KERNEL-9: the component gallery in both themes. the `devUi` route shows it. No design PNG, so no compare.
 const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { name: 'devUi', page } } }))
 
@@ -52,17 +60,46 @@ export const platformFixtures: Record<string, Fixture> = {
   SetupTeamsOff: setup(failing({ id: 'teams', ok: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
   SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
-  WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: at(13, 0) }], ui: open })),
-  WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: new Date(2026, 9, 9, 9, 0).getTime() }], ui: open })),
+  // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
+  WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
+  WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),
+  // Fable has no window name of its own in rate_limit_event, so the fixture tags a per-model window with the model.
+  WorkspaceModelLimit: scene((f) => ({
+    chats: withChat(f, { model: 'claude-fable-5-1' }),
+    usage: [{ type: 'seven_day_opus', status: 'rejected', utilization: 1, resetsAt: secs(Date.now() + 3 * 24 * 3600_000 - 3600_000), model: 'claude-fable-5-1' }],
+    ui: open
+  })),
+  WorkspaceContext: scene((f) => ({ chats: withChat(f, { context: 92 }), ui: open })),
+  // The retry is between attempts, so the turn shows as the canvas draws it: no Stop button.
+  WorkspaceOverloaded: scene((f) => ({
+    items: { [ids.tableChat]: [...tableItems, { kind: 'user', id: 'u-shorten', ts: at(10, 40), parts: [{ type: 'text', text: 'Shorten the empty state copy.' }] }] },
+    push: [...f.push, { type: 'retry', chatId: ids.tableChat, retry: { attempt: 2, of: 5, nextAt: Date.now() + 14_000 } }],
+    ui: open
+  })),
+  WorkspaceOffline: scene((f) => ({
+    queue: { [ids.tableChat]: [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text', text: 'Also add a loading skeleton.' }], ts: at(10, 40) }] },
+    push: [...f.push, { type: 'online', online: false }],
+    ui: open
+  })),
+  // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
+  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
     items: {},
-    changes: {},
     push: [
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: '$ pnpm install', stream: 'stdout' },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'ERR_PNPM_NO_MATCHING_VERSION No matching version found for @acme/ui@^4.2.0', stream: 'stderr' },
+      ...f.push,
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' },
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'Setup failed with exit code 1', stream: 'stderr' },
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
-    ui: open
-  }))
+    ui: { ...open, workspace: { right: 'files', bottom: 'setup', focus: false, checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
+  ConfirmArchive: scene((f) => ({
+    gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
+    push: f.push,
+    ui: { ...open, modal: { name: 'confirm', kind: 'archive', workspaceId: ids.table } }
+  })),
+  ConfirmDiscard: scene(() => ({ ui: { ...open, modal: { name: 'confirm', kind: 'discard', workspaceId: ids.table } } }))
 }

@@ -6,6 +6,7 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
 import { toActivity } from './hookServer'
+import { failureOf, WINDOW_MODEL, type Failure } from './health'
 import type { AppSettings } from './settings'
 
 /** An async queue the SDK reads user turns from. Pushing a message sends it into the running session. */
@@ -32,6 +33,8 @@ interface Live {
   blocked?: boolean
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
+  /** An api_retry is counting down. The next reply or result clears the banner. */
+  retrying?: boolean
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
@@ -48,6 +51,10 @@ export interface SessionDeps {
   roomAllow: (roomId: string) => string[]
   allowInRoom: (roomId: string, rule: string) => void
   onTurnDone?: (ws: Workspace, chat: Chat) => void
+  /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
+  onFailure?: (failure: Failure, ws: Workspace) => void
+  /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
+  onLimits?: (limits: RateLimit[]) => void
 }
 
 export class Sessions {
@@ -58,7 +65,52 @@ export class Sessions {
   private billing = new Map<string, string>()
   /** Rooms CJ (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
+  /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
+  private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
+  /** Chats whose first prompt waits for the workspace's setup script to pass. */
+  private waiting = new Set<string>()
   constructor(private d: SessionDeps) {}
+
+  /** Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. */
+  holdAll(reason: string) {
+    if (this.global) { this.global.reasons.add(reason); return }
+    let release!: () => void
+    const open = new Promise<void>((resolve) => { release = resolve })
+    this.global = { open, release, reasons: new Set([reason]) }
+  }
+
+  /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
+  releaseAll(reason: string) {
+    const g = this.global
+    if (!g?.reasons.delete(reason) || g.reasons.size) return
+    this.global = undefined
+    g.release()
+    for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
+  }
+
+  heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
+
+  /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
+  hold(chatId: string, parts: ChatPart[]) {
+    this.waiting.add(chatId)
+    this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
+  }
+
+  release(chatId: string) {
+    this.waiting.delete(chatId)
+    if (!this.live.get(chatId)?.running) this.drain(chatId)
+  }
+
+  /** Mark a usage window as reset (its resetsAt passed) and tell the renderer. */
+  resetLimit(type: RateLimit['type']) {
+    const l = this.limits.get(type)
+    if (!l || l.status === 'allowed') return
+    this.limits.set(type, { ...l, status: 'allowed', utilization: 0 })
+    this.pushLimits()
+  }
+
+  /** /compact in the chat: Claude Code summarises the conversation and frees context. Queues behind a running turn. */
+  compact(chatId: string) { return this.send(chatId, [{ type: 'text', text: '/compact' }]) }
 
   isPaused(roomId: string) { return this.paused.has(roomId) }
 
@@ -83,6 +135,7 @@ export class Sessions {
   }
 
   private pausedChat(chat: Chat) {
+    if (this.global || this.waiting.has(chat.id)) return true
     const ws = this.d.store.workspace(chat.workspaceId)
     return !!ws && this.paused.has(ws.roomId)
   }
@@ -238,7 +291,7 @@ export class Sessions {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent, chat),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open),
+      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -295,9 +348,19 @@ export class Sessions {
           this.setRunning(chat, ws, live, true)
         }
         if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, live, msg.hook_event, msg.stderr || msg.output || msg.stdout)
+        if (msg.subtype === 'api_retry') {
+          const failure = failureOf(msg.error, msg.error_status)
+          // A connection error is the network's banner, not the overloaded one.
+          if (failure === 'network' || failure === 'auth') this.d.onFailure?.(failure, ws)
+          else { live.retrying = true; bus.push({ type: 'retry', chatId, retry: { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms } }) }
+        }
+        if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
         return
       }
       case 'assistant': {
+        this.clearRetry(chatId, live)
+        const failure = failureOf(msg.error)
+        if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
         if (live.blocked) { live.blocked = false; this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working') }
         msg.message.content.forEach((block: any, i: number) => {
@@ -332,6 +395,8 @@ export class Sessions {
         const ok = msg.subtype === 'success'
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
         if (ok || !live.interrupted) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
+        this.clearRetry(chatId, live)
+        void this.refreshContext(chatId, live)
         const stopped = live.interrupted && !live.sendNext
         live.interrupted = false
         live.sendNext = false
@@ -401,8 +466,35 @@ export class Sessions {
 
   private mergeLimits(next: LimitPatch[]) {
     if (!next.length) return
-    for (const l of next) this.limits.set(l.type, mergeLimit(this.limits.get(l.type), l, Date.now()))
-    bus.push({ type: 'usage', limits: [...this.limits.values()] })
+    for (const l of next) this.limits.set(l.type, mergeLimit(this.limits.get(l.type), { ...l, model: l.model ?? WINDOW_MODEL[l.type] }, Date.now()))
+    this.pushLimits()
+  }
+
+  private pushLimits() {
+    const limits = [...this.limits.values()]
+    bus.push({ type: 'usage', limits })
+    this.d.onLimits?.(limits)
+  }
+
+  private clearRetry(chatId: string, live: Live) {
+    if (!live.retrying) return
+    live.retrying = false
+    bus.push({ type: 'retry', chatId, retry: null })
+  }
+
+  /** Context window use from Claude Code's own /context numbers, saved on the chat for the composer and the banner. */
+  private async refreshContext(chatId: string, live: Live) {
+    const ask = (live.query as Partial<Query>).getContextUsage
+    if (typeof ask !== 'function') return
+    try {
+      const usage = await withTimeout(ask.call(live.query), 10_000)
+      const context = Math.max(0, Math.round(usage.percentage))
+      const chat = this.d.store.chat(chatId)
+      if (!chat || chat.context === context) return
+      const next = { ...chat, context }
+      this.d.store.saveChat(next)
+      bus.push({ type: 'chat', chat: next })
+    } catch { /* the composer keeps the last number */ }
   }
 
   /** A paused room shows everyone as paused, except an agent waiting on CJ. */

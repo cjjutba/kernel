@@ -1,0 +1,6 @@
+/* The failure banner above the composer (WorkspaceSessionLimit.png): canvas sizes on top of the shared Banner. */
+.composer-inner > .banner { gap: 12px; padding: 10px 10px 10px 14px; font-size: 13px; line-height: 1.45; }
+.composer-inner > .banner .muted { font-size: 12.5px; }
+.wsb-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.wsb-btn { height: 30px; }
+.wsb-btn .spin { width: 11px; height: 11px; }

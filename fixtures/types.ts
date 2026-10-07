@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
   FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
-  Skill, Task, Workspace
+  Skill, Task, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -56,6 +56,8 @@ export interface Fixture {
   roomSettings?: Record<string, RoomSettings>
   account?: ClaudeAccount
   hooks?: HookStatus
+  /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */
+  gitStatus?: Record<string, WorkspaceGitStatus>
   update?: AppUpdate
   ui: ForcedUi
   /** Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). */
