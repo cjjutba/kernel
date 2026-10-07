@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import type { ActivityEvent, Approval, Chat, ChatItem, Room, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Room, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young.
 // Swap for Drizzle with drizzle-kit migrations once the shapes settle (see docs/ARCHITECTURE.md).
@@ -12,6 +12,7 @@ create table if not exists chats (id text primary key, workspace_id text not nul
 create table if not exists chat_items (id text primary key, chat_id text not null, seq integer not null, data text not null);
 create index if not exists chat_items_by_chat on chat_items (chat_id, seq);
 create table if not exists approvals (id text primary key, room_id text, status text not null, data text not null, created_at integer not null);
+create table if not exists notifications (id text primary key, room_id text, data text not null, created_at integer not null);
 create table if not exists activity (id text primary key, room_id text, ts integer not null, data text not null);
 create index if not exists activity_by_room on activity (room_id, ts);
 `
@@ -40,9 +41,15 @@ export class Store {
       this.db.prepare('delete from workspaces where room_id = ?').run(id)
       this.db.prepare('delete from approvals where room_id = ?').run(id)
       this.db.prepare('delete from activity where room_id = ?').run(id)
+      this.db.prepare('delete from notifications where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
+
+  // notifications
+  notifications(): Notification[] { return this.all('select data from notifications order by created_at desc limit 500') }
+  notification(id: string): Notification | undefined { return this.one('select data from notifications where id = ?', id) }
+  saveNotification(n: Notification) { this.db.prepare('insert or replace into notifications (id, room_id, data, created_at) values (?, ?, ?, ?)').run(n.id, n.roomId ?? null, JSON.stringify(n), n.createdAt); return n }
 
   // workspaces
   workspaces(roomId?: string): Workspace[] {

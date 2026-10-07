@@ -1,7 +1,8 @@
 import { useRef, type ReactNode } from 'react'
 import type { Room } from '@shared/types'
 import { Icon } from '../../icons'
-import { actions, go, pending, useStore, type Route } from '../../store'
+import { actions, go, useStore, type Route } from '../../store'
+import { inboxItems, needsYou } from '../../screens/inbox/model'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { RoomMenu } from './RoomMenu'
@@ -59,7 +60,7 @@ function RoomItem({ room, open }: { room: Room; open: boolean }) {
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  const inbox = useStore((s) => pending(s).length)
+  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms).filter(needsYou).length)
   const route = useStore((s) => s.ui.route)
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const roomsAnchor = useRef<HTMLDivElement>(null)
