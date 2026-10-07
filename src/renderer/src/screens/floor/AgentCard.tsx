@@ -1,7 +1,7 @@
 import type { AgentDef } from '@shared/types'
 import { Icon } from '../../ui'
 import { go, useStore } from '../../store'
-import { LOOKS, WORD, cap, modelLabel } from '../../floor/layout'
+import { ART, LOOKS, WORD, cap, modelLabel } from '../../floor/layout'
 
 /** The selected agent: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. */
 export function AgentCard({ agent, roomId, agents }: { agent: AgentDef; roomId: string; agents: AgentDef[] }) {
@@ -14,7 +14,7 @@ export function AgentCard({ agent, roomId, agents }: { agent: AgentDef; roomId: 
   return (
     <section className="agent-card" aria-label={`${agent.name}, selected`}>
       <div className="row" style={{ gap: 10 }}>
-        <span aria-hidden="true" className="agent-dot" style={{ background: shirt }}>{agent.name[0]}</span>
+        <span aria-hidden="true" className="agent-dot" style={{ background: shirt, color: ART.onShirt }}>{agent.name[0]}</span>
         <span className="col grow"><span className="agent-name">{agent.name}</span><span className="muted" style={{ fontSize: 12 }}>{agent.role}{model ? ` · ${model}` : ''}</span></span>
       </div>
       <span className="agent-status" data-loud={status === 'needs' || status === 'blocked' ? 'true' : undefined}>

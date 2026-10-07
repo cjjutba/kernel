@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AgentDef, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
-import { SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
+import { ART, SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
 import floorUrl from '../../floor/floor.svg'
 
 /** The office: art, people at their desks, a tag over each, and the room-level states drawn on top. */
@@ -32,15 +32,15 @@ function Person({ agent, seat, status }: { agent: AgentDef; seat: number; status
         {status !== 'offline' && (
           <g className={status === 'working' ? 'floor-bob' : undefined}>
             <path d="M-8.9 -24.4 L-8.9 -43.4 Q-8.9 -53.4 2.1 -53.4 Q13.1 -53.4 13.1 -43.4 L13.1 -24.4 Z" fill={look.shirt} />
-            <path d="M4.1 -52.4 Q13.1 -52.4 13.1 -43.4 L13.1 -24.4 L6.1 -24.4 Z" fill="#000" fillOpacity={0.16} />
+            <path d="M4.1 -52.4 Q13.1 -52.4 13.1 -43.4 L13.1 -24.4 L6.1 -24.4 Z" fill={ART.shade} fillOpacity={0.16} />
             <circle cx={2.1} cy={-61.4} r={8.4} fill={look.skin} />
             <circle cx={2.1} cy={-63} r={8.6} fill={look.hair} />
             {status === 'needs' && <g><line x1={11.1} y1={-46.4} x2={20.1} y2={-70.4} stroke={look.skin} strokeWidth={4} strokeLinecap="round" /><circle cx={20.1} cy={-72.4} r={3.5} fill={look.skin} /></g>}
           </g>
         )}
-        <polygon points="-21.5,-24.0 -1.4,-12.4 -1.4,-29.2 -21.5,-40.8" fill="#d8d5ce" />
-        <polygon points="1.7,-14.2 -1.4,-12.4 -1.4,-29.2 1.7,-31.0" fill="#c6c3bb" />
-        <polygon points="-18.4,-42.6 1.7,-31.0 -1.4,-29.2 -21.5,-40.8" fill="#eeece7" />
+        <polygon points="-21.5,-24.0 -1.4,-12.4 -1.4,-29.2 -21.5,-40.8" fill={ART.deskLeft} />
+        <polygon points="1.7,-14.2 -1.4,-12.4 -1.4,-29.2 1.7,-31.0" fill={ART.deskRight} />
+        <polygon points="-18.4,-42.6 1.7,-31.0 -1.4,-29.2 -21.5,-40.8" fill={ART.deskTop} />
       </svg>
     </div>
   )
@@ -125,7 +125,7 @@ function Overflow({ room, agents, status }: { room: Room; agents: AgentDef[]; st
       <span className="muted" style={{ fontSize: 12 }}>No desk yet, still working</span>
       {agents.map((a, i) => (
         <div key={a.id} className="row" style={{ gap: 8 }}>
-          <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i) }}>{a.name[0]}</span>
+          <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i), color: ART.onShirt }}>{a.name[0]}</span>
           <span style={{ fontWeight: 500 }}>{a.name}</span><span className="muted">{a.role}</span>
           <span className="grow" /><span className="muted" style={{ fontSize: 12 }}>{WORD[status[a.id] ?? 'idle']}</span>
         </div>
