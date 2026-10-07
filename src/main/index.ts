@@ -35,8 +35,7 @@ function bootFailed(err: unknown) {
 }
 
 app.whenReady().then(() => {
-  let kernel: Kernel
-  try { kernel = new Kernel({ dataDir: app.getPath('userData') }) } catch (err) { return bootFailed(err) }
+  const kernel = new Kernel({ dataDir: app.getPath('userData') })
   app.on('before-quit', () => { void kernel.stop() })
 
   // The window opens while the kernel boots. Calls made before start() finishes wait for it.
@@ -53,6 +52,6 @@ app.whenReady().then(() => {
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
-})
+}).catch(bootFailed)
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
