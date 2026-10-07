@@ -53,7 +53,7 @@ export function Integrations() {
                 <Button onClick={() => { setAsking(false); setToken('') }}>Cancel</Button>
               </form>
             ) : undefined}>
-            <Button onClick={() => void press(r)}>{r.connected ? ACTION[r.id].on : ACTION[r.id].off}</Button>
+            <Button disabled={r.id === 'vercel' || r.id === 'remote'} title={r.id === 'vercel' || r.id === 'remote' ? 'Not available yet' : undefined} onClick={() => void press(r)}>{r.connected ? ACTION[r.id].on : ACTION[r.id].off}</Button>
           </Row>
         ))}
       </Section>

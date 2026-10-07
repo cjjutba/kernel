@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { copyFile, mkdir, stat, symlink } from 'node:fs/promises'
+import { copyFile, mkdir, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
@@ -31,15 +31,6 @@ export async function copyLocalFiles(repo: string, worktree: string, files: stri
     } catch { /* missing files are fine */ }
   }
   return copied
-}
-
-/** Settings > Files to copy > Symlink node_modules: the worktree shares the main checkout's dependencies. A worktree that already has the folder keeps it. */
-export async function linkNodeModules(repo: string, worktree: string): Promise<boolean> {
-  try {
-    await stat(join(repo, 'node_modules'))
-    await symlink(join(repo, 'node_modules'), join(worktree, 'node_modules'), 'dir')
-    return true
-  } catch { return false }
 }
 
 /** CJ's login shell so nvm, pnpm and PATH tweaks apply. Falls back to sh. */

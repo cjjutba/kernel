@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
-import { discoverMcp } from '../src/main/services/integrations'
+import { discoverSkills } from '../src/main/services/files'
+import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
 import { loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { bashVerdict, type SessionDeps } from '../src/main/services/sessions'
 import { tempRepo } from './helpers'
@@ -75,6 +76,99 @@ describe('removing an Always allow rule', () => {
     expect(updated.allow).toEqual([])
     // The same callbacks a running session holds read the room fresh, so the next command asks again.
     expect(bashVerdict('pnpm drizzle-kit push', lists, deps.roomAllow(room.id))).toBe('ask')
-    k.store.db.close()
+    await k.stop()
+  })
+})
+
+async function startKernel(files?: Record<string, string>) {
+  const repo = await tempRepo(files)
+  const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+  const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  const k = new Kernel({ dataDir, home })
+  await k.start()
+  k.sessions.send = async () => ({ queued: false })
+  return { k, repo, dataDir, home, room: await k.addRoom(repo) }
+}
+
+describe('archiving a room', () => {
+  it('archives every open workspace and keeps the room record', async () => {
+    const { k, room } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' })
+    const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
+    const updated = await k.handlers()['rooms.update']({ roomId: room.id, patch: { archived: true } })
+    expect(updated.archived).toBe(true)
+    expect(k.store.room(room.id)?.path).toBe(room.path)
+    for (const id of [a.id, b.id]) expect(k.store.workspaces(room.id).find((w) => w.id === id)?.status).toBe('archived')
+    await k.stop()
+  })
+
+  it('keeps the room open and names the workspace when one cannot be archived', async () => {
+    const { k, room } = await startKernel({ 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' })
+    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'Stuck' })
+    k.archiveWorkspace = async () => { throw new Error('git is locked') }
+    await expect(k.handlers()['rooms.update']({ roomId: room.id, patch: { archived: true } })).rejects.toThrow(/stays open.*git is locked/)
+    expect(k.store.room(room.id)?.archived).toBeFalsy()
+    expect(ws.status).not.toBe('archived')
+    await k.stop()
+  })
+})
+
+describe('Linear token', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+  it('is saved readable by the user only, and an empty token disconnects', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    expect(await storedLinearToken(dir)).toBeUndefined()
+    await saveLinearToken(dir, '  lin_api_abc ')
+    expect(await storedLinearToken(dir)).toBe('lin_api_abc')
+    expect((await stat(join(dir, 'integrations.json'))).mode & 0o777).toBe(0o600)
+    await saveLinearToken(dir, '')
+    expect(await storedLinearToken(dir)).toBeUndefined()
+    expect((await stat(join(dir, 'integrations.json'))).mode & 0o777).toBe(0o600)
+  })
+
+  it('issues.list sends the stored token before the environment one', async () => {
+    const { k, dataDir, room } = await startKernel()
+    const seen: string[] = []
+    vi.stubGlobal('fetch', async (_url: string, init: { headers: Record<string, string> }) => { seen.push(init.headers.authorization); return new Response(JSON.stringify({ data: { issues: { nodes: [] } } })) })
+    vi.stubEnv('LINEAR_API_KEY', 'from-env')
+    const h = k.handlers()
+    await h['issues.list']({ roomId: room.id, query: '' })
+    await saveLinearToken(dataDir, 'from-file')
+    await h['issues.list']({ roomId: room.id, query: '' })
+    expect(seen).toEqual(['from-env', 'from-file'])
+    expect((await h['integrations.list'](undefined)).find((i) => i.id === 'linear')?.connected).toBe(true)
+    await k.stop()
+  })
+})
+
+describe('skills for a room', () => {
+  const skill = (name: string, description: string) => `---\nname: ${name}\ndescription: ${description}\n---\nBody`
+
+  it('lists the user folder too, and a repo skill of the same name wins', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await mkdir(join(repo, '.claude', 'skills', 'plan'), { recursive: true })
+    await writeFile(join(repo, '.claude', 'skills', 'plan', 'SKILL.md'), skill('plan', 'repo plan'))
+    for (const [name, text] of [['plan', 'user plan'], ['verify', 'user verify']]) {
+      await mkdir(join(home, '.claude', 'skills', name), { recursive: true })
+      await writeFile(join(home, '.claude', 'skills', name, 'SKILL.md'), skill(name, text))
+    }
+    const list = await discoverSkills(repo, home)
+    expect(list.find((s) => s.name === 'plan')).toMatchObject({ source: 'project', description: 'repo plan' })
+    expect(list.find((s) => s.name === 'verify')).toMatchObject({ source: 'user', description: 'user verify' })
+    expect((await discoverSkills(repo)).some((s) => s.name === 'verify')).toBe(false)
+  })
+
+  it('skills.list marks the ones the room switched off', async () => {
+    const { k, repo, room } = await startKernel({ 'README.md': '# demo\n' })
+    await mkdir(join(repo, '.claude', 'skills', 'plan'), { recursive: true })
+    await writeFile(join(repo, '.claude', 'skills', 'plan', 'SKILL.md'), skill('plan', 'repo plan'))
+    const h = k.handlers()
+    expect((await h['skills.list']({ roomId: room.id })).find((s) => s.name === 'plan')?.enabled).toBe(true)
+    await h['settings.setRoom']({ roomId: room.id, patch: { disabled: { skills: ['plan'] } } })
+    expect((await h['skills.list']({ roomId: room.id })).find((s) => s.name === 'plan')?.enabled).toBe(false)
+    await k.stop()
   })
 })
