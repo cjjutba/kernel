@@ -60,7 +60,7 @@ function Screen({ route }: { route: Route }): ReactNode {
 /** The one modal shell's contents (DESIGN.md: one modal at a time). */
 function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
   switch (modal.name) {
-    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} />
+    case 'newWorkspace': return <NewWorkspace roomId={modal.roomId} source={modal.source} />
     case 'search': return <CommandPalette />
     case 'newRoom': return <NewRoom prefill={modal.prefill} />
     case 'connectRepo': return <ConnectRepo />
