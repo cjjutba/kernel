@@ -1,0 +1,3 @@
+/* Bottom right of the main panel, above the footer (WorkspaceToast.png). */
+.app-toasts .toast-stack { right: 26px; bottom: 58px; }
+.app-toasts .toast-action { text-decoration: underline; text-underline-offset: 2px; }

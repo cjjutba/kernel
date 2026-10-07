@@ -1,6 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { Footer, Sidebar } from './components/Shell'
+import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
 import { AgentProfile } from './screens/agent/AgentProfile'
 import { Board } from './screens/board/Board'
@@ -127,6 +128,7 @@ export function App() {
         {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
       </div>
       {modal && <ModalView modal={modal} />}
+      <Toasts />
     </div>
   )
 }
