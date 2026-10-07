@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react'
+import { useRef, useSyncExternalStore } from 'react'
 import type { ActivityEvent, AgentDef, AgentStatus, Approval, Chat, ChatItem, ForcedUi, Modal, RateLimit, Room, Route, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
@@ -35,8 +35,28 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   listeners.forEach((l) => l())
 }
+const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
+
+/** Same top-level entries. Selectors build new arrays and objects (`?? []`, `.filter`), so identity alone isn't enough. */
+function shallowEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b || Array.isArray(a) !== Array.isArray(b)) return false
+  const ka = Object.keys(a), kb = Object.keys(b)
+  return ka.length === kb.length && ka.every((k) => Object.is((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+}
+
+/**
+ * Select from the store. Keeps the previous result while it is shallow-equal, because useSyncExternalStore
+ * re-renders whenever the snapshot changes identity and a fresh array every read loops forever (React error #185).
+ */
 export function useStore<T>(select: (s: State) => T): T {
-  return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l) }, () => select(state))
+  const last = useRef<{ value: T } | null>(null)
+  return useSyncExternalStore(subscribe, () => {
+    const value = select(state)
+    if (last.current && shallowEqual(last.current.value, value)) return last.current.value
+    last.current = { value }
+    return value
+  })
 }
 export const go = (route: Route) => setState({ route, modal: null })
 
