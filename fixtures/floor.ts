@@ -1,19 +1,21 @@
-import type { ActivityEvent, AgentDef, AgentStatus, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentStatus, Approval, Task, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Fixture } from './types'
 import { agent, at, ids, scene, team } from './base'
 
-// Floor lane: the floor and its room states (KERNEL-22). Seating follows the canvas roster: Rowan, Kai, Noor, Ivy, Theo.
+// Floor lane: the floor and its room states (KERNEL-22), and the briefing sequence (KERNEL-23).
+// Seating, roles and models follow the canvas roster: Rowan, Kai, Noor, Ivy, Theo.
 
 const floor = { route: { name: 'floor', roomId: ids.roomA } } as const
 const A = ids.roomA
-const seatTeam: AgentDef[] = ['rowan', 'kai', 'noor', 'ivy', 'theo'].map((id) => team.find((a) => a.id === id)!)
+const roster: Record<string, Partial<AgentDef>> = { noor: { role: 'Backend', model: 'sonnet' }, theo: { model: 'opus' } }
+const seatTeam: AgentDef[] = ['rowan', 'kai', 'noor', 'ivy', 'theo'].map((id) => ({ ...team.find((a) => a.id === id)!, ...roster[id] }))
 
 const calm: Record<string, AgentStatus> = { rowan: 'idle', kai: 'working', noor: 'working', ivy: 'idle', theo: 'working' }
 
-/** Local time today, so the Logs heading reads "Today" whatever day the shots run. */
-const clock = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
-const retime = (e: ActivityEvent): ActivityEvent => { const d = new Date(e.ts); return { ...e, ts: clock(d.getHours(), d.getMinutes()) } }
+/** Local time today, so the Logs heading reads "Today" whatever day the shots run. Seconds order events within a minute. */
+const clock = (h: number, m: number, s = 0) => { const d = new Date(); d.setHours(h, m, s, 0); return d.getTime() }
+const retime = (e: ActivityEvent): ActivityEvent => { const d = new Date(e.ts); return { ...e, ts: clock(d.getHours(), d.getMinutes(), d.getSeconds()) } }
 
 /** The Monday after today at 9:00 AM, when the weekly limit resets on FloorLimit.png. */
 const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return d.getTime() }
@@ -31,13 +33,137 @@ const floorScene = (f: Fixture, patch: Partial<Fixture> & { extra?: ActivityEven
     agents: { ...f.agents, [A]: seatTeam },
     status: { [A]: status },
     activity: [...extra, ...f.activity].map(retime),
-    push: saying(status, { ...says, ...sayMore }),
+    // The renderer learns the account from a push; CJ's name and initials show in the sidebar and on his log lines.
+    push: [{ type: 'account', account: { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' } }, ...saying(status, { ...says, ...sayMore })],
     ui: floor,
     ...rest
   }
 }
 
 const paused = Object.fromEntries(seatTeam.map((a) => [a.id, 'paused' as const]))
+
+// ---------- the briefing sequence (KERNEL-23). `ui.stage` is the canvas `%%STAGE%%` value of each PNG; legs, bubble and cards come from the events.
+
+const staged = (stage: string) => ({ ...floor, stage })
+const ev = (id: string, h: number, m: number, s: number, e: Omit<ActivityEvent, 'id' | 'ts' | 'roomId'>): ActivityEvent => ({ id, ts: at(h, m, s), roomId: A, ...e })
+const say = (id: string, h: number, m: number, s: number, text: string) => ev(id, h, m, s, { agentId: 'rowan', workspaceId: ids.lead, kind: 'agent.say', text })
+
+const brief = ev('b-brief', 11, 2, 0, { actor: 'you', agentId: 'rowan', workspaceId: ids.lead, kind: 'brief', text: 'briefed Rowan', quote: 'Add PDF export to invoices. Spec first.' })
+const read = ev('b-read', 11, 3, 0, { agentId: 'rowan', workspaceId: ids.lead, kind: 'tool.end', text: 'read', object: 'invoices.ts' })
+const wrote = ev('b-wrote', 11, 3, 20, { agentId: 'rowan', workspaceId: ids.lead, kind: 'tool.end', text: 'wrote', object: 'plans/t-15-invoice-pdf.md' })
+const asked = ev('b-asked', 11, 4, 0, { agentId: 'rowan', workspaceId: ids.lead, kind: 'approval.requested', text: 'asked you to review', object: 'T-15 plan', warn: true })
+const approved = ev('b-approved', 11, 4, 30, { actor: 'you', agentId: 'rowan', kind: 'approval.decided', text: 'approved', object: 'T-15 plan' })
+const created = ev('b-created', 11, 5, 0, { agentId: 'rowan', workspaceId: ids.lead, kind: 'note', text: 'created 4 workspaces for', object: 'T-15' })
+
+/** The plan on FloorPlan.png: one task per agent, each handed off in its own workspace. */
+const T15 = [
+  { task: 'T-15a', title: 'PDF renderer', agent: 'noor', name: 'Noor', ws: 'invoice-pdf-renderer' },
+  { task: 'T-15b', title: 'Download button', agent: 'kai', name: 'Kai', ws: 'invoice-pdf-button' },
+  { task: 'T-15c', title: 'Snapshot tests', agent: 'ivy', name: 'Ivy', ws: 'invoice-pdf-tests' },
+  { task: 'T-15d', title: 'Review each PR', agent: 'theo', name: 'Theo', ws: 'invoice-pdf-review' }
+]
+/** What `create_workspace` logs for each hand-off. The assignee walks Rowan to that desk. */
+const assigned = (i: number) => ev(`b-assign-${i}`, 11, 5, 10 + i * 10, {
+  agentId: 'rowan', workspaceId: `ws-${T15[i].ws}`, kind: 'workspace.created', text: `assigned ${T15[i].task} to`, object: T15[i].name, data: { assignee: T15[i].agent }
+})
+/** The workspaces the hand-off created, listed first so each agent's card shows the new one. */
+const t15Workspaces = (f: Fixture, extra: (i: number) => Partial<Workspace> = () => ({})): Workspace[] => T15.map((t, i) => ({
+  ...f.workspaces[1], id: `ws-${t.ws}`, name: t.ws, branch: `feat/${t.task.toLowerCase()}-${t.ws}`, agentId: t.agent, port: 4316 + i,
+  path: `/Users/cj/kernel/worktrees/client-a/${t.ws}`, createdAt: clock(11, 5, 10 + i * 10), ...extra(i)
+}))
+const t15Plan = (status: Approval['status']): Approval => ({
+  id: 'ap-t15-plan', kind: 'plan', source: 'sdk', roomId: A, workspaceId: ids.lead, agentId: 'rowan', title: 'T-15 · Export invoices as PDF',
+  steps: T15.map((t) => ({ title: t.title, taskId: t.task, agentId: t.agent })), status, createdAt: clock(11, 4)
+})
+const t15Tasks: Task[] = T15.map((t) => ({
+  id: t.task, roomId: A, title: t.title, column: 'review', state: 'idle', agentId: t.agent, workspaceId: `ws-${t.ws}`, parentId: 'T-15', steps: [],
+  createdAt: clock(11, 5), updatedAt: clock(11, 16)
+}))
+
+const working: Record<string, AgentStatus> = { rowan: 'idle', kai: 'working', noor: 'working', ivy: 'working', theo: 'idle' }
+const workingSays = { rowan: 'Watching the team', noor: 'Building the PDF renderer', kai: 'Adding the download button', ivy: 'Writing snapshot tests', theo: 'Waiting for the first PR' }
+const workingEvents = [
+  ev('b-ivy', 11, 6, 30, { agentId: 'ivy', workspaceId: 'ws-invoice-pdf-tests', kind: 'tool.end', text: 'created', object: 'invoice-pdf.spec.ts' }),
+  ev('b-kai', 11, 6, 20, { agentId: 'kai', workspaceId: 'ws-invoice-pdf-button', kind: 'tool.end', text: 'edited', object: 'row-actions.tsx' }),
+  ev('b-noor', 11, 6, 10, { agentId: 'noor', workspaceId: 'ws-invoice-pdf-renderer', kind: 'tool.end', text: 'edited', object: 'pdf/render.ts' }),
+  assigned(3), assigned(2), assigned(1), assigned(0)
+]
+const drizzle: Approval = {
+  id: 'ap-drizzle', kind: 'tool', source: 'sdk', roomId: A, workspaceId: 'ws-invoice-pdf-renderer', agentId: 'noor', toolName: 'Bash',
+  input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: clock(11, 7)
+}
+
+/** The briefing stages, FloorSent to FloorReview. Other rooms' waiting approvals make way for this room's, so the Inbox count stays at 3. */
+const briefing: Record<string, Fixture> = {
+  FloorSent: scene((f) => floorScene(f, {
+    status: { [A]: { ...calm, rowan: 'planning' } },
+    says: { rowan: 'Reading your brief' },
+    extra: [say('b-say-sent', 11, 2, 5, 'Got it. Planning PDF export now.'), brief],
+    ui: staged('sent')
+  })),
+  FloorPlanning: scene((f) => floorScene(f, {
+    status: { [A]: { ...calm, rowan: 'planning' } },
+    says: { rowan: 'Writing the plan on the task wall' },
+    extra: [say('b-say-planning', 11, 3, 25, 'Splitting this into four tasks.'), wrote, read, brief],
+    ui: staged('planning')
+  })),
+  FloorPlan: scene((f) => floorScene(f, {
+    status: { [A]: { ...calm, rowan: 'needs' } },
+    says: { rowan: 'Plan ready for your review' },
+    approvals: [...f.approvals.filter((a) => a.id !== 'ap-plan'), t15Plan('pending')],
+    extra: [asked, wrote, brief],
+    ui: staged('plan')
+  })),
+  FloorHandoff: scene((f) => floorScene(f, {
+    status: { [A]: { rowan: 'working', kai: 'planning', noor: 'working', ivy: 'idle', theo: 'working' } },
+    says: { rowan: 'Handing out tasks', noor: 'Building the PDF renderer', kai: 'Reading T-15b' },
+    approvals: [...f.approvals, t15Plan('allowed')],
+    workspaces: [...t15Workspaces(f), ...f.workspaces],
+    extra: [say('b-say-kai', 11, 5, 21, 'Kai, T-15b is yours. A Download PDF button on each row.'), assigned(1), assigned(0), created, approved],
+    ui: staged('handoff')
+  })),
+  FloorWorking: scene((f) => ({
+    ...floorScene(f, {
+      status: { [A]: working }, says: workingSays,
+      approvals: [...f.approvals, t15Plan('allowed')],
+      workspaces: [...t15Workspaces(f), ...f.workspaces],
+      ui: staged('working')
+    }),
+    activity: workingEvents.map(retime)
+  })),
+  FloorNeeds: scene((f) => ({
+    ...floorScene(f, {
+      status: { [A]: { ...working, noor: 'needs' } }, says: { ...workingSays, noor: 'Wants to run drizzle-kit push' },
+      approvals: [...f.approvals.filter((a) => a.id !== 'ap-migrate'), t15Plan('allowed'), drizzle],
+      workspaces: [...t15Workspaces(f), ...f.workspaces],
+      ui: staged('needs')
+    }),
+    activity: [ev('b-perm', 11, 7, 0, { agentId: 'noor', workspaceId: 'ws-invoice-pdf-renderer', kind: 'approval.requested', text: 'asked to run', object: 'drizzle-kit push', warn: true }), ...workingEvents].map(retime)
+  })),
+  FloorReview: scene((f) => {
+    const status: Record<string, AgentStatus> = { rowan: 'working', kai: 'idle', noor: 'idle', ivy: 'idle', theo: 'working' }
+    const base = floorScene(f, {
+      status: { [A]: status },
+      says: { rowan: 'Posting the standup', theo: 'Approved 4 PRs', noor: 'Done with T-15a', kai: 'Done with T-15b', ivy: 'Done with T-15c' },
+      workspaces: [...t15Workspaces(f, (i) => ({ prState: 'ready', prNumber: 43 + i, prUrl: `https://github.com/cjjutba/client-a/pull/${43 + i}` })), ...f.workspaces],
+      tasks: { [A]: t15Tasks },
+      ui: staged('review')
+    })
+    return {
+      ...base,
+      push: [...(base.push ?? []), ...t15Tasks.map((task) => ({ type: 'task' as const, task }))],
+      activity: [
+        ev('b-standup', 11, 17, 0, { agentId: 'rowan', workspaceId: ids.lead, kind: 'note', text: 'posted', object: 'standup' }),
+        say('b-say-review', 11, 16, 40, 'T-15 is ready. Four PRs passed review.'),
+        ev('b-theo', 11, 16, 0, { agentId: 'theo', workspaceId: 'ws-invoice-pdf-review', kind: 'tool.end', text: 'approved', object: 'PR #43 to #46' }),
+        ev('b-ivy-pass', 11, 13, 0, { agentId: 'ivy', workspaceId: 'ws-invoice-pdf-tests', kind: 'task.completed', text: 'passed', object: 'T-15c' }),
+        ev('b-pr44', 11, 12, 30, { agentId: 'kai', workspaceId: 'ws-invoice-pdf-button', kind: 'pr.changed', text: 'opened', object: 'PR #44' }),
+        ev('b-pr43', 11, 12, 0, { agentId: 'noor', workspaceId: 'ws-invoice-pdf-renderer', kind: 'pr.changed', text: 'opened', object: 'PR #43' }),
+        ev('b-perm-ok', 11, 7, 30, { actor: 'you', agentId: 'noor', kind: 'approval.decided', text: 'approved', object: 'drizzle-kit push' })
+      ].map(retime)
+    }
+  })
+}
 const roomWith = (f: Fixture, change: Partial<Fixture['rooms'][number]>) => f.rooms.map((r) => (r.id === A ? { ...r, ...change } : r))
 
 export const floorFixtures: Record<string, Fixture> = {
@@ -81,6 +207,7 @@ export const floorFixtures: Record<string, Fixture> = {
       data: { detail: 'Claude Code exited in invoice-table (out of memory). The worktree and chat are saved.' }
     }]
   })),
+  ...briefing,
   FloorFull: scene((f) => {
     const crowd = [...seatTeam, agent('sol', 'Sol', 'Security', 'sonnet'), agent('pax', 'Pax', 'Docs', 'haiku')]
     return floorScene(f, {
