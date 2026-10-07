@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type Query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, RateLimit, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Store } from '../db'
@@ -26,7 +26,12 @@ export class InputQueue<T> implements AsyncIterable<T> {
   }
 }
 
-interface Live { query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; toolItems: Map<string, ChatItem & { kind: 'tool' }> }
+interface Live {
+  query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
+  toolItems: Map<string, ChatItem & { kind: 'tool' }>
+  /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
+  commands: Map<string, string>
+}
 
 export interface SessionDeps {
   store: Store
@@ -35,6 +40,9 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined) => Options['mcpServers']
+  /** Bash rules CJ allowed for the whole room. */
+  roomAllow: (roomId: string) => string[]
+  allowInRoom: (roomId: string, rule: string) => void
   onTurnDone?: (ws: Workspace, chat: Chat) => void
 }
 
@@ -42,12 +50,27 @@ export class Sessions {
   private live = new Map<string, Live>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
+  private billing = new Map<string, string>()
   constructor(private d: SessionDeps) {}
 
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
   isManaged(sessionId: string) { return this.managedIds.has(sessionId) }
   isRunning(chatId: string) { return this.live.get(chatId)?.running ?? false }
-  usage(): RateLimit[] { return [...this.limits.values()] }
+  /** apiKeySource from the chat's init message. 'none' means the Claude plan pays. */
+  billingOf(chatId: string) { return this.billing.get(chatId) }
+
+  /**
+   * 5-hour and weekly windows, fetched only when asked. A live session answers the experimental usage call;
+   * without one, or when the call fails, the last rate_limit_event numbers stand.
+   */
+  async usage(): Promise<RateLimit[]> {
+    const live = [...this.live.values()].find((l) => !l.abort.signal.aborted)
+    const ask = live?.query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
+    if (live && typeof ask === 'function') {
+      try { this.mergeLimits(limitsFromUsage(await withTimeout(ask.call(live.query, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
+    }
+    return [...this.limits.values()]
+  }
 
   async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
     const chat = this.mustChat(chatId)
@@ -61,13 +84,13 @@ export class Sessions {
     return { queued }
   }
 
+  /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
   async interrupt(chatId: string) {
     const live = this.live.get(chatId)
-    if (!live) return
+    if (!live?.running || live.interrupted) return
+    live.interrupted = true
     await live.query.interrupt().catch(() => undefined)
-    const chat = this.mustChat(chatId)
-    this.item(chat, { kind: 'interrupted', id: randomUUID(), ts: Date.now() })
-    this.setRunning(chat, this.mustWorkspace(chat.workspaceId), live, false)
+    this.item(this.mustChat(chatId), { kind: 'interrupted', id: randomUUID(), ts: Date.now() })
   }
 
   async configure(chatId: string, patch: Partial<Pick<Chat, 'model' | 'effort' | 'plan'>>): Promise<Chat> {
@@ -99,23 +122,29 @@ export class Sessions {
     const agent = this.d.agentFor(ws)
     const input = new InputQueue<SDKUserMessage>()
     const abort = new AbortController()
+    const commands = new Map<string, string>()
     const ctx = { roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id }
+    // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
+    const sessionId = chat.sessionId ?? randomUUID()
+    this.managedIds.add(sessionId)
     const options: Options = {
       cwd: ws.path,
       model: chat.model,
       effort: chat.effort,
+      // Without display: 'summarized' the CLI sends thinking blocks with empty text.
+      thinking: { type: 'adaptive', display: 'summarized' },
       permissionMode: chat.plan ? 'plan' : this.baseMode(),
-      canUseTool: this.canUseTool(ws, agent),
+      canUseTool: this.canUseTool(ws, agent, commands),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent),
-      hooks: activityHooks(ctx),
-      resume: chat.sessionId,
+      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId))),
+      ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: { ...process.env, KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id } as Record<string, string>
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id })
     }
     const q = query({ prompt: input, options })
-    const live: Live = { query: q, input, abort, running: false, toolItems: new Map() }
+    const live: Live = { query: q, input, abort, running: false, interrupted: false, toolItems: new Map(), commands }
     this.live.set(chat.id, live)
     void this.consume(chat.id, ws, live)
     return live
@@ -138,9 +167,16 @@ export class Sessions {
     const now = Date.now()
     switch (msg.type) {
       case 'system': {
-        if (msg.subtype === 'init' && 'session_id' in msg) {
+        // The CLI sends init at the start of every turn, including queued follow-ups after an interrupt.
+        if (msg.subtype === 'init') {
           this.managedIds.add(msg.session_id)
           if (chat.sessionId !== msg.session_id) { chat = { ...chat, sessionId: msg.session_id }; this.d.store.saveChat(chat) }
+          if (!this.billing.has(chatId) && msg.apiKeySource !== 'none') {
+            this.item(chat, { kind: 'note', id: randomUUID(), ts: now, text: `This session is billed through ${msg.apiKeySource}, not your Claude plan.` })
+            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId: msg.session_id, text: `is billed through ${msg.apiKeySource}, not the Claude plan` })
+          }
+          this.billing.set(chatId, msg.apiKeySource)
+          this.setRunning(chat, ws, live, true)
         }
         return
       }
@@ -165,6 +201,7 @@ export class Sessions {
         for (const block of content) {
           if (block?.type !== 'tool_result') continue
           const item = live.toolItems.get(block.tool_use_id)
+          live.commands.delete(block.tool_use_id)
           if (!item) continue
           const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
           const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, 4000), ts: item.ts } as ChatItem & { kind: 'tool' }
@@ -175,45 +212,51 @@ export class Sessions {
       }
       case 'result': {
         const ok = msg.subtype === 'success'
-        this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
+        // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
+        if (ok || !live.interrupted) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
+        live.interrupted = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat)
         return
       }
       case 'rate_limit_event': {
         const info = msg.rate_limit_info
-        if (!info.rateLimitType) return
-        this.limits.set(info.rateLimitType, { type: info.rateLimitType, status: info.status, utilization: info.utilization, resetsAt: info.resetsAt })
-        bus.push({ type: 'usage', limits: this.usage() })
-        if (info.status === 'rejected') bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
+        this.mergeLimits(limitsFromEvent(info))
+        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
         return
       }
       default: return
     }
   }
 
-  /** Permission policy from Settings > Permissions, then CJ's decision for everything else. */
-  private canUseTool(ws: Workspace, agent: AgentDef | undefined): CanUseTool {
-    return async (toolName, input, { signal, suggestions }): Promise<PermissionResult> => {
+  /**
+   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
+   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then CJ decides.
+   */
+  private canUseTool(ws: Workspace, agent: AgentDef | undefined, commands: Map<string, string>): CanUseTool {
+    return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
       const p = this.d.settings().permissions
       if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
-      const command = toolName === 'Bash' ? String((input as any).command ?? '') : ''
-      if (command && matchesRule(command, p.neverAllow)) return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
-      const mustAsk = command ? !!matchesRule(command, p.alwaysAsk) : false
-      if (!mustAsk && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      const command = toolName === 'Bash' ? commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
+      const verdict = command ? bashVerdict(command, p, this.d.roomAllow(ws.roomId)) : undefined
+      if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
+      if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
+      if (verdict !== 'ask' && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
-      const d = describeTool(toolName, input)
+      const shown = command ? { ...input, command } : input
+      const d = describeTool(toolName, shown)
       const options = isQuestion ? ((input as any).questions?.[0]?.options ?? []).map((o: any) => String(o.label ?? o)) : undefined
       this.setStatus(ws, agent, 'needs', d.title)
       const { decision } = this.d.approvals.request({
         kind: isQuestion ? 'question' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id,
-        toolName, input, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : d.title, detail: d.detail, options
+        toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : d.title, detail: d.detail, options
       }, { signal })
       const result = await decision
       this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always ? suggestions : undefined }
+      if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
+      if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers to questions travel back as the denial message, which the model reads as the user's reply.
       if (result.behavior === 'answer') return { behavior: 'deny', message: `The user answered: ${result.text}` }
       return { behavior: 'deny', message: result.message ?? 'Denied in Kernel.' }
@@ -225,6 +268,12 @@ export class Sessions {
     live.running = running
     bus.push({ type: 'chat.running', chatId: chat.id, running })
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')
+  }
+
+  private mergeLimits(next: LimitPatch[]) {
+    if (!next.length) return
+    for (const l of next) this.limits.set(l.type, mergeLimit(this.limits.get(l.type), l, Date.now()))
+    bus.push({ type: 'usage', limits: [...this.limits.values()] })
   }
 
   private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus, activity?: string) {
@@ -269,13 +318,118 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
   return [agent?.prompt, where, port].filter(Boolean).join('\n\n')
 }
 
-/** In-process hooks feed the room log the same way http hooks do for outside sessions. */
-function activityHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const report = async (input: unknown) => {
+/**
+ * In-process hooks. Every event feeds the room log the same way http hooks do for outside sessions.
+ * A Bash guard applies Kernel's Never allow and Always ask lists on top of CJ's own Claude Code settings.
+ */
+function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+  const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
     return {}
   }
+  const guard: HookCallback = async (input) => {
+    const { tool_use_id, tool_input } = input as PreToolUseHookInput
+    const command = String((tool_input as any)?.command ?? '')
+    commands.set(tool_use_id, command)
+    const v = verdict(command)
+    if (v === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${command}" in every room.` } }
+    if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
+    return {}
+  }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted']
-  return Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
+  const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
+  hooks.PreToolUse!.push({ matcher: 'Bash', hooks: [guard] })
+  return hooks
+}
+
+export type BashVerdict = 'deny' | 'allow' | 'ask' | undefined
+
+/**
+ * Kernel's say on one Bash command: Never allow, then the room's Always allow rules, then Always ask.
+ * Undefined leaves it to Claude Code's own settings, so CJ's allow list still covers everyday commands.
+ */
+export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[] }, roomAllow: string[]): BashVerdict {
+  if (matchesRule(command, p.neverAllow)) return 'deny'
+  if (roomAllow.some((r) => matchesRoomRule(command, r))) return 'allow'
+  if (matchesRule(command, p.alwaysAsk)) return 'ask'
+  return undefined
+}
+
+/**
+ * Room rules use Claude Code's Bash rule shape: `prefix:*` covers the prefix with any arguments, otherwise the exact command.
+ * A prefix rule never covers a chained command, so `npm run build:*` can't wave through `npm run build && pnpm db:reset`.
+ */
+export function matchesRoomRule(command: string, rule: string): boolean {
+  const c = command.trim()
+  if (!rule.endsWith(':*')) return c === rule.trim()
+  const prefix = rule.slice(0, -2).trim()
+  return (c === prefix || c.startsWith(prefix + ' ')) && !/[;&|\n`]|\$\(/.test(c)
+}
+
+/**
+ * The rule "Always allow in this room" saves: Claude Code's own suggestion when it is a single Bash rule and may be saved,
+ * else the exact command.
+ */
+export function roomRule(command: string, suggestions?: PermissionUpdate[], suppressAlwaysAllowRule?: boolean): string {
+  const rules = suppressAlwaysAllowRule ? [] : (suggestions ?? []).flatMap((s) => (s.type === 'addRules' && s.behavior === 'allow' ? s.rules : []))
+  return rules.length === 1 && rules[0].toolName === 'Bash' && rules[0].ruleContent ? rules[0].ruleContent : command.trim()
+}
+
+/** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>): Record<string, string> {
+  const env = { ...base, ...extra } as Record<string, string>
+  delete env.ANTHROPIC_API_KEY
+  delete env.ANTHROPIC_AUTH_TOKEN
+  return env
+}
+
+const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'] as const
+
+/** A window update. Status is left out when the source doesn't know it, so an earlier warning isn't cleared. */
+export type LimitPatch = Omit<RateLimit, 'status'> & { status?: RateLimit['status'] }
+
+/**
+ * rate_limit_event names the window that matters right now, and the CLI also sends `unifiedWindows`
+ * (not in sdk.d.ts) with the 5-hour and weekly numbers. Utilization is 0 to 1, resetsAt is epoch seconds.
+ */
+export function limitsFromEvent(info: SDKRateLimitInfo): LimitPatch[] {
+  const windows = (info as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number } | undefined> }).unifiedWindows ?? {}
+  const out: LimitPatch[] = []
+  for (const type of WINDOWS) {
+    const w = windows[type]
+    if (w) out.push({ type, utilization: w.utilization, resetsAt: w.resetsAt })
+  }
+  if (info.rateLimitType) {
+    const named = defined({ type: info.rateLimitType, status: info.status, utilization: info.utilization, resetsAt: info.resetsAt })
+    const i = out.findIndex((l) => l.type === info.rateLimitType)
+    if (i >= 0) out[i] = { ...out[i], ...named }; else out.push(named)
+  }
+  return out
+}
+
+/** The experimental usage call reports utilization 0 to 100 and ISO reset times. Converted to the rate_limit_event units. */
+export function limitsFromUsage(res: SDKControlGetUsageResponse): LimitPatch[] {
+  const out: LimitPatch[] = []
+  for (const type of WINDOWS) {
+    const w = res.rate_limits?.[type]
+    if (!w || w.utilization === null) continue
+    out.push({ type, utilization: w.utilization / 100, resetsAt: w.resets_at ? Math.round(Date.parse(w.resets_at) / 1000) : undefined })
+  }
+  return out
+}
+
+/** A patch without a status keeps the stored one, unless that window has since reset. */
+export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: number): RateLimit {
+  const reset = prev?.resetsAt !== undefined && (prev.resetsAt * 1000 <= now || (patch.resetsAt !== undefined && patch.resetsAt > prev.resetsAt))
+  return { ...prev, status: reset || !prev ? 'allowed' : prev.status, ...defined(patch) }
+}
+
+const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timed out')), ms)
+    p.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e) })
+  })
 }

@@ -39,6 +39,11 @@ export class Kernel {
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
       mcpFor: (ws, agent) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent) } : undefined),
+      roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
+      allowInRoom: (roomId, rule) => {
+        const room = this.store.room(roomId)
+        if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
+      },
       onTurnDone: (ws) => { if (ws.prState !== 'none') void this.refreshPr(ws.id).catch(() => undefined) }
     })
     bus.on('activity', (e) => this.store.saveActivity(e))
