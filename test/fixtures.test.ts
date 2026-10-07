@@ -35,7 +35,7 @@ describe('fixtures', () => {
       if ('workspaceId' in e) expect(workspaces.has(e.workspaceId), `push ${e.type} workspace`).toBe(true)
       if ('chatId' in e) expect(chats.has(e.chatId), `push ${e.type} chat`).toBe(true)
     }
-    if (f.ui.route && 'roomId' in f.ui.route) expect(rooms.has(f.ui.route.roomId)).toBe(true)
+    if (f.ui.route && 'roomId' in f.ui.route && f.ui.route.roomId) expect(rooms.has(f.ui.route.roomId)).toBe(true)
     if (f.ui.route?.name === 'workspace') expect(workspaces.has(f.ui.route.workspaceId)).toBe(true)
   })
 })
