@@ -1,6 +1,6 @@
 # Screens
 
-All 119 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Route and component columns are filled in by KERNEL-8. Update Status when an issue lands (todo, done).
+All 119 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Route and component columns are filled in by KERNEL-8. Update Status when an issue lands (todo, done). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
 | Screen | Title on canvas | PNG | Markup | Issue | Lane | Route | Component | Status |
 |---|---|---|---|---|---|---|---|---|

@@ -158,3 +158,24 @@ export interface PreflightCheck {
   detail: string
   fix?: { command?: string; action?: string }
 }
+
+/** Where the renderer is. Lives here so fixtures can open any screen. */
+export type Route =
+  | { name: 'onboarding' } | { name: 'home' } | { name: 'inbox' } | { name: 'history' }
+  | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'team'; roomId: string }
+  | { name: 'workspace'; workspaceId: string }
+
+export type Modal = null | { name: 'newWorkspace'; roomId?: string } | { name: 'search' }
+
+/** UI state a fixture forces on boot. Screens read menu, banner and stage from the store's `ui`. */
+export interface ForcedUi {
+  route?: Route
+  modal?: Modal
+  /** A menu or popover to show open. */
+  menu?: string
+  /** A banner or toast to show. */
+  banner?: string
+  /** A step of the floor briefing sequence. */
+  stage?: string
+  theme?: 'dark' | 'light'
+}

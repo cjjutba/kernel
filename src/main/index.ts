@@ -1,13 +1,21 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bus } from './bus'
 import { Kernel } from './kernel'
+import { fixtureHandlers } from './fixtures'
 import { exec } from './services/exec'
 import type { Channel } from '@shared/ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
+
+// Fixture mode serves one screen's data with no kernel (D-021). Its own userData keeps Electron's
+// cache and storage out of the real profile, so a fixture run can't collide with a running Kernel.
+// The shots harness passes a folder per launch and deletes it; manual runs reuse one temp folder.
+const fixtureName = process.env.KERNEL_FIXTURES
+if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
 
 function createWindow() {
   win = new BrowserWindow({
@@ -34,20 +42,31 @@ function bootFailed(err: unknown) {
   app.quit()
 }
 
-app.whenReady().then(() => {
-  const kernel = new Kernel({ dataDir: app.getPath('userData') })
-  app.on('before-quit', () => { void kernel.stop() })
-
-  // The window opens while the kernel boots. Calls made before start() finishes wait for it.
-  const started = kernel.start()
-  started.catch(bootFailed)
-  const handlers = kernel.handlers() as Record<string, (req: unknown) => Promise<unknown>>
+app.whenReady().then(async () => {
+  const known = fixtureName ? (await import('../../fixtures')).fixtures : {}
+  const fixture = fixtureName ? known[fixtureName] : undefined
+  if (fixtureName && !fixture) {
+    console.error(`[kernel] no fixture named ${fixtureName}. Known: ${Object.keys(known).join(', ')}`)
+    return app.exit(1)
+  }
+  let handlers: Record<string, (req: unknown) => Promise<unknown>>
+  let started: Promise<void> = Promise.resolve()
+  if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
+  else {
+    const kernel = new Kernel({ dataDir: app.getPath('userData') })
+    app.on('before-quit', () => { void kernel.stop() })
+    // The window opens while the kernel boots. Calls made before start() finishes wait for it.
+    started = kernel.start()
+    started.catch(bootFailed)
+    handlers = kernel.handlers() as typeof handlers
+  }
   for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, async (_e, req) => { await started; return fn(req) })
   ipcMain.handle('system.pickFolder' satisfies Channel, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => { await shell.openExternal(url); return { ok: true } })
+  ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: fixture.ui, push: fixture.push } : null))
   ipcMain.handle('system.openInEditor' satisfies Channel, async (_e, { path }) => { const r = await exec('code', [path]); if (r.code !== 0) await shell.openPath(path); return { ok: true } })
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()

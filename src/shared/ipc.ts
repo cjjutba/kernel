@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, Approval, ChangedFile, Chat, ChatItem, ChatPart, Decision,
-  Effort, ModelId, PreflightCheck, PrState, RateLimit, Room, Workspace, WorkspaceMode
+  Effort, ForcedUi, ModelId, PreflightCheck, PrState, RateLimit, Room, Workspace, WorkspaceMode
 } from './types'
 
 /** Request/response pairs for ipcRenderer.invoke. One place to see everything the UI can ask for. */
@@ -49,6 +49,8 @@ export interface KernelApi {
   'system.pickFolder': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: { ok: true } }
   'system.openInEditor': { req: { path: string }; res: { ok: true } }
+  /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
+  'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
 }
 
 export type Channel = keyof KernelApi
