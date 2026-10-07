@@ -106,6 +106,10 @@ export interface NewRoomRequest {
   team: string[]
   /** Brief the Lead as soon as setup finishes. */
   autostart: boolean
+  /** Repo and scratch rooms: the folder to create the checkout in. Defaults to ~/Projects/<name>. */
+  cloneTo?: string
+  /** Folder rooms: the folder is not a git repository, so run `git init` and make a first commit. */
+  initGit?: boolean
 }
 
 /** One line of the room setup progress (RoomSetup.png). */
