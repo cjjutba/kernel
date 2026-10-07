@@ -9,7 +9,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { Sessions } from '../src/main/services/sessions'
+import { HOLD_TIMEOUT_SEC, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
@@ -90,6 +90,37 @@ describe('pausing a room', () => {
     expect(released).toBe(true)
     expect(sessions.queued(chat.id)).toHaveLength(0)
     expect(store.items(chat.id).filter((i) => i.kind === 'user')).toHaveLength(2)
+    done()
+  })
+})
+
+describe('the pause hold', () => {
+  it('outlasts the CLI\'s 600 second hook default, and ends when the call is aborted', async () => {
+    const { sessions, chat, done } = await runner()
+    await sessions.send(chat.id, text('first'))
+    const matchers = (sdk.calls.at(-1)!.options as Options).hooks!.PreToolUse!
+    const matcher = matchers.find((m) => m.timeout !== undefined)!
+    expect(matcher.timeout).toBeGreaterThan(600 * 100)
+    expect(matcher.timeout).toBe(HOLD_TIMEOUT_SEC)
+
+    sessions.pause('room')
+    const abort = new AbortController()
+    let released = false
+    const waiting = (matcher.hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, tool_use_id: 'x', session_id: 's', transcript_path: '', cwd: '/tmp' } as never, 'x', { signal: abort.signal } as never).then(() => { released = true })
+    await flush()
+    expect(released).toBe(false)
+    abort.abort()
+    await waiting
+    expect(released).toBe(true)
+    done()
+  })
+
+  it('keeps held sends across a restart, and leaves needs, blocked and offline alone when pausing', async () => {
+    const { sessions, chat, done } = await runner()
+    sessions.pause('room')
+    await sessions.send(chat.id, text('held'))
+    await sessions.restart(chat.id)
+    expect(sessions.queued(chat.id).map((q) => q.parts)).toEqual([text('held'), text('Your session ended unexpectedly. Check the worktree and pick up where you left off.')])
     done()
   })
 })
@@ -176,7 +207,7 @@ describe('room pause and team templates', () => {
     expect(resumed.paused).toBe(false)
     expect(resumed.pausedBy).toBeUndefined()
     expect(k.sessions.isPaused(room.id)).toBe(false)
-    k.store.db.close()
+    await k.stop()
   })
 
   it('seats a starter team, a pair, or another room\'s agents in an empty room, and refuses a room that has agents', async () => {
@@ -188,7 +219,24 @@ describe('room pause and team templates', () => {
     await expect(h['agents.seed']({ roomId: b.id, template: { kind: 'starter' } })).rejects.toThrow('already has agents')
     expect((await h['agents.seed']({ roomId: c.id, template: { kind: 'copy', fromRoomId: a.id } })).length).toBe(5)
     expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(5)
-    k.store.db.close()
+    await k.stop()
+  })
+
+  it('keeps needs, blocked and offline through a pause and a resume', async () => {
+    const k = await kernel()
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.' }))
+    await k.agents(room.id)
+    const seen: Record<string, string> = {}
+    const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
+    bus.on('push', on)
+    bus.push({ type: 'agent.status', roomId: room.id, agentId: 'kai', status: 'needs' })
+    bus.push({ type: 'agent.status', roomId: room.id, agentId: 'ivy', status: 'offline' })
+    k.pauseRoom(room.id, 'you')
+    expect(seen).toMatchObject({ rowan: 'paused', kai: 'needs', ivy: 'offline' })
+    k.resumeRoom(room.id)
+    expect(seen).toMatchObject({ rowan: 'idle', kai: 'needs', ivy: 'offline' })
+    bus.off('push', on)
+    await k.stop()
   })
 
   it('restarts a chat through the channel', async () => {
@@ -199,8 +247,7 @@ describe('room pause and team templates', () => {
     const before = sdk.calls.length
     expect(await h['chats.restart']({ chatId: chat.id })).toEqual({ ok: true })
     expect(sdk.calls.length).toBe(before + 1)
-    k.sessions.stopAll()
     await flush()
-    k.store.db.close()
+    await k.stop()
   })
 })

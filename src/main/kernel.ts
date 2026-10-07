@@ -284,7 +284,9 @@ export class Kernel {
   pauseRoom(roomId: string, by: 'you' | 'limit'): Room {
     const room = this.store.saveRoom({ ...this.mustRoom(roomId), paused: true, pausedBy: by })
     this.sessions.pause(roomId)
-    for (const a of this.agentsSync(roomId)) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
+    // Someone who needs CJ, is blocked or is offline keeps saying so.
+    const now = this.statusOf(roomId)
+    for (const a of this.agentsSync(roomId)) if (!['needs', 'blocked', 'offline'].includes(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
     bus.push({ type: 'room', room })
     bus.activity({ kind: 'room.paused', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'paused' : 'paused the room for', object: by === 'you' ? room.name : 'a usage limit' })
     return room
@@ -293,9 +295,10 @@ export class Kernel {
   resumeRoom(roomId: string): Room {
     const { pausedBy: _by, ...rest } = this.mustRoom(roomId)
     const room = this.store.saveRoom({ ...rest, paused: false })
+    const before = this.statusOf(roomId)
     this.sessions.resume(roomId)
     const live = new Map(this.store.workspaces(roomId).map((w) => [w.agentId, this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id))]))
-    for (const a of this.agentsSync(roomId)) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: live.get(a.id) ? 'working' : 'idle' })
+    for (const a of this.agentsSync(roomId)) if (before[a.id] === 'paused') bus.push({ type: 'agent.status', roomId, agentId: a.id, status: live.get(a.id) ? 'working' : 'idle' })
     bus.push({ type: 'room', room })
     bus.activity({ kind: 'room.resumed', roomId, actor: 'you', text: 'resumed', object: room.name })
     return room

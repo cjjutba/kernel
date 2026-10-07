@@ -206,7 +206,10 @@ export class Sessions {
   /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
   async restart(chatId: string): Promise<void> {
     this.mustChat(chatId)
+    // Messages held while the session was down or the room was paused still go out.
+    const held = this.queued(chatId)
     this.stop(chatId)
+    if (held.length) this.setQueue(chatId, held)
     await this.send(chatId, [{ type: 'text', text: 'Your session ended unexpectedly. Check the worktree and pick up where you left off.' }])
   }
 
@@ -494,12 +497,20 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
     return {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
-  const hold: HookCallback = async () => { await held(); return {} }
+  const hold: HookCallback = async (_input, _id, { signal }) => {
+    const open = held()
+    // A Stop ends the wait too, so no promise is left pending.
+    if (open) await Promise.race([open, new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }) })])
+    return {}
+  }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
-  hooks.PreToolUse!.push({ hooks: [hold] }, { matcher: 'Bash', hooks: [guard] })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] })
   return hooks
 }
+
+/** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
+export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
 
 /** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
 const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
