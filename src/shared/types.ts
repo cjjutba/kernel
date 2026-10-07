@@ -1,6 +1,17 @@
 // Domain types shared by the main process, preload and renderer.
+// Every domain object drawn on the canvas has a type here (KERNEL-8). Add fields in a small separate
+// commit at the top of a lane's PR rather than reshaping what is already here.
+
+// ---------- agents
 
 export type AgentStatus = 'working' | 'planning' | 'walking' | 'needs' | 'idle' | 'blocked' | 'offline' | 'paused'
+
+/** How a person is drawn on the floor (Main.dc.html roster). Kernel picks one when the file has none. */
+export interface AgentLook {
+  shirt: string
+  skin: string
+  hair: string
+}
 
 export interface AgentDef {
   /** File stem in .claude/agents, also the Claude Code subagent name. */
@@ -11,6 +22,8 @@ export interface AgentDef {
   role: string
   description: string
   model?: string
+  /** Default effort for this agent's chats. Falls back to Settings > Models. */
+  effort?: Effort
   tools?: string[]
   skills?: string[]
   /** True for the agent that plans and hands out work. */
@@ -18,30 +31,151 @@ export interface AgentDef {
   /** Body of the markdown file, used as appended system prompt. */
   prompt: string
   file: string
+  look?: AgentLook
+  /** When the file first appeared in the room. Drives "Joined today" and the new hire moment. */
+  joinedAt?: number
+  /** Retired agents live in .claude/retired-agents (D-003) and stay listable so they can come back. */
+  retired?: boolean
 }
+
+/** The editable part of an agent file: AgentProfile and the New agent review step. */
+export interface AgentEdit {
+  name?: string
+  role?: string
+  description?: string
+  model?: string
+  effort?: Effort
+  tools?: string[]
+  skills?: string[]
+  prompt?: string
+}
+
+/** New agent flow: Describe produces a draft file, Review edits it, Create saves it (NewAgent*.png). */
+export interface AgentDraft {
+  id: string
+  name: string
+  description: string
+  model: string
+  tools: string[]
+  /** The whole file as it will be written, frontmatter included. */
+  text: string
+  file: string
+}
+
+/** Team templates offered on an empty floor (FloorEmpty.png). */
+export type TeamTemplate = { kind: 'starter' } | { kind: 'pair' } | { kind: 'copy'; fromRoomId: string }
+
+// ---------- rooms
+
+export type RoomKind = 'repo' | 'folder' | 'scratch'
 
 export interface Room {
   id: string
   name: string
+  /** One line under the name on Rooms and Home, for example "Invoicing SaaS · MVP Sprint". */
+  desc?: string
+  kind?: RoomKind
   /** Absolute path of the main checkout. */
   path: string
   /** owner/repo when the folder has a GitHub remote. */
   repo?: string
   defaultBranch: string
   paused: boolean
+  /** Who paused it. A limit pause lifts itself when the limit resets (FloorLimit.png). */
+  pausedBy?: 'you' | 'limit'
+  /** Agent ids in desk order. Agents past the last desk sit in the overflow strip (FloorFull.png). */
+  desks?: string[]
+  /** Hidden from the sidebar, still listed on Rooms. */
+  hidden?: boolean
+  /** Archived from Settings > Room. Agents stop, workspaces archive, the room moves to Rooms > Archived. */
+  archived?: boolean
   /** Bash rules CJ chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
   createdAt: number
 }
 
+/** New room modal (NewRoom.png). */
+export interface NewRoomRequest {
+  source: RoomKind
+  name: string
+  desc?: string
+  /** owner/repo for a repo, an absolute path for a folder, a template repo for scratch. */
+  from: string
+  baseBranch?: string
+  /** Starter agent ids to seat. The Lead is always included. */
+  team: string[]
+  /** Brief the Lead as soon as setup finishes. */
+  autostart: boolean
+}
+
+/** One line of the room setup progress (RoomSetup.png). */
+export interface RoomSetupStep {
+  id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'agents'
+  title: string
+  detail: string
+  state: 'wait' | 'run' | 'ok' | 'fail'
+  /** Duration or "running". */
+  meta?: string
+  error?: string
+}
+
+/** A repo on CJ's GitHub account (ConnectRepo.png). */
+export interface RepoSummary {
+  fullName: string
+  name: string
+  private: boolean
+  updatedAt: number
+}
+
+/** A local folder that could become a room (OpenFolder.png). */
+export interface FolderInfo {
+  path: string
+  git: boolean
+  branch?: string
+  /** Uncommitted changes in the checkout. */
+  dirty?: number
+}
+
+/** Two agents editing the same file in different worktrees (FloorOverlap.png). */
+export interface Overlap {
+  id: string
+  roomId: string
+  path: string
+  parties: { agentId: string; workspaceId: string; lines: string }[]
+  ts: number
+  resolved?: boolean
+}
+
+// ---------- workspaces
+
 export type WorkspaceMode = 'worktree' | 'current'
 export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
-export type PrState = 'none' | 'draft' | 'open' | 'checks' | 'cifail' | 'changes' | 'conflict' | 'ready' | 'merged' | 'closed'
+/**
+ * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
+ * the rest come from `gh pr view` (github.ts prStateOf).
+ */
+export type PrState =
+  | 'none' | 'creating' | 'draft' | 'open' | 'checks' | 'cifail' | 'changes' | 'conflict' | 'resolving'
+  | 'ready' | 'merging' | 'merged' | 'closed'
+
+/** Where a workspace started from (NewWorkspaceFrom.png). */
+export type WorkspaceSource =
+  | { kind: 'pr'; number: number; title: string }
+  | { kind: 'branch'; branch: string }
+  | { kind: 'issue'; id: string; title: string; url?: string }
+
+export interface DiffStat {
+  files: number
+  added: number
+  removed: number
+}
 
 export interface Workspace {
   id: string
   roomId: string
   name: string
+  /** The task title it was created from. */
+  title?: string
   branch: string
   baseRef: string
   path: string
@@ -51,11 +185,83 @@ export interface Workspace {
   status: WorkspaceStatus
   /** For current-branch workspaces: the commit that captures pre-existing changes. */
   baselineRef?: string
+  source?: WorkspaceSource
+  /** Board task this workspace builds, for example "T-14". */
+  taskId?: string
   prNumber?: number
   prUrl?: string
+  prTitle?: string
   prState: PrState
+  /** Totals for the sidebar and Home (+412 -38). Refreshed after each turn. */
+  stat?: DiffStat
   createdAt: number
+  mergedAt?: number
+  archivedAt?: number
 }
+
+/** Git facts the archive and discard confirmations show (ConfirmArchive.png, ConfirmDiscard.png). */
+export interface WorkspaceGitStatus {
+  branch: string
+  /** Commits not on the remote yet. */
+  ahead: number
+  behind: number
+  /** Uncommitted changes. */
+  dirty: DiffStat
+}
+
+export interface ChangedFile {
+  path: string
+  status: 'A' | 'M' | 'D' | 'R' | '?'
+  added: number
+  removed: number
+}
+
+/** One row of the All files tree (Workspace.png, right panel). */
+export interface FileEntry {
+  path: string
+  dir: boolean
+  /** Change status when the file differs from the base. */
+  status?: ChangedFile['status']
+}
+
+/**
+ * One hunk of a file that has both CJ's earlier edits and the agent's (WorkspaceHunks.png).
+ * `mine` hunks predate the workspace (the current-branch baseline) and stay uncommitted unless picked.
+ */
+export interface Hunk {
+  id: string
+  path: string
+  lines: string
+  added: number
+  removed: number
+  owner: 'agent' | 'mine'
+  patch: string
+}
+
+/** A snapshot of the worktree after an agent turn (WorkspaceCheckpoints.png). */
+export interface Checkpoint {
+  id: string
+  workspaceId: string
+  chatId: string
+  ts: number
+  /** First line of the turn, for example "Added the empty and error states". */
+  title: string
+  stat: DiffStat
+  /** Git ref holding the snapshot. */
+  ref: string
+  /** The newest checkpoint is where the worktree is now. */
+  current: boolean
+}
+
+export type ScriptKind = 'setup' | 'run' | 'archive'
+
+export interface ScriptLine {
+  kind: ScriptKind
+  line: string
+  stream: 'stdout' | 'stderr'
+}
+
+// ---------- chats
 
 export type ModelId = 'claude-fable-5-1' | 'claude-opus-5-5' | 'claude-sonnet-5-5' | 'claude-haiku-4-5-20251001'
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh'
@@ -67,16 +273,30 @@ export const MODELS: { id: ModelId; label: string }[] = [
   { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5' }
 ]
 
+export const EFFORTS: { id: Effort; label: string }[] = [
+  { id: 'low', label: 'Low' },
+  { id: 'medium', label: 'Medium' },
+  { id: 'high', label: 'High' },
+  { id: 'xhigh', label: 'Extra high' }
+]
+
 export interface Chat {
   id: string
   workspaceId: string
   title: string
+  /** A terminal chat runs Claude Code's own TUI in a pty (KERNEL-12, D-001). */
   kind: 'chat' | 'terminal'
   /** Claude Code session id, used to resume. */
   sessionId?: string
   model: ModelId
   effort: Effort
   plan: boolean
+  /** Set on a fork: the chat and the transcript item it was forked after. */
+  forkOf?: { chatId: string; itemId: string }
+  /** Context window use, 0 to 100 (WorkspaceContext.png). */
+  context?: number
+  /** Closed tabs keep their transcript but leave the tab strip. */
+  closed?: boolean
   createdAt: number
 }
 
@@ -86,17 +306,52 @@ export type ChatItem =
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; durationMs?: number }
-  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string }
+  /** End of a turn. `files` is the "Changed" chip row under the reply. */
+  | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
   | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string } }
   | { kind: 'interrupted'; id: string; ts: number }
+  /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
+  | { kind: 'approval'; id: string; ts: number; approvalId: string }
 
 /** Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. */
 export type ChatPart =
   | { type: 'text'; text: string }
   | { type: 'file'; name: string; path?: string; lines?: number; text?: string }
-  | { type: 'image'; name: string; dataUrl?: string }
+  | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number }
+  | { type: 'skill'; name: string }
 
-export type ApprovalKind = 'tool' | 'plan' | 'question'
+/** A message typed while the agent is busy (WorkspaceQueued.png). */
+export interface QueuedMessage {
+  id: string
+  chatId: string
+  parts: ChatPart[]
+  ts: number
+}
+
+/** A skill the composer's / menu offers (WorkspaceSlash.png, Settings > Skills). */
+export interface Skill {
+  name: string
+  description: string
+  source: 'user' | 'project' | 'plugin'
+  enabled: boolean
+}
+
+export interface McpServer {
+  name: string
+  enabled: boolean
+  source: 'user' | 'project'
+}
+
+// ---------- approvals
+
+export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
+
+/** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
+export interface PlanStep {
+  title: string
+  taskId?: string
+  agentId?: string
+}
 
 export interface Approval {
   id: string
@@ -104,12 +359,17 @@ export interface Approval {
   source: 'sdk' | 'hook'
   roomId?: string
   workspaceId?: string
+  chatId?: string
   agentId?: string
   toolName?: string
   input?: unknown
   title: string
   detail?: string
   options?: string[]
+  /** Plan approvals. */
+  steps?: PlanStep[]
+  /** Agent approvals: the file the Lead wants to write (WorkspaceHire.png). */
+  agentFile?: { path: string; text: string }
   status: 'pending' | 'allowed' | 'denied' | 'answered' | 'expired'
   answer?: string
   createdAt: number
@@ -120,6 +380,40 @@ export type Decision =
   | { behavior: 'deny'; message?: string }
   | { behavior: 'answer'; text: string }
 
+// ---------- board
+
+/** Columns on the board. Spec, Plan and Review are gates that wait on CJ (Board.png). */
+export type TaskColumn = 'spec' | 'plan' | 'build' | 'qa' | 'review' | 'done'
+export type TaskState = 'working' | 'needs' | 'blocked' | 'idle' | 'done'
+
+export interface TaskStep {
+  text: string
+  state: 'done' | 'doing' | 'next'
+}
+
+export interface Task {
+  /** Short id the Lead assigns, for example "T-14" or "T-15b". */
+  id: string
+  roomId: string
+  title: string
+  column: TaskColumn
+  state: TaskState
+  agentId?: string
+  workspaceId?: string
+  /** The parent of a split task, "T-15" for "T-15a". */
+  parentId?: string
+  /** Board header grouping, for example "Invoices v1". */
+  milestone?: string
+  spec?: string
+  steps: TaskStep[]
+  /** The plan approval that created it. */
+  approvalId?: string
+  createdAt: number
+  updatedAt: number
+}
+
+// ---------- activity and notifications
+
 /** A line in the room logs and the source of every floor animation. */
 export interface ActivityEvent {
   id: string
@@ -128,54 +422,282 @@ export interface ActivityEvent {
   workspaceId?: string
   agentId?: string
   sessionId?: string
+  taskId?: string
+  /** Who did it. Agent unless set. */
+  actor?: 'you' | 'agent' | 'kernel'
   kind:
     | 'session.start' | 'session.end' | 'prompt' | 'tool.start' | 'tool.end' | 'tool.failed'
-    | 'turn.done' | 'approval.requested' | 'approval.decided' | 'task.created' | 'task.completed'
-    | 'workspace.created' | 'workspace.archived' | 'pr.changed' | 'agent.status' | 'agent.say' | 'limit' | 'note'
+    | 'turn.done' | 'approval.requested' | 'approval.decided' | 'task.created' | 'task.assigned' | 'task.completed'
+    | 'workspace.created' | 'workspace.archived' | 'workspace.restored' | 'pr.changed' | 'agent.status' | 'agent.say'
+    | 'agent.joined' | 'agent.retired' | 'room.paused' | 'room.resumed' | 'brief' | 'overlap' | 'checkpoint.reverted'
+    | 'limit' | 'note'
   text: string
   object?: string
+  /** A quoted brief or message under the line (FloorSent.png). */
+  quote?: string
+  /** Shows the object as something that needs CJ. */
+  warn?: boolean
   data?: Record<string, unknown>
 }
+
+/** Inbox rows that are not approvals: merge ready, a failed check, a finished workspace, a standup, system news (Inbox.png). */
+export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'finished' | 'idle' | 'standup' | 'system'
+
+export interface Notification {
+  id: string
+  kind: NotificationKind
+  roomId?: string
+  workspaceId?: string
+  agentId?: string
+  taskId?: string
+  approvalId?: string
+  title: string
+  /** The line under the title, for example "Merge · Client A". */
+  sub: string
+  /** The heading on the detail pane. */
+  heading?: string
+  body?: string
+  /** True while CJ still has to act on it. */
+  needsYou: boolean
+  read: boolean
+  /** What the detail pane says after CJ acted. */
+  resolved?: string
+  createdAt: number
+}
+
+// ---------- pull requests
+
+export interface PrCheck {
+  name: string
+  state: 'queued' | 'running' | 'pass' | 'fail' | 'skipped'
+  /** Duration or a word like "ready" (Vercel preview). */
+  meta?: string
+  url?: string
+}
+
+export interface ReviewComment {
+  id: string
+  author: string
+  path?: string
+  line?: number
+  body: string
+  resolved: boolean
+}
+
+/** Everything the PR header and the Checks panel show (WorkspaceCIFailed.png, WorkspaceChangesRequested.png). */
+export interface PrInfo {
+  workspaceId: string
+  number: number
+  url: string
+  title: string
+  state: PrState
+  baseRef: string
+  checks: PrCheck[]
+  comments: ReviewComment[]
+  /** Files with conflicts against the base. */
+  conflicts: string[]
+  reviewDecision?: 'approved' | 'changes' | 'pending'
+}
+
+/** A PR the new workspace modal can start from. */
+export interface PrSummary {
+  number: number
+  title: string
+  branch: string
+}
+
+/** An issue the new workspace modal can start from (Linear, or a board task). */
+export interface IssueSummary {
+  id: string
+  title: string
+  url?: string
+}
+
+// ---------- usage and account
 
 export interface RateLimit {
   type: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet' | 'seven_day_overage_included' | 'overage'
   status: 'allowed' | 'allowed_warning' | 'rejected'
   utilization?: number
   resetsAt?: number
+  /** Set when one model has its own weekly limit (WorkspaceModelLimit.png). */
+  model?: ModelId
 }
 
-export interface ChangedFile {
-  path: string
-  status: 'A' | 'M' | 'D' | 'R' | '?'
-  added: number
-  removed: number
+/** The Claude Code login sessions run on (AccountMenu.png, Settings > Account). */
+export interface ClaudeAccount {
+  signedIn: boolean
+  name?: string
+  /** GitHub-style handle shown in the account menu. */
+  login?: string
+  email?: string
+  /** "Claude Max", "Claude Pro". */
+  plan?: string
 }
+
+// ---------- system
 
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'teams' | 'gh' | 'hooks'
   ok: boolean
   title: string
   detail: string
-  fix?: { command?: string; action?: string }
+  /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
+  meta?: string
+  fix?: { command?: string; action?: 'use-next-port' | 'enable-teams' | 'show-process' }
 }
 
-/** Where the renderer is. Lives here so fixtures can open any screen. */
+/** Hook server and installed hooks (CheckHooks.png, Settings > Hooks, the footer). */
+export interface HookStatus {
+  port: number
+  listening: boolean
+  /** All hook entries are present in ~/.claude/settings.json. */
+  installed: boolean
+  events: { name: string; installed: boolean; lastSeen?: number }[]
+}
+
+/** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
+export interface AppUpdate {
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+  current: string
+  version?: string
+  notes?: { title: string; body: string }[]
+  progress?: number
+  error?: string
+}
+
+export interface Integration {
+  id: 'github' | 'linear' | 'vercel' | 'remote'
+  name: string
+  connected: boolean
+  detail: string
+}
+
+// ---------- settings
+
+export type Theme = 'dark' | 'light'
+export type SettingsPage =
+  | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
+  | 'models' | 'agents' | 'permissions' | 'skills'
+  | 'git' | 'scripts' | 'prs' | 'files'
+  | 'hooks' | 'integrations' | 'experimental' | 'about'
+  | 'room'
+
+/** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
+export interface AppSettings {
+  hookPort: number
+  worktreeRoot: string
+  general: { homeView: 'home' | 'inbox' | 'lastRoom'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
+  floor: { style: 'isometric' | 'plan' | 'list'; nameTags: boolean; animate: boolean }
+  appearance: { theme: Theme | 'system'; fontSize: 'default' | 'small' | 'large'; density: 'comfortable' | 'compact'; pointerCursors: boolean; reduceMotion: boolean }
+  notifications: {
+    permission: boolean; plan: boolean; merge: boolean; checkFailed: boolean; finished: boolean; idle: boolean
+    sound: 'subtle' | 'chime' | 'none'; quietHours: { from: string; to: string } | null
+  }
+  usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
+  workspace: { mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean }
+  scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean }
+  models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; maxConcurrent: number; agentTeams: boolean }
+  team: { addNewAgents: boolean; showNames: boolean }
+  permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
+  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; createInstructions: string; resolveInstructions: string }
+  hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
+  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+}
+
+/** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
+export interface RoomSettings {
+  scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
+  files: { copy: string[]; symlinkNodeModules?: boolean }
+  workspace: Partial<AppSettings['workspace']>
+}
+
+/** Recursive partial for settings patches. */
+export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] : T[K] extends object | null ? DeepPartial<T[K]> : T[K] }
+
+// ---------- renderer UI state
+
+export type OnboardingStep = 'welcome' | 'checks' | 'room'
+
+/** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type Route =
-  | { name: 'onboarding' } | { name: 'home' } | { name: 'inbox' } | { name: 'history' }
-  | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'team'; roomId: string }
+  | { name: 'onboarding'; step: OnboardingStep; roomId?: string }
+  | { name: 'home' } | { name: 'inbox' } | { name: 'history' } | { name: 'rooms' }
+  | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'task'; roomId: string; taskId: string }
+  | { name: 'team'; roomId: string } | { name: 'agent'; roomId: string; agentId: string }
   | { name: 'workspace'; workspaceId: string }
+  | { name: 'settings'; page: SettingsPage; roomId?: string }
 
-export type Modal = null | { name: 'newWorkspace'; roomId?: string } | { name: 'search' }
+export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire'
 
-/** UI state a fixture forces on boot. Screens read menu, banner and stage from the store's `ui`. */
-export interface ForcedUi {
-  route?: Route
-  modal?: Modal
-  /** A menu or popover to show open. */
-  menu?: string
-  /** A banner or toast to show. */
-  banner?: string
-  /** A step of the floor briefing sequence. */
-  stage?: string
-  theme?: 'dark' | 'light'
+/** The one modal shell's contents. At most one modal is open. */
+export type Modal =
+  | null
+  | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource }
+  | { name: 'search' }
+  | { name: 'newRoom' }
+  | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
+  | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done' }
+  | { name: 'whatsNew' }
+  | { name: 'confirm'; kind: 'archive'; workspaceId: string }
+  | { name: 'confirm'; kind: 'discard'; workspaceId: string }
+  | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
+  | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
+
+/**
+ * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu.
+ * Composer and new workspace menus share names because only one of the two is on screen.
+ */
+export type MenuId =
+  | 'rooms' | `room:${string}` | 'account' | 'quickAsk'
+  | 'pr' | 'tab' | 'newTab'
+  | 'plus' | 'model' | 'mention' | 'slash'
+  | 'branch' | 'from'
+
+/** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
+export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
+
+export interface Banner {
+  kind: BannerKind
+  roomId?: string
+  workspaceId?: string
+  chatId?: string
 }
+
+/** Bottom-right toast, auto-dismissed after 2.6s (WorkspaceToast.png). */
+export interface Toast {
+  id: string
+  title: string
+  sub?: string
+  action?: { label: string; href?: string }
+}
+
+/** The workspace screen's panes, so fixtures can open any of them. */
+export interface WorkspaceView {
+  right: 'files' | 'changes' | 'checks'
+  bottom: 'setup' | 'run' | 'terminal'
+  /** Sidebar and panels collapsed (WorkspaceFocus.png). */
+  focus: boolean
+  checkpoints: boolean
+  /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
+  toolsOpen: boolean
+  /** Active tab: a chat id, or `file:<path>` for a file preview tab. */
+  tab?: string
+  /** File whose diff is open in the main column. */
+  diff?: string
+}
+
+export interface UiState {
+  route: Route
+  modal: Modal
+  menu: MenuId | null
+  toasts: Toast[]
+  banner: Banner | null
+  theme: Theme
+  /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
+  stage?: string
+  workspace: WorkspaceView
+}
+
+/** UI state a fixture forces on boot. */
+export type ForcedUi = Partial<UiState>

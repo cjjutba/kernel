@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { MODELS, type Effort, type ModelId, type WorkspaceMode } from '@shared/types'
 import { call } from '../api'
 import { Icon } from '../icons'
-import { go, loadWorkspace, setState, useStore } from '../store'
+import { actions, go, loadWorkspace, useStore } from '../store'
 import { Modal } from '../components/Shell'
 
 /** The focused "What do you want to work on?" modal. It always goes to the room's Lead, who names the branch. */
@@ -17,7 +17,7 @@ export function NewWorkspaceModal({ roomId }: { roomId?: string }) {
   const [effort, setEffort] = useState<Effort>('high')
   const [plan, setPlan] = useState(true)
   const [busy, setBusy] = useState(false)
-  const close = () => setState({ modal: null })
+  const close = () => actions.ui.closeModal()
   const current = rooms.find((r) => r.id === room)
 
   const create = async () => {
@@ -71,15 +71,15 @@ export function SearchModal() {
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.status !== 'archived'))
   const [q, setQ] = useState('')
   const items = useMemo(() => [
-    { label: 'New workspace', run: () => setState({ modal: { name: 'newWorkspace' } }) },
+    { label: 'New workspace', run: () => actions.ui.openModal({ name: 'newWorkspace' }) },
     { label: 'Inbox', run: () => go({ name: 'inbox' }) },
     { label: 'History', run: () => go({ name: 'history' }) },
-    { label: 'Add a room', run: () => go({ name: 'onboarding' }) },
+    { label: 'Add a room', run: () => go({ name: 'onboarding', step: 'checks' }) },
     ...rooms.map((r) => ({ label: `${r.name} floor`, run: () => go({ name: 'floor', roomId: r.id }) })),
     ...workspaces.map((w) => ({ label: `${w.name} workspace`, run: () => go({ name: 'workspace', workspaceId: w.id }) }))
   ].filter((i) => i.label.toLowerCase().includes(q.toLowerCase())), [q, rooms, workspaces])
   return (
-    <Modal title="Search" onClose={() => setState({ modal: null })}>
+    <Modal title="Search" onClose={() => actions.ui.closeModal()}>
       <div style={{ padding: '0 16px 8px' }}><input autoFocus className="input" style={{ width: '100%' }} placeholder="Type a command or search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && items[0]?.run()} /></div>
       <div className="col" style={{ maxHeight: 420, overflowY: 'auto', padding: '0 6px 8px' }}>{items.map((i) => <button key={i.label} className="menu-item" onClick={i.run}>{i.label}</button>)}</div>
     </Modal>

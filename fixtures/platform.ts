@@ -5,7 +5,7 @@ import { at, base, ids, scene, withWorkspace } from './base'
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
 // Check copy matches src/main/services/preflight.ts.
 
-const onboarding = { route: { name: 'onboarding' } } as const
+const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const [claudeOk, ghOk, hooksOk] = base.preflight
 

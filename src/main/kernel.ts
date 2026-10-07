@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
 import type { AgentDef, AgentStatus, Chat, Room, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
-import type { Channel, KernelApi } from '@shared/ipc'
+import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
 import { loadAgents, saveAgent } from './services/agents'
@@ -19,6 +19,44 @@ import { prMerge, prReady, prReopen, prStateOf, prView } from './services/github
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
+
+/**
+ * Channels no lane has built yet, and the issue that builds each. They reject with NotImplemented.
+ * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
+ */
+export const UNBUILT = {
+  'preflight.fix': 'KERNEL-27', 'hooks.status': 'KERNEL-27', 'hooks.restart': 'KERNEL-27', 'hooks.test': 'KERNEL-26',
+  'rooms.create': 'KERNEL-20', 'rooms.update': 'KERNEL-20', 'rooms.remove': 'KERNEL-20', 'rooms.inspectFolder': 'KERNEL-20',
+  'rooms.recentFolders': 'KERNEL-20', 'github.repos': 'KERNEL-20',
+  'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
+  'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
+  'agents.seed': 'KERNEL-22',
+  'workspaces.tree': 'KERNEL-10', 'workspaces.readFile': 'KERNEL-10',
+  'workspaces.files': 'KERNEL-11', 'workspaces.hunks': 'KERNEL-11', 'workspaces.commit': 'KERNEL-11', 'skills.list': 'KERNEL-11',
+  'chats.retry': 'KERNEL-11', 'chats.queue': 'KERNEL-11', 'chats.unqueue': 'KERNEL-11', 'chats.sendNow': 'KERNEL-11',
+  'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
+  'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
+  'pr.get': 'KERNEL-15', 'pr.continue': 'KERNEL-15',
+  'git.branches': 'KERNEL-16', 'github.prs': 'KERNEL-16', 'issues.list': 'KERNEL-16',
+  'notifications.list': 'KERNEL-17', 'notifications.read': 'KERNEL-17',
+  'tasks.list': 'KERNEL-18',
+  'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
+  'chats.restart': 'KERNEL-22',
+  'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
+  'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
+  'settings.set': 'KERNEL-25', 'app.exportLogs': 'KERNEL-25',
+  'settings.setRoom': 'KERNEL-26', 'mcp.list': 'KERNEL-26', 'integrations.list': 'KERNEL-26', 'integrations.connect': 'KERNEL-26',
+  'update.get': 'KERNEL-30', 'update.check': 'KERNEL-30', 'update.install': 'KERNEL-30'
+} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
+
+type Unbuilt = keyof typeof UNBUILT
+
+/** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
+function unbuilt(): Pick<Handlers, Unbuilt> {
+  const out: Record<string, () => Promise<never>> = {}
+  for (const [channel, issue] of Object.entries(UNBUILT)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
+  return out as unknown as Pick<Handlers, Unbuilt>
+}
 
 export class Kernel {
   readonly store: Store
@@ -281,6 +319,7 @@ export class Kernel {
   /** Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. */
   handlers(): Handlers {
     return {
+      ...unbuilt(),
       'preflight.run': async () => runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening }),
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),
       'rooms.list': async () => this.store.rooms(),
@@ -331,7 +370,9 @@ export class Kernel {
       },
       'scripts.stop': async ({ workspaceId }) => { stopScript(workspaceId, 'run'); return { ok: true } },
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
-      'usage.get': async () => this.sessions.usage()
+      'usage.get': async () => this.sessions.usage(),
+      'settings.get': async () => this.settings,
+      'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path)
     }
   }
 

@@ -1,5 +1,7 @@
 import type {
-  ActivityEvent, AgentDef, AgentStatus, Approval, ChangedFile, Chat, ChatItem, ForcedUi, PreflightCheck, RateLimit, Room, Workspace
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
+  FileEntry, ForcedUi, HookStatus, Hunk, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, Room, RoomSettings,
+  Skill, Task, Workspace
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -22,6 +24,30 @@ export interface Fixture {
   changes: Record<string, ChangedFile[]>
   /** By workspace id. */
   diffs: Record<string, string>
+  // Optional data for screens built after KERNEL-8. A missing field reads as empty, or as the defaults in src/main/fixtures.ts.
+  /** By room id. */
+  tasks?: Record<string, Task[]>
+  /** By workspace id. */
+  checkpoints?: Record<string, Checkpoint[]>
+  notifications?: Notification[]
+  /** By workspace id. */
+  prs?: Record<string, PrInfo>
+  overlaps?: Overlap[]
+  /** By chat id. */
+  queue?: Record<string, QueuedMessage[]>
+  /** By workspace id. */
+  tree?: Record<string, FileEntry[]>
+  /** By workspace id. */
+  hunks?: Record<string, Hunk[]>
+  /** By workspace id, then path. */
+  fileText?: Record<string, Record<string, string>>
+  skills?: Skill[]
+  settings?: AppSettings
+  /** By room id. */
+  roomSettings?: Record<string, RoomSettings>
+  account?: ClaudeAccount
+  hooks?: HookStatus
+  update?: AppUpdate
   ui: ForcedUi
   /** Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). */
   push: PushEvent[]
