@@ -121,7 +121,7 @@ export function App() {
       {!fullWindow(route) && <Sidebar />}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />
-        {route.name !== 'onboarding' && <Footer />}
+        {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
       </div>
       {modal && <ModalView modal={modal} />}
     </div>

@@ -118,13 +118,18 @@ function Dialogs() {
 
 const pages = { components: Controls, display: Display, overlays: Overlays, dialogs: Dialogs }
 
-/** Every component in both themes (`#/dev/ui` in dev; fixtures DevUi, DevUiDisplay, DevUiOverlays and DevUiDialogs for the harness). */
+/** Every component in both themes (`#/dev/ui/<page>` in dev; fixtures DevUi, DevUiDisplay, DevUiOverlays and DevUiDialogs for the harness). */
 export function DevUi({ page = 'components' }: { page?: DevUiPage }) {
   const Page = pages[page]
   return (
     <div className="devui" aria-label="Component gallery">
-      <div className="devui-col" data-theme="dark"><Page /></div>
-      <div className="devui-col" data-theme="light"><Page /></div>
+      <nav className="devui-nav" aria-label="Gallery pages">
+        {(Object.keys(pages) as DevUiPage[]).map((p) => <a key={p} href={`#/dev/ui/${p}`} aria-current={p === page ? 'page' : undefined}>{p[0].toUpperCase() + p.slice(1)}</a>)}
+      </nav>
+      <div className="devui-cols">
+        <div className="devui-col" data-theme="dark"><Page /></div>
+        <div className="devui-col" data-theme="light"><Page /></div>
+      </div>
     </div>
   )
 }

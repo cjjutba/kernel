@@ -39,7 +39,7 @@ export function Card({ className, ...rest }: HTMLAttributes<HTMLDivElement>) {
   return <div className={['card', className].filter(Boolean).join(' ')} {...rest} />
 }
 
-/** A usage bar. `value` is 0 to 1. At 85% and over it turns from grey to the ink color (white in dark). */
+/** A usage bar. `value` is 0 to 1. Grey below 85%, the ink color from 85% (white in dark): it brightens as you near the limit (D-026). */
 export function Meter({ value, label }: { value: number; label: string }) {
   const v = Math.max(0, Math.min(1, value))
   return (

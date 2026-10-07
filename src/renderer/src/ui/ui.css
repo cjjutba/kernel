@@ -64,7 +64,7 @@
 .chip-x:hover { background: var(--hover); color: var(--ink); }
 
 /* meter */
-.meter { height: 4px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.meter { height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; }
 .meter span { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
 .meter[data-hot='true'] span { background: var(--ink); }
 
@@ -86,7 +86,11 @@
 .empty-title { font-size: 14px; font-weight: 500; }
 
 /* dev page */
-.devui { height: 100%; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; background: var(--canvas); color: var(--ink); user-select: text; }
+.devui { height: 100%; display: flex; flex-direction: column; background: var(--canvas); color: var(--ink); user-select: text; }
+.devui-nav { display: flex; align-items: center; gap: 4px; height: 40px; flex-shrink: 0; padding: 0 20px; border-bottom: 1px solid var(--line-3); }
+.devui-nav a { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 7px; color: var(--muted); text-decoration: none; font-weight: 500; }
+.devui-nav a[aria-current='page'] { background: var(--surface-3); color: var(--ink); }
+.devui-cols { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; }
 .devui-col { min-width: 0; padding: 20px 24px; display: flex; flex-direction: column; gap: 18px; background: var(--canvas); color: var(--ink); }
 .devui-col + .devui-col { border-left: 1px solid var(--line-3); }
 .devui h3 { margin: 0 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }

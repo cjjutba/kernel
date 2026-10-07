@@ -13,10 +13,11 @@ function install() {
   installed = true
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return
-    const top = stack[stack.length - 1]
-    if (!top?.escape) return
+    // The topmost layer that handles Escape. A layer with only an outside handler doesn't swallow it.
+    const top = [...stack].reverse().find((l) => l.escape)
+    if (!top) return
     e.stopPropagation()
-    top.escape()
+    top.escape?.()
   }, true)
   document.addEventListener('mousedown', (e) => {
     const top = stack[stack.length - 1]
@@ -32,7 +33,7 @@ export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; 
     if (!active) return
     install()
     const layer: Layer = {
-      escape: () => latest.current.onEscape?.(),
+      escape: latest.current.onEscape ? () => latest.current.onEscape?.() : undefined,
       outside: latest.current.onOutside ? () => latest.current.onOutside?.() : undefined,
       get ref() { return latest.current.ref }
     }
