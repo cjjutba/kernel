@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  FileEntry, ForcedUi, HookStatus, Hunk, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, Room, RoomSettings,
+  FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
   Skill, Task, Workspace
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -33,6 +33,10 @@ export interface Fixture {
   /** By workspace id. */
   prs?: Record<string, PrInfo>
   overlaps?: Overlap[]
+  /** The signed-in user's GitHub repos (ConnectRepo.png). */
+  repos?: RepoSummary[]
+  /** Recent project folders (OpenFolder.png). */
+  folders?: FolderInfo[]
   /** By chat id. */
   queue?: Record<string, QueuedMessage[]>
   /** By workspace id. */

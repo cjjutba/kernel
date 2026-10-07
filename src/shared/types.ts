@@ -106,6 +106,20 @@ export interface NewRoomRequest {
   team: string[]
   /** Brief the Lead as soon as setup finishes. */
   autostart: boolean
+  /** Repo and scratch rooms: the folder to create the checkout in. Defaults to ~/Projects/<name>. */
+  cloneTo?: string
+  /** Folder rooms: the folder is not a git repository, so run `git init` and make a first commit. */
+  initGit?: boolean
+}
+
+/** Values New room opens with. Fixtures use it to show the filled form. */
+export interface NewRoomPrefill {
+  source: RoomKind
+  name: string
+  desc?: string
+  /** owner/repo, a folder path or a template repo, by `source`. */
+  from: string
+  baseBranch?: string
 }
 
 /** One line of the room setup progress (RoomSetup.png). */
@@ -640,7 +654,7 @@ export type Modal =
   | null
   | { name: 'newWorkspace'; roomId?: string; source?: WorkspaceSource }
   | { name: 'search' }
-  | { name: 'newRoom' }
+  | { name: 'newRoom'; prefill?: NewRoomPrefill }
   | { name: 'connectRepo' } | { name: 'openFolder' } | { name: 'checkHooks' }
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done' }
   | { name: 'whatsNew' }

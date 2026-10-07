@@ -12,6 +12,8 @@ export interface MenuEntry {
   /** A nested menu, opened on hover, click or ArrowRight. */
   children?: MenuEntry[]
   disabled?: boolean
+  /** Red text and icon. For the one destructive entry, such as Remove room (SidebarRoomMenu.png). */
+  danger?: boolean
   onSelect?: () => void
 }
 
@@ -42,7 +44,7 @@ function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (Me
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >
@@ -132,16 +134,17 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
 }
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
-export function ConfirmDialog({ title, body, confirmLabel, cancelLabel = 'Cancel', danger, onConfirm, onCancel }: { title: string; body: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, body, children, confirmLabel, cancelLabel = 'Cancel', danger, busy, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** Disables the confirm button while the action runs. */ busy?: boolean; onConfirm: () => void; onCancel: () => void }) {
   const id = useId()
   return (
     <Modal
       title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" onClick={onConfirm}>{confirmLabel}</Button></>}
+      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" disabled={busy} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>
         <p id={`${id}b`}>{body}</p>
+        {children}
       </div>
     </Modal>
   )

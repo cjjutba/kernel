@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
   let started: Promise<void> = Promise.resolve()
   if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
   else {
-    const kernel = new Kernel({ dataDir: app.getPath('userData') })
+    const kernel = new Kernel({ dataDir: app.getPath('userData'), starterDir: join(app.getAppPath(), 'docs', 'starter-agents') })
     app.on('before-quit', () => { void kernel.stop() })
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     started = kernel.start()
