@@ -24,6 +24,9 @@ const args = process.argv.slice(2)
 const flags = new Set(args.filter((a) => a.startsWith('--')))
 const names = args.filter((a) => !a.startsWith('--') && a !== 'compare')
 const allDesigns = () => readdirSync(designDir).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)).sort()
+// Plain Node cannot import fixtures/index.ts (extensionless imports), so read the keys: one `  Name:` line per fixture.
+const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
+const withFixture = () => allDesigns().filter((n) => fixtureNames().has(n))
 
 async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
@@ -52,7 +55,7 @@ async function capture(name: string): Promise<boolean> {
 }
 
 async function shots() {
-  const list = flags.has('--all') ? allDesigns() : names
+  const list = flags.has('--all') ? withFixture() : names
   if (!list.length) throw new Error('Name at least one screen, for example: npm run shots -- Workspace Main')
   if (!flags.has('--no-build')) {
     const build = spawnSync('npx', ['electron-vite', 'build'], { cwd: root, stdio: 'inherit' })
