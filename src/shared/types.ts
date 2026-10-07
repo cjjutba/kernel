@@ -273,8 +273,10 @@ export interface Checkpoint {
   stat: DiffStat
   /** Git ref holding the snapshot. */
   ref: string
-  /** The newest checkpoint is where the worktree is now. */
+  /** The checkpoint the worktree is at now: the newest one, or the one last reverted to. */
   current: boolean
+  /** Taken before the first turn, so reverting to it undoes all of the agent's work ("start of chat"). */
+  start?: boolean
 }
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
