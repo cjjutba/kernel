@@ -1,4 +1,4 @@
-import type { ChatItem } from '@shared/types'
+import type { ChatItem, FileEntry, Hunk, Skill } from '@shared/types'
 import type { Fixture } from './types'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -48,6 +48,32 @@ const toolCalls: ChatItem[] = [
   ...tableItems.slice(-2)
 ]
 
+/** Composer shots: the same screen, with the composer already holding something. */
+const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
+  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, composer } } }))
+
+const file = (path: string): FileEntry => ({ path, dir: false })
+/** What @inv finds, in the order the canvas lists it. */
+const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
+
+const skills: Skill[] = [
+  ['plan', 'Plan before editing'], ['feature', 'Build a feature from a spec'], ['verify', 'Run tests and attach the output'], ['image', 'Generate or edit an image'], ['setup', 'Set up the project']
+].map(([name, description]) => ({ name, description, source: 'project' as const, enabled: true }))
+
+const hunk = (owner: Hunk['owner'], lines: string, added: number, removed: number): Hunk => ({ id: `src/lib/checkout.ts#${owner}#0`, path: 'src/lib/checkout.ts', owner, lines, added, removed, patch: '' })
+
+/** WorkspaceQueued.png: Kai is mid-turn with two follow-ups waiting. */
+const queuedItems = (): ChatItem[] => {
+  const now = Date.now()
+  const t = (secs: number) => now - secs * 1000
+  return [
+    { ...tableItems[0], ts: t(48) },
+    { kind: 'thinking', id: 'qth1', ts: t(40), text: 'The sort hook should live next to the table.' },
+    tool('qt1', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', ts: t(30) }),
+    tool('qt2', 'Run unit tests', 'pnpm vitest run invoices', { ts: t(10), status: 'running', durationMs: undefined })
+  ]
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   Workspace: scene(() => ({ ui: open })),
   WorkspaceLoading: scene((f) => ({
@@ -95,5 +121,37 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceCIFailed: prScene('cifail'),
   WorkspaceChangesRequested: prScene('changes'),
   WorkspaceMerged: prScene('merged'),
-  WorkspacePRClosed: prScene('closed')
+  WorkspacePRClosed: prScene('closed'),
+  WorkspacePaste: composing({
+    parts: [
+      { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
+      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: 'log' },
+      { type: 'text', text: ' and what I see ' },
+      { type: 'image', name: 'image.png', width: 1280, height: 800 }
+    ],
+    draft: ''
+  }),
+  WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
+  WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
+  WorkspaceQueued: scene((f) => ({
+    items: { [ids.tableChat]: queuedItems() },
+    queue: { [ids.tableChat]: [
+      { id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text', text: 'Also add a loading skeleton to the table' }] },
+      { id: 'q2', chatId: ids.tableChat, ts: at(10, 31), parts: [{ type: 'text', text: 'Use the shared EmptyState component' }] }
+    ] },
+    push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
+    ui: open
+  })),
+  WorkspaceHunks: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { name: 'checkout-rounding', mode: 'current', branch: 'main', baseRef: 'main' }),
+    items: { [ids.tableChat]: [
+      { kind: 'user', id: 'h1', ts: at(10, 20), parts: [{ type: 'text', text: 'Fix the rounding bug in checkout totals.' }] },
+      ...['Read checkout.ts', 'Find the callers', 'Edit checkout.ts', 'Run unit tests', 'Run the checkout flow', 'Read the diff', 'Run unit tests'].map((label, i) => tool(`ht${i}`, label, 'src/lib/checkout.ts')),
+      { kind: 'text', id: 'h2', ts: at(10, 28), text: 'Fixed it. Totals now round once, at the end, instead of per line.' },
+      { kind: 'result', id: 'h3', ts: at(10, 28), durationMs: 120_000, ok: true }
+    ] },
+    changes: { [ids.table]: [{ path: 'src/lib/checkout.ts', status: 'M', added: 9, removed: 3 }] },
+    hunks: { [ids.table]: [hunk('agent', '40-52', 9, 3), hunk('mine', '12-18', 4, 1)] },
+    ui: open
+  }))
 }

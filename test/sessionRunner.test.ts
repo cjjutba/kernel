@@ -170,4 +170,63 @@ describe('session runner (SDK scripted)', () => {
     expect(sessions.billingOf(chat.id)).toBe('ANTHROPIC_API_KEY')
     expect(store.items(chat.id).find((i) => i.kind === 'note')).toMatchObject({ text: 'This session is billed through ANTHROPIC_API_KEY, not your Claude plan.' })
   })
+  it('holds follow-ups while a turn runs and sends them in order when it ends', async () => {
+    const { sessions, call, options, chat, kinds } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    const queues: number[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.queue' && e.chatId === chat.id) queues.push(e.queue.length) }
+    bus.on('push', onPush)
+    try {
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Also add a skeleton' }])).toEqual({ queued: true })
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Use EmptyState' }])).toEqual({ queued: true })
+      expect(sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Also add a skeleton', 'Use EmptyState'])
+      expect(kinds()).toEqual(['user'])
+
+      call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+      await flush()
+      expect(kinds().filter((k) => k === 'user')).toHaveLength(2)
+      expect(sessions.queued(chat.id)).toHaveLength(1)
+      expect(sessions.isRunning(chat.id)).toBe(true)
+
+      call.feed({ type: 'result', subtype: 'success', uuid: 'r2', duration_ms: 10 })
+      await flush()
+      expect(kinds().filter((k) => k === 'user')).toHaveLength(3)
+      expect(sessions.queued(chat.id)).toEqual([])
+      expect(queues).toEqual([1, 2, 1, 0])
+    } finally {
+      bus.off('push', onPush)
+    }
+  })
+
+  it('removes a queued message, and sendNow interrupts and puts one first', async () => {
+    const { sessions, call, options, chat, store } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    await sessions.send(chat.id, [{ type: 'text', text: 'one' }])
+    await sessions.send(chat.id, [{ type: 'text', text: 'two' }])
+    await sessions.send(chat.id, [{ type: 'text', text: 'three' }])
+    const [one, , three] = sessions.queued(chat.id)
+    expect(sessions.unqueue(chat.id, one.id).map((q) => q.parts[0])).toEqual([{ type: 'text', text: 'two' }, { type: 'text', text: 'three' }])
+    const after = await sessions.sendNow(chat.id, three.id)
+    expect(after.map((q) => q.parts[0])).toEqual([{ type: 'text', text: 'three' }, { type: 'text', text: 'two' }])
+    expect(call.interrupts).toBe(1)
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    const users = store.items(chat.id).filter((i: ChatItem) => i.kind === 'user').map((i: ChatItem) => (i as { parts: { text: string }[] }).parts[0].text)
+    expect(users).toEqual(['Add a pdf_url column', 'three'])
+  })
+
+  it('retries by sending the message before the reply again', async () => {
+    const { sessions, call, options, chat, store } = await setup()
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Done.' }] } })
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    const reply = store.items(chat.id).find((i: ChatItem) => i.kind === 'text')!
+    await sessions.retry(chat.id, reply.id)
+    const users = store.items(chat.id).filter((i: ChatItem) => i.kind === 'user')
+    expect(users).toHaveLength(2)
+    await expect(sessions.retry(chat.id, 'nope')).rejects.toThrow('no longer')
+  })
 })

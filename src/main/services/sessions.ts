@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, RateLimit, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -48,6 +48,7 @@ export interface SessionDeps {
 
 export class Sessions {
   private live = new Map<string, Live>()
+  private queues = new Map<string, QueuedMessage[]>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
@@ -72,16 +73,68 @@ export class Sessions {
     return [...this.limits.values()]
   }
 
+  /**
+   * Starts a turn, or holds the message when one is running. A held message shows in the composer
+   * (edit or remove it until it goes) and is sent, in order, when the turn ends.
+   */
   async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
     const chat = this.mustChat(chatId)
+    if (this.live.get(chatId)?.running) {
+      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
+      return { queued: true }
+    }
+    this.dispatch(chat, parts)
+    return { queued: false }
+  }
+
+  queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
+
+  unqueue(chatId: string, id: string): QueuedMessage[] {
+    return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
+  }
+
+  /** Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. */
+  async sendNow(chatId: string, id: string): Promise<QueuedMessage[]> {
+    const pick = this.queued(chatId).find((q) => q.id === id)
+    if (!pick) return this.queued(chatId)
+    this.setQueue(chatId, [pick, ...this.queued(chatId).filter((q) => q.id !== id)])
+    if (this.live.get(chatId)?.running) await this.interrupt(chatId)
+    else this.drain(chatId)
+    return this.queued(chatId)
+  }
+
+  /** Send the same message again: the user message before the given reply. */
+  async retry(chatId: string, itemId: string): Promise<void> {
+    const items = this.d.store.items(chatId)
+    const at = items.findIndex((i) => i.id === itemId)
+    if (at < 0) throw new Error('That message is no longer in this chat.')
+    const user = items.slice(0, at).reverse().find((i) => i.kind === 'user')
+    if (!user || user.kind !== 'user') throw new Error('There is no message to send again.')
+    await this.send(chatId, user.parts)
+  }
+
+  private dispatch(chat: Chat, parts: ChatPart[]) {
     const ws = this.mustWorkspace(chat.workspaceId)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
-    let live = this.live.get(chatId)
-    const queued = !!live?.running
-    if (!live) live = this.start(chat, ws)
+    const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.input.push(toUserMessage(parts))
     this.setRunning(chat, ws, live, true)
-    return { queued }
+  }
+
+  /** Send the oldest held message. The next one goes when this turn ends. */
+  private drain(chatId: string) {
+    const [next, ...rest] = this.queued(chatId)
+    const chat = this.d.store.chat(chatId)
+    if (!next || !chat) return
+    this.setQueue(chatId, rest)
+    this.dispatch(chat, next.parts)
+  }
+
+  private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
+    if (queue.length) this.queues.set(chatId, queue)
+    else this.queues.delete(chatId)
+    bus.push({ type: 'chat.queue', chatId, queue })
+    return queue
   }
 
   /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
@@ -111,6 +164,7 @@ export class Sessions {
     live.input.close()
     live.abort.abort()
     this.live.delete(chatId)
+    if (this.queued(chatId).length) this.setQueue(chatId, [])
   }
 
   stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
@@ -225,6 +279,7 @@ export class Sessions {
         live.interrupted = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat)
+        this.drain(chatId)
         return
       }
       case 'rate_limit_event': {
@@ -300,14 +355,19 @@ export class Sessions {
 /** Turn composer parts into one SDK user message. Pasted text is inlined, images become image blocks. */
 export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
   const content: any[] = []
+  // A skill chip is a slash command, and Claude Code only reads one at the start of a text block, so the text after it joins it.
+  let lead = ''
+  const text = (t: string) => { content.push({ type: 'text', text: [lead, t].filter(Boolean).join(' ') }); lead = '' }
   for (const p of parts) {
-    if (p.type === 'text' && p.text.trim()) content.push({ type: 'text', text: p.text })
-    else if (p.type === 'file') content.push({ type: 'text', text: p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}` })
+    if (p.type === 'text' && p.text.trim()) text(p.text)
+    else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
+    else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'image' && p.dataUrl) {
       const m = /^data:(image\/[a-z+]+);base64,(.*)$/.exec(p.dataUrl)
       if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } })
     }
   }
+  if (lead) text('')
   return { type: 'user', message: { role: 'user', content: content.length ? content : [{ type: 'text', text: '' }] }, parent_tool_use_id: null } as SDKUserMessage
 }
 
