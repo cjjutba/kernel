@@ -177,7 +177,7 @@ export class Kernel {
       this.hookServer = await startHookServer({
         port,
         approvals: this.approvals,
-        approvalTimeoutMs: this.settings.permissions.approvalTimeoutSec * 1000,
+        approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
         resolve: (cwd) => this.resolveCwd(cwd)
       })
@@ -208,15 +208,16 @@ export class Kernel {
   /**
    * Settings > any app page. Saves to settings.json and applies at once: running sessions read the permission lists on their
    * next tool call, the mode moves to them now, a higher limit on agents working at once starts what was waiting, and a new
-   * approval timeout restarts the hook server so the hooks on disk and the server agree.
+   * approval timeout is read per request and rewritten into the installed hooks.
    */
   private async setSettings(patch: Parameters<typeof applySettingsPatch>[1]): Promise<AppSettings> {
     const before = this.settings
     this.settings = applySettingsPatch(before, patch)
     await saveAppSettings(this.settingsFile, this.settings)
-    this.sessions.applySettings()
+    this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && this.hookServer) await this.restartHooks(this.settings.hookPort).catch(() => undefined)
+    // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await hookStatus(this.claudeSettings)).length > 0) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec)
     return this.settings
   }
 

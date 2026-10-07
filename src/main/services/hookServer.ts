@@ -14,7 +14,8 @@ export interface HookServerOptions {
   resolve: (cwd: string, sessionId: string) => HookContext
   /** Sessions Kernel started itself report through in-process hooks, so their http hooks are ignored. */
   isManaged: (sessionId: string) => boolean
-  approvalTimeoutMs: number
+  /** A function so a change in Settings applies to the next request without restarting the server. */
+  approvalTimeoutMs: number | (() => number)
 }
 
 /**
@@ -47,7 +48,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     const ev = parsed.event as HookPayload
     if (ev.hook_event_name === 'PermissionRequest') {
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: o.approvalTimeoutMs })
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))

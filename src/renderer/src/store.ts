@@ -113,6 +113,16 @@ export function useStore<T>(select: (s: State) => T): T {
 
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
 const byRecent = <T extends { createdAt: number }>(list: T[]) => [...list].sort((a, b) => b.createdAt - a.createdAt)
+/** Settings > General > Last room: the room whose floor, board, team or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
+const LAST_ROOM = 'kernel.lastRoom'
+function rememberRoom(route: Route) {
+  const id = 'roomId' in route && route.roomId ? route.roomId : route.name === 'workspace' ? state.workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined
+  if (!id || route.name === 'settings') return
+  try { localStorage.setItem(LAST_ROOM, id) } catch { /* not remembered */ }
+}
+function lastRoom(): string | null {
+  try { return localStorage.getItem(LAST_ROOM) } catch { return null }
+}
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
 
@@ -120,7 +130,7 @@ let toastSeq = 0
 export const actions = {
   ui: {
     /** Navigate. Closes any modal and menu. */
-    go: (route: Route) => setUi({ route, modal: null, menu: null }),
+    go: (route: Route) => { setUi({ route, modal: null, menu: null }); rememberRoom(route) },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
     closeModal: () => setUi({ modal: null }),
     /** Opens the menu, or closes it when it is already open. */
@@ -289,15 +299,17 @@ export async function boot() {
 /** Settings > General > Default home view: where the app opens. */
 function homeRoute(settings: AppSettings, rooms: Room[]): Route {
   const { homeView } = settings.general
-  const first = rooms.find((r) => !r.hidden && !r.archived)
+  const last = rooms.find((r) => r.id === lastRoom() && !r.hidden && !r.archived)
   if (homeView === 'inbox') return { name: 'inbox' }
-  if (homeView === 'lastRoom' && first) return { name: 'floor', roomId: first.id }
+  if (homeView === 'lastRoom' && last) return { name: 'floor', roomId: last.id }
   return { name: 'home' }
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
 function applyFixture(ui: ForcedUi, push: PushEvent[]) {
   setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } } }))
+  // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
+  if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)
   if (ui.theme) document.documentElement.dataset.theme = ui.theme
   document.documentElement.dataset.fixture = 'ready'

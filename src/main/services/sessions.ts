@@ -218,10 +218,12 @@ export class Sessions {
   }
 
   /** Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher limit starts waiting work. */
-  applySettings() {
-    for (const [id, l] of this.live) {
-      if (this.d.store.chat(id)?.plan) continue
-      void l.query.setPermissionMode(this.baseMode()).catch(() => undefined)
+  applySettings(before?: AppSettings) {
+    if (!before || before.permissions.mode !== this.d.settings().permissions.mode) {
+      for (const [id, l] of this.live) {
+        if (this.d.store.chat(id)?.plan) continue
+        void l.query.setPermissionMode(this.baseMode()).catch(() => undefined)
+      }
     }
     this.drainWaiting()
   }
@@ -314,7 +316,7 @@ export class Sessions {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent, chat),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open),
+      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -451,7 +453,9 @@ export class Sessions {
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
       const p = this.d.settings().permissions
       if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
+      if (p.network === false && (toolName === 'WebFetch' || toolName === 'WebSearch')) return { behavior: 'deny', message: NETWORK_OFF }
       const command = toolName === 'Bash' ? commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
+      if (command && p.network === false && usesNetwork(command)) return { behavior: 'deny', message: NETWORK_OFF }
       const verdict = command ? bashVerdict(command, p, this.d.roomAllow(ws.roomId)) : undefined
       if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
       if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
@@ -598,7 +602,7 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
  * In-process hooks. Every event feeds the room log the same way http hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of CJ's own Claude Code settings.
  */
-function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -622,7 +626,8 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
   }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
-  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] })
+  const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
   return hooks
 }
 
@@ -638,21 +643,45 @@ export type BashVerdict = 'deny' | 'allow' | 'ask' | undefined
  * Kernel's say on one Bash command: Never allow, then the room's Always allow rules, then Always ask.
  * Undefined leaves it to Claude Code's own settings, so CJ's allow list still covers everyday commands.
  */
-export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[] }, roomAllow: string[]): BashVerdict {
-  if (matchesRule(command, p.neverAllow) || pushesTo(command, p.protectedBranches ?? [])) return 'deny'
+export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[]; network?: boolean }, roomAllow: string[]): BashVerdict {
+  if (matchesRule(command, p.neverAllow) || pushesTo(command, p.protectedBranches ?? []) || (p.network === false && usesNetwork(command))) return 'deny'
   if (roomAllow.some((r) => matchesRoomRule(command, r))) return 'allow'
   if (matchesRule(command, p.alwaysAsk)) return 'ask'
   return undefined
 }
 
-/** A `git push` that names a protected branch (`origin main`, `origin HEAD:main`, `+main`). A bare `git push` names none, so it is left alone. */
+/** The subcommand of a git call, skipping options such as `-C dir`. Returns its index in `t`, or -1. */
+function gitSub(t: string[], sub: string): number {
+  const g = t.indexOf('git')
+  if (g < 0) return -1
+  let j = g + 1
+  while (j < t.length && t[j].startsWith('-')) j += ['-C', '-c', '--git-dir', '--work-tree'].includes(t[j]) ? 2 : 1
+  return t[j] === sub ? j : -1
+}
+
+/** A `git push` that names a protected branch (`origin main`, `origin HEAD:main`, `origin HEAD:refs/heads/main`, `git -C dir push ...`). A bare `git push` names none, so it is left alone. */
 export function pushesTo(command: string, branches: string[]): boolean {
   if (!branches.length) return false
   return command.split(/&&|\|\||[;|\n]/).some((part) => {
     const t = part.trim().split(/\s+/)
-    const at = t.findIndex((w, i) => w === 'push' && t[i - 1] === 'git')
+    const at = gitSub(t, 'push')
     if (at < 0) return false
-    return t.slice(at + 1).filter((w) => !w.startsWith('-')).some((w) => branches.includes(w.replace(/^\+/, '').split(':').pop() ?? ''))
+    return t.slice(at + 1).filter((w) => !w.startsWith('-')).some((w) => branches.includes((w.replace(/^\+/, '').split(':').pop() ?? '').replace(/^refs\/heads\//, '')))
+  })
+}
+
+export const NETWORK_OFF = 'Network access is off in Kernel (Settings, Permissions).'
+const NET_PROGRAMS = /^(?:\w+=\S+\s+)*(?:sudo\s+)?(?:curl|wget|nc|ncat|ssh|scp|rsync|ftp|sftp|telnet|gh)\b/
+const NET_PACKAGE = /^(?:\w+=\S+\s+)*(?:npm|pnpm|yarn|bun|pip|pip3|brew)\s+(?:install|i|add|update|upgrade|publish)\b/
+const NET_GIT = ['push', 'pull', 'fetch', 'clone', 'ls-remote']
+
+/** Commands that reach the network: downloads, remote shells, package installs and git calls to a remote. Matched per command in a chain, so it is a guard for obvious cases, not a sandbox. */
+export function usesNetwork(command: string): boolean {
+  return command.split(/&&|\|\||[;|\n]/).some((part) => {
+    const c = part.trim()
+    if (NET_PROGRAMS.test(c) || NET_PACKAGE.test(c)) return true
+    const t = c.split(/\s+/)
+    return NET_GIT.some((sub) => gitSub(t, sub) >= 0)
   })
 }
 

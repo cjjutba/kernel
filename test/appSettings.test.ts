@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { Chat, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, pushesTo, Sessions } from '../src/main/services/sessions'
+import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
 import { applySettingsPatch, DEFAULT_SETTINGS } from '../src/main/services/settings'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
@@ -53,10 +53,29 @@ describe('protected branches', () => {
     expect(pushesTo('git push', ['main'])).toBe(false)
     expect(pushesTo('echo main', ['main'])).toBe(false)
   })
+  it('sees git -C and full ref names', () => {
+    expect(pushesTo('git -C ../app push origin main', ['main'])).toBe(true)
+    expect(pushesTo('git push origin HEAD:refs/heads/main', ['main'])).toBe(true)
+    expect(pushesTo('git -c user.name=x push origin refs/heads/dev', ['dev'])).toBe(true)
+    expect(pushesTo('git -C ../app push origin feat/x', ['main'])).toBe(false)
+  })
   it('denies them, and only them', () => {
     const p = { neverAllow: [], alwaysAsk: [], protectedBranches: ['main'] }
     expect(bashVerdict('git push origin main', p, [])).toBe('deny')
     expect(bashVerdict('git push origin feat/x', p, [])).toBeUndefined()
+  })
+})
+
+describe('network access off', () => {
+  const off = { neverAllow: [], alwaysAsk: [], network: false }
+  it('recognises commands that reach the network', () => {
+    for (const c of ['curl https://x.dev', 'FOO=1 wget x', 'npm test && npm install left-pad', 'git -C app fetch', 'git push origin feat/x', 'gh pr create', 'echo hi | ssh box']) expect(usesNetwork(c), c).toBe(true)
+    for (const c of ['npm test', 'git status', 'git commit -m "curl it"', 'ls -la', 'echo curl']) expect(usesNetwork(c), c).toBe(false)
+  })
+  it('denies them only while the setting is off', () => {
+    expect(bashVerdict('curl https://x.dev', off, [])).toBe('deny')
+    expect(bashVerdict('curl https://x.dev', { ...off, network: true }, [])).toBeUndefined()
+    expect(bashVerdict('npm test', off, [])).toBeUndefined()
   })
 })
 
