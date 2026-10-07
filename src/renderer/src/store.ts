@@ -258,11 +258,11 @@ export function apply(e: PushEvent) {
  */
 export async function boot() {
   onPush(apply)
-  const [rooms, workspaces, approvals, activity, usage, settings, fixture] = await Promise.all([
-    call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
+  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture] = await Promise.all([
+    call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
-  setState({ rooms, workspaces, approvals: byRecent(approvals), activity, usage, settings })
+  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)
