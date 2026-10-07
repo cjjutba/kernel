@@ -5,7 +5,7 @@ import { Button, IconButton } from './controls'
 
 /** One icon per failure type (DESIGN.md Patterns). */
 export const bannerIcon: Record<BannerKind, IconName> = {
-  limit: 'clock', context: 'list', offline: 'wifi', auth: 'lock', setup: 'x', hooks: 'plug', retry: 'retry'
+  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history'
 }
 
 /** A failure banner: neutral surface, an icon for its type, never a red background. */
@@ -21,13 +21,14 @@ export function Banner({ kind, title, children, actions, onDismiss }: { kind: Ba
 }
 
 export type ChipKind = 'file' | 'image' | 'mention' | 'skill'
-const chipIcon: Record<ChipKind, IconName> = { file: 'doc', image: 'image', mention: 'at', skill: 'slash' }
+const chipIcon: Partial<Record<ChipKind, IconName>> = { file: 'doc', image: 'image' }
+const chipGlyph: Partial<Record<ChipKind, string>> = { mention: '@', skill: '/' }
 
 /** A reference in the composer or a message. Remove with the button, or Backspace when focused. */
 export function Chip({ kind, children, onRemove }: { kind: ChipKind; children: ReactNode; onRemove?: () => void }) {
   return (
     <span className="chip" data-kind={kind}>
-      <Icon name={chipIcon[kind]} size={12} />
+      {chipIcon[kind] ? <Icon name={chipIcon[kind]} size={12} /> : <span aria-hidden="true" className="muted">{chipGlyph[kind]}</span>}
       <span className="ellipsis" style={{ maxWidth: 220 }}>{children}</span>
       {onRemove && <button type="button" className="chip-x" aria-label={`Remove ${typeof children === 'string' ? children : kind}`} onClick={onRemove}><Icon name="close" size={10} /></button>}
     </span>

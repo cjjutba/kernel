@@ -19,7 +19,9 @@ const gallery = (stage: string) => scene(() => ({ rooms: [], agents: {}, status:
 
 export const platformFixtures: Record<string, Fixture> = {
   DevUi: gallery('dev/ui'),
-  DevUiOverlays: gallery('dev/ui-overlays'),
+  DevUiDisplay: gallery('dev/ui:display'),
+  DevUiOverlays: gallery('dev/ui:overlays'),
+  DevUiDialogs: gallery('dev/ui:dialogs'),
   SetupClaudeMissing: setup([{ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } }, ghOk, hooksOk]),
   SetupClaudeOld: setup([{ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Kernel needs v2.1.80 or later.', fix: { command: 'claude update' } }, ghOk, hooksOk]),
   SetupGhSignedOut: setup([claudeOk, { id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } }, hooksOk]),

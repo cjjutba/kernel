@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
-import { useEscape, useOutside } from './hooks'
+import { useLayer } from './hooks'
 
 export interface MenuEntry {
   id: string
@@ -18,18 +18,20 @@ export interface MenuEntry {
 /** A divider between groups of items. */
 export const MENU_SEPARATOR = { id: '-' } as const
 
-function MenuList({ items, onClose, onBack, label }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; onBack?: () => void; label?: string }) {
+function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; onBack?: () => void; label?: string; initiallyOpen?: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState<string | null>(null)
+  const openers = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [open, setOpen] = useState<string | null>(initiallyOpen ?? null)
   useEffect(() => { ref.current?.querySelector<HTMLElement>('[role=menuitem]:not(:disabled)')?.focus({ preventScroll: true }) }, [])
   const onKey = (e: KeyboardEvent) => {
-    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(':scope > [role=menuitem]:not(:disabled)') ?? [])]
+    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(':scope > .menu-row > [role=menuitem]:not(:disabled)') ?? [])]
     const i = nodes.indexOf(document.activeElement as HTMLElement)
-    if (e.key === 'ArrowDown') { e.preventDefault(); nodes[(i + 1) % nodes.length]?.focus() }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); nodes[(i - 1 + nodes.length) % nodes.length]?.focus() }
-    else if (e.key === 'Home') { e.preventDefault(); nodes[0]?.focus() }
-    else if (e.key === 'End') { e.preventDefault(); nodes[nodes.length - 1]?.focus() }
-    else if (e.key === 'ArrowLeft' && onBack) { e.preventDefault(); e.stopPropagation(); onBack() }
+    const handled = (go: () => void) => { e.preventDefault(); e.stopPropagation(); go() }
+    if (e.key === 'ArrowDown') handled(() => nodes[(i + 1) % nodes.length]?.focus())
+    else if (e.key === 'ArrowUp') handled(() => nodes[(i - 1 + nodes.length) % nodes.length]?.focus())
+    else if (e.key === 'Home') handled(() => nodes[0]?.focus())
+    else if (e.key === 'End') handled(() => nodes[nodes.length - 1]?.focus())
+    else if (e.key === 'ArrowLeft' && onBack) handled(onBack)
   }
   return (
     <div ref={ref} role="menu" aria-label={label} className="menu" onKeyDown={onKey}>
@@ -40,7 +42,7 @@ function MenuList({ items, onClose, onBack, label }: { items: (MenuEntry | typeo
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              type="button" role="menuitem" className="menu-item" disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >
@@ -50,7 +52,7 @@ function MenuList({ items, onClose, onBack, label }: { items: (MenuEntry | typeo
               {sub ? <Icon name="right" size={12} /> : null}
             </button>
             {sub && open === m.id && (
-              <div className="submenu"><MenuList items={m.children!} onClose={onClose} onBack={() => setOpen(null)} label={m.label} /></div>
+              <div className="submenu"><MenuList items={m.children!} onClose={onClose} onBack={() => { setOpen(null); openers.current[m.id]?.focus() }} label={m.label} /></div>
             )}
           </div>
         )
@@ -63,11 +65,10 @@ function MenuList({ items, onClose, onBack, label }: { items: (MenuEntry | typeo
  * A menu with shortcuts and submenus. Position it by placing it in a `position: relative` parent (see Popover),
  * or pass `style`. Escape and a press outside call `onClose`.
  */
-export function Menu({ items, onClose, label, style }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; style?: React.CSSProperties }) {
+export function Menu({ items, onClose, label, style, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; style?: React.CSSProperties; initiallyOpen?: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  useEscape(onClose)
-  useOutside(ref, onClose)
-  return <div ref={ref} className="menu-anchor" style={style}><MenuList items={items} onClose={onClose} label={label} /></div>
+  useLayer({ onEscape: onClose, onOutside: onClose, ref })
+  return <div ref={ref} className="menu-anchor" style={style}><MenuList items={items} onClose={onClose} label={label} initiallyOpen={initiallyOpen} /></div>
 }
 
 /** A single menu item, for menus that need custom rows. `Menu` builds these from `items`. */
@@ -84,8 +85,7 @@ export function MenuItem({ icon, shortcut, children, ...rest }: React.ButtonHTML
 /** Anything anchored below a trigger: a small panel that closes on Escape or an outside press. */
 export function Popover({ open, onClose, children, label, align = 'left' }: { open: boolean; onClose: () => void; children: ReactNode; label: string; align?: 'left' | 'right' }) {
   const ref = useRef<HTMLDivElement>(null)
-  useEscape(onClose, open)
-  useOutside(ref, onClose, open)
+  useLayer({ onEscape: onClose, onOutside: onClose, ref }, open)
   if (!open) return null
   return <div ref={ref} role="dialog" aria-label={label} className="popover" style={{ [align]: 0 }}>{children}</div>
 }
@@ -94,10 +94,10 @@ export function Popover({ open, onClose, children, label, align = 'left' }: { op
  * The one modal shell. Blur scrim over the whole window (z-index 40), dialog above it (50), 14px radius, 1px border.
  * Escape and a press on the scrim call `onClose`. Focus moves in on open and back to the trigger on close.
  */
-export function Modal({ title, onClose, children, footer, width, top, bare }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number; top?: number; bare?: boolean }) {
+export function Modal({ title, onClose, children, footer, width, top, bare, role = 'dialog', labelledBy, describedBy }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number; top?: number; bare?: boolean; role?: 'dialog' | 'alertdialog'; labelledBy?: string; describedBy?: string }) {
   const id = useId()
   const ref = useRef<HTMLDivElement>(null)
-  useEscape(onClose)
+  useLayer({ onEscape: onClose })
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null
     const first = ref.current?.querySelector<HTMLElement>('[autofocus], input, textarea, select, button:not([data-close])')
@@ -116,14 +116,14 @@ export function Modal({ title, onClose, children, footer, width, top, bare }: { 
   return (
     <>
       <div className="scrim" onMouseDown={onClose} />
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={id} tabIndex={-1} className="modal" style={{ width, top }} onKeyDown={trap}>
+      <div ref={ref} role={role} aria-modal="true" aria-labelledby={labelledBy ?? id} aria-describedby={describedBy} tabIndex={-1} className="modal" style={{ width, top }} onKeyDown={trap}>
         {!bare && (
           <div className="modal-head">
             <h2 id={id}>{title}</h2>
             <button type="button" data-close className="icon-btn" aria-label="Close" onClick={onClose}><Icon name="close" /></button>
           </div>
         )}
-        {bare && <h2 id={id} className="sr-only">{title}</h2>}
+        {bare && !labelledBy && <h2 id={id} className="sr-only">{title}</h2>}
         {children}
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
@@ -133,9 +133,16 @@ export function Modal({ title, onClose, children, footer, width, top, bare }: { 
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
 export function ConfirmDialog({ title, body, confirmLabel, cancelLabel = 'Cancel', danger, onConfirm, onCancel }: { title: string; body: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void }) {
+  const id = useId()
   return (
-    <Modal title={title} onClose={onCancel} width={440} top={220} footer={<><span className="grow" /><Button onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button></>}>
-      <div className="modal-body ink2">{body}</div>
+    <Modal
+      title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
+      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" onClick={onConfirm}>{confirmLabel}</Button></>}
+    >
+      <div className="confirm-body">
+        <h2 id={`${id}t`}>{title}</h2>
+        <p id={`${id}b`}>{body}</p>
+      </div>
     </Modal>
   )
 }
@@ -145,7 +152,7 @@ export const TOAST_MS = 2600
 
 export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void }; onDismiss?: () => void }
 
-/** One toast. It calls `onDismiss` after 2.6s, and stays while hovered or focused. */
+/** One toast (WorkspaceToast.png). It calls `onDismiss` after 2.6s, and stays while hovered or focused. */
 export function Toast({ title, sub, action, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
   useEffect(() => {
@@ -154,15 +161,15 @@ export function Toast({ title, sub, action, onDismiss }: ToastProps) {
     return () => clearTimeout(t)
   }, [held, onDismiss])
   return (
-    <div role="status" className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
-      <Icon name="check" size={14} />
-      <div className="grow"><div className="toast-title">{title}</div>{sub && <div className="muted">{sub}</div>}</div>
-      {action && (action.href ? <a className="toast-action" href={action.href} onClick={action.onClick}>{action.label}</a> : <button type="button" className="toast-action" onClick={action.onClick}>{action.label}</button>)}
+    <div className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
+      <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{sub}</span>}</span>
+      {action && <a className="toast-action" href={action.href ?? '#'} onClick={(e) => { if (!action.href) e.preventDefault(); action.onClick?.() }}>{action.label}</a>}
+      <button type="button" className="toast-x" aria-label="Dismiss" onClick={onDismiss}><Icon name="close" size={10} stroke={2} /></button>
     </div>
   )
 }
 
-/** Bottom right, newest last. */
+/** Bottom right, 16px from the edges, newest last. */
 export function ToastStack({ children }: { children: ReactNode }) {
-  return <div className="toast-stack" aria-live="polite">{children}</div>
+  return <div className="toast-stack" role="status">{children}</div>
 }

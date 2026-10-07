@@ -22,7 +22,7 @@ function Controls() {
       <Section title="Buttons">
         <div className="devui-row">
           <Button variant="primary">Approve</Button><Button>Deny</Button><Button variant="ghost">Cancel</Button>
-          <Button variant="danger">Discard</Button><Button variant="merged" icon="merge">Merged</Button><Button disabled>Disabled</Button>
+          <Button variant="danger">Discard</Button><Button variant="merged" icon="pr">Merged</Button><Button disabled>Disabled</Button>
           <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" />
         </div>
       </Section>
@@ -37,11 +37,8 @@ function Controls() {
           <Select label="Font size" defaultValue="default" options={[{ value: 'default', label: 'Default' }, { value: 'small', label: 'Small' }]} />
         </div>
       </Section>
-      <Section title="Banners">
-        <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
-      </Section>
       <Section title="Chips">
-        <div className="devui-row"><Chip kind="file" onRemove={() => undefined}>plan.md</Chip><Chip kind="image" onRemove={() => undefined}>screenshot.png</Chip><Chip kind="mention">@Noor</Chip><Chip kind="skill">/review</Chip></div>
+        <div className="devui-row"><Chip kind="file" onRemove={() => undefined}>plan.md</Chip><Chip kind="image" onRemove={() => undefined}>screenshot.png</Chip><Chip kind="mention">Noor</Chip><Chip kind="skill">review</Chip></div>
       </Section>
       <Section title="Meter, code, kbd, avatar, spinner, skeleton">
         <div className="col" style={{ gap: 10 }}>
@@ -56,6 +53,16 @@ function Controls() {
           <Card style={{ flex: 1 }}><EmptyState icon="inbox" title="Nothing needs you" action={<Button>New workspace</Button>}>Approvals and plans show up here.</EmptyState></Card>
         </div>
       </Section>
+    </>
+  )
+}
+
+function Display() {
+  return (
+    <>
+      <Section title="Banners">
+        <div className="col" style={{ gap: 6 }}>{kinds.map((k) => <Banner key={k} kind={k} title={bannerCopy[k]} actions={<Button size="md">Open</Button>}>One neutral surface for every failure.</Banner>)}</div>
+      </Section>
       <Section title={`Icons (${iconNames().length})`}>
         <div className="devui-icons">{iconNames().map((n) => <span key={n} title={n}><Icon name={n} /></span>)}</div>
       </Section>
@@ -69,7 +76,7 @@ function Overlays() {
     <>
       <Section title="Menu with shortcuts and a submenu">
         <div className="devui-stage" style={{ minHeight: 190 }}>
-          <Menu label="Workspace" onClose={noop} style={{ position: 'relative', width: 240 }} items={[
+          <Menu label="Workspace" initiallyOpen="open" onClose={noop} style={{ position: 'relative', width: 240 }} items={[
             { id: 'new', label: 'New workspace', icon: 'compose', shortcut: '⇧⌘N' },
             { id: 'open', label: 'Open in', icon: 'ext', children: [{ id: 'term', label: 'Terminal', icon: 'term' }, { id: 'code', label: 'Editor', icon: 'code' }] },
             MENU_SEPARATOR,
@@ -79,7 +86,7 @@ function Overlays() {
         </div>
       </Section>
       <Section title="Popover">
-        <div className="devui-stage" style={{ minHeight: 90 }}>
+        <div className="devui-stage" style={{ minHeight: 140 }}>
           <Button aria-expanded="true">Branch</Button>
           <Popover open onClose={noop} label="Branch">Base branch <span className="mono">origin/main</span></Popover>
         </div>
@@ -87,6 +94,14 @@ function Overlays() {
       <Section title="Toast, bottom right, 2.6s">
         <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="cjjutba/kernel-9" action={{ label: 'Undo' }} /></div></div>
       </Section>
+    </>
+  )
+}
+
+function Dialogs() {
+  const noop = () => undefined
+  return (
+    <>
       <Section title="Modal shell and confirm dialog">
         <div className="devui-stage" style={{ minHeight: 330 }}>
           <Modal title="New room" onClose={noop} width={420} top={14} footer={<><span className="grow" /><Button>Cancel</Button><Button variant="primary">Create</Button></>}>
@@ -101,9 +116,12 @@ function Overlays() {
   )
 }
 
-/** Every component in both themes (`#/dev/ui` in dev; fixtures DevUi and DevUiOverlays for the harness). */
-export function DevUi({ page = 'components' }: { page?: 'components' | 'overlays' }) {
-  const Page = page === 'overlays' ? Overlays : Controls
+export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'
+const pages = { components: Controls, display: Display, overlays: Overlays, dialogs: Dialogs }
+
+/** Every component in both themes (`#/dev/ui` in dev; fixtures DevUi, DevUiDisplay, DevUiOverlays and DevUiDialogs for the harness). */
+export function DevUi({ page = 'components' }: { page?: DevUiPage }) {
+  const Page = pages[page]
   return (
     <div className="devui" aria-label="Component gallery">
       <div className="devui-col" data-theme="dark"><Page /></div>

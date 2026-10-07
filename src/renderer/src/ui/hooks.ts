@@ -1,27 +1,52 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
-/** Call `onEscape` when Escape is pressed while `active`. Capture phase, so the innermost layer can stop it. */
-export function useEscape(onEscape: (() => void) | undefined, active = true) {
-  const ref = useRef(onEscape)
-  ref.current = onEscape
+/**
+ * Open layers (menus, popovers, modals), oldest first. Escape and outside presses go to the top layer only,
+ * so a menu inside a modal closes first and a confirm dialog over a modal doesn't close both.
+ */
+interface Layer { escape?: () => void; outside?: () => void; ref?: RefObject<HTMLElement | null> }
+const stack: Layer[] = []
+let installed = false
+
+function install() {
+  if (installed || typeof window === 'undefined') return
+  installed = true
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return
+    const top = stack[stack.length - 1]
+    if (!top?.escape) return
+    e.stopPropagation()
+    top.escape()
+  }, true)
+  document.addEventListener('mousedown', (e) => {
+    const top = stack[stack.length - 1]
+    if (top?.outside && top.ref?.current && !top.ref.current.contains(e.target as Node)) top.outside()
+  })
+}
+
+/** Register an open layer while `active`. Only the newest layer reacts to Escape or a press outside `ref`. */
+export function useLayer(opts: { onEscape?: () => void; onOutside?: () => void; ref?: RefObject<HTMLElement | null> }, active = true) {
+  const latest = useRef(opts)
+  latest.current = opts
   useEffect(() => {
     if (!active) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || !ref.current) return
-      e.stopPropagation()
-      ref.current()
+    install()
+    const layer: Layer = {
+      escape: () => latest.current.onEscape?.(),
+      outside: latest.current.onOutside ? () => latest.current.onOutside?.() : undefined,
+      get ref() { return latest.current.ref }
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+    stack.push(layer)
+    return () => { const i = stack.indexOf(layer); if (i >= 0) stack.splice(i, 1) }
   }, [active])
 }
 
-/** Call `onOutside` on a pointer press outside the element in `ref`. */
-export function useOutside(ref: React.RefObject<HTMLElement | null>, onOutside: (() => void) | undefined, active = true) {
-  useEffect(() => {
-    if (!active || !onOutside) return
-    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onOutside() }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [ref, onOutside, active])
+/** Escape closes the top layer only. */
+export function useEscape(onEscape: (() => void) | undefined, active = true) {
+  useLayer({ onEscape }, active && !!onEscape)
+}
+
+/** A press outside `ref` closes the top layer only. */
+export function useOutside(ref: RefObject<HTMLElement | null>, onOutside: (() => void) | undefined, active = true) {
+  useLayer({ onOutside, ref }, active && !!onOutside)
 }
