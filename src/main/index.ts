@@ -8,7 +8,6 @@ import type { Channel } from '@shared/ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
-const kernel = new Kernel({ dataDir: app.getPath('userData') })
 
 function createWindow() {
   win = new BrowserWindow({
@@ -18,7 +17,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#08090a',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 15 },
+    trafficLightPosition: { x: 13, y: 15 },
     show: false,
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true }
   })
@@ -28,10 +27,22 @@ function createWindow() {
   else void win.loadFile(join(here, '../renderer/index.html'))
 }
 
-app.whenReady().then(async () => {
-  await kernel.start()
+/** A failed boot leaves nothing for IPC to talk to, so say why and quit instead of showing a broken window. */
+function bootFailed(err: unknown) {
+  console.error('[kernel] boot failed', err)
+  dialog.showErrorBox('Kernel could not start', err instanceof Error ? err.stack ?? err.message : String(err))
+  app.quit()
+}
+
+app.whenReady().then(() => {
+  const kernel = new Kernel({ dataDir: app.getPath('userData') })
+  app.on('before-quit', () => { void kernel.stop() })
+
+  // The window opens while the kernel boots. Calls made before start() finishes wait for it.
+  const started = kernel.start()
+  started.catch(bootFailed)
   const handlers = kernel.handlers() as Record<string, (req: unknown) => Promise<unknown>>
-  for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, (_e, req) => fn(req))
+  for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, async (_e, req) => { await started; return fn(req) })
   ipcMain.handle('system.pickFolder' satisfies Channel, async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return r.canceled ? null : r.filePaths[0]
@@ -41,7 +52,6 @@ app.whenReady().then(async () => {
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
-})
+}).catch(bootFailed)
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
-app.on('before-quit', () => { void kernel.stop() })

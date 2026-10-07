@@ -6,7 +6,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virt
 
 - `npm install` installs and rebuilds native modules for Electron
 - `npm run dev` runs the app with hot reload
-- `npm test` runs vitest (engine tests use real git repos in temp folders)
+- `npm test` runs vitest on Electron's Node (engine tests use real git repos in temp folders). One file: `npm test -- test/kernel.test.ts`. Plain `npx vitest` fails, see D-013
 - `npm run typecheck` checks main, preload and renderer
 - `npm run build` builds all three bundles
 - `npm run shots -- <Screen> [...]` and `npm run shots:compare -- <Screen>` capture the app and compare it to `design/screens/<Screen>.png` (added in KERNEL-7)
