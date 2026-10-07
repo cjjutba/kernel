@@ -4,9 +4,6 @@ import type { ActivityEvent } from '@shared/types'
 import { bus } from '../bus'
 import { describeTool, type Approvals } from './approvals'
 
-/** Session id of the event Check hooks sends to itself. The server answers it and records nothing. */
-export const HOOK_TEST_SESSION = 'kernel-hook-test'
-
 export interface HookContext { roomId?: string; workspaceId?: string; agentId?: string }
 
 export interface HookServerOptions {
@@ -34,7 +31,6 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     const parsed = parseHook(body)
     if (!parsed.ok) { bus.emit('hook.invalid', parsed.error); return json(res, 200, {}) }
     const e = parsed.event
-    if (e.session_id === HOOK_TEST_SESSION) return json(res, 200, { test: true })
     if (o.isManaged(e.session_id)) return json(res, 200, {})
     const ctx = o.resolve(e.cwd, e.session_id)
     bus.emit('hook', e, ctx)

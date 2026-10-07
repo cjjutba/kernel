@@ -48,7 +48,7 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
   })),
   SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } })),
-  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Kernel needs v2.1.80 or later.', meta: 'v2.0.14', fix: { command: 'claude update' } })),
+  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later.', meta: 'v2.0.14', fix: { command: 'claude update' } })),
   SetupTeamsOff: setup(failing({ id: 'teams', ok: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
   SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),

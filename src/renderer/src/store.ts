@@ -266,8 +266,9 @@ export async function boot() {
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)
-  if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' })
-  else go(rooms.length ? { name: 'home' } : { name: 'onboarding', step: 'welcome' })
+  // A fresh install always starts at Welcome, whose Get started runs the checks.
+  if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
+  else go(checks?.some((c) => !c.ok) ? { name: 'onboarding', step: 'checks' } : { name: 'home' })
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)

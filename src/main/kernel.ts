@@ -9,9 +9,9 @@ import { loadAgents, saveAgent } from './services/agents'
 import { Approvals } from './services/approvals'
 import { Sessions } from './services/sessions'
 import { kernelMcpServer } from './services/kernelMcp'
-import { HOOK_TEST_SESSION, startHookServer } from './services/hookServer'
+import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
-import { nextFreePort, runPreflight } from './services/preflight'
+import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
 import { branchName, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, freeBranch, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline } from './services/worktrees'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
@@ -118,6 +118,8 @@ export class Kernel {
 
   /** Moves the hook server to `port`, saves it, and rewrites the hooks if they were installed. Returns the status after. */
   private async restartHooks(port: number): Promise<HookStatus> {
+    // A busy new port must not take down the server that works. Check before closing.
+    if (port !== this.settings.hookPort && (await portBusy(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
     const wasInstalled = (await hookStatus(this.claudeSettings).catch(() => [] as string[])).length > 0
     await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
     this.hookServer = undefined
@@ -363,11 +365,9 @@ export class Kernel {
       'hooks.status': async () => this.hooksStatus(),
       'hooks.restart': async ({ port }) => this.restartHooks(port ?? this.settings.hookPort),
       'hooks.test': async () => {
-        const res = await fetch(`http://127.0.0.1:${this.settings.hookPort}/hooks`, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, signal: AbortSignal.timeout(5000),
-          body: JSON.stringify({ session_id: HOOK_TEST_SESSION, cwd: this.home, hook_event_name: 'Notification', message: 'Kernel test event' })
-        }).catch(() => null)
-        if (!res?.ok || !(await res.json().catch(() => null))?.test) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
+        // /health answers from the same server that receives hooks, and records nothing.
+        const res = await fetch(`http://127.0.0.1:${this.settings.hookPort}/health`, { signal: AbortSignal.timeout(5000) }).catch(() => null)
+        if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
         return this.hooksStatus()
       },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),

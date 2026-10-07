@@ -58,7 +58,7 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   const v = await exec('claude', ['--version'], { timeoutMs: 15000 })
   const version = v.code === 0 ? parseClaudeVersion(v.stdout) : null
   if (!version) checks.push({ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } })
-  else if (compareVersions(version, MIN_CLAUDE) < 0) checks.push({ id: 'claude', ok: false, title: 'Claude Code is too old', detail: `Found v${version}. Kernel needs v${MIN_CLAUDE} or later.`, meta: `v${version}`, fix: { command: 'claude update' } })
+  else if (compareVersions(version, MIN_CLAUDE) < 0) checks.push({ id: 'claude', ok: false, title: 'Claude Code is too old', detail: `Found v${version}. Agent teams need v2.1.32 and Channels need v${MIN_CLAUDE} or later.`, meta: `v${version}`, fix: { command: 'claude update' } })
   else checks.push({ id: 'claude', ok: true, title: 'Claude Code', detail: 'Found on your PATH', meta: `v${version}` })
 
   // Signing in needs the CLI, so a missing CLI shows one failure, not two.
