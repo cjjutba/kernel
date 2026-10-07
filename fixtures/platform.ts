@@ -1,6 +1,8 @@
 import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, SettingsPage, Skill } from '@shared/types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
+import { teamFixtures } from './team'
+import { workspaceFixtures } from './workspace'
 import { at, base, ids, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
@@ -76,7 +78,12 @@ const integrationRows: Integration[] = [
   { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
 ]
 
+/** The same screen as `src`, drawn in the light theme (HomeLight.png, WorkspaceLight.png). */
+const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'light' } })
+
 export const platformFixtures: Record<string, Fixture> = {
+  HomeLight: light(teamFixtures.Home),
+  WorkspaceLight: light(workspaceFixtures.Workspace),
   Settings: settingsPage('general'),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),

@@ -93,7 +93,7 @@ export function BoardScreen({ roomId }: { roomId: string }) {
         {cols.map(([name, test]) => {
           const cards = ws.filter(test)
           return (
-            <section key={name} className="col" style={{ gap: 6, padding: 4, borderRadius: 10, background: '#0c0d0e', minHeight: 0, overflowY: 'auto' }}>
+            <section key={name} className="col" style={{ gap: 6, padding: 4, borderRadius: 10, background: 'var(--code-bg)', minHeight: 0, overflowY: 'auto' }}>
               <div className="row" style={{ height: 34, padding: '0 8px' }}><h2 style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>{name}</h2><span className="muted" style={{ fontSize: 12 }}>{cards.length}</span></div>
               {cards.map((w) => <button key={w.id} className="card col" style={{ padding: '10px 12px', gap: 6, textAlign: 'left', color: 'var(--ink)' }} onClick={() => go({ name: 'workspace', workspaceId: w.id })}><span style={{ fontWeight: 500 }}>{w.name}</span><span className="row muted" style={{ fontSize: 12 }}>{agents.find((a) => a.id === w.agentId)?.name ?? w.agentId}<span className="grow" />{w.prNumber ? `#${w.prNumber}` : ''}</span><span className="mono muted ellipsis" style={{ fontSize: 11 }}>{w.branch}</span></button>)}
             </section>

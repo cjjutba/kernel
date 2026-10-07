@@ -16,6 +16,8 @@ let win: BrowserWindow | null = null
 // cache and storage out of the real profile, so a fixture run can't collide with a running Kernel.
 // The shots harness passes a folder per launch and deletes it; manual runs reuse one temp folder.
 const fixtureName = process.env.KERNEL_FIXTURES
+/** `npm run shots -- --theme light` forces a theme on any fixture. */
+const fixtureTheme = () => (process.env.KERNEL_FIXTURE_THEME === 'light' || process.env.KERNEL_FIXTURE_THEME === 'dark' ? { theme: process.env.KERNEL_FIXTURE_THEME } : {})
 if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
 
 function createWindow() {
@@ -88,7 +90,7 @@ app.whenReady().then(async () => {
     return r.canceled ? null : r.filePaths[0]
   })
   ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => { await shell.openExternal(url); return { ok: true } })
-  ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: fixture.ui, push: fixture.push } : null))
+  ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixture.push } : null))
   ipcMain.handle('system.openInEditor' satisfies Channel, async (_e, { path }) => { const r = await exec('code', [path]); if (r.code !== 0) await shell.openPath(path); return { ok: true } })
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()

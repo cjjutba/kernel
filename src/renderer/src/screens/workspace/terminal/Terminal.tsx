@@ -7,6 +7,15 @@ import { appended } from './buffer'
 import { getState, useStore } from '../../../store'
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+/** The terminal palette, read from the tokens of the theme in force (tokens.css). Bright colours reuse the normal ones so contrast holds in both themes. */
+const xtermTheme = () => {
+  const c = (n: string) => css(`--term-${n}`)
+  return {
+    background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4'),
+    black: c('black'), red: c('red'), green: c('green'), yellow: c('yellow'), blue: c('blue'), magenta: c('magenta'), cyan: c('cyan'), white: c('white'),
+    brightBlack: css('--muted'), brightRed: c('red'), brightGreen: c('green'), brightYellow: c('yellow'), brightBlue: c('blue'), brightMagenta: c('magenta'), brightCyan: c('cyan'), brightWhite: c('white')
+  }
+}
 
 /**
  * A real terminal: xterm.js here, node-pty in the main process. `id` is a terminal chat id, or `shell:<workspaceId>` for the plain shell.
@@ -27,7 +36,7 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
       scrollback: 10_000,
       cursorBlink: true,
       allowProposedApi: true,
-      theme: { background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4') }
+      theme: xtermTheme()
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -64,7 +73,7 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
   // The terminal colours follow the theme, which changes after the terminal was made.
   useEffect(() => {
     const l = live.current
-    if (l) l.term.options.theme = { background: css('--code-bg'), foreground: css('--ink-2'), cursor: css('--ink'), selectionBackground: css('--line-4') }
+    if (l) l.term.options.theme = xtermTheme()
   }, [theme])
   // New output goes to the open terminal. The store keeps the buffer, so a remount replays it above.
   useEffect(() => {
