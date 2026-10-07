@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { AgentStatus, Task } from '@shared/types'
+import type { AgentStatus, Overlap, Task } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
@@ -11,9 +11,12 @@ import { Stage } from './Stage'
 import { DESK_SPOTS } from './motion/waypoints'
 import { useReducedMotion, useWalks, type Walk } from './motion/useWalks'
 import { sequence } from './sequence'
+import { deskSpot, moments, talkLegs } from './moments/moments'
+import type { Spot } from './motion/walks'
 import './floor.css'
 
 const NO_TASKS: Task[] = []
+const NO_OVERLAPS: Overlap[] = []
 const LOUD: AgentStatus[] = ['needs', 'blocked', 'offline']
 
 /** The floor: the team seated in the office, the selected agent, the room logs and the brief box (Main.png and the Floor* states). */
@@ -25,11 +28,14 @@ export function Floor({ roomId }: { roomId: string }) {
   const activity = useStore((s) => s.activity.filter((e) => e.roomId === roomId))
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId))
   const tasks = useStore((s) => s.tasks[roomId] ?? NO_TASKS)
+  const overlaps = useStore((s) => s.overlaps[roomId] ?? NO_OVERLAPS)
   const forced = useStore((s) => s.ui.stage)
   const settings = useStore((s) => s.settings)
   const reduced = useReducedMotion()
   const [clicked, setClicked] = useState<string | null>(null)
   useEffect(() => { void loadRoom(roomId) }, [roomId])
+  // The engine checks the room's workspaces after each turn and pushes changes; this reads what is already there.
+  useEffect(() => { void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined) }, [roomId])
 
   const live = useMemo(() => agents.filter((a) => !a.retired), [agents])
   const desks = room?.desks
@@ -37,11 +43,32 @@ export function Floor({ roomId }: { roomId: string }) {
     () => sequence({ room: { id: roomId, desks }, agents: live, status, approvals: roomApprovals, activity, workspaces, tasks, forced }),
     [roomId, desks, live, status, roomApprovals, activity, workspaces, tasks, forced]
   )
-  // Only the Lead walks in the briefing sequence. Walking turned off, or reduced motion, makes every move a jump.
+  const mo = useMemo(
+    () => moments({ agents: live, status, approvals: roomApprovals, activity, overlaps, stage: seq.stage, forced, room: { desks }, now: Date.now() }),
+    [live, status, roomApprovals, activity, overlaps, seq.stage, forced, desks]
+  )
+  // The Lead walks the briefing sequence. Anyone who talked to someone walks to their desk while the talk is on, and a new hire
+  // walks in from the door. Walking turned off, or reduced motion, makes every move a jump.
   const walks = useMemo<Walk[]>(() => {
-    const lead = seating(live, { desks }).seated[0]
-    return lead?.lead ? [{ id: lead.id, desk: DESK_SPOTS[0], legs: seq.legs }] : []
-  }, [live, desks, seq.legs])
+    const out: Walk[] = []
+    const spotOf = (id: string) => deskSpot(live, { desks }, id)
+    const seated = seating(live, { desks }).seated
+    seated.forEach((a, i) => {
+      const desk = DESK_SPOTS[i]
+      if (!desk) return
+      const base = i === 0 && a.lead ? seq.legs : []
+      const home: Spot = base.length ? base[base.length - 1].to : 'seat'
+      let legs = [...base, ...talkLegs(mo.talks, a.id, spotOf, home)]
+      let from: Spot | undefined
+      if (mo.hire?.agentId === a.id) {
+        // A fixture holds the arrival at the door; a real one walks to the desk.
+        legs = [{ key: `join:${mo.hire.eventId}`, to: forced === 'hired' ? 'door' : 'seat' }]
+        if (mo.hire.fresh && forced !== 'hired') from = 'door'
+      }
+      if (legs.length) out.push({ id: a.id, desk, legs, from })
+    })
+    return out
+  }, [live, desks, seq.legs, mo, forced])
   const instant = reduced || !!settings?.appearance.reduceMotion || settings?.experimental.walking === false
   const { poses, jumping } = useWalks(walks, instant)
   const shown = useMemo(() => {
@@ -54,7 +81,10 @@ export function Floor({ roomId }: { roomId: string }) {
 
   const approvals = roomApprovals.filter((a) => a.status === 'pending')
   const loud = live.some((a) => LOUD.includes(shown[a.id] ?? 'idle'))
-  const sel = defaultSelected(live, shown, clicked ?? (loud ? null : seq.focus))
+  const sel = defaultSelected(live, shown, clicked ?? (loud ? null : seq.focus ?? mo.focus))
+  const arriving = !!mo.hire && (poses[mo.hire.agentId]?.at ?? 'seat') !== 'seat'
+  const words = arriving ? { [mo.hire!.agentId]: 'new' } : undefined
+  const note = sel && arriving && mo.hire!.agentId === sel.id ? 'Joining the room' : sel && mo.chatting === sel.id ? 'Chatting with you' : undefined
   const working = live.filter((a) => shown[a.id] === 'working' || shown[a.id] === 'planning').length
   const needs = needsCount(live, shown, approvals)
   const togglePause = () => call('rooms.setPaused', { roomId, paused: !room.paused })
@@ -80,8 +110,8 @@ export function Floor({ roomId }: { roomId: string }) {
       </div>
       <div className="floor-body">
         <main className="floor-main">
-          {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} />}
-          <Stage room={room} agents={live} status={shown} poses={poses} say={seq.say} instant={instant || jumping}
+          {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} note={note} />}
+          <Stage room={room} agents={live} status={shown} words={words} poses={poses} say={mo.say ?? seq.say} instant={instant || jumping}
             selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
           <Brief roomId={roomId} agents={live} />
         </main>

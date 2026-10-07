@@ -13,9 +13,14 @@ import { FloorCard } from './FloorCard'
 const decide = (a: Approval, decision: Decision) =>
   call('approvals.decide', { id: a.id, decision }).catch((e: Error) => actions.ui.toast({ title: 'Could not send your answer', sub: e.message }))
 
-/** A line someone said out loud, over their head. Follows them while they walk. */
-export function Bubble({ text, at }: { text: string; at: [number, number] }) {
-  return <div role="status" className="floor-bubble" style={pct(at[0], at[1] - 30)}>{text}</div>
+/** A line someone said out loud, over their head, with an optional link under it (FloorTalk.png). Follows them while they walk. */
+export function Bubble({ text, at, link }: { text: string; at: [number, number]; link?: { label: string; onClick: () => void } }) {
+  return (
+    <div role="status" className="floor-bubble" style={pct(at[0], at[1] - 30)}>
+      {text}
+      {link && <button type="button" className="floor-bubble-link" onClick={link.onClick}>{link.label}</button>}
+    </div>
+  )
 }
 
 /** The Lead's plan: one row per task with its id and assignee. Approving starts the hand-off (FloorPlan.png). */

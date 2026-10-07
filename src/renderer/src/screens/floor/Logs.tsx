@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentStatus, Approval } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentStatus, Approval, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { dayLabel, latestWarn } from '../../floor/layout'
@@ -6,6 +6,7 @@ import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { PermCard, PlanCard, ReviewCard } from './Briefing'
 import { FloorCard } from './FloorCard'
 import type { Sequence } from './sequence'
+import { OverlapCard, OverlapLinks, QuestionCard } from './moments/Cards'
 
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
 
@@ -19,6 +20,7 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId && e.kind !== 'agent.say').slice(0, 40))
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived'))
   const saying = useStore((s) => s.saying)
+  const overlaps = useStore((s) => s.overlaps[roomId])
   const account = useStore((s) => s.account)
   const blocked = agents.filter((a) => status[a.id] === 'blocked')
   const offline = agents.filter((a) => status[a.id] === 'offline')
@@ -40,8 +42,10 @@ export function Logs({ roomId, agents, status, approvals, review }: {
       <div className="floor-logs-head"><h2>Logs</h2></div>
       <div className="floor-logs-body">
         {approvals.map((a) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? <PlanCard key={a.id} approval={a} agents={agents} />
+          : a.kind === 'question' ? <QuestionCard key={a.id} approval={a} agents={agents} />
           : a.kind === 'tool' && !a.agentFile ? <PermCard key={a.id} approval={a} agents={agents} />
           : <ApprovalCard key={a.id} approval={a} />))}
+        {(overlaps ?? []).filter((o) => !o.resolved).map((o) => <OverlapCard key={o.id} overlap={o} roomId={roomId} agents={agents} workspaces={workspaces} />)}
         {review && <ReviewCard roomId={roomId} title={review.title} sub={review.sub} />}
         {blocked.map((a) => {
           const ev = latestWarn(events, a.id, ['agent.status', 'tool.failed', 'note'])
@@ -74,7 +78,7 @@ export function Logs({ roomId, agents, status, approvals, review }: {
           <div key={g.label} className="log-group">
             <p className="log-day">{g.label}</p>
             <ol className="log-list">
-              {g.events.map((e) => <Line key={e.id} e={e} agents={agents} you={initials(account?.name)} />)}
+              {g.events.map((e) => <Line key={e.id} e={e} agents={agents} workspaces={workspaces} you={initials(account?.name)} />)}
             </ol>
           </div>
         ))}
@@ -83,7 +87,7 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   )
 }
 
-function Line({ e, agents, you }: { e: ActivityEvent; agents: AgentDef[]; you: string }) {
+function Line({ e, agents, workspaces, you }: { e: ActivityEvent; agents: AgentDef[]; workspaces: Workspace[]; you: string }) {
   const actor = e.actor ?? 'agent'
   const who = actor === 'you' ? 'You' : actor === 'kernel' ? 'Kernel' : agents.find((a) => a.id === e.agentId)?.name ?? 'An agent'
   return (
@@ -91,6 +95,7 @@ function Line({ e, agents, you }: { e: ActivityEvent; agents: AgentDef[]; you: s
       <span aria-hidden="true" className="log-av" data-you={actor === 'you' ? 'true' : undefined}>{actor === 'you' ? you : who[0]}</span>
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
         <p className="log-text"><span className="log-who">{who}</span><span>{e.text}</span>{e.object && <span className="log-obj" data-warn={e.warn ? 'true' : undefined}>{e.object}</span>}</p>
+        {e.kind === 'overlap' && Array.isArray(e.data?.workspaceIds) && <OverlapLinks workspaceIds={e.data.workspaceIds.map(String)} workspaces={workspaces} />}
         {e.quote && <p className="log-quote">{e.quote}</p>}
       </div>
       <time className="mono log-time" dateTime={new Date(e.ts).toISOString()}>{new Date(e.ts).toTimeString().slice(0, 5)}</time>

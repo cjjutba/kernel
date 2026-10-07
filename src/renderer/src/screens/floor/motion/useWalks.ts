@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import type { Waypoint } from './waypoints'
-import { FIRST_STEP_MS, STEP_MS, type Leg, type Spot, type Track, plan, settle, start, step } from './walks'
+import { FIRST_STEP_MS, STEP_MS, type Leg, type Spot, type Track, plan, settle, start, step, track } from './walks'
 
 export interface Walk {
   id: string
   /** The waypoint beside their desk, where they stand up and sit down. */
   desk: Waypoint
   legs: Leg[]
+  /** Where they first show up, when it is not where their legs end: a new hire arrives at the door and walks in. */
+  from?: Spot
 }
 
 export interface Pose {
@@ -38,7 +40,7 @@ export function useReducedMotion(): boolean {
  */
 export function useWalks(walks: Walk[], instant: boolean): { poses: Record<string, Pose>; jumping: boolean } {
   const tracks = useRef<Map<string, Track> | null>(null)
-  if (!tracks.current) tracks.current = new Map(walks.map((w) => [w.id, start(w.legs)]))
+  if (!tracks.current) tracks.current = new Map(walks.map((w) => [w.id, w.from ? track(w.from) : start(w.legs)]))
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
   const [, render] = useReducer((n: number) => n + 1, 0)
   // True for the frames of a catch-up, so the stage drops its 0.9s glides and people jump instead of sliding through furniture.
@@ -75,7 +77,7 @@ export function useWalks(walks: Walk[], instant: boolean): { poses: Record<strin
     let changed = false
     for (const w of walks) {
       const before = map.get(w.id)
-      let next = before ? plan(before, w.legs, w.desk) : start(w.legs)
+      let next = before ? plan(before, w.legs, w.desk) : w.from ? plan(track(w.from), w.legs, w.desk) : start(w.legs)
       if (instant) { stop(w.id); next = settle(next) }
       if (!before || next.at !== before.at || next.queue.length !== before.queue.length || next.dest !== before.dest) changed = true
       map.set(w.id, next)
