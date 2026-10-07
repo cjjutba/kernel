@@ -5,7 +5,6 @@ import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
 import { AgentProfile } from './screens/agent/AgentProfile'
 import { Board } from './screens/board/Board'
-import { TaskDetail } from './screens/board/TaskDetail'
 import { Floor } from './screens/floor/Floor'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
@@ -49,7 +48,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'rooms': return <Rooms />
     case 'floor': return <Floor roomId={route.roomId} />
     case 'board': return <Board roomId={route.roomId} />
-    case 'task': return <><Board roomId={route.roomId} /><TaskDetail roomId={route.roomId} taskId={route.taskId} /></>
+    case 'task': return <Board roomId={route.roomId} taskId={route.taskId} />
     case 'team': return <Team roomId={route.roomId} />
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
