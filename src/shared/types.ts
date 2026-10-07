@@ -459,7 +459,7 @@ export interface ActivityEvent {
     | 'session.start' | 'session.end' | 'prompt' | 'tool.start' | 'tool.end' | 'tool.failed'
     | 'turn.done' | 'approval.requested' | 'approval.decided' | 'task.created' | 'task.assigned' | 'task.completed'
     | 'workspace.created' | 'workspace.archived' | 'workspace.restored' | 'pr.changed' | 'agent.status' | 'agent.say'
-    | 'agent.joined' | 'agent.retired' | 'room.paused' | 'room.resumed' | 'brief' | 'overlap' | 'checkpoint.reverted'
+    | 'agent.joined' | 'agent.talk' | 'agent.retired' | 'room.paused' | 'room.resumed' | 'brief' | 'overlap' | 'checkpoint.reverted'
     | 'limit' | 'note'
   text: string
   object?: string
@@ -467,6 +467,7 @@ export interface ActivityEvent {
   quote?: string
   /** Shows the object as something that needs CJ. */
   warn?: boolean
+  /** `agent.talk` carries `from` and `to` (agent ids) and `workspaceId`; `overlap` carries `overlapId` and `workspaceIds`. */
   data?: Record<string, unknown>
 }
 
