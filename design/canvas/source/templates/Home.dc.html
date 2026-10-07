@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; border-bottom: 1px solid #1a1b1e">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Home</h1>
+</header>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; box-sizing: border-box; padding: 32px 40px">
+<div style="max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+
+<div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px">
+<div>
+<h2 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.5px">Good evening, CJ</h2>
+<p style="margin: 6px 0 0; font-size: 14px; color: #8a8f98">{{ summary }}</p>
+</div>
+<div style="display: flex; gap: 8px">
+<a href="Rooms.dc.html" style="display: inline-flex; align-items: center; height: 32px; box-sizing: border-box; padding: 0 14px; border-radius: 8px; border: 1px solid #23252a; background: #141516; color: #f7f8f8; text-decoration: none; font-weight: 500">All rooms</a>
+<a href="NewRoom.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; box-sizing: border-box; padding: 0 14px 0 12px; border-radius: 8px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 2v8M2 6h8"></path></svg>New room</a>
+</div>
+</div>
+
+<div style="display: flex; gap: 28px; align-items: flex-start">
+<div style="flex: 1.7; min-width: 0; display: flex; flex-direction: column; gap: 28px">
+
+<section aria-labelledby="needs-h">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 6px; background: #141516">
+
+<h3 id="needs-h" style="margin: 0; font-size: 13px; font-weight: 500">Needs you</h3>
+<span style="font-size: 12px; color: #8a8f98">{{ needCount }}</span>
+</div>
+<sc-if value="{{ open }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px">
+<span style="font-weight: 500">Noor wants to run</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; padding: 1px 6px; border-radius: 4px; border: 1px solid #23252a; background: #141516; color: #d0d6e0">pnpm drizzle-kit push</span>
+<span style="color: #8a8f98">Client A</span>
+</div>
+<button type="button" onClick="{{ deny }}" style="height: 28px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Deny</button>
+<button type="button" onClick="{{ approve }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Approve</button>
+</div>
+</sc-if>
+<sc-if value="{{ closed }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b; color: #8a8f98">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg>
+<span style="flex: 1">{{ resultText }}</span>
+<button type="button" onClick="{{ undo }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #1c1d21; color: #d0d6e0; font-family: inherit; font-size: 12.5px; cursor: pointer">Undo</button>
+</div>
+</sc-if>
+<div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">Plan for T-15 is ready</span><span style="color: #8a8f98">Rowan · Client A</span></div>
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Review plan</a>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">T-09 is ready to merge</span><span style="color: #8a8f98">Theo · Client A</span></div>
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Open PR</a>
+</div>
+</section>
+
+<section aria-labelledby="recent-h">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 6px; background: #141516">
+<h3 id="recent-h" style="margin: 0; font-size: 13px; font-weight: 500">Shipped recently</h3>
+<span style="font-size: 12px; color: #8a8f98">5</span>
+</div>
+<p style="margin: 14px 12px 4px; font-size: 12px; font-weight: 500; color: #8a8f98">Today</p>
+<sc-for list="{{ today }}" as="r" hint-placeholder-count="3">
+<a href="Main.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9.5px; font-weight: 600">{{ r.av }}</span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.title }}</span>
+<span style="color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.room }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; text-align: right"><span style="color: #4cb782">{{ r.add }}</span> <span style="color: #eb5757">{{ r.del }}</span></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98; text-align: right">{{ r.time }}</span>
+</a>
+</sc-for>
+<p style="margin: 14px 12px 4px; font-size: 12px; font-weight: 500; color: #8a8f98">Yesterday</p>
+<sc-for list="{{ yesterday }}" as="r" hint-placeholder-count="2">
+<a href="Main.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9.5px; font-weight: 600">{{ r.av }}</span>
+<span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.title }}</span>
+<span style="color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.room }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; text-align: right"><span style="color: #4cb782">{{ r.add }}</span> <span style="color: #eb5757">{{ r.del }}</span></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98; text-align: right">{{ r.time }}</span>
+</a>
+</sc-for>
+</section>
+</div>
+
+<aside aria-labelledby="rooms-h" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-radius: 6px; background: #141516">
+<h3 id="rooms-h" style="margin: 0; font-size: 13px; font-weight: 500">Rooms</h3>
+<span style="font-size: 12px; color: #8a8f98">4</span>
+<span style="flex: 1"></span>
+<a href="Rooms.dc.html" style="font-size: 12px; color: #8a8f98; text-decoration: none">See all</a>
+</div>
+<sc-for list="{{ rooms }}" as="r" hint-placeholder-count="4">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #141516; color: #f7f8f8; text-decoration: none">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 20px; height: 20px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10.5px; font-weight: 600">{{ r.letter }}</span>
+<span style="flex: 1; font-weight: 500">{{ r.name }}</span>
+<span style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: {{ r.statusColor }}">{{ r.status }}</span>
+</div>
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-left: 30px">
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.source }}</span>
+<span style="font-size: 12px; color: #8a8f98; white-space: nowrap">{{ r.agents }}</span>
+</div>
+</a>
+</sc-for>
+</aside>
+</div>
+</div>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { result: null };
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var r = this.state.result;
+    var need = r === null ? 3 : 2;
+    return {
+      accent: accent,
+      summary: '4 rooms, 7 agents working. ' + need + ' things need you.',
+      needCount: String(need),
+      open: r === null,
+      closed: r !== null,
+      resultText: r === 'approved' ? 'Approved. Noor is running the migration.' : 'Denied. Noor will try a safer migration.',
+      approve: function () { self.setState({ result: 'approved' }); },
+      deny: function () { self.setState({ result: 'denied' }); },
+      undo: function () { self.setState({ result: null }); },
+      today: [
+        { av: 'K', title: 'feat(invoices): table and empty states', room: 'Client A', add: '+412', del: '-38', time: '10:31' },
+        { av: 'N', title: 'fix(auth): invite links expire after 7 days', room: 'Client A', add: '+26', del: '-9', time: '09:58' },
+        { av: 'K', title: 'chore(db): seed realistic data', room: 'Own app', add: '+188', del: '-4', time: '09:12' }
+      ],
+      yesterday: [
+        { av: 'K', title: 'Landing page polish', room: 'Portfolio', add: '+926', del: '-383', time: '18:40' },
+        { av: 'R', title: 'docs: onboarding questions', room: 'Client B', add: '+18', del: '-11', time: '16:05' }
+      ],
+      rooms: [
+        { letter: 'A', name: 'Client A', status: 'Needs you', statusColor: accent, statusDot: accent, source: 'cjjutba/client-a', agents: '5 agents' },
+        { letter: 'B', name: 'Client B', status: 'Working', statusColor: '#d0d6e0', statusDot: '#f7f8f8', source: 'cjjutba/client-b', agents: '2 agents' },
+        { letter: 'O', name: 'Own app', status: 'Working', statusColor: '#d0d6e0', statusDot: '#f7f8f8', source: '~/Projects/own-app', agents: '3 agents' },
+        { letter: 'P', name: 'Portfolio', status: 'Idle', statusColor: '#8a8f98', statusDot: '#62666d', source: 'cjjutba/portfolio', agents: '2 agents' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

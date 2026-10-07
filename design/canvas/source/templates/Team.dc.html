@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Team</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<a href="Rooms.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Team</h1>
+<span style="flex: 1"></span>
+<a href="NewAgent.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 12px 0 10px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 2v8M2 6h8"></path></svg>New agent</a>
+</header>
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Floor</a>
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Board</a>
+<a href="Team.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; text-decoration: none; font-weight: 500">Team</a>
+<span style="flex: 1"></span>
+<div role="group" aria-label="Filter by status" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #1f2024">
+<sc-for list="{{ filters }}" as="f" hint-placeholder-count="4"><button type="button" aria-pressed="{{ f.pressed }}" onClick="{{ f.pick }}" style="height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ f.bg }}; color: {{ f.color }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ f.label }}<span style="margin-left: 6px; color: #8a8f98">{{ f.count }}</span></button></sc-for>
+</div>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 20px 28px">
+<p style="margin: 0 0 16px; color: #8a8f98">Agents come from <span style="font-family: 'Geist Mono', ui-monospace, monospace; color: #d0d6e0">.claude/agents</span> in this repo. Add a file, or ask Rowan to write one, and the agent takes a desk on the floor.</p>
+<div style="display: grid; grid-template-columns: minmax(0, 2.4fr) 120px 140px minmax(0, 1.4fr) minmax(0, 1.4fr); gap: 16px; height: 36px; align-items: center; padding: 0 12px; font-size: 12px; color: #8a8f98"><span>Agent</span><span>Model</span><span>Status</span><span>Workspace</span><span>File</span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+<a href="{{ r.href }}" style="display: grid; grid-template-columns: minmax(0, 2.4fr) 120px 140px minmax(0, 1.4fr) minmax(0, 1.4fr); gap: 16px; align-items: center; height: 64px; padding: 0 12px; border-top: 1px solid #17181a; color: #f7f8f8; text-decoration: none">
+<span style="display: flex; align-items: center; gap: 12px; min-width: 0">
+<span aria-hidden="true" style="width: 32px; height: 32px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ r.shirt }}; font-size: 13px; font-weight: 600">{{ r.initial }}</span>
+<span style="display: flex; flex-direction: column; min-width: 0"><span style="display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">{{ r.name }}</span><span style="font-size: 12px; color: #8a8f98">{{ r.role }}</span><sc-if value="{{ r.isNew }}" hint-placeholder-val="{{ false }}"><span style="height: 18px; padding: 0 6px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 11px; line-height: 16px; color: #d0d6e0">New</span></sc-if></span><span style="font-size: 12px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.desc }}</span></span>
+</span>
+<span style="font-size: 12.5px; color: #d0d6e0">{{ r.model }}</span>
+<span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: {{ r.color }}">{{ r.status }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.ws }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.file }}</span>
+</a>
+</sc-for>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all' };
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var R = [
+      { id: 'rowan', name: 'Rowan', role: 'Lead', desc: 'Plans, splits tasks, hands them out. Never edits code.', model: 'Opus 5.5', st: 'idle', ws: 'main checkout', shirt: '#3f4652', href: 'WorkspaceLead.dc.html' },
+      { id: 'kai', name: 'Kai', role: 'Frontend', desc: 'UI work. Follows DESIGN.md.', model: 'Sonnet 5.5', st: 'working', ws: 'invoice-pdf-button', shirt: '#5b6b5e', href: 'AgentProfile.dc.html' },
+      { id: 'noor', name: 'Noor', role: 'Backend', desc: 'Schema, API and migrations.', model: 'Sonnet 5.5', st: 'needs', ws: 'invoice-pdf-renderer', shirt: '#6b5d73', href: 'WorkspacePerm.dc.html' },
+      { id: 'ivy', name: 'Ivy', role: 'QA', desc: 'Runs tests and attaches the output.', model: 'Sonnet 5.5', st: 'working', ws: 'invoice-pdf-tests', shirt: '#7a6a55', href: 'WorkspaceRunning.dc.html' },
+      { id: 'theo', name: 'Theo', role: 'Reviewer', desc: 'Types at boundaries, security, tenant isolation.', model: 'Opus 5.5', st: 'idle', ws: 'invoice-pdf-review', shirt: '#4b5560', href: 'Workspace.dc.html' },
+      { id: 'lumi', name: 'Lumi', role: 'Designer', desc: 'Checks every screen against DESIGN.md.', model: 'Sonnet 5.5', st: 'idle', ws: 'none', shirt: '#5f6f7a', href: 'FloorHired.dc.html', isNew: true }
+    ];
+    var look = {
+      working: { word: 'Working', fill: '#f7f8f8', ring: '0', pulse: 'pin', color: '#d0d6e0' },
+      needs: { word: 'Needs you', fill: accent, ring: '0', pulse: 'pina', color: accent },
+      idle: { word: 'Idle', fill: '#62666d', ring: '0', pulse: '', color: '#8a8f98' }
+    };
+    var f = this.state.filter;
+    var rows = R.filter(function (r) { return f === 'all' || r.st === f; }).map(function (r) {
+      var l = look[r.st];
+      return { name: r.name, role: r.role, desc: r.desc, model: r.model, ws: r.ws, file: '.claude/agents/' + r.id + '.md', initial: r.name[0], shirt: r.shirt, href: r.href, isNew: !!r.isNew, status: l.word, fill: l.fill, ring: l.ring, pulse: l.pulse, color: l.color };
+    });
+    var defs = [['all', 'All'], ['working', 'Working'], ['needs', 'Needs you'], ['idle', 'Idle']];
+    var filters = defs.map(function (d) {
+      var on = f === d[0];
+      return { label: d[1], count: String(d[0] === 'all' ? R.length : R.filter(function (r) { return r.st === d[0]; }).length), pressed: on ? 'true' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ filter: d[0] }); } };
+    });
+    return { accent: accent, rows: rows, filters: filters };
+  }
+}
+</script>
+</body>
+</html>

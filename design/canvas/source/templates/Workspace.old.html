@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Office · Workspace</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid #1a1b1e">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<a href="Main.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">invoice-table</h1>
+<span style="display: inline-flex; align-items: center; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 6px; border: 1px solid #23252a; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">worktree · feat/t-14-invoice-table</span>
+<span style="flex: 1"></span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8a8f98"><span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9px; font-weight: 600">F</span>Frontend</span>
+<span style="width: 1px; height: 18px; background: #23252a; margin: 0 4px"></span>
+<sc-if value="{{ pr.chip }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 5px; height: 26px; box-sizing: border-box; padding: 0 9px; border-radius: 7px; border: 1px solid #23252a; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="12.2" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 10.7V6.5a1.5 1.5 0 0 0-1.5-1.5H7.5M8.8 3.6 7.4 5l1.4 1.4"></path></svg>{{ pr.chipText }}</span></sc-if>
+<button type="button" onClick="{{ pr.act }}" disabled="{{ pr.disabled }}" style="display: inline-flex; align-items: center; gap: 7px; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid {{ pr.border }}; background: {{ pr.bg }}; color: {{ pr.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">
+<sc-if value="{{ pr.spin }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>
+{{ pr.label }}
+<sc-if value="{{ pr.kbd }}" hint-placeholder-val="{{ true }}"><span style="font-size: 11px; opacity: 0.55">⌘⇧P</span></sc-if>
+</button>
+<a href="Settings.dc.html" aria-label="Open in editor" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4.5 2 8l3.5 3.5M10.5 4.5 14 8l-3.5 3.5"></path></svg></a>
+</header>
+
+<div style="flex: 1; min-height: 0; display: flex">
+<section aria-label="Agent" style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<div role="tablist" style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: flex-end; gap: 2px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<button type="button" role="tab" aria-selected="{{ tabs.chatSel }}" onClick="{{ tabs.toChat }}" style="display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ tabs.chatLine }}; background: transparent; color: {{ tabs.chatColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 4a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 13.5 4v5.5A1.5 1.5 0 0 1 12 11H7l-3 2.5V11h0A1.5 1.5 0 0 1 2.5 9.5Z"></path></svg>Invoice table</button>
+<sc-if value="{{ tabs.diffOpen }}" hint-placeholder-val="{{ false }}"><button type="button" role="tab" aria-selected="{{ tabs.diffSel }}" onClick="{{ tabs.toDiff }}" style="display: inline-flex; align-items: center; gap: 7px; height: 40px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ tabs.diffLine }}; background: transparent; color: {{ tabs.diffColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M5 3v6M2 6h6M8 12h6"></path></svg>table.tsx</button></sc-if>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column">
+<sc-if value="{{ tabs.chatSel }}" hint-placeholder-val="{{ true }}">
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 16px 32px 8px">
+<div style="width: 100%; max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px">
+<sc-for list="{{ msgs }}" as="m" hint-placeholder-count="5">
+<sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+<div style="align-self: flex-end; max-width: 82%; display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; border-radius: 10px; border: 1px solid #23252a; background: #18191a; color: #f7f8f8; font-size: 14px; line-height: 1.5">
+<span>{{ m.text }}</span>
+<sc-if value="{{ m.hasAttach }}" hint-placeholder-val="{{ false }}"><span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #2a2b30; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #d0d6e0">{{ m.attach }}</span></sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ m.isMd }}" hint-placeholder-val="{{ false }}">
+<div style="align-self: flex-end; width: 82%; box-sizing: border-box; border-radius: 10px; border: 1px solid #23252a; background: #18191a; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid #23252a; font-size: 12.5px; color: #d0d6e0"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linejoin="round"><path d="M4 2.5h5.5L12.5 5.5v8H4Z"></path><path d="M9.5 2.5v3h3"></path></svg><span style="font-family: 'Geist Mono', ui-monospace, monospace">{{ m.name }}</span><span style="color: #8a8f98">instructions sent</span></div>
+<div style="padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.5; color: #b7bcc4">
+<sc-for list="{{ m.lines }}" as="ln" hint-placeholder-count="4"><span>{{ ln }}</span></sc-for>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ m.isTools }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 8px; color: #8a8f98">
+<sc-if value="{{ m.working }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>
+<sc-if value="{{ m.done }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></sc-if>
+<span>{{ m.text }}</span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isAi }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; font-size: 14px; line-height: 1.6; color: #e3e5e8">{{ m.text }}</p></sc-if>
+<sc-if value="{{ m.isNote }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; border: 1px solid {{ m.border }}; color: {{ m.color }}; font-size: 12.5px"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: {{ m.color }}"></span>{{ m.text }}</div>
+</sc-if>
+<sc-if value="{{ m.isChanges }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #23252a; background: #141516">
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round"><path d="M5 3v6M2 6h6M8 12h6"></path></svg>
+<span style="font-weight: 500">{{ m.text }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px"><span style="color: #4cb782">+412</span> <span style="color: #eb5757">-38</span></span>
+<span style="flex: 1"></span>
+<button type="button" onClick="{{ openDiff }}" style="height: 26px; padding: 0 10px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Review diff</button>
+</div>
+</sc-if>
+<sc-if value="{{ m.isMeta }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #8a8f98">{{ m.text }}</span></sc-if>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ tabs.diffSel }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column">
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px"><span style="color: #8a8f98">src/app/invoices/</span>table.tsx</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px"><span style="color: #4cb782">+212</span> <span style="color: #eb5757">-20</span></span>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #8a8f98">1 of 4 files</span>
+</div>
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 8px 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 22px">
+<sc-for list="{{ diff }}" as="l" hint-placeholder-count="12">
+<div style="display: grid; grid-template-columns: 44px 44px 18px minmax(0, 1fr); background: {{ l.bg }}">
+<span style="text-align: right; padding-right: 10px; color: #6b7079">{{ l.a }}</span>
+<span style="text-align: right; padding-right: 10px; color: #6b7079">{{ l.b }}</span>
+<span style="color: {{ l.markColor }}">{{ l.mark }}</span>
+<span style="white-space: pre; overflow: hidden; color: {{ l.color }}">{{ l.code }}</span>
+</div>
+<sc-if value="{{ l.hasComment }}" hint-placeholder-val="{{ false }}">
+<div style="margin: 6px 16px 8px 106px; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid #2a2b30; background: #141516; font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 13px; line-height: 1.5">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8; color: #08090a; font-size: 8px; font-weight: 600">CJ</span><span style="font-weight: 500">You</span><span style="color: #8a8f98">on line 42</span></div>
+<span style="color: #d0d6e0">{{ comment.text }}</span>
+<div style="display: flex; gap: 8px">
+<sc-if value="{{ comment.open }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ sendComment }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Send to Frontend</button></sc-if>
+<sc-if value="{{ comment.sent }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 6px; color: #8a8f98">Sent to Frontend</span></sc-if>
+</div>
+</div>
+</sc-if>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+
+<div style="flex-shrink: 0; padding: 4px 24px 18px">
+<div style="position: relative; max-width: 760px; margin: 0 auto">
+<sc-if value="{{ menu.plus }}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="Add to message" style="position: absolute; left: 0; bottom: calc(100% + 8px); width: 236px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191a; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); z-index: 5">
+<sc-for list="{{ plusItems }}" as="it" hint-placeholder-count="6">
+<button type="button" role="menuitem" onClick="{{ it.pick }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span aria-hidden="true" style="width: 18px; text-align: center; font-family: 'Geist Mono', ui-monospace, monospace; color: #8a8f98">{{ it.glyph }}</span><span style="flex: 1">{{ it.label }}</span><span style="font-size: 11.5px; color: #8a8f98">{{ it.hint }}</span></button>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ menu.model }}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="Model" style="position: absolute; left: 40px; bottom: calc(100% + 8px); width: 260px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191a; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); z-index: 5">
+<sc-for list="{{ models }}" as="o" hint-placeholder-count="3">
+<button type="button" role="menuitemradio" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 0; border-radius: 6px; background: {{ o.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer"><span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 13px; font-weight: 500">{{ o.label }}</span><span style="font-size: 12px; color: #8a8f98">{{ o.sub }}</span></span><sc-if value="{{ o.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if></button>
+</sc-for>
+</div>
+</sc-if>
+<sc-if value="{{ menu.effort }}" hint-placeholder-val="{{ false }}">
+<div role="menu" aria-label="Effort" style="position: absolute; left: 150px; bottom: calc(100% + 8px); width: 200px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191a; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); z-index: 5">
+<sc-for list="{{ efforts }}" as="o" hint-placeholder-count="4">
+<button type="button" role="menuitemradio" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ o.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">{{ o.label }}</span><sc-if value="{{ o.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if></button>
+</sc-for>
+</div>
+</sc-if>
+
+<div class="cmp" style="display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: 12px; border: 1px solid {{ cmpBorder }}; background: #141516">
+<sc-if value="{{ hasAttach }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{ attachments }}" as="a" hint-placeholder-count="1">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 4px 0 8px; border-radius: 6px; border: 1px solid #2a2b30; background: #18191a; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #d0d6e0">{{ a.name }}<button type="button" onClick="{{ a.remove }}" aria-label="Remove {{ a.name }}" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button></span>
+</sc-for>
+</div>
+</sc-if>
+<label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Message Frontend</label>
+<textarea id="msg" rows="2" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="{{ placeholder }}" style="resize: none; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 14px; line-height: 1.5"></textarea>
+<div style="display: flex; align-items: center; gap: 6px">
+<button type="button" onClick="{{ openPlus }}" aria-label="Add files, images and more" aria-expanded="{{ menu.plusX }}" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M6 2v8M2 6h8"></path></svg></button>
+<button type="button" onClick="{{ openModel }}" aria-expanded="{{ menu.modelX }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ modelLabel }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
+<button type="button" onClick="{{ openEffort }}" aria-expanded="{{ menu.effortX }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; cursor: pointer">{{ effortLabel }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
+<button type="button" onClick="{{ togglePlan }}" aria-pressed="{{ planPressed }}" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; box-sizing: border-box; padding: 0 9px; border-radius: 999px; border: 1px solid {{ planBorder }}; background: {{ planBg }}; color: {{ planColor }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 4h10M3 8h7M3 12h4"></path></svg>Plan mode</button>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #8a8f98">Enter to send</span>
+<button type="button" onClick="{{ send }}" aria-label="Send" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: {{ sendBg }}; color: {{ sendColor }}; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+</div>
+</section>
+
+<aside aria-label="Workspace panels" style="width: 400px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #1a1b1e; min-height: 0">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">
+<div role="tablist" style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 10px">
+<sc-for list="{{ rtabs }}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{ t.sel }}" onClick="{{ t.pick }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: {{ t.bg }}; color: {{ t.color }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ t.label }}<sc-if value="{{ t.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">{{ t.count }}</span></sc-if></button>
+</sc-for>
+</div>
+
+<sc-if value="{{ rt.files }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 2px 8px">
+<sc-for list="{{ tree }}" as="f" hint-placeholder-count="12">
+<div style="display: flex; align-items: center; gap: 6px; height: 26px; padding-left: {{ f.pad }}; padding-right: 8px; border-radius: 5px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: {{ f.color }}">
+<sc-if value="{{ f.folder }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate({{ f.rot }})"><path d="M3.5 2 6.5 5 3.5 8"></path></svg><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.3" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg></sc-if>
+<sc-if value="{{ f.file }}" hint-placeholder-val="{{ true }}"><span style="width: 10px"></span><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.3" stroke-linejoin="round"><path d="M4 2.5h5.5L12.5 5.5v8H4Z"></path><path d="M9.5 2.5v3h3"></path></svg></sc-if>
+<span style="flex: 1">{{ f.name }}</span>
+<span style="color: {{ f.stColor }}">{{ f.st }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ rt.changes }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; padding: 4px 10px">
+<div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 6px; font-size: 12.5px; color: #8a8f98">4 files<span style="font-family: 'Geist Mono', ui-monospace, monospace"><span style="color: #4cb782">+412</span> <span style="color: #eb5757">-38</span></span><span style="flex: 1"></span><button type="button" onClick="{{ openDiff }}" style="height: 26px; padding: 0 10px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Review all</button></div>
+<sc-for list="{{ changes }}" as="c" hint-placeholder-count="4">
+<button type="button" onClick="{{ openDiff }}" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; text-align: left; cursor: pointer">
+<span style="width: 12px; color: {{ c.stColor }}">{{ c.st }}</span>
+<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap"><span style="color: #8a8f98">{{ c.dir }}</span>{{ c.name }}</span>
+<span style="font-size: 11.5px"><span style="color: #4cb782">{{ c.add }}</span> <span style="color: #eb5757">{{ c.del }}</span></span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ rt.checks }}" hint-placeholder-val="{{ false }}">
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 14px; padding: 6px 16px">
+<sc-for list="{{ checks }}" as="g" hint-placeholder-count="4">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">{{ g.title }}</span>
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+<div style="display: flex; align-items: center; gap: 10px; min-height: 26px">
+<span aria-hidden="true" class="{{ r.cls }}" style="width: 12px; height: 12px; box-sizing: border-box; flex-shrink: 0; border-radius: 50%; border: {{ r.ring }}; background: {{ r.fill }}"></span>
+<span style="flex: 1; min-width: 0; color: {{ r.color }}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.label }}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">{{ r.meta }}</span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+
+<div style="height: 280px; flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid #1a1b1e">
+<div role="tablist" style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px">
+<sc-for list="{{ btabs }}" as="t" hint-placeholder-count="3">
+<button type="button" role="tab" aria-selected="{{ t.sel }}" onClick="{{ t.pick }}" style="height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ t.bg }}; color: {{ t.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ t.label }}</button>
+</sc-for>
+<span style="flex: 1"></span>
+<button type="button" onClick="{{ toggleRun }}" style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">
+<sc-if value="{{ running }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 2px; background: #f7f8f8"></span>Stop</sc-if>
+<sc-if value="{{ stopped }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="#f7f8f8"><path d="M4 2.5 13 8l-9 5.5Z"></path></svg>Run dev</sc-if>
+</button>
+</div>
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 6px 16px 12px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.7">
+<sc-for list="{{ logLines }}" as="ln" hint-placeholder-count="5">
+<div style="white-space: pre-wrap; color: {{ ln.color }}">{{ ln.text }}</div>
+</sc-for>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#f5a524","options":["#f5a524","#f7f8f8","#5e6ad2"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.timers = [];
+    this.state = {
+      msgs: [
+        { kind: 'user', text: 'Build T-14 from the plan: invoice table with sorting, plus empty, loading and error states. Follow DESIGN.md and add Playwright coverage.', attach: 'plan.md' },
+        { kind: 'tools', text: '14 tool calls, 3 messages' },
+        { kind: 'ai', text: 'Done. The table sorts by date, client and amount, and each state has its own component. Vitest and Playwright pass locally, and I attached the output for QA.' },
+        { kind: 'changes', text: 'Changed 4 files' },
+        { kind: 'meta', text: '4m 12s · 10:31' }
+      ],
+      center: 'chat',
+      diffOpen: false,
+      right: 'changes',
+      bottom: 'run',
+      running: true,
+      pr: 'none',
+      menu: null,
+      model: 'sonnet',
+      effort: 'high',
+      plan: false,
+      draft: '',
+      attachments: [],
+      commentSent: false
+    };
+  }
+
+  componentWillUnmount() {
+    this.timers.forEach(function (t) { clearTimeout(t); });
+  }
+
+  later(ms, fn) {
+    this.timers.push(setTimeout(fn, ms));
+  }
+
+  add(items) {
+    this.setState({ msgs: this.state.msgs.concat(items) });
+  }
+
+  createPr() {
+    var self = this;
+    this.setState({ pr: 'creating', center: 'chat', msgs: this.state.msgs.concat([
+      { kind: 'md', name: 'create-pr.md', lines: ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit', '3. Fill in summary, scope and risk', '4. Open it ready for review, request Reviewer'] },
+      { kind: 'tools', text: 'Working', working: true }
+    ]) });
+    this.later(1600, function () {
+      var m = self.state.msgs.slice(0, -1);
+      self.setState({ pr: 'checks', msgs: m.concat([
+        { kind: 'tools', text: '6 tool calls' },
+        { kind: 'ai', text: 'Rebased on main and tests pass. Opened PR #42, feat(invoices): table and empty states, with summary, scope and risk filled in. Checks are running.' }
+      ]) });
+      self.later(2600, function () {
+        self.setState({ pr: 'conflict', msgs: self.state.msgs.concat([
+          { kind: 'note', text: 'main moved: invoice-schema merged a change to invoices.ts. 1 conflict.', warn: true }
+        ]) });
+      });
+    });
+  }
+
+  resolve() {
+    var self = this;
+    this.setState({ pr: 'resolving', center: 'chat', msgs: this.state.msgs.concat([
+      { kind: 'md', name: 'resolve-conflicts.md', lines: ['# Resolve conflicts', '1. Rebase on origin/main', '2. Keep both sides where they do not overlap', '3. Re-run pnpm test and pnpm typecheck', '4. Push and summarize what you changed'] },
+      { kind: 'tools', text: 'Working', working: true }
+    ]) });
+    this.later(1600, function () {
+      var m = self.state.msgs.slice(0, -1);
+      self.setState({ pr: 'ready', msgs: m.concat([
+        { kind: 'tools', text: '9 tool calls' },
+        { kind: 'ai', text: 'Resolved the conflict in invoices.ts by keeping both column changes. Tests and typecheck pass, and checks are green again.' }
+      ]) });
+    });
+  }
+
+  merge() {
+    this.setState({ pr: 'merged', msgs: this.state.msgs.concat([
+      { kind: 'note', text: 'PR #42 squashed into main. Workspace can be archived.' }
+    ]) });
+  }
+
+  send() {
+    var s = this.state;
+    var text = (s.draft || '').trim();
+    if (!text && s.attachments.length === 0) return;
+    var self = this;
+    var att = s.attachments.map(function (a) { return a.name; }).join(', ');
+    this.setState({ draft: '', attachments: [], menu: null, center: 'chat', msgs: s.msgs.concat([
+      { kind: 'user', text: text || 'See attached.', attach: att },
+      { kind: 'tools', text: s.plan ? 'Planning' : 'Working', working: true }
+    ]) });
+    this.later(1500, function () {
+      var m = self.state.msgs.slice(0, -1);
+      self.setState({ msgs: m.concat([
+        { kind: 'tools', text: '3 tool calls' },
+        { kind: 'ai', text: s.plan ? 'Here is the plan. I will not edit anything until you approve it.' : 'On it. I will post a summary when the change is ready.' }
+      ]) });
+    });
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f5a524';
+
+    var prMap = {
+      none: { label: 'Create PR', bg: '#f7f8f8', color: '#08090a', border: '#f7f8f8', kbd: true, act: function () { self.createPr(); } },
+      creating: { label: 'Creating PR', bg: '#1c1d21', color: '#8a8f98', border: '#2a2b30', spin: true, disabled: true },
+      checks: { label: 'Checks running', bg: '#1c1d21', color: '#8a8f98', border: '#2a2b30', spin: true, disabled: true, chip: '#42' },
+      conflict: { label: 'Resolve conflicts', bg: 'transparent', color: accent, border: 'rgba(245, 165, 36, 0.5)', chip: '#42', act: function () { self.resolve(); } },
+      resolving: { label: 'Resolving', bg: '#1c1d21', color: '#8a8f98', border: '#2a2b30', spin: true, disabled: true, chip: '#42' },
+      ready: { label: 'Merge PR', bg: '#f7f8f8', color: '#08090a', border: '#f7f8f8', chip: '#42', act: function () { self.merge(); } },
+      merged: { label: 'Archive', bg: 'transparent', color: '#f7f8f8', border: '#2a2b30', chip: '#42 merged', act: function () {} }
+    };
+    var p = prMap[s.pr];
+    var pr = {
+      label: p.label, bg: p.bg, color: p.color, border: p.border, spin: !!p.spin, kbd: !!p.kbd,
+      disabled: !!p.disabled, chip: !!p.chip, chipText: p.chip || '', act: p.act || function () {}
+    };
+
+    var msgs = s.msgs.map(function (m) {
+      return {
+        isUser: m.kind === 'user', isMd: m.kind === 'md', isTools: m.kind === 'tools', isAi: m.kind === 'ai',
+        isNote: m.kind === 'note', isChanges: m.kind === 'changes', isMeta: m.kind === 'meta',
+        text: m.text || '', attach: m.attach || '', hasAttach: !!m.attach, name: m.name || '', lines: m.lines || [],
+        working: !!m.working, done: !m.working,
+        color: m.warn ? accent : '#d0d6e0', border: m.warn ? 'rgba(245, 165, 36, 0.35)' : '#23252a'
+      };
+    });
+
+    var D = [
+      ['38', '38', ' ', 'export function InvoiceTable({ invoices }: Props) {'],
+      ['39', '', '-', '  if (!invoices) return null'],
+      ['', '39', '+', "  const [sort, setSort] = useState<Sort>({ key: 'date', dir: 'desc' })"],
+      ['', '40', '+', ''],
+      ['', '41', '+', '  if (invoices.length === 0) {'],
+      ['', '42', '+', '    return <EmptyState title="No invoices yet" action="Create invoice" />', true],
+      ['', '43', '+', '  }'],
+      ['40', '44', ' ', ''],
+      ['41', '45', ' ', '  const rows = useSortedRows(invoices, sort)'],
+      ['42', '46', ' ', ''],
+      ['43', '47', ' ', '  return ('],
+      ['44', '', '-', '    <table className="w-full">'],
+      ['', '48', '+', '    <table className="w-full text-sm" aria-label="Invoices">'],
+      ['45', '49', ' ', '      <thead>'],
+      ['46', '', '-', '        <tr><th>Date</th><th>Client</th><th>Amount</th></tr>'],
+      ['', '50', '+', '        <SortableHeader sort={sort} onSort={setSort} />'],
+      ['47', '51', ' ', '      </thead>']
+    ];
+    var diff = D.map(function (r) {
+      var add = r[2] === '+', del = r[2] === '-';
+      return {
+        a: r[0], b: r[1], mark: r[2], code: r[3], hasComment: !!r[4],
+        bg: add ? 'rgba(76, 183, 130, 0.08)' : (del ? 'rgba(235, 87, 87, 0.08)' : 'transparent'),
+        markColor: add ? '#4cb782' : (del ? '#eb5757' : '#62666d'),
+        color: del ? '#b7bcc4' : '#e3e5e8'
+      };
+    });
+
+    var close = function () { self.setState({ menu: null }); };
+    var plusDefs = [
+      { glyph: '+', label: 'Attach files', hint: '', file: 'brief.pdf' },
+      { glyph: '◻', label: 'Add images', hint: '', file: 'mockup.png' },
+      { glyph: '⌗', label: 'Take a screenshot', hint: '⌘⇧4', file: 'screenshot.png' },
+      { glyph: '@', label: 'Mention a file', hint: '@', file: 'DESIGN.md' },
+      { glyph: '#', label: 'Add an issue', hint: '#', file: 'T-14' },
+      { glyph: '/', label: 'Run a skill', hint: '/', file: '/verify' }
+    ];
+    var plusItems = plusDefs.map(function (d) {
+      return { glyph: d.glyph, label: d.label, hint: d.hint, pick: function () {
+        self.setState({ menu: null, attachments: self.state.attachments.concat([{ name: d.file }]) });
+      } };
+    });
+    var attachments = s.attachments.map(function (a, i) {
+      return { name: a.name, remove: function () {
+        var next = self.state.attachments.slice(); next.splice(i, 1); self.setState({ attachments: next });
+      } };
+    });
+    var modelDefs = [
+      { id: 'opus', label: 'Opus 5.5', sub: 'Best for planning and review' },
+      { id: 'sonnet', label: 'Sonnet 5.5', sub: 'Fast and strong for building' },
+      { id: 'haiku', label: 'Haiku 4.5', sub: 'Quick edits and small fixes' }
+    ];
+    var models = modelDefs.map(function (d) {
+      var on = s.model === d.id;
+      return { label: d.label, sub: d.sub, on: on, checked: on ? 'true' : 'false', bg: on ? '#1f2024' : 'transparent', pick: function () { self.setState({ model: d.id, menu: null }); } };
+    });
+    var effortDefs = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high']];
+    var efforts = effortDefs.map(function (d) {
+      var on = s.effort === d[0];
+      return { label: d[1], on: on, checked: on ? 'true' : 'false', bg: on ? '#1f2024' : 'transparent', pick: function () { self.setState({ effort: d[0], menu: null }); } };
+    });
+    var toggleMenu = function (name) { return function () { self.setState({ menu: s.menu === name ? null : name }); }; };
+
+    var rtabDefs = [['files', 'All files', ''], ['changes', 'Changes', '4'], ['checks', 'Checks', '']];
+    var rtabs = rtabDefs.map(function (d) {
+      var on = s.right === d[0];
+      return { label: d[1], count: d[2], hasCount: !!d[2], sel: on ? 'true' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ right: d[0] }); } };
+    });
+    var T = [
+      [0, 'f', '.claude', false], [0, 'f', '.office', false], [0, 'f', 'src', true], [1, 'f', 'app', true], [2, 'f', 'invoices', true],
+      [3, 'x', 'empty-state.tsx', 'A'], [3, 'x', 'page.tsx', 'M'], [3, 'x', 'table.tsx', 'M'], [2, 'f', 'settings', false],
+      [1, 'f', 'components', false], [1, 'f', 'db', false], [0, 'f', 'tests', true], [1, 'x', 'invoices.spec.ts', 'A'],
+      [0, 'x', 'CLAUDE.md', ''], [0, 'x', 'DESIGN.md', ''], [0, 'x', 'package.json', '']
+    ];
+    var tree = T.map(function (r) {
+      var folder = r[1] === 'f';
+      return {
+        pad: (8 + r[0] * 14) + 'px', folder: folder, file: !folder, name: r[2], rot: folder && r[3] ? '90deg' : '0deg',
+        st: folder ? '' : r[3], stColor: r[3] === 'A' ? '#4cb782' : '#d0d6e0', color: (!folder && r[3]) ? '#f7f8f8' : '#d0d6e0'
+      };
+    });
+    var C = [['M', 'src/app/invoices/', 'table.tsx', '+212', '-20'], ['A', 'src/app/invoices/', 'empty-state.tsx', '+64', ''], ['M', 'src/app/invoices/', 'page.tsx', '+18', '-9'], ['A', 'tests/', 'invoices.spec.ts', '+118', '-9']];
+    var changes = C.map(function (c) {
+      return { st: c[0], stColor: c[0] === 'A' ? '#4cb782' : '#d0d6e0', dir: c[1], name: c[2], add: c[3], del: c[4] };
+    });
+
+    var ok = { ring: '0', fill: '#4cb782', cls: '' };
+    var run = { ring: '1.6px solid #3e3e44', fill: 'transparent', cls: 'spin' };
+    var idle = { ring: '1.5px dashed #62666d', fill: 'transparent', cls: '' };
+    var warn = { ring: '0', fill: accent, cls: '' };
+    var row = function (st, label, meta, color) { return { ring: st.ring, fill: st.fill, cls: st.cls, label: label, meta: meta || '', color: color || '#d0d6e0' }; };
+    var hasPr = s.pr !== 'none' && s.pr !== 'creating';
+    var ciRunning = s.pr === 'checks' || s.pr === 'resolving';
+    var checks = [
+      { title: 'Git', rows: [
+        s.pr === 'conflict' ? row(warn, '1 conflict with main in invoices.ts', '', accent) : row(ok, s.pr === 'merged' ? 'Merged into main' : '4 files changed, up to date with main', '')
+      ] },
+      { title: 'Pull request', rows: [
+        hasPr ? row(s.pr === 'merged' ? ok : (s.pr === 'conflict' ? warn : ok), '#42 feat(invoices): table and empty states', s.pr === 'merged' ? 'merged' : 'open') : row(idle, 'No pull request yet', '⌘⇧P', '#8a8f98')
+      ] },
+      { title: 'CI', rows: hasPr ? [
+        row(ok, 'lint', '12s'), row(ok, 'typecheck', '31s'), row(ciRunning ? run : ok, 'vitest', ciRunning ? 'running' : '48s'), row(ciRunning ? run : ok, 'playwright', ciRunning ? 'running' : '2m 4s')
+      ] : [row(idle, 'Runs after the PR opens', '', '#8a8f98')] },
+      { title: 'Deployment', rows: [
+        hasPr && !ciRunning ? row(ok, 'client-a-git-t-14.vercel.app', 'preview') : row(idle, 'Vercel preview', hasPr ? 'building' : 'waiting', '#8a8f98')
+      ] },
+      { title: 'Todos', rows: [row(ok, 'Empty state copy', ''), row(ok, 'Loading skeleton', ''), row(s.commentSent ? ok : idle, 'Shorten empty state copy', s.commentSent ? '' : 'from review', s.commentSent ? '#d0d6e0' : '#8a8f98')] }
+    ];
+
+    var btabDefs = [['setup', 'Setup'], ['run', 'Run'], ['term', 'Terminal']];
+    var btabs = btabDefs.map(function (d) {
+      var on = s.bottom === d[0];
+      return { label: d[1], sel: on ? 'true' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ bottom: d[0] }); } };
+    });
+    var L = function (text, color) { return { text: text, color: color || '#b7bcc4' }; };
+    var logs = {
+      setup: [L('$ pnpm install', '#f7f8f8'), L('Lockfile is up to date, resolution step is skipped'), L('Done in 6.1s'), L('$ cp ../../.env.local .env.local', '#f7f8f8'), L('Setup finished', '#4cb782')],
+      run: s.running
+        ? [L('$ pnpm dev --port $OFFICE_PORT', '#f7f8f8'), L('  Next.js ready on http://localhost:4312'), L('  Compiled /invoices'), L('  GET /invoices 200 in 84ms'), L('  GET /api/invoices 200 in 21ms')]
+        : [L('$ pnpm dev --port $OFFICE_PORT', '#f7f8f8'), L('Stopped', '#8a8f98')],
+      term: [L('Using Node v20.20.2'), L('cjjutba@mac feat/t-14-invoice-table % git status --short', '#f7f8f8'), L(' M src/app/invoices/page.tsx'), L(' M src/app/invoices/table.tsx'), L('?? src/app/invoices/empty-state.tsx'), L('cjjutba@mac feat/t-14-invoice-table % ', '#f7f8f8')]
+    };
+
+    var hasDraft = (s.draft || '').trim().length > 0 || s.attachments.length > 0;
+    return {
+      accent: accent,
+      pr: pr,
+      msgs: msgs,
+      diff: diff,
+      comment: { text: 'Empty state copy should say what to do next. Keep it to one line.', open: !s.commentSent, sent: s.commentSent },
+      sendComment: function () {
+        self.setState({ commentSent: true, center: 'chat', msgs: self.state.msgs.concat([
+          { kind: 'user', text: 'Review comment on table.tsx line 42: Empty state copy should say what to do next. Keep it to one line.', attach: 'table.tsx:42' },
+          { kind: 'tools', text: '2 tool calls' },
+          { kind: 'ai', text: 'Changed it to "No invoices yet. Create your first one." and updated the snapshot.' }
+        ]) });
+      },
+      tabs: {
+        chatSel: s.center === 'chat', diffSel: s.center === 'diff', diffOpen: s.diffOpen,
+        chatLine: s.center === 'chat' ? '#f7f8f8' : 'transparent', chatColor: s.center === 'chat' ? '#f7f8f8' : '#8a8f98',
+        diffLine: s.center === 'diff' ? '#f7f8f8' : 'transparent', diffColor: s.center === 'diff' ? '#f7f8f8' : '#8a8f98',
+        toChat: function () { self.setState({ center: 'chat' }); }, toDiff: function () { self.setState({ center: 'diff' }); }
+      },
+      openDiff: function () { self.setState({ center: 'diff', diffOpen: true }); },
+      menu: { plus: s.menu === 'plus', model: s.menu === 'model', effort: s.menu === 'effort', plusX: s.menu === 'plus' ? 'true' : 'false', modelX: s.menu === 'model' ? 'true' : 'false', effortX: s.menu === 'effort' ? 'true' : 'false' },
+      openPlus: toggleMenu('plus'), openModel: toggleMenu('model'), openEffort: toggleMenu('effort'), closeMenu: close,
+      plusItems: plusItems, models: models, efforts: efforts,
+      attachments: attachments, hasAttach: s.attachments.length > 0,
+      modelLabel: modelDefs.filter(function (d) { return d.id === s.model; })[0].label,
+      effortLabel: effortDefs.filter(function (d) { return d[0] === s.effort; })[0][1],
+      togglePlan: function () { self.setState({ plan: !s.plan }); },
+      planPressed: s.plan ? 'true' : 'false',
+      planBorder: s.plan ? '#f7f8f8' : '#2a2b30', planBg: s.plan ? '#f7f8f8' : 'transparent', planColor: s.plan ? '#08090a' : '#8a8f98',
+      cmpBorder: s.plan ? '#3a3c42' : '#23252a',
+      draft: s.draft,
+      placeholder: s.plan ? 'Describe the change. Frontend will plan before editing.' : 'Message Frontend',
+      onDraft: function (e) { self.setState({ draft: e.target.value }); },
+      onKey: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); self.send(); } },
+      send: function () { self.send(); },
+      sendBg: hasDraft ? '#f7f8f8' : '#1c1d21', sendColor: hasDraft ? '#08090a' : '#8a8f98',
+      rtabs: rtabs, rt: { files: s.right === 'files', changes: s.right === 'changes', checks: s.right === 'checks' },
+      tree: tree, changes: changes, checks: checks,
+      btabs: btabs, logLines: logs[s.bottom],
+      running: s.running, stopped: !s.running,
+      toggleRun: function () { self.setState({ running: !s.running, bottom: 'run' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

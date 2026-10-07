@@ -1,0 +1,1354 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "AccountMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Account menu",
+      "w": 1440,
+      "x": 3040,
+      "y": 3900
+    },
+    "AgentProfile.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent profile and editor",
+      "w": 1440,
+      "x": 6080,
+      "y": 5200
+    },
+    "Board.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Board",
+      "w": 1440,
+      "x": 0,
+      "y": 5200
+    },
+    "BoardEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Board \u00b7 no tasks yet",
+      "w": 1440,
+      "x": 3040,
+      "y": 5200
+    },
+    "CheckHooks.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Check hooks",
+      "w": 1440,
+      "x": 7600,
+      "y": 0
+    },
+    "CommandPalette.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Search \u00b7 \u2318K",
+      "w": 1440,
+      "x": 4560,
+      "y": 2600
+    },
+    "ConfirmArchive.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Archive with unpushed commits",
+      "w": 1440,
+      "x": 0,
+      "y": 18200
+    },
+    "ConfirmDiscard.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Discard changes",
+      "w": 1440,
+      "x": 1520,
+      "y": 18200
+    },
+    "ConfirmRemoveRoom.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Remove a room",
+      "w": 1440,
+      "x": 3040,
+      "y": 18200
+    },
+    "ConfirmRetire.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Retire an agent",
+      "w": 1440,
+      "x": 4560,
+      "y": 18200
+    },
+    "ConnectRepo.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Connect a repo",
+      "w": 1440,
+      "x": 4560,
+      "y": 0
+    },
+    "FloorBlocked.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent blocked by a hook",
+      "w": 1440,
+      "x": 3040,
+      "y": 9100
+    },
+    "FloorEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room with no agents",
+      "w": 1440,
+      "x": 6080,
+      "y": 9100
+    },
+    "FloorFull.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "More agents than desks",
+      "w": 1440,
+      "x": 7600,
+      "y": 9100
+    },
+    "FloorHandoff.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 5 \u00b7 Rowan hands out tasks",
+      "w": 1440,
+      "x": 6080,
+      "y": 6500
+    },
+    "FloorHired.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "A new agent joins",
+      "w": 1440,
+      "x": 4560,
+      "y": 7800
+    },
+    "FloorLimit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room paused by a limit",
+      "w": 1440,
+      "x": 1520,
+      "y": 9100
+    },
+    "FloorNeeds.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 7 \u00b7 Noor needs you",
+      "w": 1440,
+      "x": 9120,
+      "y": 6500
+    },
+    "FloorOffline.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent session crashed",
+      "w": 1440,
+      "x": 4560,
+      "y": 9100
+    },
+    "FloorOverlap.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Two agents in the same file",
+      "w": 1440,
+      "x": 3040,
+      "y": 7800
+    },
+    "FloorPaused.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room paused by you",
+      "w": 1440,
+      "x": 0,
+      "y": 9100
+    },
+    "FloorPlan.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 4 \u00b7 Plan ready for you",
+      "w": 1440,
+      "x": 4560,
+      "y": 6500
+    },
+    "FloorPlanning.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 3 \u00b7 Rowan plans at the task wall",
+      "w": 1440,
+      "x": 3040,
+      "y": 6500
+    },
+    "FloorQuestion.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Rowan asks before planning",
+      "w": 1440,
+      "x": 0,
+      "y": 7800
+    },
+    "FloorReview.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 8 \u00b7 Ready to merge",
+      "w": 1440,
+      "x": 10640,
+      "y": 6500
+    },
+    "FloorSent.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 2 \u00b7 Brief sent",
+      "w": 1440,
+      "x": 1520,
+      "y": 6500
+    },
+    "FloorTalk.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Rowan is chatting with you",
+      "w": 1440,
+      "x": 1520,
+      "y": 7800
+    },
+    "FloorWorking.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 6 \u00b7 Team working",
+      "w": 1440,
+      "x": 7600,
+      "y": 6500
+    },
+    "History.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "History",
+      "w": 1440,
+      "x": 9120,
+      "y": 2600
+    },
+    "Home.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Home",
+      "w": 1440,
+      "x": 0,
+      "y": 2600
+    },
+    "HomeEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Home before any rooms",
+      "w": 1440,
+      "x": 3040,
+      "y": 0
+    },
+    "HomeLight.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Home \u00b7 light",
+      "w": 1440,
+      "x": 0,
+      "y": 22100
+    },
+    "Inbox.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Inbox",
+      "w": 1440,
+      "x": 1520,
+      "y": 2600
+    },
+    "InboxEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Inbox \u00b7 all caught up",
+      "w": 1440,
+      "x": 3040,
+      "y": 2600
+    },
+    "LoadingApp.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Starting up",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Floor 1 \u00b7 Ready for a brief",
+      "w": 1440,
+      "x": 0,
+      "y": 6500
+    },
+    "NewAgent.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New agent \u00b7 Describe",
+      "w": 1440,
+      "x": 7600,
+      "y": 5200
+    },
+    "NewAgentDone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New agent \u00b7 Joined",
+      "w": 1440,
+      "x": 10640,
+      "y": 5200
+    },
+    "NewAgentDraft.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New agent \u00b7 Review the file",
+      "w": 1440,
+      "x": 9120,
+      "y": 5200
+    },
+    "NewRoom.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New room",
+      "w": 1440,
+      "x": 7600,
+      "y": 2600
+    },
+    "NewWorkspace.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New workspace",
+      "w": 1440,
+      "x": 0,
+      "y": 10400
+    },
+    "NewWorkspaceBranch.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Target branch and where it runs",
+      "w": 1440,
+      "x": 1520,
+      "y": 10400
+    },
+    "NewWorkspaceFrom.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Start from a PR, branch or issue",
+      "w": 1440,
+      "x": 3040,
+      "y": 10400
+    },
+    "NewWorkspaceModel.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Model and effort",
+      "w": 1440,
+      "x": 4560,
+      "y": 10400
+    },
+    "NewWorkspacePlus.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Plan mode and attachments",
+      "w": 1440,
+      "x": 6080,
+      "y": 10400
+    },
+    "OpenFolder.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Open a folder",
+      "w": 1440,
+      "x": 6080,
+      "y": 0
+    },
+    "QuickAsk.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Ask Rowan from anywhere",
+      "w": 1440,
+      "x": 4560,
+      "y": 3900
+    },
+    "RoomSetup.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setting up a new room",
+      "w": 1440,
+      "x": 7600,
+      "y": 1300
+    },
+    "Rooms.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "All rooms",
+      "w": 1440,
+      "x": 6080,
+      "y": 2600
+    },
+    "Settings.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "General",
+      "w": 1440,
+      "x": 0,
+      "y": 19500
+    },
+    "SettingsAbout.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "About",
+      "w": 1440,
+      "x": 10640,
+      "y": 20800
+    },
+    "SettingsAccount.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Account and usage",
+      "w": 1440,
+      "x": 4560,
+      "y": 19500
+    },
+    "SettingsAppearance.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Appearance",
+      "w": 1440,
+      "x": 1520,
+      "y": 19500
+    },
+    "SettingsExperimental.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Experimental",
+      "w": 1440,
+      "x": 9120,
+      "y": 20800
+    },
+    "SettingsFiles.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Files to copy",
+      "w": 1440,
+      "x": 4560,
+      "y": 20800
+    },
+    "SettingsGit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Git and worktrees",
+      "w": 1440,
+      "x": 0,
+      "y": 20800
+    },
+    "SettingsHooks.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Hooks",
+      "w": 1440,
+      "x": 6080,
+      "y": 20800
+    },
+    "SettingsIntegrations.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Integrations",
+      "w": 1440,
+      "x": 7600,
+      "y": 20800
+    },
+    "SettingsModels.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Models and effort",
+      "w": 1440,
+      "x": 7600,
+      "y": 19500
+    },
+    "SettingsNotifications.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Notifications",
+      "w": 1440,
+      "x": 3040,
+      "y": 19500
+    },
+    "SettingsPRs.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Pull requests",
+      "w": 1440,
+      "x": 3040,
+      "y": 20800
+    },
+    "SettingsPermissions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permissions",
+      "w": 1440,
+      "x": 10640,
+      "y": 19500
+    },
+    "SettingsRoom.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Client A",
+      "w": 1440,
+      "x": 12160,
+      "y": 20800
+    },
+    "SettingsScripts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Scripts",
+      "w": 1440,
+      "x": 1520,
+      "y": 20800
+    },
+    "SettingsShortcuts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shortcuts",
+      "w": 1440,
+      "x": 6080,
+      "y": 19500
+    },
+    "SettingsSkills.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Skills and MCP",
+      "w": 1440,
+      "x": 12160,
+      "y": 19500
+    },
+    "SettingsTeam.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agents",
+      "w": 1440,
+      "x": 9120,
+      "y": 19500
+    },
+    "SetupClaudeMissing.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude Code not installed",
+      "w": 1440,
+      "x": 0,
+      "y": 1300
+    },
+    "SetupClaudeOld.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude Code too old",
+      "w": 1440,
+      "x": 1520,
+      "y": 1300
+    },
+    "SetupGhSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "GitHub CLI signed out",
+      "w": 1440,
+      "x": 4560,
+      "y": 1300
+    },
+    "SetupPortBusy.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Hook port in use",
+      "w": 1440,
+      "x": 6080,
+      "y": 1300
+    },
+    "SetupTeamsOff.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent teams turned off",
+      "w": 1440,
+      "x": 3040,
+      "y": 1300
+    },
+    "SidebarRoomMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room menu",
+      "w": 1440,
+      "x": 1520,
+      "y": 3900
+    },
+    "SidebarRoomsMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Your rooms menu",
+      "w": 1440,
+      "x": 0,
+      "y": 3900
+    },
+    "TaskDetail.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Task detail",
+      "w": 1440,
+      "x": 1520,
+      "y": 5200
+    },
+    "Team.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Team",
+      "w": 1440,
+      "x": 4560,
+      "y": 5200
+    },
+    "Welcome.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Welcome",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "WhatsNew.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "What's new \u00b7 update ready",
+      "w": 1440,
+      "x": 10640,
+      "y": 2600
+    },
+    "Workspace.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Workspace",
+      "w": 1440,
+      "x": 0,
+      "y": 11700
+    },
+    "WorkspaceActions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Message actions",
+      "w": 1440,
+      "x": 4560,
+      "y": 13000
+    },
+    "WorkspaceCIFailed.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Checks failed",
+      "w": 1440,
+      "x": 3040,
+      "y": 14300
+    },
+    "WorkspaceChangesRequested.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Changes requested",
+      "w": 1440,
+      "x": 4560,
+      "y": 14300
+    },
+    "WorkspaceCheckpoints.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Checkpoints and revert",
+      "w": 1440,
+      "x": 4560,
+      "y": 11700
+    },
+    "WorkspaceContext.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Context almost full",
+      "w": 1440,
+      "x": 4560,
+      "y": 16900
+    },
+    "WorkspaceDraftPR.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Draft PR",
+      "w": 1440,
+      "x": 1520,
+      "y": 14300
+    },
+    "WorkspaceError.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Tests failed",
+      "w": 1440,
+      "x": 7600,
+      "y": 15600
+    },
+    "WorkspaceFile.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "File preview",
+      "w": 1440,
+      "x": 6080,
+      "y": 11700
+    },
+    "WorkspaceFocus.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Sidebar and panels collapsed",
+      "w": 1440,
+      "x": 12160,
+      "y": 11700
+    },
+    "WorkspaceHire.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Chat with Rowan \u00b7 hiring an agent",
+      "w": 1440,
+      "x": 10640,
+      "y": 13000
+    },
+    "WorkspaceHooksDown.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Hooks disconnected",
+      "w": 1440,
+      "x": 12160,
+      "y": 16900
+    },
+    "WorkspaceHunks.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Your changes and the agent\u2019s in one file",
+      "w": 1440,
+      "x": 7600,
+      "y": 13000
+    },
+    "WorkspaceInterrupted.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Interrupted by you",
+      "w": 1440,
+      "x": 6080,
+      "y": 15600
+    },
+    "WorkspaceLead.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Chat with Rowan \u00b7 planning",
+      "w": 1440,
+      "x": 9120,
+      "y": 13000
+    },
+    "WorkspaceLight.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Workspace \u00b7 light",
+      "w": 1440,
+      "x": 1520,
+      "y": 22100
+    },
+    "WorkspaceLoading.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Opening a workspace",
+      "w": 1440,
+      "x": 1520,
+      "y": 11700
+    },
+    "WorkspaceMention.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "@ file mentions",
+      "w": 1440,
+      "x": 1520,
+      "y": 13000
+    },
+    "WorkspaceMerged.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Merged",
+      "w": 1440,
+      "x": 6080,
+      "y": 14300
+    },
+    "WorkspaceModelLimit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Fable 5.1 limit reached",
+      "w": 1440,
+      "x": 3040,
+      "y": 16900
+    },
+    "WorkspaceNewChat.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New chat tab \u00b7 \u2318T",
+      "w": 1440,
+      "x": 7600,
+      "y": 11700
+    },
+    "WorkspaceOffline.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Offline",
+      "w": 1440,
+      "x": 7600,
+      "y": 16900
+    },
+    "WorkspaceOverloaded.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude overloaded, retrying",
+      "w": 1440,
+      "x": 6080,
+      "y": 16900
+    },
+    "WorkspacePRClosed.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Closed without merging",
+      "w": 1440,
+      "x": 7600,
+      "y": 14300
+    },
+    "WorkspacePRMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Create PR menu",
+      "w": 1440,
+      "x": 0,
+      "y": 14300
+    },
+    "WorkspacePaste.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Pasted text and images",
+      "w": 1440,
+      "x": 0,
+      "y": 13000
+    },
+    "WorkspacePerm.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission request",
+      "w": 1440,
+      "x": 3040,
+      "y": 15600
+    },
+    "WorkspacePlan.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Plan mode",
+      "w": 1440,
+      "x": 1520,
+      "y": 15600
+    },
+    "WorkspaceQuestion.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Agent asks a question",
+      "w": 1440,
+      "x": 4560,
+      "y": 15600
+    },
+    "WorkspaceQueued.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Queued messages",
+      "w": 1440,
+      "x": 6080,
+      "y": 13000
+    },
+    "WorkspaceRunning.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Working",
+      "w": 1440,
+      "x": 0,
+      "y": 15600
+    },
+    "WorkspaceSessionLimit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "5-hour limit reached",
+      "w": 1440,
+      "x": 0,
+      "y": 16900
+    },
+    "WorkspaceSetupFailed.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Setup script failed",
+      "w": 1440,
+      "x": 10640,
+      "y": 16900
+    },
+    "WorkspaceSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Signed out of Claude Code",
+      "w": 1440,
+      "x": 9120,
+      "y": 16900
+    },
+    "WorkspaceSlash.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "/ skills",
+      "w": 1440,
+      "x": 3040,
+      "y": 13000
+    },
+    "WorkspaceTabMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Tab menu and rename",
+      "w": 1440,
+      "x": 9120,
+      "y": 11700
+    },
+    "WorkspaceTerminal.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Big terminal tab \u00b7 \u2318\u21e7T",
+      "w": 1440,
+      "x": 10640,
+      "y": 11700
+    },
+    "WorkspaceToast.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Toasts",
+      "w": 1440,
+      "x": 9120,
+      "y": 14300
+    },
+    "WorkspaceToolCalls.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Tool calls expanded",
+      "w": 1440,
+      "x": 3040,
+      "y": 11700
+    },
+    "WorkspaceWeeklyLimit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Weekly limit reached",
+      "w": 1440,
+      "x": 1520,
+      "y": 16900
+    },
+    "UpdateReady.dc.html": {
+      "x": 6080,
+      "y": 3900,
+      "w": 1440,
+      "h": 900,
+      "radius": 12,
+      "title": "Update ready in the footer",
+      "is_interactive": true
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-06T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "row0": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "1 \u00b7 Onboarding",
+      "w": 600,
+      "x": 0,
+      "y": -300
+    },
+    "row1": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "2 \u00b7 First run when something is missing",
+      "w": 600,
+      "x": 0,
+      "y": 1000
+    },
+    "row10": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "11 \u00b7 Workspace \u00b7 composer",
+      "w": 600,
+      "x": 0,
+      "y": 12700
+    },
+    "row11": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "12 \u00b7 Pull requests",
+      "w": 600,
+      "x": 0,
+      "y": 14000
+    },
+    "row12": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "13 \u00b7 Agent responses",
+      "w": 600,
+      "x": 0,
+      "y": 15300
+    },
+    "row13": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "14 \u00b7 Limits and failures",
+      "w": 600,
+      "x": 0,
+      "y": 16600
+    },
+    "row14": {
+      "kind": "title1",
+      "maxW": 6000,
+      "text": "15 \u00b7 Confirmations",
+      "w": 600,
+      "x": 0,
+      "y": 17900
+    },
+    "row15": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "16 \u00b7 Settings \u00b7 personal and agents",
+      "w": 600,
+      "x": 0,
+      "y": 19200
+    },
+    "row16": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "17 \u00b7 Settings \u00b7 workspaces, system and rooms",
+      "w": 600,
+      "x": 0,
+      "y": 20500
+    },
+    "row17": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "18 \u00b7 Light theme",
+      "w": 600,
+      "x": 0,
+      "y": 21800
+    },
+    "row2": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "3 \u00b7 Home and navigation",
+      "w": 600,
+      "x": 0,
+      "y": 2300
+    },
+    "row3": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "4 \u00b7 Sidebar and footer menus",
+      "w": 600,
+      "x": 0,
+      "y": 3600
+    },
+    "row4": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "5 \u00b7 Room \u00b7 board and team",
+      "w": 600,
+      "x": 0,
+      "y": 4900
+    },
+    "row5": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "6 \u00b7 Floor \u00b7 briefing Rowan, step by step",
+      "w": 600,
+      "x": 0,
+      "y": 6200
+    },
+    "row6": {
+      "kind": "title1",
+      "maxW": 6000,
+      "text": "7 \u00b7 Floor \u00b7 other moments",
+      "w": 600,
+      "x": 0,
+      "y": 7500
+    },
+    "row7": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "8 \u00b7 Floor \u00b7 when things stop",
+      "w": 600,
+      "x": 0,
+      "y": 8800
+    },
+    "row8": {
+      "kind": "title1",
+      "maxW": 7520,
+      "text": "9 \u00b7 New workspace",
+      "w": 600,
+      "x": 0,
+      "y": 10100
+    },
+    "row9": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "10 \u00b7 Workspace \u00b7 chat, tabs and layout",
+      "w": 600,
+      "x": 0,
+      "y": 11400
+    }
+  },
+  "order": [
+    "Welcome.dc.html",
+    "LoadingApp.dc.html",
+    "HomeEmpty.dc.html",
+    "ConnectRepo.dc.html",
+    "OpenFolder.dc.html",
+    "CheckHooks.dc.html",
+    "SetupClaudeMissing.dc.html",
+    "SetupClaudeOld.dc.html",
+    "SetupTeamsOff.dc.html",
+    "SetupGhSignedOut.dc.html",
+    "SetupPortBusy.dc.html",
+    "RoomSetup.dc.html",
+    "Home.dc.html",
+    "Inbox.dc.html",
+    "InboxEmpty.dc.html",
+    "CommandPalette.dc.html",
+    "Rooms.dc.html",
+    "NewRoom.dc.html",
+    "History.dc.html",
+    "WhatsNew.dc.html",
+    "SidebarRoomsMenu.dc.html",
+    "SidebarRoomMenu.dc.html",
+    "AccountMenu.dc.html",
+    "QuickAsk.dc.html",
+    "UpdateReady.dc.html",
+    "Board.dc.html",
+    "TaskDetail.dc.html",
+    "BoardEmpty.dc.html",
+    "Team.dc.html",
+    "AgentProfile.dc.html",
+    "NewAgent.dc.html",
+    "NewAgentDraft.dc.html",
+    "NewAgentDone.dc.html",
+    "Main.dc.html",
+    "FloorSent.dc.html",
+    "FloorPlanning.dc.html",
+    "FloorPlan.dc.html",
+    "FloorHandoff.dc.html",
+    "FloorWorking.dc.html",
+    "FloorNeeds.dc.html",
+    "FloorReview.dc.html",
+    "FloorQuestion.dc.html",
+    "FloorTalk.dc.html",
+    "FloorOverlap.dc.html",
+    "FloorHired.dc.html",
+    "FloorPaused.dc.html",
+    "FloorLimit.dc.html",
+    "FloorBlocked.dc.html",
+    "FloorOffline.dc.html",
+    "FloorEmpty.dc.html",
+    "FloorFull.dc.html",
+    "NewWorkspace.dc.html",
+    "NewWorkspaceBranch.dc.html",
+    "NewWorkspaceFrom.dc.html",
+    "NewWorkspaceModel.dc.html",
+    "NewWorkspacePlus.dc.html",
+    "Workspace.dc.html",
+    "WorkspaceLoading.dc.html",
+    "WorkspaceToolCalls.dc.html",
+    "WorkspaceCheckpoints.dc.html",
+    "WorkspaceFile.dc.html",
+    "WorkspaceNewChat.dc.html",
+    "WorkspaceTabMenu.dc.html",
+    "WorkspaceTerminal.dc.html",
+    "WorkspaceFocus.dc.html",
+    "WorkspacePaste.dc.html",
+    "WorkspaceMention.dc.html",
+    "WorkspaceSlash.dc.html",
+    "WorkspaceActions.dc.html",
+    "WorkspaceQueued.dc.html",
+    "WorkspaceHunks.dc.html",
+    "WorkspaceLead.dc.html",
+    "WorkspaceHire.dc.html",
+    "WorkspacePRMenu.dc.html",
+    "WorkspaceDraftPR.dc.html",
+    "WorkspaceCIFailed.dc.html",
+    "WorkspaceChangesRequested.dc.html",
+    "WorkspaceMerged.dc.html",
+    "WorkspacePRClosed.dc.html",
+    "WorkspaceToast.dc.html",
+    "WorkspaceRunning.dc.html",
+    "WorkspacePlan.dc.html",
+    "WorkspacePerm.dc.html",
+    "WorkspaceQuestion.dc.html",
+    "WorkspaceInterrupted.dc.html",
+    "WorkspaceError.dc.html",
+    "WorkspaceSessionLimit.dc.html",
+    "WorkspaceWeeklyLimit.dc.html",
+    "WorkspaceModelLimit.dc.html",
+    "WorkspaceContext.dc.html",
+    "WorkspaceOverloaded.dc.html",
+    "WorkspaceOffline.dc.html",
+    "WorkspaceSignedOut.dc.html",
+    "WorkspaceSetupFailed.dc.html",
+    "WorkspaceHooksDown.dc.html",
+    "ConfirmArchive.dc.html",
+    "ConfirmDiscard.dc.html",
+    "ConfirmRemoveRoom.dc.html",
+    "ConfirmRetire.dc.html",
+    "Settings.dc.html",
+    "SettingsAppearance.dc.html",
+    "SettingsNotifications.dc.html",
+    "SettingsAccount.dc.html",
+    "SettingsShortcuts.dc.html",
+    "SettingsModels.dc.html",
+    "SettingsTeam.dc.html",
+    "SettingsPermissions.dc.html",
+    "SettingsSkills.dc.html",
+    "SettingsGit.dc.html",
+    "SettingsScripts.dc.html",
+    "SettingsPRs.dc.html",
+    "SettingsFiles.dc.html",
+    "SettingsHooks.dc.html",
+    "SettingsIntegrations.dc.html",
+    "SettingsExperimental.dc.html",
+    "SettingsAbout.dc.html",
+    "SettingsRoom.dc.html",
+    "HomeLight.dc.html",
+    "WorkspaceLight.dc.html"
+  ],
+  "pages": [],
+  "title": "Kernel"
+}

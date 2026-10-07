@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · New agent</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid #1a1b1e"><span style="color: #d0d6e0">Client A</span><span style="color: #62666d">/</span><h1 style="margin: 0; font-size: 13px; font-weight: 500">Team</h1></header>
+<div aria-hidden="true" style="padding: 24px 40px; display: flex; flex-direction: column; gap: 0">
+<div style="height: 64px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 32px; height: 32px; border-radius: 50%; background: #3f4652"></span><span>Rowan</span></div>
+<div style="height: 64px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 32px; height: 32px; border-radius: 50%; background: #5b6b5e"></span><span>Kai</span></div>
+<div style="height: 64px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 32px; height: 32px; border-radius: 50%; background: #6b5d73"></span><span>Noor</span></div>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+
+<div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="na-title" style="position: absolute; z-index: 50; left: 50%; top: 120px; transform: translateX(-50%); width: 600px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px">
+<h2 id="na-title" style="flex: 1; margin: 0; font-size: 14px; font-weight: 500">{{ heading }}</h2>
+<a href="Team.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></a>
+</div>
+
+<sc-if value="{{ isDescribe }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
+<p style="margin: 0; color: #8a8f98">Describe the agent. Rowan writes the file in .claude/agents and you review it before it joins.</p>
+<label for="na-desc" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">What should this agent do?</label>
+<textarea id="na-desc" rows="3" value="{{ desc }}" onChange="{{ onDesc }}" placeholder="What should this agent do?" style="resize: none; box-sizing: border-box; padding: 12px 14px; border-radius: 10px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 14px; line-height: 1.5; outline: none"></textarea>
+<div style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{ ideas }}" as="i" hint-placeholder-count="4"><button type="button" onClick="{{ i.pick }}" style="height: 26px; padding: 0 10px; border: 1px solid #23252a; border-radius: 999px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 12px; cursor: pointer">{{ i.label }}</button></sc-for></div>
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="na-name" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="na-name" type="text" autocomplete="off" value="{{ name }}" onChange="{{ onName }}" placeholder="Rowan picks one if empty" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Model</span><div role="radiogroup" aria-label="Model" style="display: flex; gap: 2px; padding: 2px; height: 34px; box-sizing: border-box; border-radius: 8px; border: 1px solid #23252a; background: #0f1011"><sc-for list="{{ models }}" as="m" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{ m.checked }}" onClick="{{ m.pick }}" style="flex: 1; border: 0; border-radius: 6px; background: {{ m.bg }}; color: {{ m.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ m.label }}</button></sc-for></div></div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDraft }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 6px 18px 18px">
+<div style="display: flex; align-items: center; gap: 10px"><span aria-hidden="true" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 11px; font-weight: 600">R</span><span style="color: #d0d6e0"><span style="color: #f7f8f8; font-weight: 500">Rowan</span> drafted the agent file</span></div>
+<div style="border-radius: 10px; border: 1px solid #23252a; background: #0a0b0c; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid #1f2024; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0">.claude/agents/{{ slug }}.md<span style="height: 18px; padding: 0 6px; border-radius: 999px; border: 1px solid #2a2b30; font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 11px; line-height: 16px; color: #8a8f98">new file</span></div>
+<div style="display: flex; flex-direction: column; padding: 10px 12px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #b7bcc4"><sc-for list="{{ fileLines }}" as="ln" hint-placeholder-count="8"><span style="white-space: pre-wrap">{{ ln }}</span></sc-for></div>
+</div>
+<a href="WorkspaceHire.dc.html" style="align-self: flex-start; color: #d0d6e0; font-size: 12.5px">Refine it in a chat with Rowan</a>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 28px 18px 30px; text-align: center">
+<span aria-hidden="true" style="width: 52px; height: 52px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #5f6f7a; font-size: 20px; font-weight: 600">{{ initial }}</span>
+<p style="margin: 0; font-size: 16px; font-weight: 600">{{ display }} is on the team</p>
+<p style="margin: 0; max-width: 420px; color: #8a8f98">Saved to .claude/agents/{{ slug }}.md. {{ display }} takes the open desk on the floor and shows up in every new workspace picker.</p>
+</div>
+</sc-if>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 18px; border-top: 1px solid #26272b">
+<span style="flex: 1"></span>
+<sc-if value="{{ isDescribe }}" hint-placeholder-val="{{ true }}"><a href="Team.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a><button type="button" onClick="{{ toDraft }}" style="height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Draft with Rowan</button></sc-if>
+<sc-if value="{{ isDraft }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ back }}" style="height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Back</button><button type="button" onClick="{{ create }}" style="height: 30px; padding: 0 14px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Create agent</button></sc-if>
+<sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}"><a href="Team.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Close</a><a href="FloorHired.dc.html" style="display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">See on the floor</a></sc-if>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: '%%STEP%%', desc: 'A designer who checks every screen against DESIGN.md before review.', name: 'Lumi', model: 'sonnet' };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var display = (s.name || 'Lumi').trim() || 'Lumi';
+    var slug = display.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    var order = ['describe', 'draft', 'done'];
+    var idx = order.indexOf(s.step);
+    var modelDefs = [['sonnet', 'Sonnet 5.5'], ['opus', 'Opus 5.5'], ['haiku', 'Haiku 4.5']];
+    return {
+      accent: accent,
+      isDescribe: s.step === 'describe', isDraft: s.step === 'draft', isDone: s.step === 'done',
+      steps: order.map(function (o, i) { return { color: i <= idx ? '#f7f8f8' : '#2a2b30' }; }),
+      desc: s.desc, onDesc: function (e) { self.setState({ desc: e.target.value }); },
+      name: s.name, onName: function (e) { self.setState({ name: e.target.value }); },
+      ideas: ['Designer', 'Security reviewer', 'Docs writer', 'Data engineer'].map(function (l) { return { label: l, pick: function () { self.setState({ desc: { 'Designer': 'A designer who checks every screen against DESIGN.md before review.', 'Security reviewer': 'A security reviewer who checks auth, tenant isolation and secrets in every PR.', 'Docs writer': 'A docs writer who keeps README and handoff docs current after each merge.', 'Data engineer': 'A data engineer who owns migrations, seeds and query performance.' }[l] }); } }; }),
+      models: modelDefs.map(function (m) { var on = s.model === m[0]; return { label: m[1], checked: on ? 'true' : 'false', bg: on ? '#24252a' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ model: m[0] }); } }; }),
+      display: display, slug: slug, initial: display[0].toUpperCase(),
+      fileLines: ['---', 'name: ' + slug, 'description: ' + s.desc, 'model: ' + s.model, 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---', 'You are ' + display + '. Before Theo reviews a PR, open each', 'changed screen, compare it with DESIGN.md, and list drift', 'in spacing, type and color with file and line.'],
+      heading: { describe: 'New agent', draft: 'Review ' + slug + '.md', done: 'New agent' }[s.step],
+      toDraft: function () { self.setState({ step: 'draft' }); },
+      back: function () { self.setState({ step: 'describe' }); },
+      create: function () { self.setState({ step: 'done' }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

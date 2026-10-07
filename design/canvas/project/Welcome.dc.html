@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Welcome</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+
+<main style="flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding-bottom: 40px">
+
+<sc-if value="{{ s0 }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; align-items: center; text-align: center">
+<span aria-hidden="true" style="width: 72px; height: 72px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; border: 1px solid #2a2b30; background: #141516; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset"><svg width="34" height="34" viewBox="0 0 16 16" fill="none" stroke="#f7f8f8" stroke-width="1.2" stroke-linejoin="round"><path d="M8 2.2 13.8 5.3 8 8.4 2.2 5.3Z"></path><path d="M2.2 8.2 8 11.3l5.8-3.1"></path><path d="M2.2 11 8 14.1l5.8-3.1"></path></svg></span>
+<h1 style="margin: 28px 0 0; font-size: 36px; font-weight: 600; letter-spacing: -1px; line-height: 1.15">Welcome to Kernel</h1>
+<p style="margin: 12px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: #8a8f98">Give your Claude Code agents a desk. They do the work, you stay the director.</p>
+<button type="button" onClick="{{ next }}" style="margin-top: 32px; width: 280px; height: 40px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Get started</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ s1 }}" hint-placeholder-val="{{ false }}">
+<div style="width: 440px; display: flex; flex-direction: column; align-items: center; text-align: center">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">Connect Claude Code</h1>
+<p style="margin: 10px 0 0; font-size: 14px; color: #8a8f98">The office watches your sessions through hooks. Nothing leaves your Mac.</p>
+<div style="width: 100%; margin-top: 28px; box-sizing: border-box; border-radius: 12px; border: 1px solid #1f2024; background: #0f1011; text-align: left">
+<div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
+<span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Claude Code installed</span><span style="font-size: 12px; color: #8a8f98">Found in your PATH</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
+<span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Signed in with your Claude plan</span><span style="font-size: 12px; color: #8a8f98">Agents use your own subscription</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 12px 0 16px">
+<sc-if value="{{ hooksOn }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span></sc-if>
+<sc-if value="{{ hooksOff }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed #62666d"></span></sc-if>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Office hooks</span><span style="font-size: 12px; color: #8a8f98">{{ hooksSub }}</span></span>
+<sc-if value="{{ hooksOff }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ install }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Install</button></sc-if>
+</div>
+</div>
+<button type="button" onClick="{{ next }}" style="margin-top: 24px; width: 100%; height: 40px; border: 0; border-radius: 8px; background: {{ contBg }}; color: {{ contColor }}; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Continue</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ s2 }}" hint-placeholder-val="{{ false }}">
+<div style="width: 640px; display: flex; flex-direction: column; align-items: center; text-align: center">
+<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">Create your first room</h1>
+<p style="margin: 10px 0 0; font-size: 14px; color: #8a8f98">A room is one project with its own team of agents.</p>
+<div style="width: 100%; margin-top: 28px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; text-align: left">
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg><span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">Connect a repo</span><span style="font-size: 12px; color: #8a8f98">From GitHub</span></span></a>
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg><span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">Open a folder</span><span style="font-size: 12px; color: #8a8f98">Already on your Mac</span></span></a>
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 16px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9"></path></svg><span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">From scratch</span><span style="font-size: 12px; color: #8a8f98">Use your starter kit</span></span></a>
+</div>
+<a href="HomeEmpty.dc.html" style="margin-top: 24px; font-size: 13px; color: #8a8f98; text-decoration: none">I'll do this later</a>
+</div>
+</sc-if>
+</main>
+
+<div style="position: absolute; left: 50%; bottom: 52px; transform: translateX(-50%); display: flex; gap: 4px">
+<sc-for list="{{ dots }}" as="d" hint-placeholder-count="3">
+<button type="button" onClick="{{ d.go }}" aria-label="{{ d.label }}" aria-current="{{ d.current }}" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; cursor: pointer"></button>
+</sc-for>
+</div>
+
+<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-size: 12px; color: #8a8f98">
+<span>Kernel 0.1</span>
+<a href="HomeEmpty.dc.html" style="color: #8a8f98; text-decoration: none">Skip setup</a>
+</footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, hooks: false };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var dots = [0, 1, 2].map(function (i) {
+      return {
+        label: 'Step ' + (i + 1),
+        current: i === s.step ? 'step' : 'false',
+        color: i === s.step ? '#f7f8f8' : '#3e3e44',
+        go: function () { self.setState({ step: i }); }
+      };
+    });
+    return {
+      s0: s.step === 0,
+      s1: s.step === 1,
+      s2: s.step === 2,
+      hooksOn: s.hooks,
+      hooksOff: !s.hooks,
+      hooksSub: s.hooks ? 'Added to ~/.claude/settings.json' : 'Lets the office see what each agent is doing',
+      install: function () { self.setState({ hooks: true }); },
+      next: function () {
+        if (s.step === 1 && !s.hooks) return;
+        self.setState({ step: Math.min(2, s.step + 1) });
+      },
+      contBg: s.hooks ? '#f7f8f8' : '#1c1d21',
+      contColor: s.hooks ? '#08090a' : '#62666d',
+      dots: dots
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Floor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<nav aria-label="Sidebar" style="position: relative; z-index: 5; width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 2px 0 6px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+<span style="flex: 1"></span>
+<a href="Home.dc.html" aria-label="Back" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg></a>
+<a href="Main.dc.html" aria-label="Forward" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></a>
+</div>
+
+<div style="display: flex; align-items: center; gap: 4px; height: 36px; flex-shrink: 0; padding-left: 2px">
+<details class="dd"><summary aria-label="Account menu" style="list-style: none; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 4px; border-radius: 6px; color: #f7f8f8; font-weight: 500; cursor: pointer">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: #f7f8f8; color: #08090a; font-size: 9.5px; font-weight: 600">CJ</span>
+CJ Jutba
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg>
+</summary><div role="menu" style="position: absolute; z-index: 60; width: 232px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px"><div style="padding: 6px 8px 8px; font-size: 12px; color: #8a8f98">cjjutba · Claude Max</div><a role="menuitem" class="mi" href="Settings.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Settings</span><span style="font-size: 12px; color: #8a8f98">⌘,</span></a><a role="menuitem" class="mi" href="SettingsShortcuts.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Keyboard shortcuts</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="SettingsAccount.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Usage</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="WhatsNew.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">What's new</span><span style="font-size: 12px; color: #8a8f98"></span></a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Welcome.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Switch account</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="Welcome.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Sign out</span><span style="font-size: 12px; color: #8a8f98"></span></a></div></details>
+<span style="flex: 1"></span>
+<a href="NewWorkspace.dc.html" aria-label="New workspace" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #23252a; background: #141516; color: #d0d6e0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 2.8H4a1.2 1.2 0 0 0-1.2 1.2v8A1.2 1.2 0 0 0 4 13.2h8a1.2 1.2 0 0 0 1.2-1.2V7.5"></path><path d="m12.2 2.4 1.4 1.4-5.4 5.4-2 .6.6-2Z"></path></svg></a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 1px; margin-top: 10px">
+<a href="CommandPalette.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg><span style="flex: 1">Search</span><span style="font-size: 11.5px; color: #8a8f98">⌘K</span></a>
+<a href="Home.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z"></path></svg><span style="flex: 1">Home</span></a>
+<a href="Inbox.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9Z"></path><path d="M2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1"></path></svg><span style="flex: 1">Inbox</span><span style="font-size: 12px; color: #8a8f98">3</span></a>
+<a href="Rooms.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2"></rect></svg><span style="flex: 1">All rooms</span></a>
+<a href="History.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6M8 5.2V8l2 1.3"></path></svg><span style="flex: 1">History</span></a>
+</div>
+
+<div class="hv" style="position: relative; display: flex; align-items: center; justify-content: space-between; height: 28px; margin-top: 16px; padding: 0 2px 0 8px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">Your rooms</span>
+<div class="more" style="position: relative; display: flex"><details class="dd"><summary aria-label="Room options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; right: -2px"><a role="menuitem" class="mi" href="NewRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New room</a><a role="menuitem" class="mi" href="ConnectRepo.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>Connect a repo</a><a role="menuitem" class="mi" href="OpenFolder.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>Open a folder</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2"></rect></svg>Manage rooms</a></div></details></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1px">
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; font-size: 10px; font-weight: 600">A</span><span style="flex: 1">Client A</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Client A options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="NewWorkspaceFrom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7"></path></svg>New workspace from...</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8s2-4 5.5-4c1 0 1.9.3 2.7.8M13.5 8s-2 4-5.5 4c-1 0-1.9-.3-2.7-.8M3 3l10 10"></path></svg>Hide room</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Client A" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<a href="Main.dc.html" aria-current="page" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; background: #1c1d21; color: #f7f8f8; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 13.8 5.3 8 8.4 2.2 5.3Z"></path><path d="M2.2 8.2 8 11.3l5.8-3.1"></path><path d="M2.2 11 8 14.1l5.8-3.1"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Floor</span></a>
+<a href="Board.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.8"></rect><path d="M6.1 2.8v10.4M9.9 2.8v10.4"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Board</span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">invoice-table</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px"><span style="color: #4cb782">+412</span> <span style="color: #eb5757">-38</span></span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #f7f8f8; font-weight: 500; text-decoration: none" aria-label="invoice-schema, needs you"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">invoice-schema</span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="12.2" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 10.7V6.5a1.5 1.5 0 0 0-1.5-1.5H7.5M8.8 3.6 7.4 5l1.4 1.4"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">org-invites</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; color: #8a8f98">#41</span></a>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">B</span><span style="flex: 1">Client B</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Client B options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Client B" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">O</span><span style="flex: 1">Own app</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Own app options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Own app" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">P</span><span style="flex: 1">Portfolio</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Portfolio options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Portfolio" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+</div>
+
+
+<div style="display: flex; align-items: center; height: 28px; margin-top: 16px; padding: 0 8px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">Try</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1px">
+<a href="ConnectRepo.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>Connect a repo</a>
+<a href="OpenFolder.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>Open a folder</a>
+<a href="CheckHooks.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Check hooks</a>
+</div>
+
+<div style="flex: 1"></div>
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 2px">
+<a href="Welcome.dc.html" aria-label="Help" style="width: 24px; height: 24px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #2a2b30; color: #8a8f98; text-decoration: none; font-size: 12px">?</a>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #23252a; font-size: 12px; color: #d0d6e0">Claude Max</span>
+<span style="flex: 1"></span>
+<a href="Settings.dc.html" aria-label="Settings" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg></a>
+</div>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<a href="Rooms.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Floor</h1>
+<span style="flex: 1"></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">cjjutba/client-a · main</span>
+</header>
+
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<a href="Main.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; text-decoration: none; font-weight: 500">Floor</a>
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Board</a>
+<a href="Team.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Team</a>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #8a8f98">{{ workingLabel }}</span>
+<sc-if value="{{ hasNeeds }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; font-weight: 500; color: #f7f8f8">1 needs you</span></sc-if>
+<button type="button" onClick="{{ togglePause }}" aria-pressed="{{ pausedX }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-left: 6px; padding: 0 10px; border: 1px solid #2a2b30; border-radius: 7px; background: {{ pauseBg }}; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer"><sc-if value="{{ isPaused }}" hint-placeholder-val="{{ false }}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="#f7f8f8"><path d="M4 2.5 13 8l-9 5.5Z"></path></svg></sc-if><sc-if value="{{ notPaused }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="#f7f8f8"><rect x="3.5" y="3" width="3" height="10" rx="1"></rect><rect x="9.5" y="3" width="3" height="10" rx="1"></rect></svg></sc-if>{{ pauseLabel }}</button>
+</div>
+
+<div style="flex: 1; min-height: 0; display: flex">
+<main style="position: relative; flex: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 12px 24px 18px">
+
+<sc-if value="{{ notEmpty }}" hint-placeholder-val="{{ true }}"><div style="position: absolute; top: 14px; left: 14px; z-index: 90; width: 248px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: 10px; border: 1px solid #23252a; background: rgba(20, 21, 22, 0.95)">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ sel.shirt }}; color: #f7f8f8; font-size: 11px; font-weight: 600">{{ sel.initial }}</span>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 600">{{ sel.name }}</span><span style="font-size: 12px; color: #8a8f98">{{ sel.role }} · {{ sel.model }}</span></span>
+</div>
+<span style="margin-top: 6px; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: {{ sel.statusColor }}">{{ sel.word }}<span style="color: #62666d">·</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; color: #8a8f98">{{ sel.ws }}</span></span>
+<span style="color: #d0d6e0">{{ sel.act }}</span>
+<a href="{{ sel.href }}" style="margin-top: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">{{ sel.cta }}<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></a>
+</div></sc-if>
+
+<div style="position: relative; width: 100%; max-width: 740px; aspect-ratio: 4 / 3">
+<sc-if value="{{ hasBanner }}" hint-placeholder-val="{{ false }}"><div role="status" style="position: absolute; left: 50%; bottom: 2%; z-index: 85; transform: translateX(-50%); width: max-content; max-width: 92%; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: 10px; border: 1px solid #2a2b30; background: #141517"><span style="color: #f7f8f8">{{ banner.text }}</span><button type="button" onClick="{{ banner.act }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ banner.label }}</button></div></sc-if>
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="position: absolute; left: 50%; top: 50%; z-index: 85; transform: translate(-50%, -50%); width: 380px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 12px; border: 1px solid #2a2b30; background: #141517"><p style="margin: 0; font-size: 15px; font-weight: 600">No agents in this room yet</p><p style="margin: 0; color: #8a8f98">Kernel reads agents from .claude/agents in this repo, and that folder is empty. Start from a team or make your own.</p><sc-for list="{{ teamTemplates }}" as="tt" hint-placeholder-count="3"><button type="button" class="mi" onClick="{{ tt.pick }}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid #26272b; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="font-weight: 500">{{ tt.name }}</span><span style="font-size: 12px; color: #8a8f98">{{ tt.sub }}</span></button></sc-for><a href="NewAgent.dc.html" style="align-self: flex-start; color: #d0d6e0; font-size: 12.5px">Create one agent instead</a></div></sc-if>
+<sc-if value="{{ hasOverflow }}" hint-placeholder-val="{{ false }}"><div style="position: absolute; right: 2%; bottom: 3%; z-index: 85; display: flex; flex-direction: column; gap: 8px; width: 230px; padding: 12px; border-radius: 10px; border: 1px solid #2a2b30; background: #141517"><span style="font-size: 12px; color: #8a8f98">No desk yet, still working</span><sc-for list="{{ overflow }}" as="o" hint-placeholder-count="2"><div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ o.shirt }}; font-size: 10px; font-weight: 600">{{ o.initial }}</span><span style="flex: 1">{{ o.name }}<span style="margin-left: 5px; color: #8a8f98">{{ o.role }}</span></span><span style="font-size: 12px; color: #8a8f98">{{ o.word }}</span></div></sc-for><a href="SettingsRoom.dc.html" style="color: #d0d6e0; font-size: 12.5px">Add desks in room settings</a></div></sc-if>
+<img src="/_blob/dfa867eded454e73223dfbdbec192b9b" alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" style="position: absolute; inset: 0; width: 100%; height: 100%; display: block">
+<svg viewBox="0 0 800 600" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1"><polygon points="481.8,376.8 510.2,393.2 510.2,374.8 481.8,358.4" fill="#dfe6ee" opacity="{{ lumiScreen }}"></polygon></svg>
+
+<sc-for list="{{ seats }}" as="s" hint-placeholder-count="6">
+<div aria-hidden="true" style="position: absolute; left: {{ s.left }}; top: {{ s.top }}; width: 7.5%; height: 14.667%; z-index: {{ s.z }}; pointer-events: none">
+<svg viewBox="-30 -80 60 88" width="100%" height="100%" style="display: block; overflow: visible">
+<g opacity="{{ s.person }}"><g class="{{ s.bob }}">
+<path d="M-8.9 -24.4 L-8.9 -43.4 Q-8.9 -53.4 2.1 -53.4 Q13.1 -53.4 13.1 -43.4 L13.1 -24.4 Z" fill="{{ s.shirt }}"></path>
+<path d="M4.1 -52.4 Q13.1 -52.4 13.1 -43.4 L13.1 -24.4 L6.1 -24.4 Z" fill="#000000" fill-opacity="0.16"></path>
+<circle cx="2.1" cy="-61.4" r="8.4" fill="{{ s.skin }}"></circle>
+<circle cx="2.1" cy="-63" r="8.6" fill="{{ s.hair }}"></circle>
+<g opacity="{{ s.hand }}"><line x1="11.1" y1="-46.4" x2="20.1" y2="-70.4" stroke="{{ s.skin }}" stroke-width="4" stroke-linecap="round"></line><circle cx="20.1" cy="-72.4" r="3.5" fill="{{ s.skin }}"></circle></g>
+</g></g>
+<polygon points="-21.5,-24.0 -1.4,-12.4 -1.4,-29.2 -21.5,-40.8" fill="#d8d5ce"></polygon>
+<polygon points="1.7,-14.2 -1.4,-12.4 -1.4,-29.2 1.7,-31.0" fill="#c6c3bb"></polygon>
+<polygon points="-18.4,-42.6 1.7,-31.0 -1.4,-29.2 -21.5,-40.8" fill="#eeece7"></polygon>
+</svg>
+</div>
+</sc-for>
+
+<sc-for list="{{ walkers }}" as="w" hint-placeholder-count="2">
+<div aria-hidden="true" style="position: absolute; left: {{ w.left }}; top: {{ w.top }}; width: 3.5%; height: 10.667%; z-index: 60; opacity: {{ w.op }}; transition: left 0.9s linear, top 0.9s linear, opacity 0.2s; pointer-events: none">
+<svg viewBox="-14 -60 28 64" width="100%" height="100%" style="display: block; overflow: visible">
+<ellipse cx="0" cy="0" rx="9" ry="3.5" fill="#000000" fill-opacity="0.3"></ellipse>
+<g class="{{ w.step }}">
+<rect x="-5" y="-18" width="4" height="18" rx="1.5" fill="#2a2b30"></rect>
+<rect x="1" y="-18" width="4" height="18" rx="1.5" fill="#24252a"></rect>
+<rect x="-11" y="-38" width="3.5" height="16" rx="1.7" fill="{{ w.shirt }}"></rect>
+<rect x="7.5" y="-38" width="3.5" height="16" rx="1.7" fill="{{ w.shirt }}"></rect>
+<rect x="-8" y="-40" width="16" height="23" rx="6" fill="{{ w.shirt }}"></rect>
+<circle cx="0" cy="-48" r="7.5" fill="{{ w.skin }}"></circle>
+<path d="M-7.6 -49 a7.6 7.6 0 0 1 15.2 0 Z" fill="{{ w.hair }}"></path>
+</g>
+</svg>
+</div>
+</sc-for>
+
+<sc-for list="{{ tags }}" as="t" hint-placeholder-count="5">
+<button type="button" onClick="{{ t.pick }}" aria-pressed="{{ t.pressed }}" aria-label="{{ t.aria }}" style="position: absolute; left: {{ t.left }}; top: {{ t.top }}; transform: translate(-50%, -100%); transition: left 0.9s linear, top 0.9s linear; z-index: 70; display: flex; align-items: center; min-height: 30px; padding: 0; border: 0; background: transparent; cursor: pointer">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px; border-radius: 999px; border: 1px solid {{ t.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap">
+{{ t.name }}<span style="color: {{ t.wordColor }}; font-weight: 400">{{ t.word }}</span>
+</span>
+</button>
+</sc-for>
+
+<sc-if value="{{ hasBubble }}" hint-placeholder-val="{{ false }}">
+<div role="status" style="position: absolute; left: {{ bubble.left }}; top: {{ bubble.top }}; transform: translate(-50%, -100%); transition: left 0.9s linear, top 0.9s linear; z-index: 80; width: max-content; max-width: 250px; padding: 7px 11px; border-radius: 10px; background: #f7f8f8; color: #08090a; font-size: 12.5px; line-height: 1.4">
+<span>{{ bubble.text }}</span>
+<sc-if value="{{ bubble.hasLink }}" hint-placeholder-val="{{ false }}"><a href="{{ bubble.href }}" style="margin-left: 6px; color: #08090a; font-weight: 600">Open chat</a></sc-if>
+</div>
+</sc-if>
+
+
+</div>
+
+<div class="cmp" style="position: relative; width: 100%; max-width: 620px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: 12px; border: 1px solid #23252a; background: #141516">
+<label for="brief" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Message</label>
+<input id="brief" type="text" autocomplete="off" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="{{ placeholder }}" style="height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 14px">
+<div style="display: flex; align-items: center; gap: 8px">
+<label for="to" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Send to</label>
+<div style="position: relative">
+<select id="to" value="{{ to }}" onChange="{{ onTo }}" style="appearance: none; -webkit-appearance: none; height: 26px; padding: 0 24px 0 9px; border: 1px solid #23252a; border-radius: 6px; background: #18191a; color: #d0d6e0; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">
+<sc-for list="{{ toOptions }}" as="o" hint-placeholder-count="5"><option value="{{ o.id }}">{{ o.label }}</option></sc-for>
+</select>
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 8px; top: 8px; pointer-events: none"><path d="M2.5 4 5 6.5 7.5 4"></path></svg>
+</div>
+
+<span style="flex: 1"></span>
+<button type="button" onClick="{{ send }}" aria-label="Send" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: {{ sendBg }}; color: {{ sendColor }}; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</main>
+
+<aside aria-label="Logs" style="width: 340px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid #1a1b1e">
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600">Logs</h2>
+
+</div>
+<div style="flex: 1; min-height: 0; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 14px 16px">
+
+<sc-if value="{{ card.plan }}" hint-placeholder-val="{{ false }}">
+<section aria-label="Plan ready" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid #3a3c42; background: #18191c">
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 500">Rowan's plan is ready</p>
+<span style="font-size: 12px; color: #8a8f98">T-15 · Export invoices as PDF</span>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{ planRows }}" as="p" hint-placeholder-count="4"><div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98; width: 42px">{{ p.id }}</span><span style="flex: 1; color: #d0d6e0">{{ p.title }}</span><span style="color: #8a8f98">{{ p.who }}</span></div></sc-for>
+</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" onClick="{{ requestChanges }}" style="height: 30px; border: 1px solid #2a2b30; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Request changes</button>
+<button type="button" onClick="{{ approvePlan }}" style="height: 30px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Approve plan</button>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{ card.perm }}" hint-placeholder-val="{{ false }}">
+<section aria-label="Needs you" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid #3a3c42; background: #18191c">
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 500">Noor needs you</p>
+<p style="margin: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px">pnpm drizzle-kit push</p>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" onClick="{{ denyPerm }}" style="height: 30px; border: 1px solid #2a2b30; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Deny</button>
+<button type="button" onClick="{{ approvePerm }}" style="height: 30px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Approve</button>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{ card.review }}" hint-placeholder-val="{{ false }}">
+<section aria-label="Ready for review" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid #2a2b30; background: #141516">
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 500"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg>T-15 is ready to merge</p>
+<span style="font-size: 12.5px; color: #d0d6e0">Four PRs passed Theo's review and every check is green.</span>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 30px; border: 1px solid #2a2b30; border-radius: 8px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 500">Open board</a>
+<a href="Inbox.dc.html" style="display: inline-flex; align-items: center; justify-content: center; height: 30px; border-radius: 8px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 13px; font-weight: 500">Review in Inbox</a>
+</div>
+</section>
+</sc-if>
+
+<sc-if value="{{ hasGcard }}" hint-placeholder-val="{{ false }}"><section aria-label="{{ gcard.title }}" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid #3a3c42; background: #141517"><p style="margin: 0; font-weight: 500">{{ gcard.title }}</p><span style="font-size: 12.5px; color: #b7bcc4">{{ gcard.sub }}</span><sc-if value="{{ gcard.hasCode }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; padding: 8px 10px; border-radius: 6px; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 1.6; color: #b7bcc4"><sc-for list="{{ gcard.code }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre">{{ ln }}</span></sc-for></div></sc-if><sc-if value="{{ gcard.hasOptions }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 6px"><sc-for list="{{ gcard.options }}" as="op" hint-placeholder-count="3"><button type="button" class="mi" onClick="{{ op.pick }}" style="height: 32px; padding: 0 10px; border: 1px solid #26272b; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; text-align: left; cursor: pointer">{{ op.label }}</button></sc-for></div></sc-if><div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px"><sc-for list="{{ gcard.actions }}" as="ac" hint-placeholder-count="2"><button type="button" onClick="{{ ac.act }}" style="height: 30px; border: 1px solid {{ ac.border }}; border-radius: 8px; background: {{ ac.bg }}; color: {{ ac.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ ac.label }}</button></sc-for></div></section></sc-if>
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Today</p>
+<div style="display: flex; flex-direction: column; margin-top: -6px">
+<sc-for list="{{ events }}" as="e" hint-placeholder-count="8">
+<div style="display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 6px 0">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ e.avBg }}; color: {{ e.avColor }}; font-size: 9.5px; font-weight: 600">{{ e.av }}</span>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 5px; row-gap: 2px; line-height: 20px; color: #8a8f98">
+<span style="color: #f7f8f8; font-weight: 500">{{ e.who }}</span>
+<span>{{ e.verb }}</span>
+<sc-if value="{{ e.hasObj }}" hint-placeholder-val="{{ true }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid {{ e.objBorder }}; background: #141516; color: {{ e.objColor }}">{{ e.obj }}</span></sc-if>
+</p>
+<sc-if value="{{ e.hasQuote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 6px 10px; border-radius: 6px; background: #141516; color: #d0d6e0">{{ e.quote }}</p></sc-if>
+</div>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 20px; color: #8a8f98">{{ e.time }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</aside>
+</div>
+</div>
+<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
+<span style="display: inline-flex; align-items: center; gap: 8px"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks live<span style="font-family: 'Geist Mono', ui-monospace, monospace">localhost:7420</span></span>
+<span style="display: inline-flex; align-items: center; gap: 6px">
+<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
+<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
+<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
+<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="FloorTalk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
+</div></details>
+
+</span>
+</footer>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.timers = [];
+    this.state = this.preset('question');
+  }
+
+  componentDidMount() {
+    var self = this;
+    if (this.state.stage === 'hired') {
+      this.later(400, function () { self.walk('lumi', ['lumi'], function () { self.later(1200, function () { self.sit('lumi'); }); }); });
+    }
+  }
+
+  componentWillUnmount() {
+    this.timers.forEach(function (t) { clearTimeout(t); });
+  }
+
+  later(ms, fn) { this.timers.push(setTimeout(fn, ms)); }
+
+  roster() {
+    return {
+      rowan: { name: 'Rowan', role: 'Lead', model: 'Opus 5.5', seat: [443.8, 293.6], shirt: '#3f4652', skin: '#d8b896', hair: '#2b2420' },
+      kai: { name: 'Kai', role: 'Frontend', model: 'Sonnet 5.5', seat: [245.6, 298.0], shirt: '#5b6b5e', skin: '#c99b74', hair: '#1f1a17' },
+      noor: { name: 'Noor', role: 'Backend', model: 'Sonnet 5.5', seat: [332.2, 348.0], shirt: '#6b5d73', skin: '#8d6346', hair: '#141212' },
+      ivy: { name: 'Ivy', role: 'QA', model: 'Sonnet 5.5', seat: [162.5, 346.0], shirt: '#7a6a55', skin: '#e0c2a2', hair: '#5a4636' },
+      theo: { name: 'Theo', role: 'Reviewer', model: 'Opus 5.5', seat: [249.1, 396.0], shirt: '#4b5560', skin: '#b07f5c', hair: '#2a2422' },
+      lumi: { name: 'Lumi', role: 'Designer', model: 'Sonnet 5.5', seat: [453.5, 458.0], shirt: '#5f6f7a', skin: '#c9a27e', hair: '#3a2c22' }
+    };
+  }
+
+  wp() {
+    return { stand: [429.2, 302.0], back: [410.2, 259.0], wall: [295.8, 193.0], top: [482.9, 333.0], r1: [380.7, 392.0], noor: [353.0, 376.0], kai: [271.6, 329.0], r2: [295.8, 441.0], theo: [259.5, 420.0], ivy: [172.9, 370.0], door: [562.6, 507.0], lumi: [469.0, 481.0] };
+  }
+
+  baseEvents() {
+    var b = 11 * 3600 + 2 * 60;
+    return [
+      { t: b - 60, a: 'theo', verb: 'opened the diff for', obj: 'T-09' },
+      { t: b - 180, a: 'noor', verb: 'edited', obj: 'schema.ts' },
+      { t: b - 300, a: 'kai', verb: 'edited', obj: 'table.tsx' },
+      { t: b - 420, a: 'ivy', verb: 'passed', obj: 'T-11' }
+    ];
+  }
+
+  preset(stage) {
+    var b = 11 * 3600 + 2 * 60;
+    var A = {
+      rowan: { status: 'idle', act: 'Waiting for your next brief', ws: 'main checkout' },
+      kai: { status: 'working', act: 'Building the invoice table', ws: 'invoice-table' },
+      noor: { status: 'working', act: 'Writing the invoice schema', ws: 'invoice-schema' },
+      ivy: { status: 'idle', act: 'Waiting for the next task', ws: 'none' },
+      theo: { status: 'working', act: 'Reviewing org invites', ws: 'org-invites' },
+      lumi: { status: 'off', act: '', ws: '' }
+    };
+    var brief = { t: b + 30, a: 'you', verb: 'briefed Rowan', obj: '', quote: 'Add PDF export to invoices. Spec first.' };
+    var s = { stage: stage, agents: A, walk: { rowan: { seated: true, pos: 'stand' }, lumi: { seated: true, pos: 'door', hidden: true } }, bubble: null, card: null, selected: 'rowan', events: this.baseEvents(), draft: '', to: 'rowan', clock: b + 30, hired: false };
+    var set = function (id, status, act, ws) { A[id] = { status: status, act: act, ws: ws || A[id].ws }; };
+    if (stage === 'sent') {
+      set('rowan', 'planning', 'Reading your brief');
+      s.bubble = { who: 'rowan', text: 'Got it. Planning PDF export now.' };
+      s.events = [brief].concat(s.events);
+    }
+    if (stage === 'planning') {
+      set('rowan', 'walking', 'Writing the plan on the task wall', 'plan-invoice-pdf');
+      s.walk.rowan = { seated: false, pos: 'wall' };
+      s.bubble = { who: 'rowan', text: 'Splitting this into four tasks.' };
+      s.events = [{ t: b + 90, a: 'rowan', verb: 'wrote', obj: 'plans/t-15-invoice-pdf.md' }, { t: b + 60, a: 'rowan', verb: 'read', obj: 'invoices.ts' }, brief].concat(s.events);
+    }
+    if (stage === 'plan') {
+      set('rowan', 'needs', 'Plan ready for your review', 'plan-invoice-pdf');
+      s.card = 'plan';
+      s.events = [{ t: b + 120, a: 'rowan', verb: 'asked you to review', obj: 'T-15 plan', warn: true }, { t: b + 90, a: 'rowan', verb: 'wrote', obj: 'plans/t-15-invoice-pdf.md' }, brief].concat(s.events);
+    }
+    if (stage === 'handoff') {
+      set('rowan', 'walking', 'Handing out tasks', 'plan-invoice-pdf');
+      set('noor', 'working', 'Building the PDF renderer', 'invoice-pdf-renderer');
+      set('kai', 'planning', 'Reading T-15b', 'invoice-pdf-button');
+      s.walk.rowan = { seated: false, pos: 'kai' };
+      s.bubble = { who: 'rowan', text: 'Kai, T-15b is yours. A Download PDF button on each row.' };
+      s.selected = 'kai';
+      s.events = [{ t: b + 200, a: 'rowan', verb: 'assigned T-15b to', obj: 'Kai' }, { t: b + 190, a: 'rowan', verb: 'assigned T-15a to', obj: 'Noor' }, { t: b + 180, a: 'rowan', verb: 'created 4 workspaces for', obj: 'T-15' }, { t: b + 170, a: 'you', verb: 'approved', obj: 'T-15 plan' }].concat(s.events).slice(0, 8);
+    }
+    if (stage === 'working' || stage === 'needs' || stage === 'review') {
+      set('rowan', 'idle', 'Watching the team', 'main checkout');
+      set('noor', 'working', 'Building the PDF renderer', 'invoice-pdf-renderer');
+      set('kai', 'working', 'Adding the download button', 'invoice-pdf-button');
+      set('ivy', 'working', 'Writing snapshot tests', 'invoice-pdf-tests');
+      set('theo', 'idle', 'Waiting for the first PR', 'invoice-pdf-review');
+      s.selected = 'noor';
+      s.events = [{ t: b + 260, a: 'ivy', verb: 'created', obj: 'invoice-pdf.spec.ts' }, { t: b + 250, a: 'kai', verb: 'edited', obj: 'row-actions.tsx' }, { t: b + 240, a: 'noor', verb: 'edited', obj: 'pdf/render.ts' }, { t: b + 230, a: 'rowan', verb: 'assigned T-15d to', obj: 'Theo' }, { t: b + 220, a: 'rowan', verb: 'assigned T-15c to', obj: 'Ivy' }, { t: b + 200, a: 'rowan', verb: 'assigned T-15b to', obj: 'Kai' }, { t: b + 190, a: 'rowan', verb: 'assigned T-15a to', obj: 'Noor' }];
+    }
+    if (stage === 'needs') {
+      set('noor', 'needs', 'Wants to run drizzle-kit push', 'invoice-pdf-renderer');
+      s.card = 'perm';
+      s.events = [{ t: b + 300, a: 'noor', verb: 'asked to run', obj: 'drizzle-kit push', warn: true }].concat(s.events).slice(0, 8);
+    }
+    if (stage === 'review') {
+      set('noor', 'idle', 'Done with T-15a', 'invoice-pdf-renderer');
+      set('kai', 'idle', 'Done with T-15b', 'invoice-pdf-button');
+      set('ivy', 'idle', 'Done with T-15c', 'invoice-pdf-tests');
+      set('theo', 'working', 'Approved 4 PRs', 'invoice-pdf-review');
+      set('rowan', 'working', 'Posting the standup', 'main checkout');
+      s.selected = 'rowan';
+      s.card = 'review';
+      s.bubble = { who: 'rowan', text: 'T-15 is ready. Four PRs passed review.' };
+      s.events = [{ t: b + 900, a: 'rowan', verb: 'posted', obj: 'standup' }, { t: b + 880, a: 'theo', verb: 'approved', obj: 'PR #43 to #46' }, { t: b + 700, a: 'ivy', verb: 'passed', obj: 'T-15c' }, { t: b + 650, a: 'kai', verb: 'opened', obj: 'PR #44' }, { t: b + 600, a: 'noor', verb: 'opened', obj: 'PR #43' }, { t: b + 320, a: 'you', verb: 'approved', obj: 'drizzle-kit push' }];
+    }
+    if (stage === 'talk') {
+      set('rowan', 'working', 'Chatting with you', 'plan-invoice-pdf');
+      s.bubble = { who: 'rowan', text: 'In a chat with you in plan-invoice-pdf.', link: 'WorkspaceLead.dc.html' };
+      s.events = [{ t: b + 40, a: 'rowan', verb: 'replied in', obj: 'plan-invoice-pdf' }, { t: b + 30, a: 'you', verb: 'opened a chat with Rowan in', obj: 'plan-invoice-pdf' }].concat(s.events);
+    }
+    if (stage === 'hired') {
+      A.lumi = { status: 'walking', act: 'Joining the room', ws: 'none' };
+      s.hired = true;
+      s.walk.lumi = { seated: false, pos: 'door', hidden: false };
+      s.selected = 'lumi';
+      s.bubble = { who: 'lumi', text: "Hi, I'm Lumi. I check screens against DESIGN.md." };
+      s.events = [{ t: b + 50, a: 'lumi', verb: 'joined from', obj: '.claude/agents/lumi.md' }, { t: b + 45, a: 'rowan', verb: 'created', obj: '.claude/agents/lumi.md' }, { t: b + 30, a: 'you', verb: 'asked Rowan to', obj: 'hire a designer' }].concat(s.events);
+    }
+    var all = ['rowan', 'kai', 'noor', 'ivy', 'theo'];
+    if (stage === 'paused' || stage === 'limit') {
+      all.forEach(function (id) { A[id] = Object.assign({}, A[id], { status: 'paused' }); });
+      s.paused = true;
+      s.banner = stage === 'paused' ? { text: 'Room paused. Agents finish their current step, then wait.', label: 'Resume', id: 'resume' } : { text: 'Weekly limit reached. Every agent waits until Monday, 9:00 AM.', label: 'Notify me', id: 'notify' };
+      s.events = [{ t: b + 40, a: stage === 'paused' ? 'you' : 'rowan', verb: stage === 'paused' ? 'paused' : 'paused the room for', obj: stage === 'paused' ? 'Client A' : 'weekly limit' }].concat(s.events);
+    }
+    if (stage === 'blocked') {
+      set('ivy', 'blocked', 'Blocked by the TaskCompleted hook', 'org-settings');
+      s.selected = 'ivy';
+      s.gcard = { title: 'Ivy is blocked on T-11', sub: 'The TaskCompleted hook needs test output before the task can close.', code: ['exit 2: no test output attached to T-11'], actions: [{ id: 'openws', label: 'Open workspace' }, { id: 'unblock', label: 'Attach output', primary: true }] };
+      s.events = [{ t: b + 20, a: 'ivy', verb: 'was blocked on', obj: 'T-11', warn: true }].concat(s.events);
+    }
+    if (stage === 'offline') {
+      set('kai', 'offline', 'Session ended in invoice-table', 'invoice-table');
+      s.selected = 'kai';
+      s.gcard = { title: 'Kai\u2019s session ended', sub: 'Claude Code exited in invoice-table (out of memory). The worktree and chat are saved.', actions: [{ id: 'term', label: 'Open terminal' }, { id: 'restart', label: 'Restart session', primary: true }] };
+      s.events = [{ t: b + 20, a: 'kai', verb: 'went offline in', obj: 'invoice-table', warn: true }].concat(s.events);
+    }
+    if (stage === 'question') {
+      set('rowan', 'needs', 'Asking before planning', 'plan-invoice-pdf');
+      s.bubble = { who: 'rowan', text: 'Quick question before I plan.' };
+      s.gcard = { title: 'Rowan has a question', sub: 'Should PDF export cover credit notes too, or only invoices?', options: ['Invoices only', 'Invoices and credit notes', 'Decide in the plan'], actions: [] };
+      s.events = [{ t: b + 50, a: 'rowan', verb: 'asked', obj: 'scope question', warn: true }, brief].concat(s.events);
+    }
+    if (stage === 'overlap') {
+      s.bubble = { who: 'rowan', text: 'Kai and Noor are both in invoices.ts.' };
+      s.gcard = { title: 'Two agents changed the same file', sub: 'Kai and Noor edited invoices.ts in different worktrees. Merging both later will conflict.', code: ['Kai   invoice-table    lines 20-34', 'Noor  invoice-schema   lines 18-40'], actions: [{ id: 'board', label: 'Open board' }, { id: 'sort', label: 'Let Rowan sort it', primary: true }] };
+      s.events = [{ t: b + 30, a: 'rowan', verb: 'flagged an overlap in', obj: 'invoices.ts', warn: true }].concat(s.events);
+    }
+    if (stage === 'empty') { all.forEach(function (id) { A[id] = Object.assign({}, A[id], { status: 'none' }); }); s.empty = true; s.events = []; }
+    if (stage === 'full') s.overflow = true;
+    return s;
+  }
+
+  pause() {
+    var A = Object.assign({}, this.state.agents);
+    ['rowan', 'kai', 'noor', 'ivy', 'theo'].forEach(function (id) { A[id] = Object.assign({}, A[id], { status: 'paused' }); });
+    this.setState({ paused: true, agents: A, banner: { text: 'Room paused. Agents finish their current step, then wait.', label: 'Resume', id: 'resume' } });
+    this.log({ a: 'you', verb: 'paused', obj: 'Client A' });
+  }
+
+  resume() {
+    var A = Object.assign({}, this.state.agents);
+    ['rowan', 'kai', 'noor', 'ivy', 'theo'].forEach(function (id) { if (A[id].status === 'paused') A[id] = Object.assign({}, A[id], { status: id === 'rowan' || id === 'ivy' ? 'idle' : 'working' }); });
+    this.setState({ paused: false, banner: null, agents: A });
+    this.log({ a: 'you', verb: 'resumed', obj: 'Client A' });
+  }
+
+  gAction(id) {
+    var self = this;
+    var close = function () { self.setState({ gcard: null }); };
+    if (id === 'unblock') { close(); this.setAgent('ivy', 'working', 'Running the suite again'); this.log({ a: 'you', verb: 'attached output to', obj: 'T-11' }); }
+    if (id === 'restart') { close(); this.setAgent('kai', 'working', 'Picking up where he left off'); this.log({ a: 'you', verb: 'restarted', obj: 'Kai' }); }
+    if (id === 'sort') { close(); this.setState({ bubble: null }); this.log({ a: 'rowan', verb: 'moved Noor\u2019s change into', obj: 'invoice-table' }); }
+    if (id === 'openws') this.log({ a: 'you', verb: 'opened', obj: 'org-settings' });
+    if (id === 'term') this.log({ a: 'you', verb: 'opened a terminal in', obj: 'invoice-table' });
+    if (id === 'board') this.log({ a: 'you', verb: 'opened', obj: 'Board' });
+  }
+
+  setAgent(id, status, act, ws) {
+    var A = Object.assign({}, this.state.agents);
+    A[id] = { status: status, act: act, ws: ws || A[id].ws };
+    this.setState({ agents: A });
+  }
+
+  log(ev) {
+    var clock = this.state.clock + 20;
+    ev.t = clock;
+    this.setState({ clock: clock, events: [ev].concat(this.state.events).slice(0, 8) });
+  }
+
+  walk(id, path, done) {
+    var self = this;
+    var w = Object.assign({}, this.state.walk);
+    w[id] = Object.assign({}, w[id], { seated: false, hidden: false });
+    this.setState({ walk: w });
+    var i = 0;
+    var next = function () {
+      if (i >= path.length) {
+        var w3 = Object.assign({}, self.state.walk);
+        w3[id] = Object.assign({}, w3[id], { moving: false });
+        self.setState({ walk: w3 });
+        if (done) done();
+        return;
+      }
+      var w2 = Object.assign({}, self.state.walk);
+      w2[id] = Object.assign({}, w2[id], { pos: path[i], moving: true });
+      self.setState({ walk: w2 });
+      i += 1;
+      self.later(950, next);
+    };
+    this.later(60, next);
+  }
+
+  sit(id) {
+    var w = Object.assign({}, this.state.walk);
+    w[id] = Object.assign({}, w[id], { seated: true, moving: false });
+    this.setState({ walk: w });
+    if (id === 'lumi') { this.setAgent('lumi', 'idle', 'Settling in at the open desk', 'none'); this.setState({ bubble: null }); }
+  }
+
+  say(who, text, ms) {
+    var self = this;
+    this.setState({ bubble: { who: who, text: text } });
+    if (ms) this.later(ms, function () { if (self.state.bubble && self.state.bubble.text === text) self.setState({ bubble: null }); });
+  }
+
+  send() {
+    var s = this.state;
+    var text = (s.draft || '').trim();
+    if (!text) return;
+    var self = this;
+    var R = this.roster();
+    if (s.to !== 'rowan') {
+      this.setState({ draft: '' });
+      this.log({ a: 'you', verb: 'messaged ' + R[s.to].name, obj: '', quote: text });
+      this.setAgent(s.to, 'working', 'Reading your message');
+      this.say(s.to, 'On it.', 2200);
+      return;
+    }
+    this.setState({ draft: '', card: null, stage: 'sent' });
+    this.log({ a: 'you', verb: 'briefed Rowan', obj: '', quote: text });
+    this.setAgent('rowan', 'planning', 'Reading your brief');
+    this.say('rowan', 'Got it. Planning this now.');
+    this.later(1600, function () {
+      self.setAgent('rowan', 'walking', 'Heading to the task wall', 'plan-invoice-pdf');
+      self.setState({ bubble: null, stage: 'planning' });
+      self.walk('rowan', ['stand', 'back', 'wall'], function () {
+        self.say('rowan', 'Splitting this into four tasks.');
+        self.log({ a: 'rowan', verb: 'wrote', obj: 'plans/t-15-invoice-pdf.md' });
+        self.later(2400, function () {
+          self.setState({ bubble: null });
+          self.walk('rowan', ['back', 'stand'], function () {
+            self.sit('rowan');
+            self.setAgent('rowan', 'needs', 'Plan ready for your review', 'plan-invoice-pdf');
+            self.setState({ card: 'plan', stage: 'plan' });
+            self.log({ a: 'rowan', verb: 'asked you to review', obj: 'T-15 plan', warn: true });
+          });
+        });
+      });
+    });
+  }
+
+  approvePlan() {
+    var self = this;
+    this.setState({ card: null, stage: 'handoff' });
+    this.log({ a: 'you', verb: 'approved', obj: 'T-15 plan' });
+    this.setAgent('rowan', 'walking', 'Handing out tasks', 'plan-invoice-pdf');
+    this.log({ a: 'rowan', verb: 'created 4 workspaces for', obj: 'T-15' });
+    var stop = function (id, task, line, ws, act, nextPath, after) {
+      self.say('rowan', line);
+      self.setState({ selected: id });
+      self.log({ a: 'rowan', verb: 'assigned ' + task + ' to', obj: self.roster()[id].name });
+      self.setAgent(id, 'planning', 'Reading ' + task, ws);
+      self.later(1700, function () {
+        self.setAgent(id, 'working', act, ws);
+        self.setState({ bubble: null });
+        self.walk('rowan', nextPath, after);
+      });
+    };
+    this.walk('rowan', ['stand', 'top', 'r1', 'noor'], function () {
+      stop('noor', 'T-15a', 'Noor, T-15a is yours. The PDF renderer.', 'invoice-pdf-renderer', 'Building the PDF renderer', ['kai'], function () {
+        stop('kai', 'T-15b', 'Kai, T-15b is yours. A Download PDF button on each row.', 'invoice-pdf-button', 'Adding the download button', ['r1', 'r2', 'theo'], function () {
+          stop('theo', 'T-15d', 'Theo, review each PR as it lands.', 'invoice-pdf-review', 'Waiting for the first PR', ['ivy'], function () {
+            stop('ivy', 'T-15c', 'Ivy, T-15c is yours. Snapshot tests for three invoice types.', 'invoice-pdf-tests', 'Writing snapshot tests', ['r2', 'top', 'stand'], function () {
+              self.sit('rowan');
+              self.setAgent('rowan', 'idle', 'Watching the team', 'main checkout');
+              self.setAgent('theo', 'idle', 'Waiting for the first PR', 'invoice-pdf-review');
+              self.setState({ stage: 'working' });
+              self.later(3500, function () {
+                self.setAgent('noor', 'needs', 'Wants to run drizzle-kit push', 'invoice-pdf-renderer');
+                self.setState({ card: 'perm', stage: 'needs', selected: 'noor' });
+                self.log({ a: 'noor', verb: 'asked to run', obj: 'drizzle-kit push', warn: true });
+              });
+            });
+          });
+        });
+      });
+    });
+  }
+
+  approvePerm(ok) {
+    var self = this;
+    this.setState({ card: null });
+    this.log({ a: 'you', verb: ok ? 'approved' : 'denied', obj: 'drizzle-kit push' });
+    this.setAgent('noor', 'working', ok ? 'Running the migration' : 'Trying a safer migration', 'invoice-pdf-renderer');
+    this.later(3000, function () {
+      self.setAgent('theo', 'working', 'Reviewing PR #43', 'invoice-pdf-review');
+      self.log({ a: 'noor', verb: 'opened', obj: 'PR #43' });
+      self.later(2500, function () {
+        self.setAgent('noor', 'idle', 'Done with T-15a');
+        self.setAgent('kai', 'idle', 'Done with T-15b');
+        self.setAgent('ivy', 'idle', 'Done with T-15c');
+        self.setAgent('rowan', 'working', 'Posting the standup', 'main checkout');
+        self.setState({ card: 'review', stage: 'review', selected: 'rowan' });
+        self.log({ a: 'theo', verb: 'approved', obj: 'PR #43 to #46' });
+        self.say('rowan', 'T-15 is ready. Four PRs passed review.');
+      });
+    });
+  }
+
+  fmt(t) {
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return pad(Math.floor(t / 3600) % 24) + ':' + pad(Math.floor(t / 60) % 60);
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var R = this.roster();
+    var W = this.wp();
+    var pct = function (x, y) { return { left: (x / 800 * 100).toFixed(3) + '%', top: (y / 600 * 100).toFixed(3) + '%' }; };
+    var look = function (st) {
+      if (st === 'working') return { fill: '#f7f8f8', ring: '0', pulse: 'pin', word: 'working', color: '#d0d6e0' };
+      if (st === 'planning') return { fill: 'transparent', ring: '1.5px solid #f7f8f8', pulse: 'pin', word: 'planning', color: '#d0d6e0' };
+      if (st === 'walking') return { fill: 'transparent', ring: '1.5px solid #f7f8f8', pulse: '', word: 'walking', color: '#d0d6e0' };
+      if (st === 'blocked') return { fill: '', ring: '0', pulse: '', word: 'blocked', color: '#f7f8f8' };
+      if (st === 'offline') return { fill: '', ring: '0', pulse: '', word: 'offline', color: '#8a8f98' };
+      if (st === 'paused') return { fill: '', ring: '0', pulse: '', word: 'paused', color: '#8a8f98' };
+      if (st === 'needs') return { fill: accent, ring: '0', pulse: '', word: 'needs you', color: '#f7f8f8' };
+      return { fill: '#62666d', ring: '0', pulse: '', word: 'idle', color: '#8a8f98' };
+    };
+    var ids = ['rowan', 'kai', 'noor', 'ivy', 'theo', 'lumi'];
+    var seats = ids.map(function (id) {
+      var r = R[id], a = s.agents[id], w = s.walk[id];
+      var present = id === 'lumi' ? (s.hired && w.seated) : ((!w || w.seated) && a.status !== 'offline' && a.status !== 'none');
+      var p = pct(r.seat[0] - 30, r.seat[1] - 80);
+      return {
+        left: p.left, top: p.top, z: Math.round(r.seat[1] / 10), person: present ? 1 : 0,
+        shirt: r.shirt, skin: r.skin, hair: r.hair, hand: present && a.status === 'needs' ? 1 : 0,
+        bob: present && a.status === 'working' ? 'bob' : ''
+      };
+    });
+    var walkers = ['rowan', 'lumi'].map(function (id) {
+      var r = R[id], w = s.walk[id];
+      var pt = W[w.pos] || W.stand;
+      var p = pct(pt[0] - 14, pt[1] - 60);
+      return { left: p.left, top: p.top, op: (!w.seated && !w.hidden) ? 1 : 0, shirt: r.shirt, skin: r.skin, hair: r.hair, step: (!w.seated && w.moving) ? 'stride' : '' };
+    });
+    var anchorOf = function (id) {
+      var r = R[id], w = s.walk[id];
+      if (w && !w.seated) { var pt = W[w.pos] || W.stand; return [pt[0], pt[1] - 62]; }
+      return [r.seat[0] + 2.1, r.seat[1] - 76];
+    };
+    var tags = ids.filter(function (id) { return (id !== 'lumi' || s.hired) && s.agents[id].status !== 'none'; }).map(function (id) {
+      var a = s.agents[id], l = look(a.status), an = anchorOf(id);
+      var p = pct(an[0], an[1]);
+      var on = s.selected === id;
+      return {
+        left: p.left, top: p.top, name: R[id].name, word: id === 'lumi' && a.status === 'walking' ? 'new' : l.word,
+        fill: l.fill, ring: l.ring, pulse: l.pulse, wordColor: (a.status === 'needs' || a.status === 'blocked') ? '#f7f8f8' : '#8a8f98', border: (a.status === 'needs' || a.status === 'blocked') ? '#f7f8f8' : (on ? '#8a8f98' : '#2e3036'),
+        pressed: on ? 'true' : 'false', aria: R[id].name + ', ' + R[id].role + ', ' + l.word,
+        pick: function () { self.setState({ selected: id }); }
+      };
+    });
+    var bubble = { left: '0%', top: '0%', text: '', hasLink: false, href: '#' };
+    if (s.bubble) {
+      var an = anchorOf(s.bubble.who);
+      var bp = pct(an[0], an[1] - 30);
+      bubble = { left: bp.left, top: bp.top, text: s.bubble.text, hasLink: !!s.bubble.link, href: s.bubble.link || '#' };
+    }
+    var k = s.selected, sa = s.agents[k], sl = look(sa.status);
+    var wsHref = { kai: 'Workspace.dc.html', noor: 'WorkspacePerm.dc.html', rowan: 'WorkspaceLead.dc.html', ivy: 'WorkspaceRunning.dc.html', theo: 'Workspace.dc.html', lumi: 'Team.dc.html' }[k];
+    var sel = {
+      name: R[k].name, role: R[k].role, model: R[k].model, initial: R[k].name[0], shirt: R[k].shirt,
+      word: sl.word.charAt(0).toUpperCase() + sl.word.slice(1), fill: sl.fill, ring: sl.ring, statusColor: sl.color,
+      ws: sa.ws || 'none', act: sa.act || 'No active task', href: wsHref, cta: k === 'lumi' ? 'Open team' : 'Open workspace'
+    };
+    var events = s.events.map(function (e) {
+      var you = e.a === 'you';
+      return {
+        time: self.fmt(e.t), who: you ? 'You' : R[e.a].name, av: you ? 'CJ' : R[e.a].name[0],
+        avBg: you ? '#f7f8f8' : '#1c1d21', avColor: you ? '#08090a' : '#d0d6e0',
+        verb: e.verb, obj: e.obj, hasObj: !!e.obj, objColor: e.warn ? accent : '#d0d6e0',
+        objBorder: e.warn ? '#3a3c42' : '#23252a', quote: e.quote || '', hasQuote: !!e.quote
+      };
+    });
+    var working = ids.filter(function (id) { return s.agents[id].status === 'working' || s.agents[id].status === 'planning'; }).length;
+    var hasNeeds = ids.some(function (id) { return s.agents[id].status === 'needs'; });
+    var toOptions = ids.filter(function (id) { return id !== 'lumi' || s.hired; }).map(function (id) { return { id: id, label: 'To ' + R[id].name + ' · ' + R[id].role }; });
+    var hasDraft = (s.draft || '').trim().length > 0;
+    return {
+      accent: accent,
+      seats: seats, walkers: walkers, tags: tags,
+      hasBubble: !!s.bubble, bubble: bubble,
+      lumiScreen: s.hired && s.walk.lumi.seated ? 1 : 0,
+      sel: sel, events: events,
+      card: { plan: s.card === 'plan', perm: s.card === 'perm', review: s.card === 'review' },
+      planRows: [
+        { id: 'T-15a', title: 'PDF renderer', who: 'Noor' },
+        { id: 'T-15b', title: 'Download button', who: 'Kai' },
+        { id: 'T-15c', title: 'Snapshot tests', who: 'Ivy' },
+        { id: 'T-15d', title: 'Review each PR', who: 'Theo' }
+      ],
+      approvePlan: function () { self.approvePlan(); },
+      requestChanges: function () {
+        self.setState({ card: null });
+        self.log({ a: 'you', verb: 'asked Rowan to change', obj: 'T-15 plan' });
+        self.setAgent('rowan', 'planning', 'Revising the plan');
+        self.later(2000, function () { self.setAgent('rowan', 'needs', 'Plan ready for your review'); self.setState({ card: 'plan' }); });
+      },
+      approvePerm: function () { self.approvePerm(true); },
+      denyPerm: function () { self.approvePerm(false); },
+      workingLabel: working + ' working',
+      hasNeeds: hasNeeds,
+      to: s.to, toOptions: toOptions,
+      draft: s.draft,
+      placeholder: s.to === 'rowan' ? 'Brief Rowan on what to build' : 'Message ' + R[s.to].name,
+      onTo: function (e) { self.setState({ to: e.target.value }); },
+      onDraft: function (e) { self.setState({ draft: e.target.value }); },
+      onKey: function (e) { if (e.key === 'Enter') { e.preventDefault(); self.send(); } },
+      send: function () { self.send(); },
+      sendBg: hasDraft ? '#f7f8f8' : '#1c1d21', sendColor: hasDraft ? '#08090a' : '#8a8f98',
+      isPaused: !!s.paused, notPaused: !s.paused, pausedX: s.paused ? 'true' : 'false', pauseBg: s.paused ? '#1c1d21' : 'transparent', pauseLabel: s.paused ? 'Resume room' : 'Pause room',
+      togglePause: function () { if (s.paused) self.resume(); else self.pause(); },
+      hasBanner: !!s.banner,
+      banner: s.banner ? { text: s.banner.text, label: s.banner.label, act: function () {
+        if (s.banner.id === 'resume') self.resume();
+        else if (s.banner.id === 'notify') self.setState({ banner: { text: 'You will get a notification when the limit resets.', label: 'Done', id: 'dismiss' } });
+        else self.setState({ banner: null });
+      } } : { text: '', label: '', act: function () {} },
+      hasGcard: !!s.gcard,
+      gcard: s.gcard ? {
+        title: s.gcard.title, sub: s.gcard.sub, code: s.gcard.code || [], hasCode: !!s.gcard.code, hasOptions: !!s.gcard.options,
+        options: (s.gcard.options || []).map(function (o) { return { label: o, pick: function () { self.setState({ gcard: null, bubble: null }); self.log({ a: 'you', verb: 'answered', obj: o }); self.setAgent('rowan', 'planning', 'Planning with your answer'); } }; }),
+        actions: (s.gcard.actions || []).map(function (a) { return { label: a.label, bg: a.primary ? '#f7f8f8' : 'transparent', color: a.primary ? '#08090a' : '#f7f8f8', border: a.primary ? '#f7f8f8' : '#2a2b30', act: function () { self.gAction(a.id); } }; })
+      } : { title: '', sub: '', code: [], hasCode: false, hasOptions: false, options: [], actions: [] },
+      isEmpty: !!s.empty, notEmpty: !s.empty,
+      teamTemplates: [['Starter team', 'Lead, Frontend, Backend, QA and Reviewer'], ['Pair', 'A Lead and one engineer'], ['From another room', 'Copy agents from Client B']].map(function (x) { return { name: x[0], sub: x[1], pick: function () { self.setState(self.preset('hired')); } }; }),
+      hasOverflow: !!s.overflow,
+      overflow: [{ name: 'Sol', role: 'Security', initial: 'S', shirt: '#5a6370', word: 'working' }, { name: 'Pax', role: 'Docs', initial: 'P', shirt: '#6d6a5c', word: 'idle' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

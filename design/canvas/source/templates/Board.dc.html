@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Board</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<a href="Rooms.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Board</h1>
+<span style="flex: 1"></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">Invoices v1 · 10 tasks</span>
+</header>
+
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Floor</a>
+<a href="Board.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; text-decoration: none; font-weight: 500">Board</a>
+<a href="Team.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Team</a>
+<span style="flex: 1"></span>
+<div role="group" aria-label="Filter by agent" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #1f2024">
+<sc-for list="{{ filters }}" as="f" hint-placeholder-count="6">
+<button type="button" onClick="{{ f.pick }}" aria-pressed="{{ f.pressed }}" style="height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ f.bg }}; color: {{ f.color }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ f.label }}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="position: relative; flex: 1; min-height: 0; box-sizing: border-box; padding: 12px">
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="position: absolute; left: 50%; top: 42%; z-index: 5; transform: translate(-50%, -50%); width: 360px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center"><p style="margin: 0; font-size: 15px; font-weight: 600">No tasks yet</p><p style="margin: 0; color: #8a8f98">Brief Rowan and he fills the board with a plan you can approve.</p><a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">Brief Rowan</a></div></sc-if>
+<sc-if value="{{ hasTask }}" hint-placeholder-val="{{ false }}"><aside aria-label="Task {{ task.id }}" style="position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: 460px; box-sizing: border-box; display: flex; flex-direction: column; border-left: 1px solid #26272b; background: #111214">
+<div style="display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px 0 18px; border-bottom: 1px solid #1f2024"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ task.id }}</span><span style="font-size: 12px; color: #d0d6e0">{{ task.col }}</span><span style="flex: 1"></span><button type="button" onClick="{{ closeTask }}" aria-label="Close task" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button></div>
+<div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 18px">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.3px">{{ task.title }}</h2>
+<dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px 12px"><dt style="color: #8a8f98">Agent</dt><dd style="margin: 0">{{ task.who }}</dd><dt style="color: #8a8f98">Workspace</dt><dd style="margin: 0"><a href="Workspace.dc.html" style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #f7f8f8">{{ task.ws }}</a></dd><dt style="color: #8a8f98">Pull request</dt><dd style="margin: 0; color: #d0d6e0">{{ task.pr }}</dd><dt style="color: #8a8f98">Gate</dt><dd style="margin: 0; color: #d0d6e0">{{ task.gate }}</dd></dl>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Spec</span><p style="margin: 0; color: #d0d6e0; line-height: 1.55">{{ task.spec }}</p></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Plan</span><sc-for list="{{ task.steps }}" as="st" hint-placeholder-count="3"><div style="display: flex; gap: 10px; color: #d0d6e0"><span style="width: 14px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ st.n }}</span><span style="flex: 1">{{ st.text }}</span><span style="font-size: 12px; color: #8a8f98">{{ st.state }}</span></div></sc-for></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Activity</span><sc-for list="{{ task.activity }}" as="a" hint-placeholder-count="4"><div style="display: flex; gap: 10px; font-size: 12.5px"><span style="width: 40px; flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">{{ a.t }}</span><span style="color: #d0d6e0">{{ a.text }}</span></div></sc-for></div>
+</div>
+<div style="display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid #1f2024"><a href="Workspace.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Open workspace</a><span style="flex: 1"></span><a href="WorkspaceLead.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask Rowan about this</a></div>
+</aside></sc-if>
+<div style="height: 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{ columns }}" as="col" hint-placeholder-count="6">
+<section style="display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 4px; border-radius: 10px; background: #0c0d0e">
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px">
+<sc-if value="{{ col.iSpec }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-dasharray="2 2"><circle cx="7" cy="7" r="5.5"></circle></svg></sc-if>
+<sc-if value="{{ col.iPlan }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4"><circle cx="7" cy="7" r="5.5"></circle></svg></sc-if>
+<sc-if value="{{ col.iBuild }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.4"><circle cx="7" cy="7" r="5.5"></circle><path d="M7 3.8a3.2 3.2 0 0 1 0 6.4Z" fill="#f7f8f8" stroke="none"></path></svg></sc-if>
+<sc-if value="{{ col.iQa }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.4"><circle cx="7" cy="7" r="5.5"></circle><path d="M7 3.8a3.2 3.2 0 1 1-3.2 3.2H7Z" fill="#f7f8f8" stroke="none"></path></svg></sc-if>
+<sc-if value="{{ col.iReview }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.4"><circle cx="7" cy="7" r="5.5"></circle><circle cx="7" cy="7" r="3.2" fill="#f7f8f8" stroke="none"></circle></svg></sc-if>
+<sc-if value="{{ col.iDone }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" fill="none"><circle cx="7" cy="7" r="6.2" fill="#d0d6e0"></circle><path d="m4.4 7.1 1.8 1.8 3.5-3.6" stroke="#08090a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if>
+<h2 style="margin: 0; font-size: 13px; font-weight: 500">{{ col.name }}</h2>
+<span style="font-size: 12px; color: #8a8f98">{{ col.count }}</span>
+<span style="flex: 1"></span>
+<sc-if value="{{ col.gate }}" hint-placeholder-val="{{ false }}">
+<span title="You approve this step" style="display: inline-flex; align-items: center; gap: 4px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 11px; color: #d0d6e0"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.8" y="4.5" width="6.4" height="4.2" rx="1"></rect><path d="M3.2 4.5V3.3a1.8 1.8 0 0 1 3.6 0v1.2"></path></svg>You</span>
+</sc-if>
+</div>
+<sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="2">
+<button type="button" onClick="{{ c.open }}" aria-label="Open {{ c.id }}" style="display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 8px; border: 1px solid {{ c.border }}; background: {{ c.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">{{ c.id }}</span>
+<span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9px; font-weight: 600">{{ c.av }}</span>
+</div>
+<span style="display: block; font-weight: 500; line-height: 1.35; color: {{ c.titleColor }}">{{ c.title }}</span>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px">
+<span style="display: inline-flex; align-items: center; gap: 5px; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: 999px; border: 1px solid #23252a; font-size: 11.5px; color: #d0d6e0">{{ c.role }}</span>
+<sc-if value="{{ c.hasTag }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; height: 20px; box-sizing: border-box; padding: 0 7px; border-radius: 999px; border: 1px solid {{ c.tagBorder }}; font-size: 11.5px; color: {{ c.tagColor }}">{{ c.tag }}</span></sc-if>
+</div>
+<sc-if value="{{ c.hasMeta }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ c.meta }}</span></sc-if>
+</button>
+</sc-for>
+</section>
+</sc-for>
+</div>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', task: '%%BOARD%%' === 'task' ? 'T-14' : null, empty: '%%BOARD%%' === 'empty' };
+  }
+
+  tasks() {
+    return [
+      { col: 'spec', id: 'T-16', title: 'Client portal login', role: 'Rowan', av: 'R', state: 'working' },
+      { col: 'plan', id: 'T-15', title: 'Export invoices as PDF', role: 'Rowan', av: 'R', state: 'you' },
+      { col: 'build', id: 'T-14', title: 'Invoice table and empty states', role: 'Kai', av: 'K', state: 'working', meta: 'wt/t-14-invoice-table' },
+      { col: 'build', id: 'T-12', title: 'Invoice schema and migration', role: 'Noor', av: 'N', state: 'you', meta: 'wt/t-12-invoice-schema' },
+      { col: 'qa', id: 'T-13', title: 'Rate limit the public API', role: 'Ivy', av: 'I', state: 'working' },
+      { col: 'qa', id: 'T-11', title: 'Org settings page', role: 'Ivy', av: 'I', state: 'blocked' },
+      { col: 'review', id: 'T-09', title: 'Org invites', role: 'Theo', av: 'T', state: 'you', meta: 'PR #41 · ready to merge' },
+      { col: 'done', id: 'T-10', title: 'Invoice model types', role: 'Noor', av: 'N', state: 'done', meta: 'feat(invoices): model and zod schema' },
+      { col: 'done', id: 'T-08', title: 'Auth with organisations', role: 'Noor', av: 'N', state: 'done', meta: 'feat(auth): orgs and roles' },
+      { col: 'done', id: 'T-07', title: 'Realistic seed data', role: 'Kai', av: 'K', state: 'done', meta: 'chore(db): seed invoices' }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var filter = this.state.filter;
+    var defs = [
+      { key: 'spec', name: 'Spec', gate: true },
+      { key: 'plan', name: 'Plan', gate: true },
+      { key: 'build', name: 'Building', gate: false },
+      { key: 'qa', name: 'QA', gate: false },
+      { key: 'review', name: 'Review', gate: true },
+      { key: 'done', name: 'Done', gate: false }
+    ];
+    var look = function (st) {
+      if (st === 'you') return { border: '#3a3c42', dot: accent, tag: 'Needs you', tagColor: accent, tagBorder: '#3a3c42', titleColor: '#f7f8f8' };
+      if (st === 'blocked') return { border: '#1f2024', dot: '#8a8f98', tag: 'Blocked by hook', tagColor: '#d0d6e0', tagBorder: '#2a2b30', titleColor: '#f7f8f8' };
+      if (st === 'working') return { border: '#1f2024', dot: '#f7f8f8', tag: '', tagColor: '#d0d6e0', tagBorder: '#23252a', titleColor: '#f7f8f8' };
+      return { border: '#1a1b1e', dot: '#62666d', tag: '', tagColor: '#d0d6e0', tagBorder: '#23252a', titleColor: '#8a8f98' };
+    };
+    var all = this.state.empty ? [] : this.tasks();
+    var columns = defs.map(function (d) {
+      var cards = all.filter(function (t) {
+        return t.col === d.key && (filter === 'all' || t.role === filter);
+      }).map(function (t) {
+        var l = look(t.state);
+        return {
+          id: t.id, title: t.title, role: t.role, av: t.av,
+          border: l.border, dot: l.dot, tag: l.tag, hasTag: l.tag !== '', tagColor: l.tagColor, tagBorder: l.tagBorder, titleColor: l.titleColor,
+          meta: t.meta || '', hasMeta: !!t.meta, bg: self.state.task === t.id ? '#1c1d21' : '#141516',
+          open: function () { self.setState({ task: t.id }); }
+        };
+      });
+      return {
+        name: d.name, gate: d.gate, cards: cards, count: String(cards.length),
+        iSpec: d.key === 'spec', iPlan: d.key === 'plan', iBuild: d.key === 'build', iQa: d.key === 'qa', iReview: d.key === 'review', iDone: d.key === 'done'
+      };
+    });
+    var labels = ['all', 'Rowan', 'Kai', 'Noor', 'Ivy', 'Theo'];
+    var filters = labels.map(function (l) {
+      var on = l === filter;
+      return {
+        label: l === 'all' ? 'All' : l,
+        pressed: on ? 'true' : 'false',
+        bg: on ? '#1c1d21' : 'transparent',
+        color: on ? '#f7f8f8' : '#8a8f98',
+        pick: function () { self.setState({ filter: l }); }
+      };
+    });
+    var T = this.state.task ? (this.tasks().filter(function (x) { return x.id === self.state.task; })[0] || this.tasks()[0]) : null;
+    var colName = { spec: 'Spec', plan: 'Plan', build: 'Building', qa: 'QA', review: 'Review', done: 'Done' };
+    var task = T ? {
+      id: T.id, title: T.title, col: colName[T.col] || '', who: T.role, ws: T.meta || 'not started',
+      pr: T.col === 'done' ? 'Merged' : (T.col === 'review' ? 'Open, waiting for Theo' : 'Not opened yet'),
+      gate: T.col === 'plan' ? 'Your approval is needed' : (T.col === 'review' ? 'You merge after review' : 'None right now'),
+      spec: 'Show invoices in a sortable table with empty, loading and error states. Follow DESIGN.md. Playwright covers each state.',
+      steps: [['Table with sortable headers', 'done'], ['Empty, loading and error states', 'done'], ['Playwright coverage', 'in progress'], ['Ivy verifies with test output', 'next']].map(function (x, i) { return { n: String(i + 1), text: x[0], state: x[1] }; }),
+      activity: [['10:31', 'Kai attached test output'], ['10:24', 'Kai added empty and error states'], ['10:12', 'Rowan assigned it to Kai'], ['10:05', 'You approved the plan']].map(function (x) { return { t: x[0], text: x[1] }; })
+    } : { id: '', title: '', col: '', who: '', ws: '', pr: '', gate: '', spec: '', steps: [], activity: [] };
+    return { accent: accent, columns: columns, filters: filters, hasTask: !!T, task: task, closeTask: function () { self.setState({ task: null }); }, isEmpty: this.state.empty };
+  }
+}
+</script>
+</body>
+</html>

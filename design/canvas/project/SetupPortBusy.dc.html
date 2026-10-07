@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Setup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<main style="flex: 1; min-height: 0; display: flex; justify-content: center; padding-top: 70px">
+<div style="width: 560px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px">{{ title }}</h1>
+<p style="margin: 0; color: #8a8f98">{{ sub }}</p>
+</div>
+<div style="display: flex; flex-direction: column; border-radius: 12px; border: 1px solid #1f2024; background: #0f1011">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: {{ r.border }}">
+<div style="display: flex; align-items: center; gap: 12px">
+<sc-if value="{{ r.ok }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if>
+<sc-if value="{{ r.fail }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg></sc-if>
+<sc-if value="{{ r.run }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 13px; height: 13px; flex-shrink: 0; margin: 0 1px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>
+<sc-if value="{{ r.wait }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0"><path d="M4.5 8h7"></path></svg></sc-if>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500; color: {{ r.titleColor }}">{{ r.title }}</span><span style="font-size: 12.5px; color: #8a8f98">{{ r.detail }}</span></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ r.meta }}</span>
+</div>
+<sc-if value="{{ r.hasFix }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 10px; margin-left: 27px">
+<sc-if value="{{ r.hasCmd }}" hint-placeholder-val="{{ false }}"><div style="display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px"><span style="flex: 1">{{ r.cmd }}</span><button type="button" onClick="{{ r.copy }}" style="height: 24px; padding: 0 8px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #d0d6e0; font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 12px; cursor: pointer">{{ r.copyLabel }}</button></div></sc-if>
+<div style="display: flex; gap: 8px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" onClick="{{ a.act }}" style="height: 30px; padding: 0 12px; border: 1px solid {{ a.border }}; border-radius: 7px; background: {{ a.bg }}; color: {{ a.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="flex: 1; font-size: 12.5px; color: #8a8f98">{{ foot }}</span>
+<a href="{{ nextHref }}" aria-disabled="{{ notReady }}" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 8px; background: {{ nextBg }}; color: {{ nextColor }}; text-decoration: none; font-weight: 500; pointer-events: {{ nextEvents }}">{{ nextLabel }}</a>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.timers = [];
+    this.state = { kind: 'port', fixed: {}, copied: null, step: 2 };
+  }
+
+  componentDidMount() {
+    var self = this;
+    if (this.state.kind === 'room') {
+      var tick = function () { if (self.state.step < 6) { self.setState({ step: self.state.step + 1 }); self.timers.push(setTimeout(tick, 1700)); } };
+      this.timers.push(setTimeout(tick, 1700));
+    }
+  }
+
+  componentWillUnmount() { this.timers.forEach(function (t) { clearTimeout(t); }); }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var base = [
+      { id: 'claude', title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' },
+      { id: 'auth', title: 'Signed in', detail: 'Claude Max', meta: '' },
+      { id: 'teams', title: 'Agent teams', detail: 'Enabled for Kernel sessions', meta: '' },
+      { id: 'gh', title: 'GitHub CLI', detail: 'Signed in as cjjutba', meta: 'gh 2.62' },
+      { id: 'hooks', title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
+    ];
+    var fails = {
+      missing: { id: 'claude', title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', cmd: 'npm install -g @anthropic-ai/claude-code', fixTo: 'Found on your PATH' },
+      old: { id: 'claude', title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later.', cmd: 'claude update', fixTo: 'Updated to v2.1.284' },
+      teams: { id: 'teams', title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', button: 'Turn on for Kernel', fixTo: 'Enabled for Kernel sessions' },
+      gh: { id: 'gh', title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', cmd: 'gh auth login', fixTo: 'Signed in as cjjutba' },
+      port: { id: 'hooks', title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', button: 'Use 7421', alt: 'Show process', fixTo: 'Listening on localhost:7421' }
+    };
+    var rows, title, sub, foot, nextLabel, nextHref, ready;
+    if (s.kind === 'room') {
+      var steps = [['Clone cjjutba/client-c', '~/Projects/client-c', '4s'], ['Create the worktree folder', '~/kernel/worktrees/client-c', ''], ['Install dependencies', 'pnpm install', '12s'], ['Copy local files', '.env.local, .env.test', ''], ['Install hooks', '10 events to localhost:7420', ''], ['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']];
+      rows = steps.map(function (x, i) {
+        var st = i < s.step ? 'ok' : (i === s.step ? 'run' : 'wait');
+        return { title: x[0], detail: x[1], meta: st === 'ok' ? x[2] : (st === 'run' ? 'running' : ''), ok: st === 'ok', run: st === 'run', wait: st === 'wait', fail: false, hasFix: false, titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8' };
+      });
+      title = 'Setting up Client C'; sub = 'This takes a minute. Agents take their desks when it finishes.';
+      ready = s.step >= 6; foot = ready ? 'Done. Rowan is waiting for a brief.' : 'You can leave this screen. Kernel keeps going.';
+      nextLabel = 'Open the floor'; nextHref = 'Main.dc.html';
+    } else {
+      var F = fails[s.kind];
+      var fixed = !!s.fixed[F.id];
+      rows = base.map(function (b) {
+        if (b.id !== F.id) return { title: b.title, detail: b.detail, meta: b.meta, ok: true, fail: false, run: false, wait: false, hasFix: false, titleColor: '#f7f8f8' };
+        if (fixed) return { title: b.title, detail: F.fixTo, meta: '', ok: true, fail: false, run: false, wait: false, hasFix: false, titleColor: '#f7f8f8' };
+        var fix = function () { var n = Object.assign({}, s.fixed); n[F.id] = true; self.setState({ fixed: n }); };
+        var acts = [];
+        if (F.button) acts.push({ label: F.button, primary: true, act: fix });
+        if (F.cmd) acts.push({ label: 'Check again', primary: true, act: fix });
+        if (F.alt) acts.push({ label: F.alt, primary: false, act: function () {} });
+        return { title: F.title, detail: F.detail, meta: '', ok: false, fail: true, run: false, wait: false, hasFix: true, titleColor: '#f7f8f8',
+          hasCmd: !!F.cmd, cmd: F.cmd || '', copyLabel: s.copied === F.id ? 'Copied' : 'Copy', copy: function () { self.setState({ copied: F.id }); },
+          actions: acts.map(function (a) { return { label: a.label, act: a.act, bg: a.primary ? '#f7f8f8' : 'transparent', color: a.primary ? '#08090a' : '#f7f8f8', border: a.primary ? '#f7f8f8' : '#2a2b30' }; }) };
+      });
+      ready = fixed;
+      title = 'Getting Kernel ready'; sub = 'Kernel checks your Mac before it starts any agents.';
+      foot = ready ? 'Everything checks out.' : '1 thing needs your attention.';
+      nextLabel = 'Continue'; nextHref = 'HomeEmpty.dc.html';
+    }
+    rows = rows.map(function (r, i) { r.border = i === 0 ? '0' : '1px solid #1a1b1e'; r.actions = r.actions || []; r.hasCmd = !!r.hasCmd; r.cmd = r.cmd || ''; r.copyLabel = r.copyLabel || 'Copy'; r.copy = r.copy || function () {}; return r; });
+    return {
+      title: title, sub: sub, rows: rows, foot: foot, nextLabel: nextLabel, nextHref: nextHref,
+      notReady: ready ? 'false' : 'true', nextBg: ready ? '#f7f8f8' : '#1c1d21', nextColor: ready ? '#08090a' : '#62666d', nextEvents: ready ? 'auto' : 'none'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Confirm</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid #1a1b1e"><span style="color: #d0d6e0">Client A</span><span style="color: #62666d">/</span><h1 style="margin: 0; font-size: 13px; font-weight: 500">{{ under }}</h1></header>
+<div aria-hidden="true" style="flex: 1; display: flex; flex-direction: column; gap: 14px; padding: 40px 120px"><span style="align-self: flex-end; width: 50%; height: 56px; border-radius: 10px; background: #16171a"></span><span style="width: 80%; height: 14px; border-radius: 4px; background: #16171a"></span><span style="width: 64%; height: 14px; border-radius: 4px; background: #16171a"></span></div>
+</div>
+<!--FOOTER-->
+</div>
+
+<a href="{{ back }}" aria-label="Cancel" class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></a>
+
+<section role="alertdialog" aria-modal="true" aria-labelledby="cf-title" aria-describedby="cf-body" style="position: absolute; z-index: 50; left: 50%; top: 220px; transform: translateX(-50%); width: 460px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 20px 20px 16px">
+<h2 id="cf-title" style="margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.2px">{{ title }}</h2>
+<p id="cf-body" style="margin: 0; color: #b7bcc4; line-height: 1.55">{{ body }}</p>
+<sc-if value="{{ hasFacts }}" hint-placeholder-val="{{ false }}"><div style="display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 8px; background: #111214; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #b7bcc4"><sc-for list="{{ facts }}" as="f" hint-placeholder-count="2"><span>{{ f }}</span></sc-for></div></sc-if>
+<sc-if value="{{ hasOption }}" hint-placeholder-val="{{ false }}"><button type="button" role="checkbox" aria-checked="{{ optChecked }}" onClick="{{ toggleOpt }}" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 10px; padding: 4px 0; border: 0; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid {{ boxBorder }}; background: {{ boxBg }}; color: #08090a; font-size: 11px; font-weight: 700">{{ mark }}</span>{{ option }}</button></sc-if>
+<sc-if value="{{ done }}" hint-placeholder-val="{{ false }}"><p role="status" style="margin: 0; padding: 10px 12px; border-radius: 8px; border: 1px solid #2a2b30; color: #d0d6e0">{{ doneText }}</p></sc-if>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
+<sc-if value="{{ hasAlt }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ alt }}" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: {{ altColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ altLabel }}</button></sc-if>
+<span style="flex: 1"></span>
+<a href="{{ back }}" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a>
+<button type="button" onClick="{{ confirm }}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: {{ confirmBg }}; color: {{ confirmColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ confirmLabel }}</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { kind: '%%KIND%%', opt: false, done: '' };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var K = {
+      archive: { under: 'invoice-table', back: 'WorkspaceMerged.dc.html', title: 'Archive invoice-table?', body: 'This branch has 2 commits that are not on GitHub yet. Archiving removes the worktree. The branch and chat stay, and you can restore it from History.', facts: ['feat/t-14-invoice-table', '2 commits ahead of origin'], option: 'Also delete the local branch', confirm: 'Push and archive', alt: 'Archive anyway', danger: false, doneText: 'Pushed 2 commits and archived invoice-table.', altText: 'Archived without pushing. The commits are on the local branch.' },
+      remove: { under: 'Floor', back: 'SidebarRoomMenu.dc.html', title: 'Remove Client A?', body: 'Kernel stops 5 agents and archives 3 workspaces. Your repo on disk and .claude/agents are not touched.', facts: ['~/Projects/client-a', '3 workspaces · 5 agents'], option: 'Also delete the worktrees in ~/kernel/worktrees', confirm: 'Remove room', danger: true, doneText: 'Removed Client A. Add it again any time with Open a folder.' },
+      discard: { under: 'invoice-table', back: 'Workspace.dc.html', title: 'Discard changes in invoice-table?', body: 'This throws away every uncommitted change in the worktree. Checkpoints keep the last 20 turns if you change your mind.', facts: ['4 files · +412 -38'], confirm: 'Discard changes', danger: true, doneText: 'Discarded. The worktree matches the last commit.' },
+      retire: { under: 'Team', back: 'AgentProfile.dc.html', title: 'Retire Kai?', body: 'Kai finishes his current turn, then leaves the floor and the workspace picker. His file moves to .claude/agents/retired so you can bring him back.', facts: ['.claude/agents/kai.md', '1 open workspace goes to Rowan'], confirm: 'Retire Kai', danger: false, doneText: 'Kai is retired. Rowan picked up invoice-pdf-button.' }
+    }[s.kind];
+    return {
+      under: K.under, back: K.back, title: K.title, body: K.body, facts: K.facts || [], hasFacts: !!K.facts,
+      hasOption: !!K.option && !s.done, option: K.option || '', optChecked: s.opt ? 'true' : 'false', mark: s.opt ? '✓' : '',
+      boxBg: s.opt ? '#f7f8f8' : 'transparent', boxBorder: s.opt ? '#f7f8f8' : '#4a4c52',
+      toggleOpt: function () { self.setState({ opt: !s.opt }); },
+      done: !!s.done, doneText: s.done,
+      hasAlt: !!K.alt && !s.done, altLabel: K.alt || '', altColor: '#d0d6e0', alt: function () { self.setState({ done: K.altText }); },
+      confirmLabel: s.done ? 'Done' : K.confirm,
+      confirmBg: s.done ? '#f7f8f8' : (K.danger ? '#e5484d' : '#f7f8f8'), confirmColor: s.done ? '#08090a' : (K.danger ? '#ffffff' : '#08090a'),
+      confirm: function () { if (s.done) self.setState({ done: '' }); else self.setState({ done: K.doneText }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

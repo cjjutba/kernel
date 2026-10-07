@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · New room</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; border-bottom: 1px solid #1a1b1e">
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">All rooms</h1>
+</header>
+<div aria-hidden="true" style="padding: 8px 24px; color: #8a8f98">
+<div style="height: 60px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 28px; height: 28px; border-radius: 7px; background: #1c1d21"></span><span style="color: #f7f8f8">Client A</span></div>
+<div style="height: 60px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 28px; height: 28px; border-radius: 7px; background: #1c1d21"></span><span style="color: #f7f8f8">Client B</span></div>
+<div style="height: 60px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 28px; height: 28px; border-radius: 7px; background: #1c1d21"></span><span style="color: #f7f8f8">Own app</span></div>
+<div style="height: 60px; border-bottom: 1px solid #17181a; display: flex; align-items: center; gap: 12px"><span style="width: 28px; height: 28px; border-radius: 7px; background: #1c1d21"></span><span style="color: #f7f8f8">Portfolio</span></div>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+
+<div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="nr-title" style="position: absolute; z-index: 50; left: 50%; top: 92px; transform: translateX(-50%); width: 640px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 18px; font-size: 12px; color: #8a8f98">
+<span style="display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #23252a; color: #d0d6e0">Rooms</span>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<span id="nr-title" style="color: #d0d6e0">New room</span>
+<span style="flex: 1"></span>
+<a href="Rooms.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 18px; padding: 6px 18px 18px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="nr-name" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Room name</label>
+<input id="nr-name" type="text" autocomplete="off" value="{{ name }}" onChange="{{ onName }}" placeholder="Room name" style="height: 32px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 20px; font-weight: 600; letter-spacing: -0.4px">
+<label for="nr-desc" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">What this room builds</label>
+<input id="nr-desc" type="text" autocomplete="off" value="{{ desc }}" onChange="{{ onDesc }}" placeholder="What should this room build?" style="height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 14px">
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Start from</p>
+<div role="radiogroup" aria-label="Start from" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{ sources }}" as="s" hint-placeholder-count="3">
+<button type="button" role="radio" aria-checked="{{ s.checked }}" onClick="{{ s.pick }}" style="position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid {{ s.border }}; background: {{ s.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer">
+<sc-if value="{{ s.isRepo }}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg></sc-if>
+<sc-if value="{{ s.isFolder }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg></sc-if>
+<sc-if value="{{ s.isScratch }}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9"></path></svg></sc-if>
+<span style="display: flex; flex-direction: column; gap: 2px">
+<span style="font-size: 13px; font-weight: 500">{{ s.title }}</span>
+<span style="font-size: 12px; color: #8a8f98; line-height: 1.4">{{ s.sub }}</span>
+</span>
+<sc-if value="{{ s.on }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; top: 10px; right: 10px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span></sc-if>
+</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">{{ field.label }}</span>
+<div style="display: flex; align-items: center; gap: 8px; height: 34px; box-sizing: border-box; padding: 0 6px 0 10px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
+<span style="flex: 1; min-width: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #f7f8f8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ field.value }}</span>
+<button type="button" style="height: 24px; padding: 0 9px; border: 1px solid #2a2b30; border-radius: 6px; background: #18191a; color: #d0d6e0; font-family: inherit; font-size: 12px; cursor: pointer">{{ field.action }}</button>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">{{ field.label2 }}</span>
+<div style="display: flex; align-items: center; height: 34px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px">{{ field.value2 }}</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Team <span style="font-weight: 400">from .claude/agents</span></p>
+<div style="display: flex; flex-wrap: wrap; gap: 6px">
+<sc-for list="{{ team }}" as="m" hint-placeholder-count="6">
+<button type="button" aria-pressed="{{ m.pressed }}" onClick="{{ m.toggle }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 10px 0 8px; border-radius: 999px; border: 1px solid {{ m.border }}; background: {{ m.bg }}; color: {{ m.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">
+<span aria-hidden="true" style="width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ m.avBg }}; color: {{ m.avColor }}; font-size: 8.5px; font-weight: 600">{{ m.av }}</span>{{ m.label }}<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; color: #8a8f98">{{ m.model }}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 18px; border-top: 1px solid #26272b">
+<button type="button" role="switch" aria-checked="{{ autostart }}" aria-label="Brief Rowan right away" onClick="{{ toggleAuto }}" style="width: 30px; height: 18px; position: relative; padding: 0; border: 0; border-radius: 999px; background: {{ switchBg }}; cursor: pointer"><span aria-hidden="true" style="position: absolute; top: 2px; left: {{ knobLeft }}; width: 14px; height: 14px; border-radius: 50%; background: {{ knobBg }}"></span></button>
+<span style="color: #d0d6e0">Brief Rowan right away</span>
+<span style="flex: 1"></span>
+<a href="Rooms.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a>
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">Create room</a>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      source: 'repo',
+      name: 'Client C',
+      desc: 'Booking dashboard for a dental clinic',
+      autostart: true,
+      team: { lead: true, fe: true, be: true, qa: true, rev: true, des: false }
+    };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var slug = (s.name || 'new-room').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-room';
+    var srcDefs = [
+      { id: 'repo', title: 'GitHub repo', sub: 'Clone it and work on branches' },
+      { id: 'folder', title: 'Local folder', sub: 'Use a project already on your Mac' },
+      { id: 'scratch', title: 'From scratch', sub: 'Start from your starter kit' }
+    ];
+    var sources = srcDefs.map(function (d) {
+      var on = s.source === d.id;
+      return {
+        title: d.title, sub: d.sub, on: on, checked: on ? 'true' : 'false',
+        isRepo: d.id === 'repo', isFolder: d.id === 'folder', isScratch: d.id === 'scratch',
+        border: on ? '#4a4c52' : '#23252a', bg: on ? '#1c1d21' : '#0f1011',
+        pick: function () { self.setState({ source: d.id }); }
+      };
+    });
+    var fields = {
+      repo: { label: 'Repository', value: 'cjjutba/' + slug, action: 'Change', label2: 'Base branch', value2: 'main' },
+      folder: { label: 'Folder', value: '~/Projects/' + slug, action: 'Choose', label2: 'Git', value2: 'Detected' },
+      scratch: { label: 'Template', value: 'cjjutba/starter-kit', action: 'Change', label2: 'Location', value2: '~/Projects' }
+    };
+    var defs = [
+      { id: 'lead', label: 'Rowan', av: 'R', model: 'Lead', locked: true },
+      { id: 'fe', label: 'Kai', av: 'K', model: 'Frontend' },
+      { id: 'be', label: 'Noor', av: 'N', model: 'Backend' },
+      { id: 'qa', label: 'Ivy', av: 'I', model: 'QA' },
+      { id: 'rev', label: 'Theo', av: 'T', model: 'Reviewer' },
+      { id: 'des', label: 'Lumi', av: 'L', model: 'Designer' }
+    ];
+    var team = defs.map(function (d) {
+      var on = !!s.team[d.id];
+      return {
+        label: d.label, av: d.av, model: d.model, pressed: on ? 'true' : 'false',
+        border: on ? '#3a3c42' : '#23252a', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98',
+        avBg: on ? '#f7f8f8' : '#1c1d21', avColor: on ? '#08090a' : '#8a8f98',
+        toggle: function () {
+          if (d.locked) return;
+          var t = Object.assign({}, s.team);
+          t[d.id] = !t[d.id];
+          self.setState({ team: t });
+        }
+      };
+    });
+    return {
+      accent: accent,
+      name: s.name,
+      desc: s.desc,
+      onName: function (e) { self.setState({ name: e.target.value }); },
+      onDesc: function (e) { self.setState({ desc: e.target.value }); },
+      sources: sources,
+      field: fields[s.source],
+      team: team,
+      autostart: s.autostart ? 'true' : 'false',
+      toggleAuto: function () { self.setState({ autostart: !s.autostart }); },
+      switchBg: s.autostart ? '#f7f8f8' : '#2a2b30',
+      knobBg: s.autostart ? '#08090a' : '#8a8f98',
+      knobLeft: s.autostart ? '14px' : '2px'
+    };
+  }
+}
+</script>
+</body>
+</html>

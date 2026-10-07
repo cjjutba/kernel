@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · %%TITLE%%</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px"><h1 style="margin: 0; font-size: 13px; font-weight: 500">Home</h1></header>
+<div aria-hidden="true" style="padding: 32px 40px; display: flex; flex-direction: column; gap: 16px"><span style="font-size: 24px; font-weight: 600">Good evening, CJ</span><span style="height: 34px; border-radius: 6px; background: #141516"></span><span style="height: 52px; border-bottom: 1px solid #18191b"></span><span style="height: 52px; border-bottom: 1px solid #18191b"></span></div>
+</div>
+<!--FOOTER-->
+</div>
+
+<div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="try-title" style="position: absolute; z-index: 50; left: 50%; top: 96px; transform: translateX(-50%); width: 600px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px">
+<h2 id="try-title" style="flex: 1; margin: 0; font-size: 14px; font-weight: 500">{{ title }}</h2>
+<a href="Home.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></a>
+</div>
+
+<p style="margin: 0; padding: 0 18px 4px; color: #8a8f98">{{ sub }}</p>
+<sc-if value="{{ isRepo }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 16px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #1f2024; background: #0f1011">
+<span aria-hidden="true" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8; color: #08090a; font-size: 9px; font-weight: 600">CJ</span>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">cjjutba</span><span style="font-size: 12px; color: #8a8f98">Signed in through the GitHub CLI</span></span>
+<button type="button" style="height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; cursor: pointer">Switch account</button>
+</div>
+<div style="position: relative">
+<label for="repo-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search your repositories</label>
+<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" style="position: absolute; left: 11px; top: 10px"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<input id="repo-q" type="text" autocomplete="off" value="{{ q }}" onChange="{{ onQ }}" placeholder="Search your repositories" style="width: 100%; height: 34px; box-sizing: border-box; padding: 0 12px 0 32px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none">
+</div>
+<div role="radiogroup" aria-label="Repositories" style="display: flex; flex-direction: column; gap: 2px">
+<sc-for list="{{ repos }}" as="r" hint-placeholder-count="6">
+<button type="button" role="radio" aria-checked="{{ r.checked }}" onClick="{{ r.pick }}" style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border: 1px solid {{ r.border }}; border-radius: 8px; background: {{ r.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer">
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>
+<span style="flex: 1; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px"><span style="color: #8a8f98">cjjutba/</span>{{ r.name }}</span>
+<span style="height: 20px; padding: 0 7px; border-radius: 999px; border: 1px solid #23252a; font-size: 11.5px; line-height: 18px; color: #8a8f98">{{ r.vis }}</span>
+<span style="width: 64px; text-align: right; font-size: 12px; color: #8a8f98">{{ r.updated }}</span>
+</button>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isFolder }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 12px 18px 16px">
+<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 136px; border-radius: 12px; border: 1.5px dashed #2a2b30; background: #0f1011">
+<svg width="22" height="22" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>
+<span style="color: #d0d6e0">Drop a project folder here</span>
+<button type="button" style="height: 28px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Choose folder</button>
+</div>
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Recent folders</p>
+<div role="radiogroup" aria-label="Recent folders" style="display: flex; flex-direction: column; gap: 2px; margin-top: -6px">
+<sc-for list="{{ folders }}" as="f" hint-placeholder-count="4">
+<button type="button" role="radio" aria-checked="{{ f.checked }}" onClick="{{ f.pick }}" style="display: flex; align-items: center; gap: 12px; height: 50px; padding: 0 12px; border: 1px solid {{ f.border }}; border-radius: 8px; background: {{ f.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer">
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>
+<span style="flex: 1; display: flex; flex-direction: column; gap: 1px"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px">{{ f.path }}</span><span style="font-size: 12px; color: {{ f.subColor }}">{{ f.sub }}</span></span>
+<sc-if value="{{ f.noGit }}" hint-placeholder-val="{{ false }}"><span style="height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid #2a2b30; font-size: 12px; line-height: 22px; color: #d0d6e0">Initialize git</span></sc-if>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{ dirtyNote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #d0d6e0">The 3 uncommitted changes stay. Current-branch workspaces treat them as the baseline.</p></sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isHooks }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 12px; padding: 12px 18px 16px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid #1f2024; background: #0f1011">
+
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg><span style="flex: 1; font-weight: 500">Hooks are live</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">localhost:7420 · 6 sessions</span>
+</div>
+<div style="border-radius: 8px; border: 1px solid #1f2024">
+<sc-for list="{{ events }}" as="e" hint-placeholder-count="10">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 110px 70px; align-items: center; gap: 12px; height: 30px; padding: 0 12px; border-top: {{ e.border }}">
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px">{{ e.name }}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{ e.color }}">{{ e.status }}</span>
+<span style="text-align: right; font-size: 12px; color: #8a8f98">{{ e.seen }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<button type="button" onClick="{{ test }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Send test event</button>
+<sc-if value="{{ tested }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: #d0d6e0"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg>Test event received</span></sc-if>
+</div>
+<div style="display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.6; color: #b7bcc4">
+<span style="color: #8a8f98">~/.claude/settings.json</span>
+<sc-for list="{{ json }}" as="ln" hint-placeholder-count="5"><span style="white-space: pre">{{ ln }}</span></sc-for>
+</div>
+</div>
+</sc-if>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 20px; border-top: 1px solid #26272b">
+<span style="font-size: 12px; color: #8a8f98">{{ footNote }}</span>
+<span style="flex: 1"></span>
+<sc-if value="{{ isHooks }}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reinstall hooks</button></sc-if>
+<sc-if value="{{ notHooks }}" hint-placeholder-val="{{ true }}"><a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a></sc-if>
+<a href="{{ primaryHref }}" style="display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">{{ primaryLabel }}</a>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: '%%MODE%%', q: '', repo: 'client-c', folder: 'kalinga', tested: false };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var R = [['client-c', 'Private', '2h ago'], ['cjjutba.dev', 'Public', '1d ago'], ['upnext', 'Private', '3d ago'], ['kalinga', 'Private', '1w ago'], ['starter-kit', 'Private', '2w ago'], ['starter-kit-mobile', 'Private', '3w ago']];
+    var q = (s.q || '').toLowerCase();
+    var repos = R.filter(function (r) { return !q || r[0].indexOf(q) >= 0; }).map(function (r) {
+      var on = s.repo === r[0];
+      return { name: r[0], vis: r[1], updated: r[2], checked: on ? 'true' : 'false', border: on ? '#3a3c42' : 'transparent', bg: on ? '#1c1d21' : 'transparent', pick: function () { self.setState({ repo: r[0] }); } };
+    });
+    var F = [['upnext', '~/Projects/upnext', 'git · main · clean', true], ['kalinga', '~/Projects/kalinga', 'git · dev · 3 uncommitted changes', true], ['cjjutba.dev', '~/Projects/cjjutba.dev', 'git · main · clean', true], ['sandbox', '~/Desktop/sandbox', 'Not a git repository', false]];
+    var folders = F.map(function (f) {
+      var on = s.folder === f[0];
+      return { path: f[1], sub: f[2], noGit: !f[3], subColor: f[3] ? '#8a8f98' : '#d0d6e0', checked: on ? 'true' : 'false', border: on ? '#3a3c42' : 'transparent', bg: on ? '#1c1d21' : 'transparent', pick: function () { self.setState({ folder: f[0] }); } };
+    });
+    var E = [['SessionStart', 'live', '2m'], ['UserPromptSubmit', 'live', '12m'], ['PreToolUse', 'live', 'now'], ['PostToolUse', 'live', 'now'], ['PermissionRequest', 'live', '2m'], ['Notification', 'live', '2m'], ['Stop', 'live', '6m'], ['TaskCreated', 'live', '6m'], ['TaskCompleted', 'live', '18m'], ['TeammateIdle', 'quiet', '']];
+    var events = E.map(function (e, i) {
+      var live = e[1] === 'live';
+      return { name: e[0], status: live ? 'Receiving' : 'Installed', color: live ? '#d0d6e0' : '#8a8f98', seen: e[2] || 'no events', border: i === 0 ? '0' : '1px solid #1a1b1e' };
+    });
+    var meta = {
+      repo: { title: 'Connect a repo', sub: 'Agents clone it and work on branches. Nothing is pushed without your OK.', foot: 'Clones to ~/Projects/' + s.repo, label: 'Connect repo', href: 'NewRoom.dc.html' },
+      folder: { title: 'Open a folder', sub: 'Point a room at a project that already lives on your Mac.', foot: s.folder === 'sandbox' ? 'Git will be initialized on main' : 'Workspaces use worktrees by default', label: 'Open folder', href: 'NewRoom.dc.html' },
+      hooks: { title: 'Check hooks', sub: 'Hooks let the office see what every agent is doing. They post events to a local server only.', foot: '', label: 'Done', href: 'Home.dc.html' }
+    }[s.mode];
+    return {
+      accent: accent,
+      isRepo: s.mode === 'repo', isFolder: s.mode === 'folder', isHooks: s.mode === 'hooks', notHooks: s.mode !== 'hooks',
+      title: meta.title, sub: meta.sub, footNote: meta.foot, primaryLabel: meta.label, primaryHref: meta.href,
+      q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
+      repos: repos, folders: folders, dirtyNote: s.folder === 'kalinga',
+      events: events, tested: s.tested, test: function () { self.setState({ tested: true }); },
+      json: ['"hooks": {', '  "PreToolUse": [{', '    "hooks": [{ "type": "http", "url": "http://localhost:7420/hooks" }]', '  }],', '  ...one entry per event', '}']
+    };
+  }
+}
+</script>
+</body>
+</html>

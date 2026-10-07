@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Rooms</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2"></rect></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">All rooms</h1>
+<span style="flex: 1"></span>
+<a href="NewRoom.dc.html" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 12px 0 10px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 2v8M2 6h8"></path></svg>New room</a>
+</header>
+
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+<button type="button" onClick="{{ t.pick }}" aria-pressed="{{ t.pressed }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid {{ t.border }}; background: {{ t.bg }}; color: {{ t.color }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ t.label }}<span style="font-size: 12px; color: #8a8f98">{{ t.count }}</span></button>
+</sc-for>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; padding: 0 12px">
+<div style="display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; height: 40px; padding: 0 12px; font-size: 12px; color: #8a8f98">
+<span>Name</span><span>Source</span><span>Agents</span><span>Status</span><span style="text-align: right">Updated</span>
+</div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+<a href="Main.dc.html" style="display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 150px 130px 90px; align-items: center; gap: 16px; height: 60px; padding: 0 12px; border-top: 1px solid #17181a; color: #f7f8f8; text-decoration: none">
+<span style="display: flex; align-items: center; gap: 12px; min-width: 0">
+<span aria-hidden="true" style="width: 28px; height: 28px; flex-shrink: 0; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 12px; font-weight: 600">{{ r.letter }}</span>
+<span style="display: flex; flex-direction: column; min-width: 0">
+<span style="font-weight: 500">{{ r.name }}</span>
+<span style="font-size: 12px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.desc }}</span>
+</span>
+</span>
+<span style="display: flex; align-items: center; gap: 8px; min-width: 0; color: #d0d6e0">
+<sc-if value="{{ r.isRepo }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg></sc-if>
+<sc-if value="{{ r.isFolder }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg></sc-if>
+<sc-if value="{{ r.isScratch }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" style="flex-shrink: 0"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9"></path></svg></sc-if>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.source }}</span>
+</span>
+<span style="display: flex; align-items: center; gap: 8px">
+<span style="display: flex">
+<sc-for list="{{ r.team }}" as="m" hint-placeholder-count="3">
+<span aria-hidden="true" style="width: 20px; height: 20px; box-sizing: border-box; margin-right: -5px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid #0f1011; background: #1c1d21; color: #d0d6e0; font-size: 8.5px; font-weight: 600">{{ m }}</span>
+</sc-for>
+</span>
+<span style="margin-left: 6px; font-size: 12px; color: #8a8f98">{{ r.agentCount }}</span>
+</span>
+<span><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px; border-radius: 999px; border: 1px solid {{ r.statusBorder }}; font-size: 12px; color: {{ r.statusColor }}">{{ r.status }}</span></span>
+<span style="font-size: 12px; color: #8a8f98; text-align: right">{{ r.updated }}</span>
+</a>
+</sc-for>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'all' };
+  }
+
+  data() {
+    return [
+      { letter: 'A', name: 'Client A', desc: 'Invoicing SaaS · MVP Sprint', kind: 'repo', source: 'cjjutba/client-a', team: ['R', 'K', 'N', 'I', 'T'], st: 'you', updated: '2 min ago', active: true },
+      { letter: 'B', name: 'Client B', desc: 'Discovery Sprint', kind: 'repo', source: 'cjjutba/client-b', team: ['R', 'K'], st: 'working', updated: '14 min ago', active: true },
+      { letter: 'O', name: 'Own app', desc: 'Nights and weekends', kind: 'folder', source: '~/Projects/own-app', team: ['R', 'K', 'I'], st: 'working', updated: '1 hour ago', active: true },
+      { letter: 'P', name: 'Portfolio', desc: 'Personal site refresh', kind: 'repo', source: 'cjjutba/portfolio', team: ['R', 'K'], st: 'idle', updated: '2 days ago', active: true },
+      { letter: 'S', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', source: 'starter-kit template', team: ['R'], st: 'archived', updated: '3 weeks ago', active: false }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var tab = this.state.tab;
+    var all = this.data();
+    var looks = {
+      you: { label: 'Needs you', color: accent, dot: accent, border: '#3a3c42' },
+      working: { label: 'Working', color: '#d0d6e0', dot: '#f7f8f8', border: '#2a2b30' },
+      idle: { label: 'Idle', color: '#8a8f98', dot: '#62666d', border: '#23252a' },
+      archived: { label: 'Archived', color: '#8a8f98', dot: '#3e3e44', border: '#23252a' }
+    };
+    var rows = all.filter(function (r) {
+      return tab === 'all' || (tab === 'active' ? r.active : !r.active);
+    }).map(function (r) {
+      var l = looks[r.st];
+      return {
+        letter: r.letter, name: r.name, desc: r.desc, source: r.source,
+        isRepo: r.kind === 'repo', isFolder: r.kind === 'folder', isScratch: r.kind === 'scratch',
+        team: r.team, agentCount: r.team.length + (r.team.length === 1 ? ' agent' : ' agents'),
+        status: l.label, statusColor: l.color, statusDot: l.dot, statusBorder: l.border, updated: r.updated
+      };
+    });
+    var defs = [
+      { id: 'all', label: 'All rooms', count: all.length },
+      { id: 'active', label: 'Active', count: all.filter(function (r) { return r.active; }).length },
+      { id: 'archived', label: 'Archived', count: all.filter(function (r) { return !r.active; }).length }
+    ];
+    var tabs = defs.map(function (d) {
+      var on = d.id === tab;
+      return {
+        label: d.label, count: String(d.count), pressed: on ? 'true' : 'false',
+        bg: on ? '#1c1d21' : 'transparent', border: on ? '#2a2b30' : '#1f2024', color: on ? '#f7f8f8' : '#8a8f98',
+        pick: function () { self.setState({ tab: d.id }); }
+      };
+    });
+    return { accent: accent, rows: rows, tabs: tabs };
+  }
+}
+</script>
+</body>
+</html>

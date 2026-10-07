@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Office · Floor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+
+<!--SIDEBAR-->
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
+<a href="Rooms.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Floor</h1>
+<svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.3" stroke-linejoin="round" style="margin-left: 4px"><path d="m8 2.6 1.6 3.4 3.7.4-2.8 2.5.8 3.7L8 10.8l-3.3 1.8.8-3.7-2.8-2.5 3.7-.4Z"></path></svg>
+<span style="flex: 1"></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">cjjutba/client-a · main</span>
+</header>
+
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<a href="Main.dc.html" aria-current="page" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; text-decoration: none; font-weight: 500">Floor</a>
+<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid #1f2024; color: #8a8f98; text-decoration: none; font-weight: 500">Board</a>
+<span style="flex: 1"></span>
+<span style="font-size: 12px; color: #8a8f98">{{ workingLabel }}</span>
+<sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; background: rgba(245, 165, 36, 0.1); color: {{ accent }}; font-size: 12px; font-weight: 500"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: {{ accent }}"></span>1 needs you</span>
+</sc-if>
+<button type="button" onClick="{{ togglePause }}" aria-label="{{ pauseLabel }}" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #8a8f98; cursor: pointer">
+<sc-if value="{{ running }}" hint-placeholder-val="{{ true }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg></sc-if>
+<sc-if value="{{ paused }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M5 3.2 12.5 8 5 12.8Z"></path></svg></sc-if>
+</button>
+</div>
+
+<div style="flex: 1; min-height: 0; display: flex">
+<main style="position: relative; flex: 1; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 12px 24px 20px">
+
+<div style="position: absolute; top: 14px; left: 14px; width: 236px; box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 10px; border: 1px solid #23252a; background: rgba(20, 21, 22, 0.94)">
+<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+<span style="font-size: 14px; font-weight: 600; letter-spacing: -0.1px">{{ sel.role }}</span>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: {{ sel.labelColor }}"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: {{ sel.dot }}"></span>{{ sel.label }}</span>
+</div>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ sel.meta }}</span>
+<span style="margin-top: 3px; color: #d0d6e0">{{ sel.act }}</span>
+<a href="Workspace.dc.html" style="margin-top: 8px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Open workspace<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></a>
+</div>
+
+<div style="position: relative; width: 100%; max-width: 740px">
+<img src="/_blob/e5f44fa189e70a1d3dc5c74650fa7a09" alt="Isometric office: five agents at desks, a task wall, a glass planning room, an open desk and a small lounge" style="display: block; width: 100%; height: auto">
+<button type="button" onClick="{{ v.lead.pick }}" aria-pressed="{{ v.lead.pressed }}" aria-label="Lead, {{ v.lead.label }}" style="position: absolute; left: 55.73%; top: 36.87%; transform: translate(-50%, -100%); display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer"><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 999px; border: 1px solid {{ v.lead.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap"><span aria-hidden="true" class="{{ v.lead.pulse }}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ v.lead.dot }}"></span>Lead</span></button>
+<button type="button" onClick="{{ v.fe.pick }}" aria-pressed="{{ v.fe.pressed }}" aria-label="Frontend, {{ v.fe.label }}" style="position: absolute; left: 30.96%; top: 37.6%; transform: translate(-50%, -100%); display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer"><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 999px; border: 1px solid {{ v.fe.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap"><span aria-hidden="true" class="{{ v.fe.pulse }}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ v.fe.dot }}"></span>Frontend</span></button>
+<button type="button" onClick="{{ v.be.pick }}" aria-pressed="{{ v.be.pressed }}" aria-label="Backend, {{ v.be.label }}" style="position: absolute; left: 41.79%; top: 45.93%; transform: translate(-50%, -100%); display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer"><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 999px; border: 1px solid {{ v.be.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap"><span aria-hidden="true" class="{{ v.be.pulse }}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ v.be.dot }}"></span>Backend</span></button>
+<button type="button" onClick="{{ v.qa.pick }}" aria-pressed="{{ v.qa.pressed }}" aria-label="QA, {{ v.qa.label }}" style="position: absolute; left: 20.57%; top: 45.6%; transform: translate(-50%, -100%); display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer"><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 999px; border: 1px solid {{ v.qa.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap"><span aria-hidden="true" class="{{ v.qa.pulse }}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ v.qa.dot }}"></span>QA</span></button>
+<button type="button" onClick="{{ v.rev.pick }}" aria-pressed="{{ v.rev.pressed }}" aria-label="Reviewer, {{ v.rev.label }}" style="position: absolute; left: 31.39%; top: 53.93%; transform: translate(-50%, -100%); display: flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: transparent; cursor: pointer"><span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px 0 7px; border-radius: 999px; border: 1px solid {{ v.rev.border }}; background: rgba(15, 16, 17, 0.92); color: #f7f8f8; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap"><span aria-hidden="true" class="{{ v.rev.pulse }}" style="width: 6px; height: 6px; border-radius: 50%; background: {{ v.rev.dot }}"></span>Reviewer</span></button>
+</div>
+
+<div class="cmp" style="position: relative; width: 100%; max-width: 620px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: 12px; border: 1px solid #23252a; background: #141516">
+<label for="brief" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Message</label>
+<input id="brief" type="text" autocomplete="off" value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onKey }}" placeholder="{{ placeholder }}" style="height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 14px">
+<div style="display: flex; align-items: center; gap: 8px">
+<label for="to" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Send to</label>
+<div style="position: relative">
+<select id="to" value="{{ to }}" onChange="{{ onTo }}" style="appearance: none; -webkit-appearance: none; height: 26px; padding: 0 24px 0 9px; border: 1px solid #23252a; border-radius: 6px; background: #18191a; color: #d0d6e0; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">
+<option value="lead">To Lead</option>
+<option value="fe">To Frontend</option>
+<option value="be">To Backend</option>
+<option value="qa">To QA</option>
+<option value="rev">To Reviewer</option>
+</select>
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="position: absolute; right: 8px; top: 8px; pointer-events: none"><path d="M2.5 4 5 6.5 7.5 4"></path></svg>
+</div>
+<span style="font-size: 12px; color: #8a8f98">Enter to send</span>
+<span style="flex: 1"></span>
+<button type="button" onClick="{{ send }}" aria-label="Send" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: {{ sendBg }}; color: {{ sendColor }}; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</main>
+
+<aside aria-label="Logs" style="width: 340px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid #1a1b1e">
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600">Logs</h2>
+<span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #8a8f98"><span aria-hidden="true" class="pin" style="width: 6px; height: 6px; border-radius: 50%; background: #f7f8f8"></span>Live</span>
+</div>
+<div style="flex: 1; min-height: 0; overflow: hidden; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 14px 16px">
+<sc-if value="{{ hasPending }}" hint-placeholder-val="{{ true }}">
+<section aria-label="Needs you" style="display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 10px; border: 1px solid rgba(245, 165, 36, 0.35); background: rgba(245, 165, 36, 0.05)">
+<p style="margin: 0; display: flex; align-items: center; gap: 8px; font-weight: 500"><span aria-hidden="true" class="pina" style="width: 6px; height: 6px; border-radius: 50%; background: {{ accent }}"></span>{{ pending.who }} needs you</p>
+<p style="margin: 0; padding: 8px 10px; border-radius: 6px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere">{{ pending.cmd }}</p>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<button type="button" onClick="{{ deny }}" style="height: 30px; border: 1px solid #2a2b30; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Deny</button>
+<button type="button" onClick="{{ approve }}" style="height: 30px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Approve</button>
+</div>
+</section>
+</sc-if>
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Today</p>
+<div style="display: flex; flex-direction: column; margin-top: -6px">
+<sc-for list="{{ events }}" as="e" hint-placeholder-count="8">
+<div style="display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 0">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ e.avBg }}; color: {{ e.avColor }}; font-size: 9.5px; font-weight: 600">{{ e.av }}</span>
+<div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+<p style="margin: 0; display: flex; flex-wrap: wrap; align-items: center; column-gap: 5px; row-gap: 2px; line-height: 20px; color: #8a8f98">
+<span style="color: #f7f8f8; font-weight: 500">{{ e.who }}</span>
+<span>{{ e.verb }}</span>
+<sc-if value="{{ e.hasObj }}" hint-placeholder-val="{{ true }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 18px; padding: 0 5px; border-radius: 4px; border: 1px solid {{ e.objBorder }}; background: #141516; color: {{ e.objColor }}">{{ e.obj }}</span></sc-if>
+</p>
+<sc-if value="{{ e.hasQuote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 6px 10px; border-radius: 6px; background: #141516; color: #d0d6e0">{{ e.quote }}</p></sc-if>
+</div>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; line-height: 20px; color: #8a8f98">{{ e.time }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+</aside>
+</div>
+</div>
+
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#f5a524","options":["#f5a524","#f7f8f8","#5e6ad2"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    var base = 10 * 3600 + 42 * 60;
+    this.state = {
+      agents: {
+        lead: { status: 'working', act: 'Splitting the plan into tasks' },
+        fe: { status: 'working', act: 'Editing the invoice table' },
+        be: { status: 'waiting', act: 'Waiting for your approval' },
+        qa: { status: 'working', act: 'Re-running tests with output' },
+        rev: { status: 'working', act: 'Reviewing org invites' }
+      },
+      selected: 'fe',
+      pending: { agent: 'be', cmd: 'pnpm drizzle-kit push' },
+      events: [
+        { t: base, a: 'be', verb: 'asked to run', obj: 'drizzle-kit push', warn: true },
+        { t: base - 60, a: 'rev', verb: 'opened the diff for', obj: 'T-09' },
+        { t: base - 120, a: 'qa', verb: 'was blocked on', obj: 'T-11', warn: true },
+        { t: base - 180, a: 'qa', verb: 'ran', obj: 'pnpm vitest' },
+        { t: base - 240, a: 'be', verb: 'edited', obj: 'schema.ts' },
+        { t: base - 300, a: 'fe', verb: 'edited', obj: 'table.tsx' },
+        { t: base - 360, a: 'lead', verb: 'created', obj: 'T-15' },
+        { t: base - 420, a: 'you', verb: 'briefed Lead', obj: '', quote: 'Add PDF export to invoices. Spec first.' }
+      ],
+      step: 7,
+      paused: false,
+      to: 'lead',
+      draft: '',
+      clock: base
+    };
+  }
+
+  componentDidMount() {
+    this.timer = setInterval(() => this.tick(), 3200);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.timer);
+  }
+
+  meta() {
+    return {
+      lead: { role: 'Lead', model: 'Opus', task: 'Planning', av: 'L' },
+      fe: { role: 'Frontend', model: 'Sonnet', task: 'T-14', av: 'F' },
+      be: { role: 'Backend', model: 'Sonnet', task: 'T-12', av: 'B' },
+      qa: { role: 'QA', model: 'Sonnet', task: 'T-11', av: 'Q' },
+      rev: { role: 'Reviewer', model: 'Opus', task: 'T-09', av: 'R' }
+    };
+  }
+
+  script() {
+    return [
+      { a: 'lead', status: 'working', act: 'Splitting the plan into tasks', verb: 'created', obj: 'T-15' },
+      { a: 'fe', status: 'working', act: 'Editing the invoice table', verb: 'edited', obj: 'table.tsx' },
+      { a: 'be', status: 'working', act: 'Writing the invoice schema', verb: 'edited', obj: 'schema.ts' },
+      { a: 'qa', status: 'working', act: 'Running the test suite', verb: 'ran', obj: 'pnpm vitest' },
+      { a: 'qa', status: 'working', act: 'Re-running tests with output', verb: 'was blocked on', obj: 'T-11', warn: true },
+      { a: 'rev', status: 'working', act: 'Reviewing org invites', verb: 'opened the diff for', obj: 'T-09' },
+      { a: 'be', status: 'waiting', act: 'Waiting for your approval', verb: 'asked to run', obj: 'drizzle-kit push', warn: true, cmd: 'pnpm drizzle-kit push' },
+      { a: 'fe', status: 'working', act: 'Running end to end tests', verb: 'ran', obj: 'playwright' },
+      { a: 'lead', status: 'idle', act: 'Waiting for your next brief', verb: 'finished its turn', obj: '' },
+      { a: 'rev', status: 'idle', act: 'T-09 is ready to merge', verb: 'approved', obj: 'T-09' },
+      { a: 'qa', status: 'idle', act: 'Waiting for the next task', verb: 'passed', obj: 'T-11' },
+      { a: 'fe', status: 'idle', act: 'Waiting on the schema', verb: 'is idle until', obj: 'T-12' }
+    ];
+  }
+
+  push(ev) {
+    return [ev].concat(this.state.events).slice(0, 8);
+  }
+
+  tick() {
+    var s = this.state;
+    if (s.paused) return;
+    var script = this.script();
+    var step = s.step;
+    var st = script[step % script.length];
+    if (s.pending && st.a === s.pending.agent) {
+      step += 1;
+      st = script[step % script.length];
+    }
+    var agents = Object.assign({}, s.agents);
+    agents[st.a] = { status: st.status, act: st.act };
+    var pending = s.pending;
+    if (st.cmd && !pending) pending = { agent: st.a, cmd: st.cmd };
+    var clock = s.clock + 40;
+    this.setState({ agents: agents, pending: pending, clock: clock, step: step + 1, events: this.push({ t: clock, a: st.a, verb: st.verb, obj: st.obj, warn: !!st.warn }) });
+  }
+
+  resolve(approved) {
+    var s = this.state;
+    if (!s.pending) return;
+    var agents = Object.assign({}, s.agents);
+    agents[s.pending.agent] = approved
+      ? { status: 'working', act: 'Running the migration' }
+      : { status: 'working', act: 'Drafting a safer migration' };
+    var clock = s.clock + 10;
+    this.setState({ agents: agents, pending: null, clock: clock, events: this.push({ t: clock, a: 'you', verb: approved ? 'approved' : 'denied', obj: 'drizzle-kit push' }) });
+  }
+
+  send() {
+    var s = this.state;
+    var text = (s.draft || '').trim();
+    if (!text) return;
+    var meta = this.meta();
+    var agents = Object.assign({}, s.agents);
+    if (agents[s.to].status !== 'waiting') agents[s.to] = { status: 'working', act: 'Reading your message' };
+    var clock = s.clock + 10;
+    this.setState({ agents: agents, draft: '', selected: s.to, clock: clock, events: this.push({ t: clock, a: 'you', verb: s.to === 'lead' ? 'briefed Lead' : 'messaged ' + meta[s.to].role, obj: '', quote: text }) });
+  }
+
+  fmt(t) {
+    var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return pad(Math.floor(t / 3600) % 24) + ':' + pad(Math.floor(t / 60) % 60);
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f5a524';
+    var meta = this.meta();
+    var keys = ['lead', 'fe', 'be', 'qa', 'rev'];
+    var working = 0;
+    var v = {};
+    keys.forEach(function (k) {
+      var a = s.agents[k];
+      var isWorking = a.status === 'working';
+      var isWaiting = a.status === 'waiting';
+      if (isWorking) working += 1;
+      var selected = s.selected === k;
+      v[k] = {
+        dot: isWorking ? '#f7f8f8' : (isWaiting ? accent : '#62666d'),
+        pulse: isWorking ? 'pin' : (isWaiting ? 'pina' : ''),
+        border: isWaiting ? accent : (selected ? '#f7f8f8' : '#2e3036'),
+        label: isWorking ? 'working' : (isWaiting ? 'needs you' : 'idle'),
+        pressed: selected ? 'true' : 'false',
+        pick: function () { self.setState({ selected: k }); }
+      };
+    });
+    var k = s.selected;
+    var st = s.agents[k].status;
+    var sel = {
+      role: meta[k].role,
+      meta: meta[k].model + ' · ' + meta[k].task,
+      act: s.agents[k].act,
+      dot: v[k].dot,
+      label: st === 'working' ? 'Working' : (st === 'waiting' ? 'Needs you' : 'Idle'),
+      labelColor: st === 'waiting' ? accent : '#8a8f98'
+    };
+    var events = s.events.map(function (e) {
+      var you = e.a === 'you';
+      return {
+        time: self.fmt(e.t),
+        who: you ? 'You' : meta[e.a].role,
+        av: you ? 'CJ' : meta[e.a].av,
+        avBg: you ? '#f7f8f8' : '#1c1d21',
+        avColor: you ? '#08090a' : '#d0d6e0',
+        verb: e.verb,
+        obj: e.obj,
+        hasObj: !!e.obj,
+        objColor: e.warn ? accent : '#d0d6e0',
+        objBorder: e.warn ? 'rgba(245, 165, 36, 0.35)' : '#23252a',
+        quote: e.quote || '',
+        hasQuote: !!e.quote
+      };
+    });
+    var hasDraft = (s.draft || '').trim().length > 0;
+    return {
+      accent: accent,
+      v: v,
+      sel: sel,
+      events: events,
+      workingLabel: working + ' working',
+      hasPending: !!s.pending,
+      pending: s.pending ? { who: meta[s.pending.agent].role, cmd: s.pending.cmd } : { who: '', cmd: '' },
+      approve: function () { self.resolve(true); },
+      deny: function () { self.resolve(false); },
+      running: !s.paused,
+      paused: s.paused,
+      pauseLabel: s.paused ? 'Resume' : 'Pause',
+      togglePause: function () { self.setState({ paused: !s.paused }); },
+      to: s.to,
+      draft: s.draft,
+      placeholder: s.to === 'lead' ? 'Brief the Lead on what to build' : 'Message ' + meta[s.to].role,
+      onTo: function (e) { self.setState({ to: e.target.value }); },
+      onDraft: function (e) { self.setState({ draft: e.target.value }); },
+      onKey: function (e) { if (e.key === 'Enter') { e.preventDefault(); self.send(); } },
+      send: function () { self.send(); },
+      sendBg: hasDraft ? '#f7f8f8' : '#1c1d21',
+      sendColor: hasDraft ? '#08090a' : '#8a8f98'
+    };
+  }
+}
+</script>
+</body>
+</html>

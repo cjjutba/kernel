@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Empty home</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Home</h1>
+</header>
+
+<main style="position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 40px 60px">
+<svg width="280" height="280" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#151619" stroke-width="0.3" stroke-linejoin="round" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -118%)"><path d="M8 2.2 13.8 5.3 8 8.4 2.2 5.3Z"></path><path d="M2.2 8.2 8 11.3l5.8-3.1"></path><path d="M2.2 11 8 14.1l5.8-3.1"></path></svg>
+
+<div style="position: relative; width: 100%; max-width: 640px; display: flex; flex-direction: column; align-items: center; gap: 22px">
+<div style="text-align: center">
+<h2 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">Welcome to Kernel</h2>
+<p style="margin: 8px 0 0; font-size: 14px; color: #8a8f98">A room links a project to a team of Claude Code agents. Start with one.</p>
+</div>
+
+<div class="cmp" style="position: relative; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 14px 12px 10px 16px; border-radius: 12px; border: 1px solid #23252a; background: #141516">
+<label for="brief" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Describe what you want to build</label>
+<input id="brief" type="text" autocomplete="off" value="{{ draft }}" onChange="{{ onDraft }}" placeholder="Describe what you want to build, and Rowan sets up the room" style="height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 14px">
+<div style="display: flex; align-items: center; gap: 8px">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 24px; box-sizing: border-box; padding: 0 8px; border-radius: 6px; border: 1px solid #23252a; font-size: 12px; color: #d0d6e0"><span aria-hidden="true" style="width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8; color: #08090a; font-size: 7.5px; font-weight: 600">R</span>Rowan · Lead</span>
+<span style="flex: 1"></span>
+<a href="NewRoom.dc.html" aria-label="Start a room from this brief" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ sendBg }}; color: {{ sendColor }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></a>
+</div>
+</div>
+
+<div style="width: 100%; display: flex; flex-direction: column; gap: 10px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Or start from</p>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px">
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none">
+<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">Connect a repo</span><span style="font-size: 12px; color: #8a8f98; line-height: 1.4">Agents work on branches and open PRs for you</span></span>
+</a>
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none">
+<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">Open a folder</span><span style="font-size: 12px; color: #8a8f98; line-height: 1.4">Point a team at a project already on your Mac</span></span>
+</a>
+<a href="NewRoom.dc.html" style="display: flex; flex-direction: column; gap: 14px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #0f1011; color: #f7f8f8; text-decoration: none">
+<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.3" stroke-linecap="round"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9"></path></svg>
+<span style="display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 500">Start from scratch</span><span style="font-size: 12px; color: #8a8f98; line-height: 1.4">New project from your starter kit</span></span>
+</a>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { draft: '' };
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var has = (this.state.draft || '').trim().length > 0;
+    return {
+      accent: accent,
+      draft: this.state.draft,
+      onDraft: function (e) { self.setState({ draft: e.target.value }); },
+      sendBg: has ? '#f7f8f8' : '#1c1d21',
+      sendColor: has ? '#08090a' : '#8a8f98'
+    };
+  }
+}
+</script>
+</body>
+</html>

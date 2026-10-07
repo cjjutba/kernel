@@ -1,0 +1,34 @@
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+.cmp input::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>

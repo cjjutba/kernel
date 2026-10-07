@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Inbox</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<nav aria-label="Sidebar" style="position: relative; z-index: 5; width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 2px 0 6px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+<span style="flex: 1"></span>
+<a href="Home.dc.html" aria-label="Back" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg></a>
+<a href="Main.dc.html" aria-label="Forward" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg></a>
+</div>
+
+<div style="display: flex; align-items: center; gap: 4px; height: 36px; flex-shrink: 0; padding-left: 2px">
+<details class="dd"><summary aria-label="Account menu" style="list-style: none; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px 0 4px; border-radius: 6px; color: #f7f8f8; font-weight: 500; cursor: pointer">
+<span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: #f7f8f8; color: #08090a; font-size: 9.5px; font-weight: 600">CJ</span>
+CJ Jutba
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg>
+</summary><div role="menu" style="position: absolute; z-index: 60; width: 232px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: 0; top: 34px"><div style="padding: 6px 8px 8px; font-size: 12px; color: #8a8f98">cjjutba · Claude Max</div><a role="menuitem" class="mi" href="Settings.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Settings</span><span style="font-size: 12px; color: #8a8f98">⌘,</span></a><a role="menuitem" class="mi" href="SettingsShortcuts.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Keyboard shortcuts</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="SettingsAccount.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Usage</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="WhatsNew.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">What's new</span><span style="font-size: 12px; color: #8a8f98"></span></a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Welcome.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Switch account</span><span style="font-size: 12px; color: #8a8f98"></span></a><a role="menuitem" class="mi" href="Welcome.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px"><span style="flex: 1">Sign out</span><span style="font-size: 12px; color: #8a8f98"></span></a></div></details>
+<span style="flex: 1"></span>
+<a href="NewWorkspace.dc.html" aria-label="New workspace" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #23252a; background: #141516; color: #d0d6e0"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 2.8H4a1.2 1.2 0 0 0-1.2 1.2v8A1.2 1.2 0 0 0 4 13.2h8a1.2 1.2 0 0 0 1.2-1.2V7.5"></path><path d="m12.2 2.4 1.4 1.4-5.4 5.4-2 .6.6-2Z"></path></svg></a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 1px; margin-top: 10px">
+<a href="CommandPalette.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg><span style="flex: 1">Search</span><span style="font-size: 11.5px; color: #8a8f98">⌘K</span></a>
+<a href="Home.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z"></path></svg><span style="flex: 1">Home</span></a>
+<a href="Inbox.dc.html" aria-current="page" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; background: #1c1d21; color: #f7f8f8; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9Z"></path><path d="M2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1"></path></svg><span style="flex: 1">Inbox</span><span style="font-size: 12px; color: #8a8f98">3</span></a>
+<a href="Rooms.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2"></rect></svg><span style="flex: 1">All rooms</span></a>
+<a href="History.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6M8 5.2V8l2 1.3"></path></svg><span style="flex: 1">History</span></a>
+</div>
+
+<div class="hv" style="position: relative; display: flex; align-items: center; justify-content: space-between; height: 28px; margin-top: 16px; padding: 0 2px 0 8px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">Your rooms</span>
+<div class="more" style="position: relative; display: flex"><details class="dd"><summary aria-label="Room options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; right: -2px"><a role="menuitem" class="mi" href="NewRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New room</a><a role="menuitem" class="mi" href="ConnectRepo.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>Connect a repo</a><a role="menuitem" class="mi" href="OpenFolder.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>Open a folder</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1.2"></rect><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1.2"></rect><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1.2"></rect></svg>Manage rooms</a></div></details></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1px">
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; color: #f7f8f8; font-size: 10px; font-weight: 600">A</span><span style="flex: 1">Client A</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Client A options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="NewWorkspaceFrom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7"></path></svg>New workspace from...</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8s2-4 5.5-4c1 0 1.9.3 2.7.8M13.5 8s-2 4-5.5 4c-1 0-1.9-.3-2.7-.8M3 3l10 10"></path></svg>Hide room</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Client A" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.2 13.8 5.3 8 8.4 2.2 5.3Z"></path><path d="M2.2 8.2 8 11.3l5.8-3.1"></path><path d="M2.2 11 8 14.1l5.8-3.1"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Floor</span></a>
+<a href="Board.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.8"></rect><path d="M6.1 2.8v10.4M9.9 2.8v10.4"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Board</span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">invoice-table</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px"><span style="color: #4cb782">+412</span> <span style="color: #eb5757">-38</span></span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #f7f8f8; font-weight: 500; text-decoration: none" aria-label="invoice-schema, needs you"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">invoice-schema</span></a>
+<a href="Workspace.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 30px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="12.2" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 10.7V6.5a1.5 1.5 0 0 0-1.5-1.5H7.5M8.8 3.6 7.4 5l1.4 1.4"></path></svg><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">org-invites</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; color: #8a8f98">#41</span></a>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">B</span><span style="flex: 1">Client B</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Client B options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Client B" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">O</span><span style="flex: 1">Own app</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Own app options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Own app" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+<div class="hv" style="position: relative">
+<a href="Main.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 60px 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #141516; color: #d0d6e0; font-size: 10px; font-weight: 600">P</span><span style="flex: 1">Portfolio</span></a>
+<div class="more" style="position: absolute; right: 4px; top: 3px; display: flex; gap: 2px"><details class="dd"><summary aria-label="Portfolio options" style="list-style: none; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="8" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"></circle></svg></summary><div role="menu" style="position: absolute; top: 28px; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; left: -170px"><a role="menuitem" class="mi" href="NewWorkspace.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg>New workspace</a><a role="menuitem" class="mi" href="SettingsRoom.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg>Room settings</a><div style="height: 1px; margin: 6px 4px; background: #26272b"></div><a role="menuitem" class="mi" href="Rooms.dc.html" style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-radius: 6px; color: #eb5757; text-decoration: none; font-size: 13px; font-weight: 400"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2a1 1 0 0 0 1 .8h3.8a1 1 0 0 0 1-.8l.6-8.2"></path></svg>Remove room</a></div></details><a href="NewWorkspace.dc.html" aria-label="New workspace in Portfolio" style="width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3.5v9M3.5 8h9"></path></svg></a></div>
+</div>
+</div>
+
+
+<div style="display: flex; align-items: center; height: 28px; margin-top: 16px; padding: 0 8px">
+<span style="font-size: 12px; font-weight: 500; color: #8a8f98">Try</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1px">
+<a href="ConnectRepo.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>Connect a repo</a>
+<a href="OpenFolder.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.3 4.3a1 1 0 0 1 1-1h3l1.4 1.6h5a1 1 0 0 1 1 1v6.8a1 1 0 0 1-1 1H3.3a1 1 0 0 1-1-1Z"></path></svg>Open a folder</a>
+<a href="CheckHooks.dc.html" class="row" style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Check hooks</a>
+</div>
+
+<div style="flex: 1"></div>
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 2px">
+<a href="Welcome.dc.html" aria-label="Help" style="width: 24px; height: 24px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid #2a2b30; color: #8a8f98; text-decoration: none; font-size: 12px">?</a>
+<span style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid #23252a; font-size: 12px; color: #d0d6e0">Claude Max</span>
+<span style="flex: 1"></span>
+<a href="Settings.dc.html" aria-label="Settings" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6"></path><circle cx="10" cy="5" r="1.5"></circle><circle cx="6" cy="11" r="1.5"></circle></svg></a>
+</div>
+</nav>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9Z"></path><path d="M2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1"></path></svg>
+<h1 style="margin: 0; font-size: 13px; font-weight: 500">Inbox</h1>
+<span style="flex: 1"></span>
+<button type="button" onClick="{{ readAll }}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 12.5px; cursor: pointer">Mark all read</button>
+</header>
+
+<div style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid #1a1b1e">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+<button type="button" aria-pressed="{{ t.pressed }}" onClick="{{ t.pick }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 999px; border: 1px solid {{ t.border }}; background: {{ t.bg }}; color: {{ t.color }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ t.label }}<span style="font-size: 12px; color: #8a8f98">{{ t.count }}</span></button>
+</sc-for>
+</div>
+
+<div style="flex: 1; min-height: 0; display: flex">
+<div role="list" aria-label="Notifications" style="width: 400px; flex-shrink: 0; overflow: hidden; border-right: 1px solid #1a1b1e; padding: 6px">
+<sc-for list="{{ items }}" as="i" hint-placeholder-count="7">
+<button type="button" role="listitem" aria-current="{{ i.current }}" onClick="{{ i.pick }}" style="width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 62px; padding: 0 10px; border: 0; border-radius: 8px; background: {{ i.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 11px; font-weight: 600">{{ i.av }}</span>
+<span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+<span style="font-size: 13px; font-weight: {{ i.weight }}; color: {{ i.titleColor }}; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ i.title }}</span>
+<span style="font-size: 12px; color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ i.sub }}</span>
+</span>
+<span style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+<span style="font-size: 12px; color: #8a8f98">{{ i.time }}</span>
+
+</span>
+</button>
+</sc-for>
+</div>
+
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center"><p style="margin: 0; font-size: 15px; font-weight: 600">You're all caught up</p><p style="margin: 0; max-width: 340px; color: #8a8f98">Approvals, plans to review and finished work land here. Nothing needs you right now.</p><a href="Main.dc.html" style="margin-top: 6px; color: #d0d6e0">Go to the floor</a></div></sc-if>
+<sc-if value="{{ notEmpty }}" hint-placeholder-val="{{ true }}"><article style="flex: 1; min-width: 0; overflow: hidden; padding: 28px 40px">
+<div style="max-width: 640px; display: flex; flex-direction: column; gap: 18px">
+<div style="display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 11px; font-weight: 600">{{ d.av }}</span>
+<span style="display: flex; flex-direction: column"><span style="font-weight: 500">{{ d.who }}</span><span style="font-size: 12px; color: #8a8f98">{{ d.sub }} · {{ d.time }} ago</span></span>
+</div>
+<h2 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px">{{ d.heading }}</h2>
+
+<sc-if value="{{ d.isPerm }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<p style="margin: 0; padding: 12px 14px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px">$ pnpm drizzle-kit push</p>
+<dl style="margin: 0; display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px 16px">
+<dt style="color: #8a8f98">Why</dt><dd style="margin: 0; color: #d0d6e0">T-12 adds the invoices table. Kai is waiting on it to finish T-14.</dd>
+<dt style="color: #8a8f98">Target</dt><dd style="margin: 0; color: #d0d6e0">Dev database from .env.local</dd>
+<dt style="color: #8a8f98">Workspace</dt><dd style="margin: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">feat/t-12-invoice-schema</dd>
+</dl>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.isPlan }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border-radius: 10px; border: 1px solid #1f2024; background: #141516">
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">plans/t-15-invoice-pdf.md</span>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Goal</span><span style="color: #d0d6e0">Let users download any invoice as a PDF that matches the on-screen design.</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-weight: 600">Tasks</span>
+<sc-for list="{{ planTasks }}" as="p" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 10px"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98; width: 40px">{{ p.id }}</span><span style="flex: 1; color: #d0d6e0">{{ p.title }}</span><span style="display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; border: 1px solid #23252a; font-size: 11.5px; color: #d0d6e0">{{ p.who }}</span></div>
+</sc-for>
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-weight: 600">Risk</span><span style="color: #d0d6e0">Fonts must be embedded or the PDF falls back to system fonts.</span></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.isMerge }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 10px; border: 1px solid #1f2024; background: #141516"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; flex: 1">feat(org): invite members by email</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px"><span style="color: #4cb782">+318</span> <span style="color: #eb5757">-42</span></span><span style="font-size: 12px; color: #8a8f98">7 files</span></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<sc-for list="{{ mergeChecks }}" as="c" hint-placeholder-count="4">
+<div style="display: flex; align-items: center; gap: 10px; height: 24px"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg><span style="flex: 1; color: #d0d6e0">{{ c.label }}</span><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #8a8f98">{{ c.meta }}</span></div>
+</sc-for>
+</div>
+<p style="margin: 0; padding: 10px 14px; border-left: 2px solid #2a2b30; color: #d0d6e0">Theo: types are tight at every boundary, invite tokens expire, and the org check runs in the query. Approved.</p>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.isFail }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6">
+<span style="color: {{ accent }}">TaskCompleted hook exited with code 2</span>
+<span style="color: #b7bcc4">No test output attached to T-11.</span>
+<span style="color: #b7bcc4">Attach the output of pnpm vitest run before marking it done.</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.isDone }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; color: #d0d6e0; font-size: 14px; line-height: 1.6">The invoice table sorts by date, client and amount, with empty, loading and error states. Vitest and Playwright pass, and the output is attached for Ivy.</p>
+</sc-if>
+
+<sc-if value="{{ d.isStandup }}" hint-placeholder-val="{{ false }}">
+<div style="display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px 16px; padding: 16px 18px; border-radius: 10px; border: 1px solid #1f2024; background: #141516">
+<span style="color: #8a8f98">Shipped</span><span style="color: #d0d6e0">T-07 seed data, T-08 auth with organisations, T-10 invoice types</span>
+<span style="color: #8a8f98">In progress</span><span style="color: #d0d6e0">T-12 invoice schema, T-13 rate limiting, T-14 invoice table</span>
+<span style="color: #8a8f98">Blocked</span><span style="color: #d0d6e0">T-11 is waiting on test output</span>
+<span style="color: #8a8f98">Needs you</span><span style="color: #d0d6e0">Approve the T-15 plan and merge PR #41</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ d.isSystem }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; color: #d0d6e0; font-size: 14px; line-height: 1.6">The hook server restarted after your Mac woke up. Sessions reconnected and no events were dropped.</p>
+</sc-if>
+
+<sc-if value="{{ d.resolved }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; border: 1px solid #23252a; color: #d0d6e0"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg>{{ d.resolvedText }}</div>
+</sc-if>
+
+<sc-if value="{{ d.showActions }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 8px; padding-top: 4px">
+<sc-if value="{{ d.hasSecondary }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ d.secondary }}" style="height: 32px; padding: 0 14px; border: 1px solid #2a2b30; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ d.secondaryLabel }}</button></sc-if>
+<sc-if value="{{ d.hasTertiary }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ d.tertiary }}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #8a8f98; font-family: inherit; font-size: 13px; cursor: pointer">{{ d.tertiaryLabel }}</button></sc-if>
+<span style="flex: 1"></span>
+<sc-if value="{{ d.hasLink }}" hint-placeholder-val="{{ false }}"><a href="{{ d.linkHref }}" style="display: inline-flex; align-items: center; height: 32px; box-sizing: border-box; padding: 0 14px; border-radius: 8px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 500">{{ d.linkLabel }}</a></sc-if>
+<sc-if value="{{ d.hasPrimary }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ d.primary }}" style="height: 32px; padding: 0 16px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ d.primaryLabel }}</button></sc-if>
+</div>
+</sc-if>
+</div>
+</article></sc-if>
+</div>
+</div>
+<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
+<span style="display: inline-flex; align-items: center; gap: 8px"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks live<span style="font-family: 'Geist Mono', ui-monospace, monospace">localhost:7420</span></span>
+<span style="display: inline-flex; align-items: center; gap: 6px">
+<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
+<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
+<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
+<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="FloorTalk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
+</div></details>
+
+</span>
+</footer>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'perm', tab: 'all', done: {}, read: { standup: true, system: true }, empty: 'none' === 'empty' };
+  }
+
+  data() {
+    if (this.state.empty) return [];
+    return [
+      { id: 'perm', av: 'N', who: 'Noor', title: 'Wants to run drizzle-kit push', sub: 'Permission · Client A', time: '2m', needs: true, heading: 'Noor wants to run a command that changes the database' },
+      { id: 'plan', av: 'R', who: 'Rowan', title: 'Plan ready: Export invoices as PDF', sub: 'Plan review · Client A', time: '6m', needs: true, heading: 'Plan for T-15: Export invoices as PDF' },
+      { id: 'merge', av: 'T', who: 'Theo', title: 'PR #41 is ready to merge', sub: 'Merge · Client A', time: '12m', needs: true, heading: 'PR #41 is ready to merge' },
+      { id: 'fail', av: 'I', who: 'Ivy', title: 'T-11 was blocked by a hook', sub: 'Check failed · Client A', time: '18m', needs: false, heading: 'T-11 was blocked before it could finish' },
+      { id: 'done', av: 'K', who: 'Kai', title: 'Finished T-14 invoice table', sub: 'Workspace ready · Client A', time: '31m', needs: false, heading: 'Kai finished T-14' },
+      { id: 'standup', av: 'R', who: 'Rowan', title: 'Daily standup', sub: 'Summary · Client A', time: '9h', needs: false, heading: 'Daily standup for Client A' },
+      { id: 'system', av: 'AO', who: 'Kernel', title: 'Hooks reconnected', sub: 'System', time: '11h', needs: false, heading: 'Hooks reconnected' }
+    ];
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var all = this.data();
+    var finish = function (id) {
+      var d = Object.assign({}, s.done); d[id] = true;
+      var r = Object.assign({}, s.read); r[id] = true;
+      self.setState({ done: d, read: r });
+    };
+    var list = all.filter(function (i) {
+      return s.tab === 'all' || (s.tab === 'needs' ? i.needs && !s.done[i.id] : !i.needs);
+    });
+    var items = list.map(function (i) {
+      var on = s.sel === i.id;
+      var unread = !s.read[i.id];
+      var open = i.needs && !s.done[i.id];
+      return {
+        av: i.av.length > 1 ? 'A' : i.av, title: i.title, sub: i.sub, time: i.time,
+        current: on ? 'true' : 'false', bg: on ? '#1c1d21' : 'transparent',
+        weight: unread ? '600' : '400', titleColor: unread ? '#f7f8f8' : '#d0d6e0',
+        dot: open ? accent : (unread ? '#f7f8f8' : 'transparent'),
+        pick: function () { var r = Object.assign({}, s.read); r[i.id] = true; self.setState({ sel: i.id, read: r }); }
+      };
+    });
+    var cur = all.filter(function (i) { return i.id === s.sel; })[0] || { id: 'none', av: '', who: '', title: '', sub: '', time: '', needs: false, heading: '' };
+    var isDone = !!s.done[cur.id];
+    var A = {
+      perm: { primary: 'Approve', secondary: 'Deny', tertiary: 'Always allow in this room', done: 'Approved. Noor is running the migration.' },
+      plan: { primary: 'Approve plan', secondary: 'Request changes', done: 'Plan approved. Rowan is walking the floor to hand out T-15.' },
+      merge: { primary: 'Merge PR', link: ['Open workspace', 'Workspace.dc.html'], done: 'PR #41 merged into main.' },
+      fail: { primary: 'Send back to Ivy', link: ['Open workspace', 'Workspace.dc.html'], done: 'Sent back to Ivy with the hook output.' },
+      done: { link: ['Review diff', 'Workspace.dc.html'] },
+      standup: {},
+      system: { link: ['Check hooks', 'CheckHooks.dc.html'] }
+      , none: {}
+    }[cur.id];
+    var d = {
+      av: cur.av.length > 1 ? 'A' : cur.av, who: cur.who, sub: cur.sub, time: cur.time, heading: cur.heading,
+      isPerm: cur.id === 'perm', isPlan: cur.id === 'plan', isMerge: cur.id === 'merge', isFail: cur.id === 'fail',
+      isDone: cur.id === 'done', isStandup: cur.id === 'standup', isSystem: cur.id === 'system',
+      resolved: isDone, resolvedText: A.done || '',
+      showActions: !isDone && !!(A.primary || A.link || A.secondary),
+      hasPrimary: !!A.primary, primaryLabel: A.primary || '', primary: function () { finish(cur.id); },
+      hasSecondary: !!A.secondary, secondaryLabel: A.secondary || '', secondary: function () { finish(cur.id); },
+      hasTertiary: !!A.tertiary, tertiaryLabel: A.tertiary || '', tertiary: function () { finish(cur.id); },
+      hasLink: !!A.link, linkLabel: A.link ? A.link[0] : '', linkHref: A.link ? A.link[1] : '#'
+    };
+    var needCount = all.filter(function (i) { return i.needs && !s.done[i.id]; }).length;
+    var tabDefs = [['all', 'All', all.length], ['needs', 'Needs you', needCount], ['updates', 'Updates', all.filter(function (i) { return !i.needs; }).length]];
+    var tabs = tabDefs.map(function (t) {
+      var on = s.tab === t[0];
+      return { label: t[1], count: String(t[2]), pressed: on ? 'true' : 'false', bg: on ? '#1c1d21' : 'transparent', border: on ? '#2a2b30' : '#1f2024', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ tab: t[0] }); } };
+    });
+    return {
+      isEmpty: s.empty, notEmpty: !s.empty,
+      accent: accent, items: items, d: d, tabs: tabs,
+      planTasks: [
+        { id: 'T-15a', title: 'PDF renderer with embedded fonts', who: 'Noor' },
+        { id: 'T-15b', title: 'Download action on each invoice row', who: 'Kai' },
+        { id: 'T-15c', title: 'Snapshot tests for three invoice types', who: 'Ivy' },
+        { id: 'T-15d', title: 'Review output against DESIGN.md', who: 'Theo' }
+      ],
+      mergeChecks: [
+        { label: 'lint', meta: '11s' }, { label: 'typecheck', meta: '29s' }, { label: 'vitest', meta: '52s' }, { label: 'Vercel preview', meta: 'ready' }
+      ],
+      readAll: function () {
+        var r = {}; all.forEach(function (i) { r[i.id] = true; }); self.setState({ read: r });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

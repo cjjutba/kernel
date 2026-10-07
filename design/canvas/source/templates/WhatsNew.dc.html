@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · What's new</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px"><h1 style="margin: 0; font-size: 13px; font-weight: 500">Home</h1></header>
+<div aria-hidden="true" style="padding: 32px 40px; display: flex; flex-direction: column; gap: 16px"><span style="font-size: 24px; font-weight: 600">Good evening, CJ</span><span style="height: 52px; border-bottom: 1px solid #18191b"></span><span style="height: 52px; border-bottom: 1px solid #18191b"></span></div>
+</div>
+<!--FOOTER-->
+</div>
+<a href="Home.dc.html" aria-label="Close" class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></a>
+<section role="dialog" aria-modal="true" aria-labelledby="wn-title" style="position: absolute; z-index: 50; left: 50%; top: 130px; transform: translateX(-50%); width: 520px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px"><h2 id="wn-title" style="flex: 1; margin: 0; font-size: 14px; font-weight: 500">Kernel 0.2 is ready</h2><a href="Home.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></a></div>
+<div style="display: flex; flex-direction: column; padding: 0 18px 8px">
+<sc-for list="{{ items }}" as="i" hint-placeholder-count="4"><div style="display: flex; flex-direction: column; gap: 3px; padding: 12px 0; border-top: {{ i.border }}"><span style="font-weight: 500">{{ i.title }}</span><span style="color: #8a8f98; line-height: 1.5">{{ i.body }}</span></div></sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
+<span style="flex: 1; font-size: 12.5px; color: #8a8f98">{{ note }}</span>
+<a href="Home.dc.html" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: #d0d6e0; text-decoration: none; font-weight: 500">Later</a>
+<button type="button" onClick="{{ restart }}" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #c4c6cc; border-top-color: #08090a"></span></sc-if>{{ label }}</button>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { busy: false }; }
+  renderVals() {
+    var self = this;
+    var I = [
+      ['Checkpoints', 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.'],
+      ['Pause room', 'Freeze every agent in a room with one click. They finish the current step, then wait.'],
+      ['Big terminal', 'Open Claude Code itself in a tab with ⌘⇧T. It shows up on the floor like any other session.'],
+      ['Overlap warnings', 'Rowan flags it when two agents edit the same file in different worktrees.']
+    ];
+    return {
+      items: I.map(function (x, i) { return { title: x[0], body: x[1], border: i === 0 ? '0' : '1px solid #232428' }; }),
+      note: this.state.busy ? 'Agents pause, Kernel restarts, agents resume.' : 'Running agents pause for a few seconds.',
+      busy: this.state.busy, label: this.state.busy ? 'Restarting' : 'Restart to update',
+      restart: function () { self.setState({ busy: true }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

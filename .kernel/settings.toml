@@ -1,0 +1,12 @@
+# Kernel settings for this repo (Kernel builds itself).
+[scripts]
+setup = "npm install"
+run = "npm run dev"
+run_mode = "single"
+
+[files]
+copy = [".env", ".env.local"]
+
+[workspace]
+base_ref = "origin/main"
+branch_pattern = "feat/{task}-{slug}"

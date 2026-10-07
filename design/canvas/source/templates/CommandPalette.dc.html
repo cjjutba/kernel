@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Command palette</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid #1a1b1e"><span style="color: #d0d6e0">Client A</span><span style="color: #62666d">/</span><h1 style="margin: 0; font-size: 13px; font-weight: 500">Floor</h1></header>
+<div aria-hidden="true" style="flex: 1; display: flex; align-items: center; justify-content: center"><img src="/_blob/e5f44fa189e70a1d3dc5c74650fa7a09" alt="" style="width: 680px; opacity: 0.55"></div>
+</div>
+<!--FOOTER-->
+</div>
+
+<div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
+
+<section role="dialog" aria-modal="true" aria-label="Command palette" style="position: absolute; z-index: 50; left: 50%; top: 96px; transform: translateX(-50%); width: 640px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 10px; height: 52px; padding: 0 16px; border-bottom: 1px solid #1f2024">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
+<label for="cmd-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Type a command or search</label>
+<input id="cmd-q" type="text" autocomplete="off" value="{{ q }}" onChange="{{ onQ }}" placeholder="Type a command or search" style="flex: 1; height: 32px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 15px">
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 5px; border: 1px solid #2a2b30; color: #8a8f98; text-decoration: none; font-size: 11.5px">esc</a>
+</div>
+<div style="max-height: 540px; overflow-y: auto; display: flex; flex-direction: column; padding: 6px">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+<p style="margin: 8px 10px 4px; font-size: 12px; font-weight: 500; color: #8a8f98">{{ g.title }}</p>
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="4">
+<a href="{{ i.href }}" style="display: flex; align-items: center; gap: 12px; height: 38px; padding: 0 10px; border-radius: 8px; background: {{ i.bg }}; color: #f7f8f8; text-decoration: none">
+<span aria-hidden="true" style="width: 18px; text-align: center; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px; color: #8a8f98">{{ i.glyph }}</span>
+<span style="flex: 1">{{ i.label }}</span>
+<span style="display: flex; gap: 4px"><sc-for list="{{ i.keys }}" as="k" hint-placeholder-count="2"><span style="min-width: 20px; height: 20px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; border-radius: 4px; border: 1px solid #2a2b30; font-size: 11.5px; color: #8a8f98">{{ k }}</span></sc-for></span>
+</a>
+</sc-for>
+</sc-for>
+<sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 24px 10px; text-align: center; color: #8a8f98">No matches. Press Enter to brief the Lead with this text.</p></sc-if>
+</div>
+<div style="display: flex; align-items: center; gap: 16px; height: 38px; padding: 0 16px; border-top: 1px solid #26272b; font-size: 12px; color: #8a8f98"><span>↑↓ to move</span><span>↵ to run</span></div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { q: '' };
+  }
+
+  renderVals() {
+    var self = this;
+    var accent = this.props.accent ?? '#f7f8f8';
+    var q = (this.state.q || '').toLowerCase();
+    var G = [
+      { title: 'Suggested', items: [
+        ['+', 'New workspace in Client A', 'NewWorkspace.dc.html', ['⌘', '⇧', 'N']],
+        ['↗', 'Create PR for invoice-table', 'Workspace.dc.html', ['⌘', '⇧', 'P']],
+        ['✓', 'Approve Noor: drizzle-kit push', 'Inbox.dc.html', ['⌘', '↵']],
+        ['›', 'Brief Rowan', 'Main.dc.html', []],
+        ['+', 'New chat tab', 'WorkspaceNewChat.dc.html', ['⌘', 'T']],
+        ['>', 'Big terminal tab', 'WorkspaceTerminal.dc.html', ['⌘', '⇧', 'T']]
+      ] },
+      { title: 'Go to', items: [
+        ['◇', 'Inbox', 'Inbox.dc.html', ['G', 'I']],
+        ['◇', 'Client A floor', 'Main.dc.html', []],
+        ['◇', 'invoice-table workspace', 'Workspace.dc.html', []],
+        ['◇', 'Settings: Git and worktrees', 'SettingsGit.dc.html', ['⌘', ',']],
+        ['◇', 'Team', 'Team.dc.html', []],
+        ['◇', 'History', 'History.dc.html', []],
+        ['◇', "What's new", 'WhatsNew.dc.html', []]
+      ] },
+      { title: 'Rooms', items: [
+        ['A', 'Client A', 'Main.dc.html', []],
+        ['B', 'Client B', 'Main.dc.html', []],
+        ['+', 'New room', 'NewRoom.dc.html', []]
+      ] }
+    ];
+    var first = true;
+    var groups = G.map(function (g) {
+      var items = g.items.filter(function (i) { return !q || i[1].toLowerCase().indexOf(q) >= 0; }).map(function (i) {
+        var hi = first; first = false;
+        return { glyph: i[0], label: i[1], href: i[2], keys: i[3], bg: hi ? '#1f2024' : 'transparent' };
+      });
+      return { title: g.title, items: items };
+    }).filter(function (g) { return g.items.length > 0; });
+    return {
+      accent: accent, groups: groups, empty: groups.length === 0,
+      q: this.state.q, onQ: function (e) { self.setState({ q: e.target.value }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

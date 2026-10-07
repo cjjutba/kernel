@@ -1,0 +1,87 @@
+import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { z } from 'zod'
+import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
+import { bus } from '../bus'
+
+export interface KernelToolDeps {
+  roomId: string
+  lead: AgentDef | undefined
+  agents: () => Promise<AgentDef[]>
+  workspaces: () => Workspace[]
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string }) => Promise<Workspace>
+  messageWorkspace: (workspaceId: string, text: string) => Promise<void>
+  askUser: (o: { kind: 'plan' | 'question'; title: string; detail?: string; options?: string[] }) => Promise<Decision | null>
+  hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
+}
+
+const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/**
+ * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces on the floor:
+ * Rowan proposes a plan, waits for CJ to approve it, then creates one workspace per task.
+ */
+export function kernelMcpServer(d: KernelToolDeps) {
+  return createSdkMcpServer({
+    name: 'kernel',
+    version: '0.1.0',
+    instructions: 'You lead a team of agents in Kernel. Plan first, get approval with request_plan_approval, then hand each task to one agent with create_workspace. Use say for short updates people see on the floor.',
+    tools: [
+      tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
+        const agents = await d.agents()
+        return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
+      }),
+      tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state.', {}, async () => {
+        const list = d.workspaces().filter((w) => w.status !== 'archived')
+        return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}`).join('\n') || 'No open workspaces.')
+      }),
+      tool('request_plan_approval', 'Show a plan to CJ and wait for approval. Returns "approved" or the requested changes.', {
+        title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
+        steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
+      }, async ({ title, steps }) => {
+        bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
+        const decision = await d.askUser({ kind: 'plan', title, detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n') })
+        if (!decision) return text('No answer yet. Wait and ask again later.')
+        if (decision.behavior === 'allow') return text('approved')
+        return text(`changes requested: ${decision.behavior === 'deny' ? decision.message ?? 'no details' : decision.text}`)
+      }),
+      tool('ask_user', 'Ask CJ a short question, optionally with options. Waits for the answer.', {
+        question: z.string(), options: z.array(z.string()).optional()
+      }, async ({ question, options }) => {
+        const decision = await d.askUser({ kind: 'question', title: question, options })
+        if (!decision) return text('No answer yet.')
+        return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
+      }),
+      tool('create_workspace', 'Create a workspace for one task and hand it to an agent. Starts the agent right away.', {
+        agent: z.string().describe('Agent id from list_agents, for example "kai"'),
+        title: z.string().describe('Task title, used to name the branch'),
+        brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
+        mode: z.enum(['worktree', 'current']).optional(),
+        base_ref: z.string().optional()
+      }, async ({ agent, title, brief, mode, base_ref }) => {
+        const ws = await d.createWorkspace({ prompt: brief, agentId: agent, mode, baseRef: base_ref, title })
+        bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: agent, data: { assignee: agent } })
+        return text(`Created ${ws.id} on ${ws.branch} for ${agent}.`)
+      }),
+      tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
+        workspace_id: z.string(), text: z.string()
+      }, async ({ workspace_id, text: t }) => {
+        await d.messageWorkspace(workspace_id, t)
+        return text('Sent.')
+      }),
+      tool('say', 'Say one short line out loud on the floor, like a speech bubble.', { text: z.string().max(140) }, async ({ text: t }) => {
+        if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working', activity: t })
+        bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
+        return text('ok')
+      }),
+      tool('hire_agent', 'Propose a new agent file for .claude/agents. CJ approves before it is saved.', {
+        id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
+        model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
+      }, async (a) => {
+        const decision = await d.askUser({ kind: 'plan', title: `Add ${a.id} to the team`, detail: `${a.description}\n\n${a.prompt}` })
+        if (!decision || decision.behavior !== 'allow') return text('CJ did not approve this agent.')
+        const file = await d.hireAgent(a)
+        return text(`Saved ${file}. ${a.id} joins the floor.`)
+      })
+    ]
+  })
+}

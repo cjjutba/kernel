@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Kai</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; border-bottom: 1px solid #1a1b1e">
+<a href="Main.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a><span style="color: #62666d">/</span><a href="Team.dc.html" style="color: #d0d6e0; text-decoration: none">Team</a><span style="color: #62666d">/</span><h1 style="margin: 0; font-size: 13px; font-weight: 500">Kai</h1>
+<span style="flex: 1"></span>
+<sc-if value="{{ saved }}" hint-placeholder-val="{{ false }}"><span role="status" style="font-size: 12.5px; color: #8a8f98">Saved to .claude/agents/kai.md</span></sc-if>
+<a href="ConfirmRetire.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Retire</a>
+<button type="button" onClick="{{ save }}" disabled="{{ clean }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: {{ saveBg }}; color: {{ saveColor }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Save changes</button>
+</header>
+<div style="flex: 1; min-height: 0; display: flex">
+<aside aria-label="Kai" style="width: 300px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px; padding: 24px; border-right: 1px solid #1a1b1e">
+<div style="display: flex; align-items: center; gap: 12px"><span aria-hidden="true" style="width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #5b6b5e; font-size: 18px; font-weight: 600">K</span><div style="display: flex; flex-direction: column"><span style="font-size: 16px; font-weight: 600">Kai</span><span style="color: #8a8f98">Frontend</span></div></div>
+<dl style="margin: 0; display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px 12px"><dt style="color: #8a8f98">Status</dt><dd style="margin: 0">Working</dd><dt style="color: #8a8f98">Workspace</dt><dd style="margin: 0"><a href="Workspace.dc.html" style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #f7f8f8">invoice-pdf-button</a></dd><dt style="color: #8a8f98">File</dt><dd style="margin: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #b7bcc4">.claude/agents/kai.md</dd><dt style="color: #8a8f98">Rooms</dt><dd style="margin: 0; color: #d0d6e0">Client A, Own app</dd></dl>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Recent work</span><sc-for list="{{ recent }}" as="r" hint-placeholder-count="4"><a href="Workspace.dc.html" style="display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; border: 1px solid #1f2024; color: #f7f8f8; text-decoration: none"><span>{{ r.title }}</span><span style="font-size: 12px; color: #8a8f98">{{ r.meta }}</span></a></sc-for></div>
+</aside>
+<div style="flex: 1; min-width: 0; overflow-y: auto">
+<div style="max-width: 720px; display: flex; flex-direction: column; gap: 22px; padding: 24px 32px 40px">
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-desc" style="font-size: 12px; font-weight: 500; color: #8a8f98">Description</label><textarea id="ap-desc" rows="2" value="{{ desc }}" onChange="{{ onDesc }}" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0b0c0d; color: #f7f8f8; font-family: inherit; font-size: 13.5px; line-height: 1.5; outline: none"></textarea><span style="font-size: 12px; color: #8a8f98">Rowan reads this to decide what to hand Kai.</span></div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Model</span><div role="radiogroup" aria-label="Model" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a"><sc-for list="{{ models }}" as="m" hint-placeholder-count="4"><button type="button" role="radio" aria-checked="{{ m.checked }}" onClick="{{ m.pick }}" style="flex: 1; height: 28px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: {{ m.color }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ m.label }}</button></sc-for></div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Effort</span><div role="radiogroup" aria-label="Effort" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a"><sc-for list="{{ efforts }}" as="m" hint-placeholder-count="4"><button type="button" role="radio" aria-checked="{{ m.checked }}" onClick="{{ m.pick }}" style="flex: 1; height: 28px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: {{ m.color }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ m.label }}</button></sc-for></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Tools</span><div style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{ tools }}" as="c" hint-placeholder-count="6"><button type="button" aria-pressed="{{ c.pressed }}" onClick="{{ c.toggle }}" style="height: 28px; padding: 0 10px; border: 1px solid {{ c.border }}; border-radius: 7px; background: {{ c.bg }}; color: {{ c.color }}; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; cursor: pointer">{{ c.label }}</button></sc-for></div></div>
+<div style="display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Skills</span><div style="display: flex; flex-wrap: wrap; gap: 6px"><sc-for list="{{ skills }}" as="c" hint-placeholder-count="4"><button type="button" aria-pressed="{{ c.pressed }}" onClick="{{ c.toggle }}" style="height: 28px; padding: 0 10px; border: 1px solid {{ c.border }}; border-radius: 7px; background: {{ c.bg }}; color: {{ c.color }}; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; cursor: pointer">{{ c.label }}</button></sc-for></div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="ap-prompt" style="font-size: 12px; font-weight: 500; color: #8a8f98">Instructions</label><textarea id="ap-prompt" rows="12" value="{{ prompt }}" onChange="{{ onPrompt }}" style="resize: vertical; box-sizing: border-box; padding: 12px 14px; border-radius: 8px; border: 1px solid #23252a; background: #0b0c0d; color: #e3e5e8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.65; outline: none"></textarea></div>
+</div>
+</div>
+</div>
+</div>
+<!--FOOTER-->
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {
+      desc: 'Frontend engineer. Builds UI from approved plans and follows DESIGN.md.',
+      model: 'sonnet', effort: 'high', dirty: false, saved: false,
+      tools: { Read: true, Edit: true, Write: true, Bash: true, Grep: true, Glob: true, WebFetch: false },
+      skills: { '/plan': false, '/feature': true, '/verify': true, '/image': true },
+      prompt: 'You are Kai, the frontend engineer in this room.\n\nWork only inside your worktree. Read DESIGN.md before touching UI.\nEvery screen needs empty, loading and error states.\nRun pnpm test and attach the output before you mark a task done.\nNever push to main. Rowan merges after Theo approves.'
+    };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var touch = function (patch) { self.setState(Object.assign({ dirty: true, saved: false }, patch)); };
+    var seg = function (defs, key) {
+      return defs.map(function (d) { var on = s[key] === d[0]; return { label: d[1], checked: on ? 'true' : 'false', bg: on ? '#24252a' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { var p = {}; p[key] = d[0]; touch(p); } }; });
+    };
+    var chips = function (key) {
+      return Object.keys(s[key]).map(function (k) { var on = s[key][k]; return { label: k, pressed: on ? 'true' : 'false', border: on ? '#3a3c42' : '#23252a', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', toggle: function () { var n = Object.assign({}, s[key]); n[k] = !n[k]; var p = {}; p[key] = n; touch(p); } }; });
+    };
+    return {
+      desc: s.desc, onDesc: function (e) { touch({ desc: e.target.value }); },
+      prompt: s.prompt, onPrompt: function (e) { touch({ prompt: e.target.value }); },
+      models: seg([['sonnet', 'Sonnet 5.5'], ['opus', 'Opus 5.5'], ['haiku', 'Haiku 4.5'], ['fable', 'Fable 5.1']], 'model'),
+      efforts: seg([['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high']], 'effort'),
+      tools: chips('tools'), skills: chips('skills'),
+      recent: [{ title: 'T-15b Download PDF button', meta: 'In progress · invoice-pdf-button' }, { title: 'T-14 Invoice table', meta: 'Merged · PR #42' }, { title: 'T-09 Org settings page', meta: 'Merged · PR #38' }, { title: 'T-06 Sign-in screens', meta: 'Merged · PR #31' }],
+      saved: s.saved, clean: !s.dirty,
+      saveBg: s.dirty ? '#f7f8f8' : '#1c1d21', saveColor: s.dirty ? '#08090a' : '#62666d',
+      save: function () { self.setState({ dirty: false, saved: true }); }
+    };
+  }
+}
+</script>
+</body>
+</html>

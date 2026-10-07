@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent Office · New workspace</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!--HELMET-->
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<!--SIDEBAR-->
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
+<div style="flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
+<header style="height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid #1a1b1e"><span style="color: #d0d6e0">Client A</span><span style="color: #62666d">/</span><h1 style="margin: 0; font-size: 13px; font-weight: 500">Floor</h1></header>
+<div aria-hidden="true" style="flex: 1; display: flex; align-items: center; justify-content: center"><img src="/_blob/e5f44fa189e70a1d3dc5c74650fa7a09" alt="" style="width: 640px; opacity: 0.5"></div>
+</div>
+<!--FOOTER-->
+</div>
+
+<div style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6)"></div>
+
+<section role="dialog" aria-modal="true" aria-labelledby="nw-title" style="position: absolute; left: 50%; top: 64px; transform: translateX(-50%); width: 660px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 12px; border: 1px solid #2a2b30; background: #141516; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55)">
+<div style="display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 18px; font-size: 12px; color: #8a8f98">
+<span style="display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #23252a; color: #d0d6e0"><span aria-hidden="true" style="width: 14px; height: 14px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #2a2b30; font-size: 8px; font-weight: 600">A</span>Client A</span>
+<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
+<span id="nw-title" style="color: #d0d6e0">New workspace</span>
+<span style="flex: 1"></span>
+<a href="Main.dc.html" aria-label="Close" style="width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 18px; padding: 4px 18px 18px">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<label for="nw-name" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Workspace name</label>
+<input id="nw-name" type="text" autocomplete="off" value="{{ name }}" onChange="{{ onName }}" placeholder="What is this workspace for?" style="height: 32px; padding: 0; border: 0; outline: none; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 20px; font-weight: 600; letter-spacing: -0.4px">
+<div style="display: flex; gap: 6px; flex-wrap: wrap">
+<sc-for list="{{ froms }}" as="f" hint-placeholder-count="4">
+<button type="button" aria-pressed="{{ f.pressed }}" onClick="{{ f.pick }}" style="height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid {{ f.border }}; background: {{ f.bg }}; color: {{ f.color }}; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">{{ f.label }}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Where it runs</p>
+<div role="radiogroup" aria-label="Where it runs" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+<sc-for list="{{ modes }}" as="m" hint-placeholder-count="2">
+<button type="button" role="radio" aria-checked="{{ m.checked }}" onClick="{{ m.pick }}" style="position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px 14px; border-radius: 10px; border: 1px solid {{ m.border }}; background: {{ m.bg }}; color: #f7f8f8; font-family: inherit; text-align: left; cursor: pointer">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500">{{ m.title }}<sc-if value="{{ m.rec }}" hint-placeholder-val="{{ true }}"><span style="height: 18px; padding: 0 6px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 11px; font-weight: 500; color: #8a8f98; line-height: 16px">Default</span></sc-if></span>
+<span style="font-size: 12px; line-height: 1.45; color: #8a8f98">{{ m.sub }}</span>
+<sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="position: absolute; top: 12px; right: 12px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span></sc-if>
+</button>
+</sc-for>
+</div>
+</div>
+
+<sc-if value="{{ isTree }}" hint-placeholder-val="{{ true }}">
+<div style="display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 8px">
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">New branch</span><div style="display: flex; align-items: center; height: 34px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; overflow: hidden; white-space: nowrap">{{ branch }}</div></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><span style="font-size: 12px; font-weight: 500; color: #8a8f98">Branch from</span><div style="display: flex; align-items: center; justify-content: space-between; height: 34px; box-sizing: border-box; padding: 0 10px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px">origin/main<svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 6 3-3 3 3M5 10l3 3 3-3"></path></svg></div></div>
+</div>
+</sc-if>
+<sc-if value="{{ isHere }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 10px; border: 1px solid #23252a; background: #0f1011">
+<div style="display: flex; align-items: center; gap: 10px; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="3.8" r="1.5"></circle><circle cx="4.5" cy="12.2" r="1.5"></circle><circle cx="11.5" cy="5.5" r="1.5"></circle><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7"></path></svg>~/Projects/client-a<span style="color: #8a8f98">on</span>dev</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #d0d6e0"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #d0d6e0"></span>3 files already changed. Kept as the baseline, hidden from the diff, never committed by the agent.</div>
+<div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px; color: #8a8f98"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #62666d"></span>Only one current-branch workspace can run per room.</div>
+</div>
+</sc-if>
+
+<div style="display: flex; flex-direction: column; gap: 8px">
+<p style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Agent</p>
+<div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center">
+<sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+<button type="button" aria-pressed="{{ a.pressed }}" onClick="{{ a.pick }}" style="display: inline-flex; align-items: center; gap: 6px; height: 28px; box-sizing: border-box; padding: 0 10px 0 6px; border-radius: 999px; border: 1px solid {{ a.border }}; background: {{ a.bg }}; color: {{ a.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer"><span aria-hidden="true" style="width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: {{ a.avBg }}; color: {{ a.avColor }}; font-size: 8.5px; font-weight: 600">{{ a.av }}</span>{{ a.label }}</button>
+</sc-for>
+<span style="flex: 1"></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ agentModel }} · High</span>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 6px">
+<label for="nw-brief" style="font-size: 12px; font-weight: 500; color: #8a8f98">First message</label>
+<textarea id="nw-brief" rows="3" value="{{ brief }}" onChange="{{ onBrief }}" placeholder="Tell the agent what to do" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13.5px; line-height: 1.5; outline: none"></textarea>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 14px 0 18px; border-top: 1px solid #1f2024">
+<button type="button" role="switch" aria-checked="{{ setupOn }}" aria-label="Run setup script" onClick="{{ toggleSetup }}" style="width: 30px; height: 18px; position: relative; padding: 0; border: 0; border-radius: 999px; background: {{ swBg }}; cursor: pointer"><span aria-hidden="true" style="position: absolute; top: 2px; left: {{ knob }}; width: 14px; height: 14px; border-radius: 50%; background: {{ knobBg }}"></span></button>
+<span style="color: #d0d6e0">Run setup script</span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">pnpm install</span>
+<span style="flex: 1"></span>
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a>
+<a href="Workspace.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; box-sizing: border-box; padding: 0 14px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-weight: 500">Create workspace<span style="font-size: 11px; opacity: 0.55">⌘↵</span></a>
+</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#f5a524","options":["#f5a524","#f7f8f8","#5e6ad2"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { name: 'Export invoices as PDF', from: 'task', mode: 'tree', agent: 'fe', setup: true, brief: 'Build T-15 from the approved plan. Add a Download PDF action to each invoice row.' };
+  }
+
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var accent = this.props.accent ?? '#f5a524';
+    var slug = (s.name || 'workspace').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace';
+    var fromDefs = [['task', 'New task'], ['branch', 'Existing branch'], ['pr', 'Pull request'], ['issue', 'Issue']];
+    var froms = fromDefs.map(function (d) {
+      var on = s.from === d[0];
+      return { label: d[1], pressed: on ? 'true' : 'false', border: on ? '#3a3c42' : '#23252a', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', pick: function () { self.setState({ from: d[0] }); } };
+    });
+    var modeDefs = [
+      { id: 'tree', title: 'New worktree', sub: 'An isolated copy on its own branch. Agents never collide with your checkout or each other.', rec: true },
+      { id: 'here', title: 'Current branch', sub: 'Work directly in your main checkout. Existing changes stay, and the agent continues from them.', rec: false }
+    ];
+    var modes = modeDefs.map(function (d) {
+      var on = s.mode === d.id;
+      return { title: d.title, sub: d.sub, rec: d.rec, on: on, checked: on ? 'true' : 'false', border: on ? '#4a4c52' : '#23252a', bg: on ? '#1c1d21' : '#0f1011', pick: function () { self.setState({ mode: d.id }); } };
+    });
+    var agentDefs = [['lead', 'Rowan', 'R', 'Opus 5.5'], ['fe', 'Kai', 'K', 'Sonnet 5.5'], ['be', 'Noor', 'N', 'Sonnet 5.5'], ['qa', 'Ivy', 'I', 'Sonnet 5.5'], ['rev', 'Theo', 'T', 'Opus 5.5'], ['des', 'Lumi', 'L', 'Sonnet 5.5']];
+    var agents = agentDefs.map(function (d) {
+      var on = s.agent === d[0];
+      return { label: d[1], av: d[2], pressed: on ? 'true' : 'false', border: on ? '#3a3c42' : '#23252a', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#8a8f98', avBg: on ? '#f7f8f8' : '#1c1d21', avColor: on ? '#08090a' : '#8a8f98', pick: function () { self.setState({ agent: d[0] }); } };
+    });
+    return {
+      accent: accent,
+      name: s.name, onName: function (e) { self.setState({ name: e.target.value }); },
+      brief: s.brief, onBrief: function (e) { self.setState({ brief: e.target.value }); },
+      froms: froms, modes: modes, agents: agents,
+      isTree: s.mode === 'tree', isHere: s.mode === 'here',
+      branch: 'feat/t-15-' + slug,
+      agentModel: agentDefs.filter(function (d) { return d[0] === s.agent; })[0][3],
+      setupOn: s.setup ? 'true' : 'false', toggleSetup: function () { self.setState({ setup: !s.setup }); },
+      swBg: s.setup ? '#f7f8f8' : '#2a2b30', knobBg: s.setup ? '#08090a' : '#8a8f98', knob: s.setup ? '14px' : '2px'
+    };
+  }
+}
+</script>
+</body>
+</html>
