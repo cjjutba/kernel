@@ -1,7 +1,7 @@
 import { basename, join } from 'node:path'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentStatus, Chat, Room, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentStatus, Chat, HookStatus, Room, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -10,8 +10,8 @@ import { Approvals } from './services/approvals'
 import { Sessions } from './services/sessions'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
-import { installHooks } from './services/hooksInstaller'
-import { runPreflight } from './services/preflight'
+import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
+import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
 import { branchName, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, freeBranch, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline } from './services/worktrees'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
@@ -25,8 +25,7 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'preflight.fix': 'KERNEL-27', 'hooks.status': 'KERNEL-27', 'hooks.restart': 'KERNEL-27', 'hooks.test': 'KERNEL-26',
-  'rooms.create': 'KERNEL-20', 'rooms.update': 'KERNEL-20', 'rooms.remove': 'KERNEL-20', 'rooms.inspectFolder': 'KERNEL-20',
+    'rooms.create': 'KERNEL-20', 'rooms.update': 'KERNEL-20', 'rooms.remove': 'KERNEL-20', 'rooms.inspectFolder': 'KERNEL-20',
   'rooms.recentFolders': 'KERNEL-20', 'github.repos': 'KERNEL-20',
   'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
   'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
@@ -67,6 +66,8 @@ export class Kernel {
   private agentCache = new Map<string, AgentDef[]>()
   private statuses = new Map<string, Record<string, AgentStatus>>()
   private prTimer?: NodeJS.Timeout
+  /** When each hook event last arrived from a real session. The test event is not counted. */
+  private hookSeen = new Map<string, number>()
 
   constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
@@ -85,6 +86,7 @@ export class Kernel {
       onTurnDone: (ws) => { if (ws.prState !== 'none') void this.refreshPr(ws.id).catch(() => undefined) }
     })
     bus.on('activity', (e) => this.store.saveActivity(e))
+    bus.on('hook', (e: { hook_event_name: string }) => this.hookSeen.set(e.hook_event_name, Date.now()))
     bus.on('push', (e) => {
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
     })
@@ -96,16 +98,48 @@ export class Kernel {
   async start() {
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
+    await this.listenHooks(this.settings.hookPort)
+    this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
+  }
+
+  /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
+  private async listenHooks(port: number): Promise<boolean> {
     try {
       this.hookServer = await startHookServer({
-        port: this.settings.hookPort,
+        port,
         approvals: this.approvals,
         approvalTimeoutMs: this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
         resolve: (cwd) => this.resolveCwd(cwd)
       })
-    } catch { /* port taken: preflight reports it */ }
-    this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
+      return true
+    } catch { return false }
+  }
+
+  /** Moves the hook server to `port`, saves it, and rewrites the hooks if they were installed. Returns the status after. */
+  private async restartHooks(port: number): Promise<HookStatus> {
+    // A busy new port must not take down the server that works. Check before closing.
+    if (port !== this.settings.hookPort && (await portBusy(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
+    const wasInstalled = (await hookStatus(this.claudeSettings).catch(() => [] as string[])).length > 0
+    await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
+    this.hookServer = undefined
+    if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
+    if (port !== this.settings.hookPort) {
+      this.settings = { ...this.settings, hookPort: port }
+      await saveAppSettings(this.settingsFile, this.settings)
+    }
+    if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec)
+    return this.hooksStatus()
+  }
+
+  private async hooksStatus(): Promise<HookStatus> {
+    const installed = new Set(await hookStatus(this.claudeSettings).catch(() => [] as string[]))
+    return {
+      port: this.settings.hookPort,
+      listening: !!this.hookServer?.listening,
+      installed: KERNEL_HOOK_EVENTS.every((e) => installed.has(e)),
+      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) }))
+    }
   }
 
   async stop() {
@@ -320,7 +354,22 @@ export class Kernel {
   handlers(): Handlers {
     return {
       ...unbuilt(),
-      'preflight.run': async () => runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening }),
+      'preflight.run': async () => this.preflight(),
+      'preflight.fix': async ({ id }) => {
+        if (id === 'teams') {
+          this.settings = { ...this.settings, models: { ...this.settings.models, agentTeams: true } }
+          await saveAppSettings(this.settingsFile, this.settings)
+        } else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
+        return this.preflight()
+      },
+      'hooks.status': async () => this.hooksStatus(),
+      'hooks.restart': async ({ port }) => this.restartHooks(port ?? this.settings.hookPort),
+      'hooks.test': async () => {
+        // /health answers from the same server that receives hooks, and records nothing.
+        const res = await fetch(`http://127.0.0.1:${this.settings.hookPort}/health`, { signal: AbortSignal.timeout(5000) }).catch(() => null)
+        if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
+        return this.hooksStatus()
+      },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
@@ -374,6 +423,10 @@ export class Kernel {
       'settings.get': async () => this.settings,
       'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path)
     }
+  }
+
+  private preflight() {
+    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
   }
 
   private get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }

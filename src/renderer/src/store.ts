@@ -263,8 +263,12 @@ export async function boot() {
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
   setState({ rooms, workspaces, approvals: byRecent(approvals), activity, usage, settings })
-  // The checks step is today's working first run. KERNEL-27 moves this to the welcome step.
-  go(rooms.length ? { name: 'home' } : { name: 'onboarding', step: 'checks' })
+  // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
+  const checks = await call('preflight.run', undefined).catch(() => null)
+  if (checks) actions.system.setPreflight(checks)
+  // A fresh install always starts at Welcome, whose Get started runs the checks.
+  if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
+  else go(checks?.some((c) => !c.ok) ? { name: 'onboarding', step: 'checks' } : { name: 'home' })
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
