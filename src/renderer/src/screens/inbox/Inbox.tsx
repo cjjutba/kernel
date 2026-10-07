@@ -101,9 +101,12 @@ export function Inbox() {
       const at = cur ? list.findIndex((i) => i.n.id === cur.n.id) : -1
       if (e.key === 'j' || e.key === 'k') {
         const next = list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'j' ? 1 : -1)))]
-        if (next) { e.preventDefault(); open(next); document.getElementById(`ib-${next.n.id}`)?.scrollIntoView({ block: 'nearest' }) }
+        if (next) { e.preventDefault(); open(next); const row = document.getElementById(`ib-${next.n.id}`); row?.focus(); row?.scrollIntoView({ block: 'nearest' }) }
       } else if (e.key === 'Enter' && t?.closest('.ib-list') && cur) {
         e.preventDefault()
+        // Open the row that has focus first, so Enter acts on what was tabbed to and not on the old selection.
+        const focused = list.find((i) => `ib-${i.n.id}` === t.closest('.ib-row')?.id)
+        if (focused) open(focused)
         detail.current?.querySelector<HTMLElement>('button, input')?.focus()
       } else if ((e.key === 'a' || e.key === 'd') && cur?.approval?.status === 'pending' && cur.approval.kind !== 'question') {
         e.preventDefault()

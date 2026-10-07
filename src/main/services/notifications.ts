@@ -9,7 +9,7 @@ type Deps = {
   /** Name of an agent in a room, for "Noor wants to run ...". */
   agentName: (roomId: string | undefined, agentId: string | undefined) => string | undefined
   /** Show a macOS notification. Not called while the app has focus. */
-  show?: (n: Notification) => void
+  show?: (n: Notification, o: { silent: boolean }) => void
   /** True while no Kernel window has focus. */
   inBackground?: () => boolean
   now?: () => number
@@ -124,6 +124,6 @@ export class Notifications {
     const s = this.d.settings().notifications
     if (!s[gate] || !this.d.show || !this.d.inBackground?.()) return
     if (inQuietHours(s.quietHours, new Date(this.d.now?.() ?? Date.now()))) return
-    this.d.show(n)
+    this.d.show(n, { silent: s.sound === 'none' })
   }
 }

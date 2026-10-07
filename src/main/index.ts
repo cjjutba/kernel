@@ -57,9 +57,9 @@ app.whenReady().then(async () => {
       dataDir: app.getPath('userData'),
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
-      showNotification: (n) => {
+      showNotification: (n, { silent }) => {
         if (!Notification.isSupported()) return
-        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent: false })
+        const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
         banner.on('click', () => { const w = BrowserWindow.getAllWindows()[0]; if (w) { if (w.isMinimized()) w.restore(); w.show(); w.focus() } })
         banner.show()
       }

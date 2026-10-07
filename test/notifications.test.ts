@@ -11,17 +11,18 @@ import { Notifications, approvalNotificationId, inQuietHours } from '../src/main
 const open: Notifications[] = []
 afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
 
-async function setup(o: { background?: boolean; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' } = {}) {
+async function setup(o: { background?: boolean; sound?: 'none' | 'subtle'; quiet?: { from: string; to: string } | null; off?: 'permission' | 'merge' } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-n-')), 'k.db'))
   store.saveRoom({ id: 'r', name: 'Client A', path: '/x', defaultBranch: 'main', paused: false, createdAt: 1 })
   store.saveWorkspace({ id: 'w', roomId: 'r', name: 'org-invites', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'open', prNumber: 41, createdAt: 1 } as Workspace)
   const settings = DEFAULT_SETTINGS('/h')
-  settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, ...(o.off ? { [o.off]: false } : {}) }
+  settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, sound: o.sound ?? 'subtle', ...(o.off ? { [o.off]: false } : {}) }
   const shown: Notification[] = []
-  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x) => shown.push(x), inBackground: () => o.background ?? true })
+  const silent: boolean[] = []
+  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent) }, inBackground: () => o.background ?? true })
   n.attach()
   open.push(n)
-  return { store, n, shown }
+  return { store, n, shown, silent }
 }
 
 const approval = (extra: Partial<Approval> = {}): Approval => ({ id: 'a1', kind: 'tool', source: 'sdk', roomId: 'r', agentId: 'noor', toolName: 'Bash', title: 'Run pnpm drizzle-kit push', status: 'pending', createdAt: Date.now(), ...extra })
@@ -34,6 +35,14 @@ describe('notifications service', () => {
     expect(row).toMatchObject({ id: approvalNotificationId('a1'), kind: 'approval', needsYou: true, read: false, sub: 'Permission · Client A', title: 'Wants to run pnpm drizzle-kit push' })
     expect(row.heading).toBe('Noor wants to run pnpm drizzle-kit push')
     expect(shown).toHaveLength(1)
+  })
+
+  it('plays no sound when Settings > Notifications sound is none', async () => {
+    for (const [sound, expected] of [['none', true], ['subtle', false]] as const) {
+      const { silent } = await setup({ sound })
+      bus.push({ type: 'approval', approval: approval() })
+      expect(silent).toEqual([expected])
+    }
   })
 
   it('records the outcome once the approval is decided or times out', async () => {

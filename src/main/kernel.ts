@@ -71,7 +71,7 @@ export class Kernel {
   private hookSeen = new Map<string, number>()
   private unlisten: () => void = () => undefined
 
-  constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification) => void; inBackground?: () => boolean }) {
+  constructor(private o: { dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
     this.notifications = new Notifications({
