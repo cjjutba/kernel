@@ -25,3 +25,9 @@ Add an entry when you make a choice someone might later "fix". Newest at the bot
 **D-011 Contracts first, then parallel lanes.** KERNEL-8 and KERNEL-9 define every shared channel, type, route and component before the Build lanes start, so lanes rarely edit shared files.
 
 **D-012 v1 includes the light theme, code signing, notarization and auto-update.** CJ's call, October 7, 2026. CJ has an active Apple Developer Program membership, so KERNEL-30 signs and notarizes for real.
+
+**D-013 Tests run on Electron's Node.** postinstall builds better-sqlite3 for Electron's ABI, so `npm test` runs vitest with `ELECTRON_RUN_AS_NODE=1 electron`. Plain `npx vitest` fails with `NODE_MODULE_VERSION`. Run one file with `npm test -- test/kernel.test.ts`. KERNEL-5.
+
+**D-014 Dependency install scripts are allowlisted in `package.json`.** `allowScripts` approves electron and better-sqlite3, pinned to their versions, and denies esbuild, fsevents and electron-winstaller, which the app doesn't need on macOS. After bumping a pinned package, run `npm install-scripts approve <pkg>` or npm skips its script. A new native module (node-pty in KERNEL-12) needs an approval too. KERNEL-5.
+
+**D-015 The window opens before the kernel finishes booting.** IPC handlers wait for `kernel.start()`, so the renderer can show a loading state (KERNEL-27). A failed boot shows a native error box and quits. Keep `createWindow()` ahead of `start()`. KERNEL-5.
