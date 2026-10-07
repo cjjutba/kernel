@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Room, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Room, Task, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young.
 // Swap for Drizzle with drizzle-kit migrations once the shapes settle (see docs/ARCHITECTURE.md).
@@ -15,6 +15,7 @@ create table if not exists approvals (id text primary key, room_id text, status 
 create table if not exists notifications (id text primary key, room_id text, data text not null, created_at integer not null);
 create table if not exists activity (id text primary key, room_id text, ts integer not null, data text not null);
 create index if not exists activity_by_room on activity (room_id, ts);
+create table if not exists tasks (room_id text not null, id text not null, data text not null, created_at integer not null, primary key (room_id, id));
 `
 
 export class Store {
@@ -42,6 +43,7 @@ export class Store {
       this.db.prepare('delete from approvals where room_id = ?').run(id)
       this.db.prepare('delete from activity where room_id = ?').run(id)
       this.db.prepare('delete from notifications where room_id = ?').run(id)
+      this.db.prepare('delete from tasks where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
@@ -80,6 +82,11 @@ export class Store {
     return this.all(`select data from approvals ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc`, ...args)
   }
   saveApproval(a: Approval) { this.db.prepare('insert or replace into approvals (id, room_id, status, data, created_at) values (?, ?, ?, ?, ?)').run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt); return a }
+
+  // tasks
+  tasks(roomId: string): Task[] { return this.all('select data from tasks where room_id = ? order by created_at, id', roomId) }
+  task(roomId: string, id: string): Task | undefined { return this.one('select data from tasks where room_id = ? and id = ?', roomId, id) }
+  saveTask(t: Task) { this.db.prepare('insert or replace into tasks (room_id, id, data, created_at) values (?, ?, ?, ?)').run(t.roomId, t.id, JSON.stringify(t), t.createdAt); return t }
 
   // activity
   activity(roomId?: string, limit = 50): ActivityEvent[] {

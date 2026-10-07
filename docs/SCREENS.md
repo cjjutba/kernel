@@ -31,9 +31,9 @@ Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src
 | AccountMenu | Account menu | [png](../design/screens/AccountMenu.png) | [dc.html](../design/canvas/project/AccountMenu.dc.html) | KERNEL-21 | Team | home + menu account | `components/sidebar/AccountMenu.tsx` | done |
 | QuickAsk | Ask Rowan from anywhere | [png](../design/screens/QuickAsk.png) | [dc.html](../design/canvas/project/QuickAsk.dc.html) | KERNEL-21 | Team | floor + menu quickAsk | `components/footer/QuickAsk.tsx` | done |
 | UpdateReady | Update ready in the footer | [png](../design/screens/UpdateReady.png) | [dc.html](../design/canvas/project/UpdateReady.dc.html) | KERNEL-30 | Platform | home, footer pill | `components/footer/UpdatePill.tsx` | pill slot done |
-| Board | Board | [png](../design/screens/Board.png) | [dc.html](../design/canvas/project/Board.dc.html) | KERNEL-18 | Team | board | `screens/board/Board.tsx` | todo |
-| TaskDetail | Task detail | [png](../design/screens/TaskDetail.png) | [dc.html](../design/canvas/project/TaskDetail.dc.html) | KERNEL-18 | Team | task | `screens/board/TaskDetail.tsx` | todo |
-| BoardEmpty | Board · no tasks yet | [png](../design/screens/BoardEmpty.png) | [dc.html](../design/canvas/project/BoardEmpty.dc.html) | KERNEL-18 | Team | board | `screens/board/Board.tsx` | todo |
+| Board | Board | [png](../design/screens/Board.png) | [dc.html](../design/canvas/project/Board.dc.html) | KERNEL-18 | Team | board | `screens/board/Board.tsx` | done |
+| TaskDetail | Task detail | [png](../design/screens/TaskDetail.png) | [dc.html](../design/canvas/project/TaskDetail.dc.html) | KERNEL-18 | Team | task | `screens/board/TaskDetail.tsx` | done |
+| BoardEmpty | Board · no tasks yet | [png](../design/screens/BoardEmpty.png) | [dc.html](../design/canvas/project/BoardEmpty.dc.html) | KERNEL-18 | Team | board | `screens/board/Board.tsx` | done |
 | Team | Team | [png](../design/screens/Team.png) | [dc.html](../design/canvas/project/Team.dc.html) | KERNEL-19 | Team | team | `screens/team/Team.tsx` | todo |
 | AgentProfile | Agent profile and editor | [png](../design/screens/AgentProfile.png) | [dc.html](../design/canvas/project/AgentProfile.dc.html) | KERNEL-19 | Team | agent | `screens/agent/AgentProfile.tsx` | todo |
 | NewAgent | New agent · Describe | [png](../design/screens/NewAgent.png) | [dc.html](../design/canvas/project/NewAgent.dc.html) | KERNEL-19 | Team | modal newAgent describe | `screens/team/NewAgent.tsx` | todo |

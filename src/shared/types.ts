@@ -424,8 +424,12 @@ export interface Task {
   steps: TaskStep[]
   /** The plan approval that created it. */
   approvalId?: string
+  /** The id a session outside Kernel gave it, from the TaskCreated and TaskCompleted hooks. */
+  externalId?: string
   createdAt: number
   updatedAt: number
+  /** When it reached Done. */
+  completedAt?: number
 }
 
 // ---------- activity and notifications
