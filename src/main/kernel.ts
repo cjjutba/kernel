@@ -18,7 +18,8 @@ import { branchName, changedFiles, createWorktree, currentBranch, defaultBranch,
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from './services/rooms'
 import { exec } from './services/exec'
-import { listTree, readWorkspaceFile } from './services/files'
+import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
+import { commitHunks, listHunks } from './services/hunks'
 import { prMerge, prReady, prReopen, prStateOf, prView } from './services/github'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
@@ -32,9 +33,7 @@ export const UNBUILT = {
   'rooms.overlaps': 'KERNEL-24', 'rooms.resolveOverlap': 'KERNEL-24',
   'agents.save': 'KERNEL-19', 'agents.draft': 'KERNEL-19', 'agents.create': 'KERNEL-19', 'agents.retire': 'KERNEL-19', 'agents.restore': 'KERNEL-19',
   'agents.seed': 'KERNEL-22',
-  'workspaces.files': 'KERNEL-11', 'workspaces.hunks': 'KERNEL-11', 'workspaces.commit': 'KERNEL-11', 'skills.list': 'KERNEL-11',
-  'chats.retry': 'KERNEL-11', 'chats.queue': 'KERNEL-11', 'chats.unqueue': 'KERNEL-11', 'chats.sendNow': 'KERNEL-11',
-  'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
+    'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'pr.get': 'KERNEL-15', 'pr.continue': 'KERNEL-15',
   'git.branches': 'KERNEL-16', 'github.prs': 'KERNEL-16', 'issues.list': 'KERNEL-16',
@@ -378,6 +377,11 @@ export class Kernel {
     return diffText(ws.path, since, file)
   }
 
+  async hunks(id: string, path?: string) {
+    const ws = this.mustWs(id)
+    return listHunks(ws.path, { baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
+  }
+
   // ---------- chats
 
   newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal' }): Chat {
@@ -537,6 +541,19 @@ export class Kernel {
       'chats.list': async ({ workspaceId }) => this.store.chats(workspaceId),
       'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : 'New chat', { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
+      'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
+      'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),
+      'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
+        const picked = (await this.hunks(workspaceId)).filter((h) => hunkIds.includes(h.id))
+        if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
+        await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)
+        return { ok: true }
+      },
+      'skills.list': async ({ roomId }) => discoverSkills(this.mustRoom(roomId).path),
+      'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
+      'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
+      'chats.sendNow': async ({ chatId, id }) => this.sessions.sendNow(chatId, id),
+      'chats.retry': async ({ chatId, itemId }) => { await this.sessions.retry(chatId, itemId); return { ok: true } },
       'chats.send': async ({ chatId, parts }) => this.sessions.send(chatId, parts),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),

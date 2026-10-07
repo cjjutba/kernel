@@ -704,6 +704,8 @@ export interface WorkspaceView {
   tab?: string
   /** File whose diff is open in the main column. */
   diff?: string
+  /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
+  composer?: { parts: ChatPart[]; draft: string }
 }
 
 export interface UiState {

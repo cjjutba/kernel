@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, Workspace } from '@shared/types'
 import { call } from '../../api'
+import { actions } from '../../store'
 import { Button } from '../../ui'
+import { addToComposer } from './composer/bus'
 import { parseDiff } from './diff'
 
 const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i + 1), name: path.slice(i + 1) } }
@@ -48,6 +50,18 @@ export function FileView({ ws, path, editedBy, changed }: { ws: Workspace; path:
 // ---------- diff
 
 /** The diff of one file, or of every changed file when `path` is empty. */
+/** Adds one hunk to the composer as a chip named `file:first-last`, with the hunk's lines as its text. */
+function sendHunk(path: string, lines: { mark: string; code: string; hunk?: boolean }[], at: number) {
+  const head = /\+(\d+)(?:,(\d+))?/.exec(lines[at].code)
+  const start = head ? Number(head[1]) : 1
+  const len = head?.[2] === undefined ? 1 : Number(head[2])
+  let end = at + 1
+  while (end < lines.length && !lines[end].hunk) end++
+  const text = [lines[at].code, ...lines.slice(at + 1, end).map((l) => `${l.mark === ' ' ? ' ' : l.mark}${l.code}`)].join('\n')
+  addToComposer({ type: 'file', name: `${path.slice(path.lastIndexOf('/') + 1)}:${start}-${start + Math.max(len, 1) - 1}`, path, lines: end - at - 1, text: `${path}\n${text}` })
+  actions.ui.setWorkspaceView({ diff: undefined })
+}
+
 export function DiffView({ ws, path, changes, onClose }: { ws: Workspace; path: string; changes: ChangedFile[]; onClose: () => void }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -76,6 +90,7 @@ export function DiffView({ ws, path, changes, onClose }: { ws: Workspace; path: 
                 <span className="ln">{l.a}</span><span className="ln">{l.b}</span>
                 <span className="mark">{l.hunk ? '' : l.mark === ' ' ? '' : l.mark}</span>
                 <span className="src">{l.code || ' '}</span>
+                {l.hunk && <button type="button" className="hunk-send" onClick={() => sendHunk(f.path, f.lines, i)}>Send to agent</button>}
               </div>
             ))}
           </div>
