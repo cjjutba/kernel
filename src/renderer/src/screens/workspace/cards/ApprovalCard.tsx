@@ -88,7 +88,7 @@ function PlanCard({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: 
       <ol className="steps">
         {steps.map((s, i) => {
           const who = agents.find((x) => x.id === s.agentId)?.name
-          const ws = s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined
+          const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
           return (
             <li key={i}>
               <span className="n mono">{i + 1}</span>
@@ -136,7 +136,7 @@ export function ApprovalCard({ approval: a }: { approval: Approval }) {
   const agent = agents.find((x) => x.id === a.agentId)
   const who = agent?.name ?? 'An agent'
   if (a.kind === 'agent' || a.agentFile) return <HireCard a={a} />
-  if (a.kind === 'plan') return <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
+  if (a.kind === 'plan' || a.toolName === 'ExitPlanMode') return <PlanCard a={a} agents={agents} lead={!!agent?.lead} />
   if (a.kind === 'question') return <QuestionCard a={a} who={who} />
   return <PermCard a={a} who={who} />
 }

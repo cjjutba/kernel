@@ -24,3 +24,30 @@ describe('turn cards', () => {
     expect(stopped.some((b) => b.kind === 'error')).toBe(false)
   })
 })
+
+describe('Lead requests', () => {
+  it('turns "task · agent" lines into steps with the agent id and task id', async () => {
+    const { parsePlanSteps } = await import('../src/main/services/approvals')
+    const agents = [{ id: 'noor', name: 'Noor' }, { id: 'kai', name: 'Kai' }]
+    expect(parsePlanSteps(['T-15a PDF renderer · Noor', 'T-15b Button · kai', 'Write the docs'], agents)).toEqual([
+      { title: 'T-15a PDF renderer', taskId: 'T-15a', agentId: 'noor' },
+      { title: 'T-15b Button', taskId: 'T-15b', agentId: 'kai' },
+      { title: 'Write the docs' }
+    ])
+  })
+
+  it('updates an approval in place and tells the windows', async () => {
+    const { Approvals } = await import('../src/main/services/approvals')
+    const { Store } = await import('../src/main/db')
+    const { mkdtemp } = await import('node:fs/promises'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path')
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-ap-')), 'kernel.db'))
+    const approvals = new Approvals(store)
+    const { approval } = approvals.request({ kind: 'plan', source: 'sdk', roomId: 'r', title: 'Plan', steps: [{ title: 'A', agentId: 'kai' }] })
+    approvals.update(approval.id, { steps: [{ title: 'A', agentId: 'kai', workspaceId: 'ws1' }] })
+    expect(store.approvals().find((a) => a.id === approval.id)?.steps?.[0].workspaceId).toBe('ws1')
+  })
+
+  it('reads a plan from ExitPlanMode input when there is no detail', () => {
+    expect(planSteps({ input: { plan: '1. One\n2. Two' } }).map((s) => s.title)).toEqual(['One', 'Two'])
+  })
+})

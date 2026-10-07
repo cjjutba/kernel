@@ -89,8 +89,9 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   return {
     workspaces: withWorkspace(f, id, patch),
     chats: f.chats.map((c) => (c.id === chatId ? { ...c, title, ...chat } : c)),
-    items: { [chatId]: items },
-    approvals: extra.approvals,
+    // The engine writes an approval item where the request was made, so the card keeps its place once answered.
+    items: { [chatId]: [...items, ...(extra.approvals ? [{ kind: 'approval' as const, id: `item-${extra.approvals[0].id}`, ts: at(10, 30), approvalId: extra.approvals[0].id }] : [])] },
+    approvals: extra.approvals && [{ ...extra.approvals[0], workspaceId: id, chatId }, ...extra.approvals.slice(1)],
     ui: { route: { name: 'workspace', workspaceId: id } }
   }
 }
