@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { Approval, Decision } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
@@ -91,22 +92,23 @@ export function Inbox() {
   const open = (i: InboxItem) => { setSel(i.n.id); if (!i.n.read) markRead([i.n.id]) }
 
   // Keyboard: j and k move, Enter jumps into the detail, a approves, d denies. Typing in a field is left alone.
-  const state = useRef({ list, cur })
-  state.current = { list, cur }
+  const state = useRef({ list, cur, sel })
+  state.current = { list, cur, sel }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (e.metaKey || e.ctrlKey || e.altKey || t?.closest('input, textarea, select, [contenteditable="true"]')) return
-      const { list, cur } = state.current
-      const at = cur ? list.findIndex((i) => i.n.id === cur.n.id) : -1
+      const { list, cur, sel } = state.current
+      // Nothing chosen yet: the first row only looks selected, so the first j or k lands on it.
+      const at = cur && sel ? list.findIndex((i) => i.n.id === cur.n.id) : -1
       if (e.key === 'j' || e.key === 'k') {
-        const next = list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'j' ? 1 : -1)))]
+        const next = list[Math.max(0, Math.min(list.length - 1, at + (e.key === 'j' ? 1 : at < 0 ? 0 : -1)))]
         if (next) { e.preventDefault(); open(next); const row = document.getElementById(`ib-${next.n.id}`); row?.focus(); row?.scrollIntoView({ block: 'nearest' }) }
       } else if (e.key === 'Enter' && t?.closest('.ib-list') && cur) {
         e.preventDefault()
         // Open the row that has focus first, so Enter acts on what was tabbed to and not on the old selection.
         const focused = list.find((i) => `ib-${i.n.id}` === t.closest('.ib-row')?.id)
-        if (focused) open(focused)
+        if (focused) flushSync(() => open(focused))
         detail.current?.querySelector<HTMLElement>('button, input')?.focus()
       } else if ((e.key === 'a' || e.key === 'd') && cur?.approval?.status === 'pending' && cur.approval.kind !== 'question') {
         e.preventDefault()

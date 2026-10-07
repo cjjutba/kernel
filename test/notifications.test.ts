@@ -19,7 +19,7 @@ async function setup(o: { background?: boolean; sound?: 'none' | 'subtle'; quiet
   settings.notifications = { ...settings.notifications, quietHours: o.quiet ?? null, sound: o.sound ?? 'subtle', ...(o.off ? { [o.off]: false } : {}) }
   const shown: Notification[] = []
   const silent: boolean[] = []
-  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent) }, inBackground: () => o.background ?? true })
+  const n = new Notifications({ store, settings: () => settings, agentName: (_r, a) => (a === 'noor' ? 'Noor' : undefined), show: (x, opts) => { shown.push(x); silent.push(opts.silent) }, inBackground: () => o.background ?? true, now: () => new Date(2026, 0, 1, 12, 0).getTime() })
   n.attach()
   open.push(n)
   return { store, n, shown, silent }
@@ -56,7 +56,7 @@ describe('notifications service', () => {
   })
 
   it('does not show a banner while the app has focus, in quiet hours, or when the setting is off', async () => {
-    for (const o of [{ background: false }, { quiet: { from: '00:00', to: '23:59' } }, { off: 'permission' as const }]) {
+    for (const o of [{ background: false }, { quiet: { from: '11:00', to: '13:00' } }, { off: 'permission' as const }]) {
       const { n, shown } = await setup(o)
       bus.push({ type: 'approval', approval: approval() })
       expect(n.list()).toHaveLength(1)
