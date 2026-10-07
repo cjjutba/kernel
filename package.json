@@ -21,7 +21,10 @@
     "@anthropic-ai/claude-agent-sdk": "0.3.292",
     "@anthropic-ai/sdk": "^0.93.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "better-sqlite3": "^12.4.1",
+    "node-pty": "^1.1.0",
     "smol-toml": "^1.4.2",
     "zod": "^4.1.12"
   },
@@ -46,6 +49,7 @@
   "allowScripts": {
     "electron@38.8.6": true,
     "better-sqlite3@12.11.1": true,
+    "node-pty@1.1.0": true,
     "esbuild": false,
     "fsevents": false,
     "electron-winstaller": false

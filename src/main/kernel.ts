@@ -11,7 +11,9 @@ import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAge
 import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
-import { Sessions } from './services/sessions'
+import { Sessions, sessionEnv } from './services/sessions'
+import { Ptys } from './services/pty'
+import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
@@ -28,6 +30,11 @@ import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './servi
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 
+const COPY = 'fork:'
+
+/** How a hook from an outside session moves its agent on the floor. */
+const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
+
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
 
@@ -36,7 +43,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
   'workspaces.gitStatus': 'KERNEL-28', 'workspaces.discard': 'KERNEL-28', 'chats.compact': 'KERNEL-28', 'usage.notifyOnReset': 'KERNEL-28',
   'account.signIn': 'KERNEL-28', 'app.openTerminal': 'KERNEL-28',
@@ -61,6 +67,9 @@ export class Kernel {
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
+  readonly ptys = new Ptys()
+  /** The SDK call behind a fork. Tests swap it for a stub. */
+  forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
   settings!: AppSettings
   private hookServer?: Server
   private agentCache = new Map<string, AgentDef[]>()
@@ -101,7 +110,14 @@ export class Kernel {
       leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id
     })
     const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
-    const onHook = (e: { hook_event_name: string }) => this.hookSeen.set(e.hook_event_name, Date.now())
+    const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => {
+      this.hookSeen.set(e.hook_event_name, Date.now())
+      // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
+      const status = HOOK_STATUS[e.hook_event_name]
+      if (!status || !ctx?.roomId || !ctx.agentId) return
+      if (this.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
+      bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
+    }
     const onPush = (e: PushEvent) => {
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
     }
@@ -172,6 +188,7 @@ export class Kernel {
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
     this.sessions.stopAll()
+    this.ptys.killAll()
     stopAllScripts()
     await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
     this.store.db.close()
@@ -349,6 +366,7 @@ export class Kernel {
     const room = this.mustRoom(roomId)
     for (const ws of this.store.workspaces(roomId)) {
       this.sessions.stopWorkspace(ws.id)
+      this.ptys.killWorkspace(ws.id, this.store.chats(ws.id).map((c) => c.id))
       stopScript(ws.id, 'run')
       if (deleteWorktrees && ws.mode === 'worktree' && ws.status !== 'archived') await removeWorktree(room.path, ws.path, { force: true }).catch(() => undefined)
     }
@@ -513,6 +531,7 @@ export class Kernel {
     const ws = this.mustWs(id)
     const room = this.mustRoom(ws.roomId)
     this.sessions.stopWorkspace(id)
+    this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopScript(id, 'run')
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
@@ -589,6 +608,75 @@ export class Kernel {
 
   // ---------- chats
 
+  chatTabs(workspaceId: string): Chat[] { return this.store.chats(workspaceId).filter((c) => !c.closed) }
+
+  private mustChat(chatId: string): Chat {
+    const c = this.store.chat(chatId)
+    if (!c) throw new Error('That chat no longer exists.')
+    return c
+  }
+
+  renameChat(chatId: string, title: string): Chat {
+    const t = title.trim()
+    if (!t) throw new Error('Give the chat a name.')
+    return this.saveChat({ ...this.mustChat(chatId), title: t })
+  }
+
+  /** The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab is replaced by a fresh chat. */
+  closeChat(chatId: string) {
+    const chat = this.mustChat(chatId)
+    this.sessions.stop(chatId)
+    this.ptys.kill(chatId)
+    this.saveChat({ ...chat, closed: true })
+    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, 'New chat', { model: chat.model, effort: chat.effort, plan: false }))
+  }
+
+  private saveChat(chat: Chat): Chat {
+    this.store.saveChat(chat)
+    bus.push({ type: 'chat', chat })
+    return chat
+  }
+
+  /**
+   * A new chat that resumes from this one with the SDK's session fork. With `itemId` the fork ends at the nearest assistant message
+   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there.
+   */
+  async forkChat(chatId: string, itemId?: string): Promise<Chat> {
+    const chat = this.mustChat(chatId)
+    if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
+    const ws = this.mustWs(chat.workspaceId)
+    let items = this.store.items(chatId)
+    let upTo: string | undefined
+    if (itemId) {
+      const at = items.findIndex((i) => i.id === itemId)
+      if (at < 0) throw new Error('That message is not in this chat.')
+      const keep = items.slice(0, at + 1)
+      const anchor = [...keep].reverse().find((i) => i.kind !== 'user' && i.id.includes(':') && !i.id.startsWith(COPY))
+      if (keep.some((i) => i.id.startsWith(COPY)) && !anchor) throw new Error('Fork the original chat to branch from an earlier message.')
+      if (anchor) { items = items.slice(0, items.findIndex((i) => i.id === anchor.id) + 1); upTo = anchor.id.split(':')[0] } else items = []
+    }
+    let sessionId: string | undefined
+    if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
+    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
+    return fork
+  }
+
+  /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
+  private ensurePty(id: string, size?: { cols: number; rows: number }) {
+    if (this.ptys.has(id)) return
+    const plain = id.startsWith('shell:')
+    const chat = plain ? undefined : this.mustChat(id)
+    if (chat && (chat.kind !== 'terminal' || chat.closed)) throw new Error('That tab is not a terminal.')
+    const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
+    this.ptys.start(id, {
+      cwd: ws.path,
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }),
+      command: plain ? undefined : 'claude',
+      ...size
+    })
+  }
+
   newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal' }): Chat {
     return this.store.saveChat({ id: newId(), workspaceId, title, kind: o.kind ?? 'chat', model: o.model, effort: o.effort, plan: o.plan, createdAt: Date.now() })
   }
@@ -614,7 +702,7 @@ export class Kernel {
       const room = this.mustRoom(roomId)
       ws = this.saveWs({ id: newId(), roomId, name: 'lead', branch: await currentBranch(room.path), baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port: await freePort(4300), status: 'ready', prState: 'none', createdAt: Date.now() })
     }
-    return this.store.chats(ws.id)[0] ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
   private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
@@ -627,7 +715,7 @@ export class Kernel {
         this.linkPlanStep(roomId, o.agentId, ws.id)
         return ws
       },
-      messageWorkspace: async (workspaceId, text) => { const chat = this.store.chats(workspaceId)[0]; if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
+      messageWorkspace: async (workspaceId, text) => { const chat = this.chatTabs(workspaceId).find((c) => c.kind !== 'terminal'); if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.agents(roomId)
@@ -666,7 +754,7 @@ export class Kernel {
 
   /** PR instructions and notes go to the workspace's first chat. */
   private prChat(id: string): Chat | undefined {
-    const chats = this.store.chats(id)
+    const chats = this.chatTabs(id)
     return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
   }
 
@@ -857,7 +945,9 @@ export class Kernel {
         if (agentId) {
           const ws = this.store.workspaces(roomId).find((w) => w.agentId === agentId && w.status !== 'archived')
           if (!ws) throw new Error('That agent has no open workspace. Brief the Lead instead.')
-          chat = this.store.chats(ws.id)[0]
+          const first = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+          if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief the Lead instead.')
+          chat = first
         } else chat = await this.leadChat(roomId)
         await this.sessions.send(chat.id, [{ type: 'text', text }])
         // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
@@ -887,7 +977,12 @@ export class Kernel {
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
       'workspaces.readFile': async ({ workspaceId, path }) => readWorkspaceFile(this.mustWs(workspaceId).path, path),
-      'chats.list': async ({ workspaceId }) => this.store.chats(workspaceId),
+      'chats.list': async ({ workspaceId }) => this.chatTabs(workspaceId),
+      'chats.rename': async ({ chatId, title }) => this.renameChat(chatId, title),
+      'chats.close': async ({ chatId }) => { this.closeChat(chatId); return { ok: true } },
+      'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
+      'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
+      'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : 'New chat', { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),

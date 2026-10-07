@@ -29,6 +29,13 @@ function createWindow() {
     show: false,
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true }
   })
+  // The default menu would close the window on Cmd+W. Kernel closes the open tab instead, so the page hears about it.
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.meta && !input.shift && !input.alt && !input.control && input.key.toLowerCase() === 'w') {
+      e.preventDefault()
+      void win?.webContents.executeJavaScript("window.dispatchEvent(new Event('kernel:close-tab'))")
+    }
+  })
   win.once('ready-to-show', () => win?.show())
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)

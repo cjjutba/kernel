@@ -4,6 +4,7 @@ import { call } from '../../api'
 import { actions, setState, useStore } from '../../store'
 import { Button, Icon, Tabs } from '../../ui'
 import { attempt } from './MessageActions'
+import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
 
 const stColor = (s?: string) => (s === 'A' ? 'var(--add)' : 'var(--ink-2)')
@@ -163,13 +164,12 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         {bottom === 'run' && !running && <Button className="small" icon="play" onClick={start}>Run</Button>}
         {bottom === 'setup' && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
       </div>
-      <div className="log selectable mono" role="log" aria-label={bottom === 'terminal' ? 'Terminal' : `${bottom} output`}>
-        {bottom === 'terminal'
-          ? <span className="muted">Open a big terminal from the new tab menu for a full shell in this worktree.</span>
-          : lines.length
+      {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
+      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`}>
+        {lines.length
             ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
             : <span className="muted">{bottom === 'setup' ? 'Setup output appears here.' : `Start the run script to see output. It gets port ${ws.port}.`}</span>}
-      </div>
+      </div>}
     </div>
   )
 }

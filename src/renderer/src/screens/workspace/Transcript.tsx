@@ -188,6 +188,8 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }) }, [items.length, loose.length, running, chat.id])
   const since = [...items].reverse().find((i) => i.kind === 'user')?.ts ?? Date.now()
 
+  // An empty chat shows the centred welcome in place of the thread, which sits at the bottom of the scroll area.
+  const empty = !items.length && !loose.length && !running && !(ws?.prState === 'changes' && pr)
   const fork = (itemId: string) => void attempt('Could not fork', async () => {
     const forked = await call('chats.fork', { chatId: chat.id, itemId })
     await loadWorkspace(workspaceId)
@@ -202,13 +204,18 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
 
   return (
     <div className="ws-scroll selectable">
-      <div className="thread">
-        {!items.length && (
-          <div className="col" style={{ alignItems: 'center', gap: 6, padding: '120px 0', textAlign: 'center' }}>
-            <span style={{ fontSize: 18, fontWeight: 600 }}>{chat.kind === 'terminal' ? 'Big terminal' : 'New chat'}</span>
-            <span className="muted">Same worktree and branch, fresh context.</span>
+      {empty && (
+        <div className="chat-empty">
+          <h2>{chat.kind === 'terminal' ? 'Big terminal' : `New chat with ${agentName}`}</h2>
+          <span className="muted">Same worktree and branch, fresh context.</span>
+          <div className="chat-suggest">
+            {['Review the diff so far', 'Write tests for the table', 'Explain this branch'].map((text) => (
+              <button key={text} type="button" onClick={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))}>{text}</button>
+            ))}
           </div>
-        )}
+        </div>
+      )}
+      <div className="thread" style={empty ? { display: 'none' } : undefined}>
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} agentName={agentName} onEdit={onEdit} onFork={fork} onTerminal={terminal} />)}
         {loose.map((a) => <ApprovalCard key={a.id} approval={a} />)}
         {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
