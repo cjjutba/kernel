@@ -1,6 +1,7 @@
-import type { AgentDef, Approval, Notification, Room, RoomSetupStep } from '@shared/types'
+import type { AgentDef, Approval, Notification, Room, RoomSetupStep, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { ids, scene, team, withWorkspace } from './base'
+import { floorFixtures } from './floor'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20).
 
@@ -100,8 +101,37 @@ const homeScene = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+
+/** History.png: six archived workspaces, four merged. Times are relative so Today and This week group the same on any day. */
+const historyScene = (f: Fixture): Partial<Fixture> => {
+  const archived = (id: string, name: string, branch: string, roomId: string, agentId: string, pr: { n: number; state: Workspace['prState'] } | null, when: number): Workspace => ({
+    id, roomId, name, branch, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
+    prState: pr?.state ?? 'none', ...(pr ? { prNumber: pr.n } : {}), createdAt: when - 3 * HOUR, archivedAt: when, ...(pr?.state === 'merged' ? { mergedAt: when - 5 * MIN } : {})
+  })
+  return {
+    ...roomsScene(f),
+    rooms: roomsScene(f).rooms!.filter((r) => !r.archived),
+    workspaces: [
+      ...f.workspaces,
+      archived('ws-h1', 'org-invites', 'feat/t-10-org-invites', ids.roomA, 'theo', { n: 41, state: 'merged' }, clock(0, 14, 2)),
+      archived('ws-h2', 'docker-local-startup', 'fix/docker-local-startup', ids.roomA, 'noor', { n: 40, state: 'merged' }, clock(0, 11, 20)),
+      archived('ws-h3', 'try-datatable', 'spike/try-datatable', ids.roomA, 'kai', null, clock(0, 9, 48)),
+      archived('ws-h4', 'auth-orgs', 'feat/t-08-auth-orgs', ids.roomA, 'noor', { n: 36, state: 'merged' }, clock(3, 10, 12)),
+      archived('ws-h5', 'landing-polish', 'feat/landing-polish', ids.roomPortfolio, 'kai', { n: 12, state: 'merged' }, clock(3, 9, 30)),
+      archived('ws-h6', 'pricing-experiment', 'spike/pricing-experiment', ids.roomOwn, 'rowan', { n: 7, state: 'closed' }, clock(4, 16, 4))
+    ].map((w) => (w.id === ids.table ? { ...w, stat: { files: 4, added: 412, removed: 38 } } : w))
+  }
+}
+
+const home = { route: { name: 'home' } } as const
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
+  CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
+  AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
+  QuickAsk: { ...floorFixtures.Main, ui: { ...floorFixtures.Main.ui, menu: 'quickAsk' } },
+  History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
+  UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),

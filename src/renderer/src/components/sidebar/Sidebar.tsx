@@ -5,6 +5,7 @@ import { actions, go, useStore, type Route } from '../../store'
 import { inboxItems, needsYou } from '../../screens/inbox/model'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
+import { AccountButton } from './AccountMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
 
@@ -70,8 +71,8 @@ export function Sidebar() {
     <nav aria-label="Sidebar" className="sidebar">
       <div className="drag" style={{ height: 42, flexShrink: 0 }} />
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
-        <span style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--ink)', color: 'var(--canvas)', fontSize: 9.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>CJ</span>
-        <span className="grow" style={{ fontWeight: 500 }}>Kernel</span>
+        <AccountButton />
+        <span className="grow" />
         <button className="icon-btn" aria-label="New workspace" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="col" style={{ gap: 1, marginTop: 10 }}>
