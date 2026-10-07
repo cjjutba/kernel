@@ -1,9 +1,12 @@
 import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-/** Events Kernel listens to. Tool events take a "*" matcher; the rest take none. */
+/**
+ * Events Kernel installs an http hook for. Tool events take a "*" matcher; the rest take none.
+ * SessionStart is not here: Claude Code skips http hooks for it (D-020), so Kernel starts a session on its first hook.
+ */
 export const KERNEL_HOOK_EVENTS = [
-  'SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+  'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
   'PermissionRequest', 'Notification', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle'
 ] as const
 
@@ -16,9 +19,11 @@ type Settings = { hooks?: Record<string, Matcher[]>; [k: string]: unknown }
 export const hookUrl = (port: number) => `http://localhost:${port}/hooks`
 const isOurs = (h: HookEntry) => h.type === 'http' && typeof h.url === 'string' && /^http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks$/.test(h.url)
 
-/** Pure merge: returns settings with Kernel's hooks added (or replaced) and every other hook kept as is. */
+/** Pure merge: returns settings with Kernel's hooks added (or replaced), old Kernel entries removed, and every other hook kept as is. */
 export function withKernelHooks(settings: Settings, port: number, approvalTimeoutSec: number): Settings {
-  const next: Settings = { ...settings, hooks: { ...(settings.hooks ?? {}) } }
+  // Drop every entry of ours first, so one an older install left on an event Kernel no longer uses (SessionStart) goes too.
+  const next = withoutKernelHooks(settings)
+  next.hooks = { ...(next.hooks ?? {}) }
   for (const event of KERNEL_HOOK_EVENTS) {
     const kept = (next.hooks![event] ?? []).map((m) => ({ ...m, hooks: m.hooks.filter((h) => !isOurs(h)) })).filter((m) => m.hooks.length)
     const entry: HookEntry = { type: 'http', url: hookUrl(port), timeout: event === 'PermissionRequest' ? approvalTimeoutSec + 30 : 10 }
