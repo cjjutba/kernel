@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
   FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
-  Skill, Task, Workspace, WorkspaceGitStatus
+  Integration, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -46,6 +46,8 @@ export interface Fixture {
   /** By workspace id, then path. */
   fileText?: Record<string, Record<string, string>>
   skills?: Skill[]
+  mcp?: McpServer[]
+  integrations?: Integration[]
   /** Branches the new workspace modal lists, local and origin/*. */
   branches?: string[]
   /** Open PRs and Linear issues the new workspace modal lists. */

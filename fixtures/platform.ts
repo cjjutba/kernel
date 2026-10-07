@@ -1,4 +1,4 @@
-import type { DevUiPage, HookStatus, PreflightCheck, RateLimit, SettingsPage } from '@shared/types'
+import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, SettingsPage, Skill } from '@shared/types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { at, base, ids, scene, tableItems, withWorkspace } from './base'
@@ -52,6 +52,30 @@ const accountUsage: RateLimit[] = [
   { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextMonday()), model: 'claude-fable-5-1' }
 ]
 
+// KERNEL-26: the repo pages read the first room's .kernel files, so the fixture gives Client A the values the canvas shows.
+const kernelFiles: RoomSettings = {
+  scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
+  files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
+  workspace: {},
+  disabled: { skills: [], mcp: ['Figma'] }
+}
+const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
+const prSettings = { ...DEFAULT_SETTINGS('/Users/cj'), pr: { ...DEFAULT_SETTINGS('/Users/cj').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }
+const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
+const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
+const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
+const sixAgents: AgentDef[] = [
+  agentFile('rowan', 'Rowan', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
+  agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
+  agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('lumi', 'Lumi', 'Designer', 'Joined today')
+]
+const integrationRows: Integration[] = [
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
+  { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' },
+  { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
+  { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
+]
+
 export const platformFixtures: Record<string, Fixture> = {
   Settings: settingsPage('general'),
   SettingsAppearance: settingsPage('appearance'),
@@ -62,6 +86,20 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/cj'), permissions: { ...DEFAULT_SETTINGS('/Users/cj').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
   SettingsAbout: settingsPage('about', { preflight: [] }),
+  SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
+  SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  SettingsScripts: settingsPage('scripts', clientA()),
+  SettingsFiles: settingsPage('files', clientA()),
+  SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
+  SettingsTeam: scene((f) => ({ agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
+  SettingsSkills: settingsPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
+  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
+  SettingsRoom: scene((f) => ({
+    ...clientA({ scripts: { setup: 'pnpm install' } }),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/cj/Projects/client-a' } : r)),
+    agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
+  })),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),

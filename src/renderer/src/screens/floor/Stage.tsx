@@ -108,6 +108,7 @@ function Templates({ room }: { room: Room }) {
     const r = s.rooms.find((x) => x.id !== room.id && !x.archived && (s.agents[x.id] ?? []).some((a) => !a.retired))
     return r ? { id: r.id, name: r.name } : null
   })
+  const preferred = useStore((x) => x.settings?.team.defaultTemplate ?? 'starter')
   const [busy, setBusy] = useState(false)
   const seed = async (template: TeamTemplate) => {
     setBusy(true)
@@ -119,7 +120,7 @@ function Templates({ room }: { room: Room }) {
     <section className="floor-empty" aria-label="No agents in this room yet">
       <h2>No agents in this room yet</h2>
       <p className="muted">Kernel reads agents from .claude/agents in this repo, and that folder is empty. Start from a team or make your own.</p>
-      {TEMPLATES.map((t) => {
+      {[...TEMPLATES].sort((a, b) => Number(b.template().kind === preferred) - Number(a.template().kind === preferred)).map((t) => {
         const copy = t.name === 'From another room'
         return (
           <button key={t.name} type="button" className="floor-template" disabled={busy || (copy && !other)} onClick={() => void seed(t.template(other?.id))}>

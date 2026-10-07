@@ -635,7 +635,8 @@ export interface AppSettings {
   workspace: { mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean }
   scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean }
   models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; maxConcurrent: number; agentTeams: boolean }
-  team: { addNewAgents: boolean; showNames: boolean }
+  /** `defaultTemplate` seeds an empty room (Settings > Agents). */
+  team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; createInstructions: string; resolveInstructions: string }
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
@@ -647,6 +648,13 @@ export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
+  /** Skills and MCP servers switched off for this room, by name. */
+  disabled?: { skills: string[]; mcp: string[] }
+}
+
+/** A patch to a room's settings file. `null` removes the key so the app default applies again. */
+export type RoomSettingsPatch = {
+  [K in keyof RoomSettings]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 }
 
 /** Recursive partial for settings patches. */

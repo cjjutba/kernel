@@ -16,9 +16,10 @@ import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
-import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
+import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
+import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
+import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
@@ -26,7 +27,7 @@ import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettin
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './services/github'
+import { allGreen, gh, ghUser as ghUserName, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
@@ -46,7 +47,6 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
  * A lane that builds one deletes its line here and adds the handler to the map in `handlers()`.
  */
 export const UNBUILT = {
-  'settings.setRoom': 'KERNEL-26', 'mcp.list': 'KERNEL-26', 'integrations.list': 'KERNEL-26', 'integrations.connect': 'KERNEL-26',
   'update.get': 'KERNEL-30', 'update.check': 'KERNEL-30', 'update.install': 'KERNEL-30'
 } as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
@@ -517,8 +517,18 @@ export class Kernel {
     return list
   }
 
-  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks'>>): Promise<Room> {
-    const room = this.store.saveRoom({ ...this.mustRoom(roomId), ...patch })
+  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>>): Promise<Room> {
+    const before = this.mustRoom(roomId)
+    // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
+    if (patch.archived && !before.archived) {
+      // A workspace that fails to archive keeps the room open, and the error names it, so nothing is half archived without CJ knowing.
+      const failed: string[] = []
+      for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
+        try { await this.archiveWorkspace(ws.id) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
+      }
+      if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${before.name} stays open. ${failed.join(' ')}`)
+    }
+    const room = this.store.saveRoom({ ...before, ...patch })
     bus.push({ type: 'room', room })
     return room
   }
@@ -1168,6 +1178,7 @@ export class Kernel {
         if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
         return this.hooksStatus()
       },
+      'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
       'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
@@ -1207,7 +1218,7 @@ export class Kernel {
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
-      'issues.list': async ({ query }) => searchIssues(linearToken(), query),
+      'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
@@ -1252,7 +1263,10 @@ export class Kernel {
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)
         return { ok: true }
       },
-      'skills.list': async ({ roomId }) => discoverSkills(this.mustRoom(roomId).path),
+      'skills.list': async ({ roomId }) => {
+        const off = (await loadRepoSettings(this.mustRoom(roomId).path)).disabled?.skills ?? []
+        return (await discoverSkills(this.mustRoom(roomId).path, this.home)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
+      },
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sessions.sendNow(chatId, id),
@@ -1288,8 +1302,29 @@ export class Kernel {
       'settings.set': async ({ patch }) => this.setSettings(patch),
       'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
       'app.exportLogs': async () => this.exportLogs(),
-      'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path)
+      'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path),
+      'settings.setRoom': async ({ roomId, patch, shared }) => saveRepoSettings(this.mustRoom(roomId).path, patch, shared),
+      'mcp.list': async ({ roomId }) => {
+        const room = roomId ? this.mustRoom(roomId) : undefined
+        const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []
+        return discoverMcp(room?.path ?? this.home, this.home, off)
+      },
+      'integrations.list': async () => this.integrations(),
+      'integrations.connect': async ({ id, token }) => {
+        if (id === 'linear') {
+          const clean = (token ?? '').trim()
+          if (clean) await searchIssues(clean, '')
+          await saveLinearToken(this.o.dataDir, clean)
+        } else if (id === 'github') throw new Error('GitHub signs in through the GitHub CLI. Run gh auth login in a terminal.')
+        else throw new Error(`${id === 'vercel' ? 'Vercel' : 'Remote Control'} is not available yet.`)
+        return (await this.integrations()).find((i) => i.id === id)!
+      }
     }
+  }
+
+  private async integrations() {
+    const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), storedLinearToken(this.o.dataDir)])
+    return integrationRows({ ghUser, linear: !!(linear ?? linearToken()) })
   }
 
   private preflight() {
