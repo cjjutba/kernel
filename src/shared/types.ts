@@ -520,6 +520,8 @@ export interface PrSummary {
   number: number
   title: string
   branch: string
+  /** GitHub login of the PR author, so the From popover can search by author. */
+  author?: string
 }
 
 /** An issue the new workspace modal can start from (Linear, or a board task). */
