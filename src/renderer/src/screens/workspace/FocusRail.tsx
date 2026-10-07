@@ -1,6 +1,7 @@
 import { actions, go, useStore } from '../../store'
 import { Icon } from '../../ui'
 import { roomLetter } from '../rooms/roomInfo'
+import './workspace.css'
 
 /** The slim rail that replaces the sidebar in focus mode (WorkspaceFocus.png). */
 export function FocusRail({ roomId }: { roomId?: string }) {
