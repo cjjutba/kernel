@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { Icon } from '../icons'
-import { go, pending, setState, useStore, type Route } from '../store'
+import { actions, go, pending, useStore, type Route } from '../store'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
 
 function NavItem({ route, icon, label, right, sub }: { route: Route; icon: string; label: string; right?: ReactNode; sub?: boolean }) {
-  const current = useStore((s) => same(s.route, route))
+  const current = useStore((s) => same(s.ui.route, route))
   return (
     <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} onClick={() => go(route)}>
       <Icon name={icon} />
@@ -19,7 +19,7 @@ export function Sidebar() {
   const rooms = useStore((s) => s.rooms)
   const workspaces = useStore((s) => s.workspaces)
   const inbox = useStore((s) => pending(s).length)
-  const route = useStore((s) => s.route)
+  const route = useStore((s) => s.ui.route)
   const [menu, setMenu] = useState<string | null>(null)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
 
@@ -29,17 +29,17 @@ export function Sidebar() {
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <span style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--ink)', color: 'var(--canvas)', fontSize: 9.5, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>CJ</span>
         <span className="grow" style={{ fontWeight: 500 }}>Kernel</span>
-        <button className="icon-btn" aria-label="New workspace" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => setState({ modal: { name: 'newWorkspace', roomId: openRoom } })}><Icon name="compose" /></button>
+        <button className="icon-btn" aria-label="New workspace" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="col" style={{ gap: 1, marginTop: 10 }}>
-        <button className="nav-item" onClick={() => setState({ modal: { name: 'search' } })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
+        <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
       <div className="section-label hv">
         <span>Your rooms</span>
-        <button className="icon-btn more" style={{ width: 24, height: 24 }} aria-label="Add a room" onClick={() => go({ name: 'onboarding' })}><Icon name="plus" size={14} /></button>
+        <button className="icon-btn more" style={{ width: 24, height: 24 }} aria-label="Add a room" onClick={() => go({ name: 'onboarding', step: 'checks' })}><Icon name="plus" size={14} /></button>
       </div>
       <div className="col" style={{ gap: 1, overflowY: 'auto', minHeight: 0 }}>
         {rooms.map((r) => {
@@ -54,11 +54,11 @@ export function Sidebar() {
                 </button>
                 <div className="more row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
                   <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`${r.name} options`} onClick={() => setMenu(menu === r.id ? null : r.id)}>···</button>
-                  <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New workspace in ${r.name}`} onClick={() => setState({ modal: { name: 'newWorkspace', roomId: r.id } })}><Icon name="plus" size={14} /></button>
+                  <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New workspace in ${r.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: r.id })}><Icon name="plus" size={14} /></button>
                 </div>
                 {menu === r.id && (
                   <div className="menu" role="menu" style={{ left: 60, top: 30 }} onMouseLeave={() => setMenu(null)}>
-                    <button className="menu-item" onClick={() => { setMenu(null); setState({ modal: { name: 'newWorkspace', roomId: r.id } }) }}>New workspace</button>
+                    <button className="menu-item" onClick={() => { setMenu(null); actions.ui.openModal({ name: 'newWorkspace', roomId: r.id }) }}>New workspace</button>
                     <button className="menu-item" onClick={() => { setMenu(null); go({ name: 'team', roomId: r.id }) }}>Team</button>
                     <button className="menu-item" onClick={() => { setMenu(null); go({ name: 'board', roomId: r.id }) }}>Board</button>
                   </div>

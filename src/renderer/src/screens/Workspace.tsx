@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type Keyboar
 import { MODELS, type ChangedFile, type Chat, type ChatItem, type ChatPart, type Effort, type ModelId, type Workspace } from '@shared/types'
 import { call } from '../api'
 import { Icon } from '../icons'
-import { go, loadWorkspace, setState, useStore } from '../store'
+import { actions, go, loadWorkspace, useStore } from '../store'
 
 const EFFORTS: { id: Effort; label: string }[] = [{ id: 'low', label: 'Low' }, { id: 'medium', label: 'Medium' }, { id: 'high', label: 'High' }, { id: 'xhigh', label: 'Extra high' }]
 let pasteCount = 1
@@ -118,7 +118,7 @@ function PrControls({ ws, busy, act }: { ws: Workspace; busy: string | null; act
     case 'ready': case 'open': return <>{link}<button className="btn primary" onClick={() => act('Merging', () => call('pr.merge', { workspaceId: ws.id }))}>Merge PR</button></>
     case 'merged': return (
       <>{link}<span style={{ color: 'var(--merged)', fontWeight: 500, padding: '0 4px' }}>Merged</span>
-        <button className="btn" style={{ borderStyle: 'dashed', borderColor: '#6e56c4', color: 'var(--merged)' }} onClick={() => setState({ modal: { name: 'newWorkspace', roomId: ws.roomId } })}>Continue</button>
+        <button className="btn" style={{ borderStyle: 'dashed', borderColor: '#6e56c4', color: 'var(--merged)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: ws.roomId })}>Continue</button>
         <button className="btn merged" onClick={() => act('Archiving', async () => { await call('workspaces.archive', { workspaceId: ws.id }); go({ name: 'floor', roomId: ws.roomId }) })}>Archive</button></>
     )
     case 'closed': return <>{link}<span className="muted">Closed</span><button className="btn" onClick={() => act('Reopening', () => call('pr.reopen', { workspaceId: ws.id }))}>Reopen</button></>

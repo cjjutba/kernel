@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { PreflightCheck } from '@shared/types'
 import { call } from '../api'
 import { Icon } from '../icons'
-import { boot, go, loadRoom, pending, setState, useStore } from '../store'
+import { actions, boot, go, loadRoom, pending, useStore } from '../store'
 import { ApprovalCard } from './Floor'
 
 export function HomeScreen() {
@@ -19,7 +19,7 @@ export function HomeScreen() {
       <div className="grow" style={{ overflowY: 'auto', padding: '32px 40px' }}>
         <div className="row" style={{ alignItems: 'flex-end', marginBottom: 24 }}>
           <div className="col grow"><span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.4px' }}>Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}, CJ</span><span className="muted" style={{ marginTop: 6 }}>{rooms.length} rooms, {working} agents working. {needs.length ? `${needs.length} things need you.` : 'Nothing needs you.'}</span></div>
-          <button className="btn primary lg" onClick={() => setState({ modal: { name: 'newWorkspace' } })}><Icon name="plus" size={13} />New workspace</button>
+          <button className="btn primary lg" onClick={() => actions.ui.openModal({ name: 'newWorkspace' })}><Icon name="plus" size={13} />New workspace</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.6fr) minmax(0,1fr)', gap: 24 }}>
           <div className="col" style={{ gap: 12 }}>
