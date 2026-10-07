@@ -1,10 +1,12 @@
 import { call } from '../api'
 import { actions, useStore } from '../store'
 import { Toast, ToastStack } from '../ui'
+import { usePrToasts } from '../screens/workspace/pr/usePrToasts'
 import './toasts.css'
 
 /** `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 2.6s, or stays while hovered. */
 export function Toasts() {
+  usePrToasts()
   const toasts = useStore((s) => s.ui.toasts)
   if (!toasts.length) return null
   return (

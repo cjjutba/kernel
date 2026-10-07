@@ -8,7 +8,7 @@ import { ChatTabs, fileTab } from './ChatTabs'
 import { Composer } from './composer/Composer'
 import { DiffView, FileView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
-import { PrHeader } from './PrHeader'
+import { PrHeader } from './pr/PrHeader'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import './workspace.css'
 

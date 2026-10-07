@@ -15,13 +15,7 @@
 .crumb { padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
 
-/* header: pull request area */
-.pr-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); color: var(--ink-2); text-decoration: none; font: 12px var(--mono); }
-.pr-link[data-merged] { border-color: var(--merged-solid); color: var(--merged); }
-.split-main { border-radius: 7px 0 0 7px; }
-.split-caret { margin-left: 2px; width: 26px; padding: 0; border-left: 1px solid var(--ink-2); border-radius: 0 7px 7px 0; }
-.merged-label { padding: 0 4px; color: var(--merged); font-weight: 500; }
-.btn.continue { border-style: dashed; border-color: var(--merged-solid); color: var(--merged); }
+/* header: the pull request area is in pr/pr.css */
 .btn.small { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: 12px; }
 
 /* tabs row */

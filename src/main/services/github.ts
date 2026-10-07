@@ -1,19 +1,56 @@
 import { exec, run } from './exec'
-import type { PrState, PrSummary } from '@shared/types'
+import type { PrCheck, PrInfo, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 
-// Pull requests go through the GitHub CLI, which already holds CJ's auth.
+// Pull requests go through the GitHub CLI, which already holds CJ's auth (D-006).
+
+/** One entry of `statusCheckRollup`: a CheckRun (name, status, conclusion) or a StatusContext (context, state). */
+export interface RollupItem {
+  name?: string
+  context?: string
+  status?: string
+  conclusion?: string | null
+  state?: string
+  startedAt?: string
+  completedAt?: string
+  detailsUrl?: string
+  targetUrl?: string
+  description?: string
+}
 
 export interface PrView {
   number: number
   url: string
+  title?: string
+  baseRefName?: string
   state: 'OPEN' | 'CLOSED' | 'MERGED'
   isDraft: boolean
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | '' | null
-  statusCheckRollup: { name?: string; context?: string; status?: string; conclusion?: string | null; state?: string }[]
+  statusCheckRollup: RollupItem[]
 }
 
-const FIELDS = 'number,url,state,isDraft,mergeable,reviewDecision,statusCheckRollup'
+const FIELDS = 'number,url,title,baseRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup'
+const FAILED = ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
+const SKIPPED = ['SKIPPED', 'NEUTRAL', 'STALE']
+const QUEUED = ['QUEUED', 'PENDING', 'WAITING', 'REQUESTED', 'EXPECTED']
+
+const secs = (ms: number) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s` }
+
+/** One check as the Checks tab lists it. A finished check carries its duration. */
+export function checkOf(c: RollupItem): PrCheck {
+  const conclusion = String(c.conclusion ?? '').toUpperCase()
+  const state = String(c.state ?? '').toUpperCase()
+  const status = String(c.status ?? '').toUpperCase()
+  const name = c.name ?? c.context ?? 'check'
+  const url = c.detailsUrl ?? c.targetUrl
+  const took = c.startedAt && c.completedAt && !c.completedAt.startsWith('0001') ? secs(Date.parse(c.completedAt) - Date.parse(c.startedAt)) : undefined
+  const done = (s: PrCheck['state']): PrCheck => ({ name, state: s, ...(took ? { meta: took } : {}), ...(url ? { url } : {}) })
+  if (FAILED.includes(conclusion) || FAILED.includes(state)) return done('fail')
+  if (SKIPPED.includes(conclusion)) return done('skipped')
+  if (conclusion === 'SUCCESS' || state === 'SUCCESS') return done('pass')
+  if (QUEUED.includes(status) || (state && QUEUED.includes(state) && state !== 'PENDING')) return { name, state: 'queued', ...(url ? { url } : {}) }
+  return { name, state: 'running', ...(url ? { url } : {}) }
+}
 
 /** Collapse GitHub's PR fields into the one state the workspace header shows. */
 export function prStateOf(pr: PrView | null): PrState {
@@ -22,23 +59,83 @@ export function prStateOf(pr: PrView | null): PrState {
   if (pr.state === 'CLOSED') return 'closed'
   if (pr.isDraft) return 'draft'
   if (pr.mergeable === 'CONFLICTING') return 'conflict'
-  const checks = pr.statusCheckRollup ?? []
-  const failed = checks.some((c) => ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED'].includes(String(c.conclusion ?? c.state ?? '').toUpperCase()))
-  if (failed) return 'cifail'
-  const pending = checks.some((c) => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED', 'QUEUED', 'IN_PROGRESS'].includes(String(c.state ?? '').toUpperCase()))
-  if (pending) return 'checks'
+  const checks = (pr.statusCheckRollup ?? []).map(checkOf)
+  if (checks.some((c) => c.state === 'fail')) return 'cifail'
+  if (checks.some((c) => c.state === 'running' || c.state === 'queued')) return 'checks'
   if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
   return 'ready'
 }
 
-export function checksOf(pr: PrView | null) {
-  return (pr?.statusCheckRollup ?? []).map((c) => ({ name: c.name ?? c.context ?? 'check', status: String(c.conclusion ?? c.state ?? c.status ?? '').toLowerCase() }))
+/** Every check passed or was skipped. A PR without checks counts as green. */
+export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
+
+/** The query behind `prReviews`: review threads (inline comments) and each reviewer's latest review. */
+export const REVIEWS_QUERY = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){'
+  + 'reviewThreads(first:100){nodes{isResolved path line originalLine comments(first:1){nodes{id body author{login}}}}}'
+  + 'latestReviews(first:20){nodes{id state body author{login}}}}}}'
+
+/** Review comments from the GraphQL reply: one per thread, plus the body of each "changes requested" review. */
+export function parseReviews(json: string): ReviewComment[] {
+  try {
+    const pr = JSON.parse(json)?.data?.repository?.pullRequest
+    if (!pr) return []
+    type Thread = { isResolved: boolean; path?: string; line?: number | null; originalLine?: number | null; comments?: { nodes?: { id: string; body: string; author?: { login?: string } | null }[] } }
+    type Review = { id: string; state: string; body?: string; author?: { login?: string } | null }
+    const threads = ((pr.reviewThreads?.nodes ?? []) as Thread[]).flatMap((t): ReviewComment[] => {
+      const c = t.comments?.nodes?.[0]
+      if (!c) return []
+      const line = t.line ?? t.originalLine ?? undefined
+      return [{ id: c.id, author: c.author?.login ?? '', ...(t.path ? { path: t.path } : {}), ...(line ? { line } : {}), body: c.body.trim(), resolved: t.isResolved }]
+    })
+    const reviews = ((pr.latestReviews?.nodes ?? []) as Review[])
+      .filter((r) => r.state === 'CHANGES_REQUESTED' && r.body?.trim())
+      .map((r): ReviewComment => ({ id: r.id, author: r.author?.login ?? '', body: r.body!.trim(), resolved: false }))
+    return [...reviews, ...threads]
+  } catch { return [] }
 }
 
 export async function prView(cwd: string, ref?: string): Promise<PrView | null> {
   const r = await exec('gh', ['pr', 'view', ...(ref ? [ref] : []), '--json', FIELDS], { cwd, timeoutMs: 20000 })
   if (r.code !== 0) return null
-  return JSON.parse(r.stdout)
+  try { return JSON.parse(r.stdout) } catch { return null }
+}
+
+/** Review comments for the "Changes requested" card and the address-review instructions. Empty when gh fails. */
+export async function prReviews(cwd: string, number: number): Promise<ReviewComment[]> {
+  const r = await exec('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', `number=${number}`, '-f', `query=${REVIEWS_QUERY}`], { cwd, timeoutMs: 20000 })
+  return r.code === 0 ? parseReviews(r.stdout) : []
+}
+
+/** Files that conflict with the base, from a merge that touches neither the index nor the worktree (git 2.38+). */
+export async function conflictFiles(cwd: string, base: string): Promise<string[]> {
+  await exec('git', ['-C', cwd, 'fetch', '--quiet', 'origin', base], { timeoutMs: 20000 })
+  const r = await exec('git', ['-C', cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', `origin/${base}`])
+  if (r.code !== 1) return []
+  return r.stdout.split('\n').slice(1).map((l) => l.trim()).filter(Boolean)
+}
+
+const reviewDecision = (d: PrView['reviewDecision']): PrInfo['reviewDecision'] =>
+  d === 'APPROVED' ? 'approved' : d === 'CHANGES_REQUESTED' ? 'changes' : d === 'REVIEW_REQUIRED' ? 'pending' : undefined
+
+/** What the header, the Checks tab and the review card show. */
+export function infoOf(workspaceId: string, view: PrView, comments: ReviewComment[], conflicts: string[]): PrInfo {
+  const decision = reviewDecision(view.reviewDecision)
+  return {
+    workspaceId, number: view.number, url: view.url, title: view.title ?? '', state: prStateOf(view), baseRef: view.baseRefName ?? '',
+    checks: (view.statusCheckRollup ?? []).map(checkOf), comments, conflicts, ...(decision ? { reviewDecision: decision } : {})
+  }
+}
+
+/** The PR for `ref` with its checks, review comments and conflicting files. */
+export async function prInfo(cwd: string, ref: string, workspaceId: string): Promise<PrInfo | null> {
+  const view = await prView(cwd, ref)
+  if (!view) return null
+  const open = view.state === 'OPEN'
+  const [comments, conflicts] = await Promise.all([
+    open ? prReviews(cwd, view.number) : Promise.resolve([]),
+    open && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName) : Promise.resolve([])
+  ])
+  return infoOf(workspaceId, view, comments, conflicts)
 }
 
 export async function prCreate(cwd: string, o: { title: string; body: string; base: string; draft?: boolean }): Promise<PrView | null> {
@@ -47,18 +144,62 @@ export async function prCreate(cwd: string, o: { title: string; body: string; ba
   return prView(cwd)
 }
 
-export async function prReady(cwd: string) { await run('gh', ['pr', 'ready'], { cwd }) }
-export async function prReopen(cwd: string) { await run('gh', ['pr', 'reopen'], { cwd }) }
+export async function prReady(cwd: string, ref?: string) { await run('gh', ['pr', 'ready', ...(ref ? [ref] : [])], { cwd, timeoutMs: 30000 }) }
+export async function prReopen(cwd: string, ref?: string) { await run('gh', ['pr', 'reopen', ...(ref ? [ref] : [])], { cwd, timeoutMs: 30000 }) }
 
-export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase', deleteBranch = false) {
-  await run('gh', ['pr', 'merge', `--${method}`, ...(deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
+export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase', o: { ref?: string; deleteBranch?: boolean } = {}) {
+  await run('gh', ['pr', 'merge', ...(o.ref ? [o.ref] : []), `--${method}`, ...(o.deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
 }
 
-/** Review comments, so "Changes requested" can be sent straight to the agent. */
-export async function prReviewComments(cwd: string, number: number, repo: string): Promise<{ path: string; line?: number; body: string; author: string }[]> {
-  const r = await exec('gh', ['api', `repos/${repo}/pulls/${number}/comments`], { cwd })
-  if (r.code !== 0) return []
-  return (JSON.parse(r.stdout) as any[]).map((c) => ({ path: c.path, line: c.line ?? c.original_line, body: c.body, author: c.user?.login ?? '' }))
+/** The GitHub calls Kernel makes for a workspace's PR. Tests swap it for a stub. */
+export interface GitHub {
+  info: (cwd: string, ref: string, workspaceId: string) => Promise<PrInfo | null>
+  merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
+  ready: (cwd: string, ref: string) => Promise<void>
+  reopen: (cwd: string, ref: string) => Promise<void>
+}
+
+export const gh: GitHub = {
+  info: prInfo,
+  merge: (cwd, ref, method) => prMerge(cwd, method, { ref }),
+  ready: prReady,
+  reopen: prReopen
+}
+
+// ---------- what Kernel tells the agent and the chat
+
+const FIX_CHECKS = '# Fix failing checks\n1. Run `gh pr checks` and read every failure.\n2. Reproduce it locally and fix the cause, not the test.\n3. Run the full suite, push, and summarize the fix.'
+const ADDRESS_REVIEW = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
+
+/** The instruction file the agent gets for a conflict, failing checks or a review, with what GitHub reported. */
+export function resolveFile(state: 'conflict' | 'cifail' | 'changes', resolveInstructions: string, info: PrInfo | null): [string, string] {
+  if (state === 'conflict') {
+    const files = info?.conflicts ?? []
+    return ['resolve-conflicts.md', resolveInstructions + (files.length ? `\n\nConflicting files:\n${files.map((f) => `- ${f}`).join('\n')}` : '')]
+  }
+  if (state === 'cifail') {
+    const failed = (info?.checks ?? []).filter((c) => c.state === 'fail')
+    return ['fix-checks.md', FIX_CHECKS + (failed.length ? `\n\nFailing checks:\n${failed.map((c) => `- ${c.name}${c.url ? ` ${c.url}` : ''}`).join('\n')}` : '')]
+  }
+  const open = (info?.comments ?? []).filter((c) => !c.resolved)
+  return ['address-review.md', ADDRESS_REVIEW + (open.length ? `\n\nReview comments:\n${open.map((c) => `- ${c.path ? `${c.path}${c.line ? `:${c.line}` : ''}` : 'Review'} (${c.author}): ${c.body.replace(/\s+/g, ' ')}`).join('\n')}` : '')]
+}
+
+const LANDED: Record<'squash' | 'merge' | 'rebase', string> = { squash: 'squashed into', merge: 'merged into', rebase: 'rebased onto' }
+
+/** The note a PR state change leaves in the chat, or nothing. `method` is set when Kernel ran the merge. */
+export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | 'merge' | 'rebase'): string | undefined {
+  const n = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
+  const base = (info?.baseRef || ws.baseRef).replace(/^origin\//, '')
+  if (ws.prState === 'merged') return method ? `${n} was ${LANDED[method]} ${base}.` : `${n} was merged on GitHub.`
+  if (ws.prState === 'closed') return `${n} was closed without merging on GitHub.`
+  if (ws.prState === 'cifail') {
+    const names = (info?.checks ?? []).filter((c) => c.state === 'fail').map((c) => c.name)
+    if (!names.length) return 'Checks failed on the PR.'
+    const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+    return `${list} failed on the PR.`
+  }
+  return undefined
 }
 
 export async function ghUser(): Promise<string | null> {

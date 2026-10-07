@@ -45,7 +45,10 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
       turn = []
       return
     }
-    const body = turn.filter((i) => i.kind !== 'result')
+    // Notes written after the turn ended (a PR merged or failed its checks) come after the turn's meta line.
+    const end = turn.map((i) => i.kind).lastIndexOf('result')
+    const after = turn.slice(end + 1)
+    const body = turn.slice(0, end).filter((i) => i.kind !== 'result')
     let lastText = -1
     body.forEach((i, n) => { if (i.kind === 'text') lastText = n })
     const before = body.slice(0, lastText < 0 ? body.length : lastText)
@@ -57,6 +60,7 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
     for (const item of rest) blocks.push({ kind: 'item', item })
     if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })
     blocks.push({ kind: 'meta', id: result.id, text: `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}` })
+    for (const item of after) blocks.push({ kind: 'item', item })
     turn = []
   }
   for (const item of items) {

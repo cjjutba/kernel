@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AgentStatus, Chat, ChatPart, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, Room, RoomSetupStep, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -15,13 +15,13 @@ import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { loadAppSettings, loadRepoSettings, saveAppSettings, type AppSettings } from './services/settings'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from './services/rooms'
-import { exec } from './services/exec'
+import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { openPrs, prMerge, prReady, prReopen, prStateOf, prView } from './services/github'
+import { allGreen, gh, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
 
 type CoreChannel = Exclude<Channel, `system.${string}`>
@@ -37,7 +37,6 @@ export const UNBUILT = {
   'agents.seed': 'KERNEL-22',
     'chats.rename': 'KERNEL-12', 'chats.close': 'KERNEL-12', 'chats.fork': 'KERNEL-12', 'terminal.write': 'KERNEL-12', 'terminal.resize': 'KERNEL-12',
   'checkpoints.list': 'KERNEL-13', 'checkpoints.revert': 'KERNEL-13',
-  'pr.get': 'KERNEL-15', 'pr.continue': 'KERNEL-15',
   'tasks.list': 'KERNEL-18',
   'lead.ask': 'KERNEL-21', 'workspaces.restore': 'KERNEL-21', 'account.get': 'KERNEL-21', 'account.signOut': 'KERNEL-21',
   'chats.restart': 'KERNEL-22',
@@ -92,7 +91,7 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws) => { if (ws.prState !== 'none') void this.refreshPr(ws.id).catch(() => undefined) }
+      onTurnDone: (ws) => { void this.refreshPr(ws.id).catch(() => undefined) }
     })
     const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
     const onHook = (e: { hook_event_name: string }) => this.hookSeen.set(e.hook_event_name, Date.now())
@@ -457,47 +456,149 @@ export class Kernel {
 
   // ---------- pull requests
 
-  async createPr(id: string, draft = false) {
-    const ws = this.mustWs(id)
-    const chat = this.store.chats(id)[0]
-    if (!chat) throw new Error('This workspace has no chat.')
-    const ask = this.settings.pr.createInstructions + (draft || this.settings.pr.draft ? '\n5. Open it as a draft.' : '')
-    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text: ask }])
-    return this.saveWs({ ...ws, prState: 'checks' })
+  /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
+  github: GitHub = gh
+  /** Workspaces whose merge Kernel is running, so the poll doesn't overwrite `merging`. */
+  private merging = new Set<string>()
+  /** The method of a merge Kernel ran, until the PR is seen merged, so the note says how it landed. */
+  private mergedWith = new Map<string, AppSettings['pr']['mergeMethod']>()
+
+  /** PR instructions and notes go to the workspace's first chat. */
+  private prChat(id: string): Chat | undefined {
+    const chats = this.store.chats(id)
+    return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
   }
 
-  /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions. */
-  async resolveConflicts(id: string) {
-    const ws = this.mustWs(id)
-    const chat = this.store.chats(id)[0]
+  private note(workspaceId: string, text: string) {
+    const chat = this.prChat(workspaceId)
     if (!chat) return
-    const byState: Partial<Record<Workspace['prState'], [string, string]>> = {
-      conflict: ['resolve-conflicts.md', this.settings.pr.resolveInstructions],
-      cifail: ['fix-checks.md', '# Fix failing checks\n1. Run `gh pr checks` and read every failure.\n2. Reproduce locally, fix the cause, not the test.\n3. Run the full suite, push, and summarize the fix.'],
-      changes: ['address-review.md', '# Address review\n1. Read the review with `gh pr view --comments`.\n2. Make each requested change.\n3. Push, then reply to each comment with what changed.']
-    }
-    const [name, text] = byState[ws.prState] ?? byState.conflict!
-    await this.sessions.send(chat.id, [{ type: 'file', name, text }])
-    this.saveWs({ ...ws, prState: 'checks' })
+    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text }
+    this.store.saveItem(chat.id, item)
+    bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
 
-  async refreshPr(id: string): Promise<Workspace> {
-    const ws = this.mustWs(id)
-    const pr = await prView(ws.path, ws.branch)
-    const state: Workspace['prState'] = pr ? prStateOf(pr) : ws.prState === 'checks' ? 'checks' : 'none'
-    const next = this.saveWs({ ...ws, prNumber: pr?.number ?? ws.prNumber, prUrl: pr?.url ?? ws.prUrl, prState: state, ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {}) })
-    if (next.prState !== ws.prState) { bus.push({ type: 'pr', workspaceId: id, state: next.prState }); bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: pr ? `#${pr.number}` : undefined }) }
+  private setPrState(ws: Workspace, prState: PrState) {
+    const next = this.saveWs({ ...ws, prState })
+    if (prState !== ws.prState) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
     return next
   }
 
-  async mergePr(id: string) {
+  /** Sends `create-pr.md` (Settings > PRs) to the agent. The header shows Creating until its turn ends. */
+  async createPr(id: string, draft = false) {
     const ws = this.mustWs(id)
-    await prMerge(ws.path, this.settings.pr.mergeMethod)
-    return this.refreshPr(id)
+    if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
+    const chat = this.prChat(id)
+    if (!chat) throw new Error('This workspace has no chat.')
+    const text = this.settings.pr.createInstructions + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
+    await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text }])
+    return this.setPrState(ws, 'creating')
   }
 
-  async readyPr(id: string) { await prReady(this.mustWs(id).path); return this.refreshPr(id) }
-  async reopenPr(id: string) { await prReopen(this.mustWs(id).path); return this.refreshPr(id) }
+  /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
+  async resolvePr(id: string) {
+    const ws = this.mustWs(id)
+    const chat = this.prChat(id)
+    if (!chat) throw new Error('This workspace has no chat.')
+    if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
+    const info = await this.github.info(ws.path, ws.branch, id)
+    if (info) bus.push({ type: 'pr.info', info })
+    const [name, text] = resolveFile(ws.prState, this.settings.pr.resolveInstructions, info)
+    await this.sessions.send(chat.id, [{ type: 'file', name, text }])
+    this.setPrState(ws, 'resolving')
+  }
+
+  /** The PR's checks, review comments and conflicts, for the Checks tab and the review card. */
+  async getPr(id: string) {
+    const ws = this.mustWs(id)
+    if (!ws.prNumber) return null
+    const info = await this.github.info(ws.path, ws.branch, id)
+    if (info) bus.push({ type: 'pr.info', info })
+    return info
+  }
+
+  /**
+   * Reads the PR from GitHub and moves the header to its state. `settle` is true once the agent's turn is over:
+   * until then Creating and Resolving hold, so the header doesn't flash the old state while the agent works.
+   * A workspace with no PR yet only adopts an open one, never an old merged or closed PR on the same branch name.
+   */
+  async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (ws.status === 'archived') return ws
+    const info = await this.github.info(ws.path, ws.branch, id)
+    if (info) bus.push({ type: 'pr.info', info })
+    const settle = o.settle ?? !this.agentBusy(ws)
+    const hold = this.merging.has(id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
+    let state: PrState
+    if (hold) state = ws.prState
+    else if (!info) state = ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
+    else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
+    else state = info.state
+    const adopt = info && state !== 'none'
+    const next = this.saveWs({
+      ...ws, prState: state,
+      ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle } : {}),
+      ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
+    })
+    if (next.prState !== ws.prState) {
+      bus.push({ type: 'pr', workspaceId: id, state: next.prState })
+      bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
+      const text = prNote(next, info, this.mergedWith.get(id))
+      if (text) this.note(id, text)
+      if (next.prState === 'merged') this.mergedWith.delete(id)
+    }
+    return next
+  }
+
+  /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
+  async mergePr(id: string) {
+    const ws = this.mustWs(id)
+    if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
+    if (this.settings.pr.requireGreen) {
+      const info = await this.github.info(ws.path, ws.branch, id)
+      if (!info) throw new Error('Could not read the pull request from GitHub.')
+      bus.push({ type: 'pr.info', info })
+      if (!allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
+    }
+    const method = this.settings.pr.mergeMethod
+    this.merging.add(id)
+    this.setPrState(ws, 'merging')
+    try {
+      await this.github.merge(ws.path, ws.branch, method)
+      this.mergedWith.set(id, method)
+    } catch (e) {
+      this.merging.delete(id)
+      await this.refreshPr(id, { settle: true }).catch(() => undefined)
+      throw e
+    }
+    this.merging.delete(id)
+    return this.refreshPr(id, { settle: true })
+  }
+
+  async readyPr(id: string) { const ws = this.mustWs(id); await this.github.ready(ws.path, ws.branch); return this.refreshPr(id) }
+  async reopenPr(id: string) { const ws = this.mustWs(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
+
+  /** After a merge or close: a fresh branch from the base in the same worktree. The chat stays. */
+  async continuePr(id: string) {
+    const ws = this.mustWs(id)
+    if (ws.prState !== 'merged' && ws.prState !== 'closed') throw new Error('Continue is for a merged or closed pull request.')
+    if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
+    const room = this.mustRoom(ws.roomId)
+    if (ws.baseRef.startsWith('origin/')) await exec('git', ['-C', ws.path, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+    // feat/x-2 continues as feat/x-3, not feat/x-2-2.
+    const stem = ws.branch.replace(/-\d+$/, '')
+    const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
+    await git(ws.path, 'checkout', '-b', branch, ws.baseRef)
+    const next = this.saveWs({ ...ws, branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    bus.push({ type: 'pr', workspaceId: id, state: 'none' })
+    this.note(id, `Continuing on ${branch} from ${ws.baseRef.replace(/^origin\//, '')}. The chat stays.`)
+    return next
+  }
+
+  /** Whether the workspace's PR chat is in a turn or has messages waiting for one (a create-pr.md sent mid-turn waits in the queue). */
+  private agentBusy(ws: Workspace) {
+    const chat = this.prChat(ws.id)
+    return chat ? this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 : false
+  }
 
   private async pollPrs() {
     for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.refreshPr(ws.id).catch(() => undefined)
@@ -599,7 +700,9 @@ export class Kernel {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
-      'pr.resolve': async ({ workspaceId }) => { await this.resolveConflicts(workspaceId); return { ok: true } },
+      'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
+      'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
+      'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
       'scripts.run': async ({ workspaceId, kind }) => {
