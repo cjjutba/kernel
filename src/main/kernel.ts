@@ -142,6 +142,7 @@ export class Kernel {
         const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
         this.notifications.turnDone(ws, chat, done)
         this.leadUpdates.turnDone(ws, chat, done)
+        void this.changes(ws.id).catch(() => undefined)
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -198,6 +199,7 @@ export class Kernel {
     this.o.onSettings?.(this.settings)
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
+    void this.countChanges()
     this.notifications.attach()
     this.leadUpdates.attach()
     if (this.o.probeNetwork) {
@@ -898,10 +900,16 @@ export class Kernel {
     bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
 
+  /** The files a workspace changed. Their totals are saved on the workspace too, for the sidebar and Home (+412 -38). */
   async changes(id: string) {
     const ws = this.mustWs(id)
-    if (ws.mode === 'current') return changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
-    return changedFiles(ws.path, await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef))
+    const files = ws.mode === 'current'
+      ? await changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
+      : await changedFiles(ws.path, await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef))
+    const stat = { files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) }
+    const old = this.mustWs(id).stat
+    if (!old || old.files !== stat.files || old.added !== stat.added || old.removed !== stat.removed) this.updateWs(id, { stat })
+    return files
   }
 
   async diff(id: string, file?: string) {
@@ -1253,6 +1261,11 @@ export class Kernel {
   private agentBusy(ws: Workspace) {
     const chat = this.prChat(ws.id)
     return chat ? this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 : false
+  }
+
+  /** Diff totals for every live workspace, once at launch, so the sidebar has them before any turn ends. */
+  private async countChanges() {
+    for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && ws.status !== 'setup') await this.changes(ws.id).catch(() => undefined)
   }
 
   private async pollPrs() {

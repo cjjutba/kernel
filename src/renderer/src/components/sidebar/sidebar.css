@@ -1,0 +1,6 @@
+/* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. */
+.nav-glyph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.nav-item .nav-glyph[data-tone='ink'] svg { color: var(--ink); }
+.nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
+.nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
+.nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
