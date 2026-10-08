@@ -11,7 +11,7 @@ export type RepoSettings = RoomSettings
 export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
-  general: { homeView: 'home', openAtLogin: true, menuBar: true, sendWith: 'enter' },
+  general: { homeView: 'home', openAtLogin: false, menuBar: true, sendWith: 'enter' },
   floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },

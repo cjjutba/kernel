@@ -8,6 +8,7 @@ import { Kernel } from './kernel'
 import { fixtureHandlers } from './fixtures'
 import { exec } from './services/exec'
 import { Updater } from './updater'
+import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { probeNetwork } from './services/health'
 import type { Channel } from '@shared/ipc'
 
@@ -69,6 +70,7 @@ app.whenReady().then(async () => {
     const updater = app.isPackaged
       ? new Updater({ current: app.getVersion(), dataDir: app.getPath('userData'), engine: electronUpdater.autoUpdater })
       : undefined
+    const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
@@ -76,8 +78,8 @@ app.whenReady().then(async () => {
       probeNetwork: () => probeNetwork(),
       version: app.getVersion(),
       updater,
-      // A dev run must not register the dev Electron as a login item.
-      onSettings: (s) => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: s.general.openAtLogin }) },
+      // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
+      onSettings: (s) => { const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
       showNotification: (n, { silent }) => {
         if (!Notification.isSupported()) return
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
