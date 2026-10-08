@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
+import { dropDrafts } from './composer/draftStore'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -13,7 +14,10 @@ const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remo
  */
 export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void) {
   const before = getState().chats[workspaceId] ?? []
-  for (const id of ids) await call('chats.close', { chatId: id })
+  for (const id of ids) {
+    await call('chats.close', { chatId: id })
+    dropDrafts([id])
+  }
   await loadWorkspace(workspaceId)
   if (!active || !ids.includes(active)) return
   const left = getState().chats[workspaceId] ?? []

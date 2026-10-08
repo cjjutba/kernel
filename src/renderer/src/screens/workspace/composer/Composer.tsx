@@ -18,6 +18,11 @@ import { QueueList } from './QueueList'
 import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
+/**
+ * The newest prefill already put in a box, so a composer that remounts doesn't write an old one over a restored draft.
+ * It compares `n`, which `Workspace` sets from `Date.now()`, so it only goes up. A per-mount counter would block every edit after the first.
+ */
+let appliedPrefill = 0
 
 type MenuName = 'model' | PlusPanel
 
@@ -32,7 +37,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const forced = useStore((s) => s.ui.workspace.composer)
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
-  const d = useDraft(forced)
+  const d = useDraft(forced, chat.id)
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
@@ -70,7 +75,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }, [query, ws?.id])
   useEffect(() => { setAt(0) }, [acKey])
 
-  useEffect(() => { if (prefill) d.setText(prefill.text) }, [prefill])
+  useEffect(() => { if (prefill && prefill.n > appliedPrefill) { appliedPrefill = prefill.n; d.setText(prefill.text) } }, [prefill])
   useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
@@ -95,6 +100,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       actions.ui.toast({ title: 'Plan changes are text only', sub: 'Describe the change in words, or send the image after you approve the plan.' })
       return
     }
+    const id = chat.id
     const kept = d.snapshot()
     d.reset()
     try {
@@ -102,7 +108,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       else await call('chats.send', { chatId: chat.id, parts })
     }
     catch (e) {
-      d.reset(kept)
+      // Back into the chat it came from, ahead of anything typed there since.
+      const since = d.snapshot(id)
+      d.reset(since.length ? [...kept, ...since] : kept, id)
       actions.ui.toast({ title: 'Could not send', sub: (e as Error).message })
     }
   }
@@ -126,9 +134,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
 
   const configure = (patch: { model?: ModelId; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
+    const id = chat.id
     void attempt('Could not edit the message', async () => {
-      actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id }))
-      d.reset([...d.snapshot(), ...q.parts])
+      actions.chats.setQueue(id, await call('chats.unqueue', { chatId: id, id: q.id }))
+      // The call can outlast a switch to another chat, so the message goes back into the chat it was queued in.
+      d.reset([...d.snapshot(id), ...q.parts], id)
     })
   }
 
