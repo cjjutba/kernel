@@ -20,10 +20,10 @@
 .floor-walker { position: absolute; z-index: 60; width: 3.5%; height: 10.667%; pointer-events: none; transition: left 0.9s linear, top 0.9s linear; }
 @keyframes floor-stride { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.8px); } }
 .floor-stride { transform-box: fill-box; animation: floor-stride 0.32s ease-in-out infinite; }
-.floor-bubble { position: absolute; z-index: 80; transform: translate(-50%, -100%); transition: left 0.9s linear, top 0.9s linear; width: max-content; max-width: 250px; box-sizing: border-box; padding: 7px 11px; border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font-size: 12.5px; line-height: 1.4; }
+.floor-bubble { position: absolute; z-index: 80; transform: translate(-50%, calc(-100% - var(--lift, 0px))); transition: left 0.9s linear, top 0.9s linear; width: max-content; max-width: 250px; box-sizing: border-box; padding: 7px 11px; border-radius: var(--r-md); background: var(--ink); color: var(--on-ink); font-size: 12.5px; line-height: 1.4; }
 .floor-stage[data-instant='true'] :is(.floor-walker, .floor-tag, .floor-bubble) { transition: none; }
 
-.floor-tag { position: absolute; z-index: 70; transform: translate(-50%, -100%); transition: left 0.9s linear, top 0.9s linear; display: flex; align-items: center; min-height: 30px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.floor-tag { position: absolute; z-index: 70; transform: translate(-50%, calc(-100% - var(--lift, 0px))); transition: left 0.9s linear, top 0.9s linear; display: flex; align-items: center; min-height: 30px; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .floor-tag-pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; box-sizing: border-box; padding: 0 9px; border-radius: 999px; border: 1px solid var(--chip-line); background: color-mix(in srgb, var(--panel) 92%, transparent); color: var(--ink); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .floor-tag-pill > span { color: var(--muted); font-weight: 400; }
 .floor-tag[aria-pressed='true'] .floor-tag-pill { border-color: var(--muted); }
@@ -57,10 +57,13 @@
 .agent-pop { position: absolute; z-index: 90; width: 248px; }
 .agent-pop[data-side='left'] { transform: translateX(-100%); }
 .agent-pop[data-side='above'] { right: 0; bottom: calc(100% + 8px); }
-.agent-card { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: color-mix(in srgb, var(--surface) 95%, transparent); }
+.agent-card { width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--surface); }
 .agent-dot { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 11px; font-weight: 600; }
 .agent-name { font-size: 14px; font-weight: 600; }
-.agent-status { margin-top: 6px; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-2); }
+.agent-status { margin-top: 6px; display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--ink-2); }
+.agent-status > * { flex-shrink: 0; white-space: nowrap; }
+/* a long workspace name is cut to the card; the whole of it shows on hover */
+.agent-status > .agent-ws { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .agent-status[data-loud='true'] { color: var(--ink); }
 .agent-status .mono { font-size: 12px; }
 .agent-open { margin-top: 8px; height: 28px; }
@@ -112,7 +115,7 @@ button.log-quote:hover { background: var(--surface-2); }
 /* floor card: same pattern as the chat cards, tighter for the logs column */
 .tcard.fcard { margin: 0; padding: 12px; border-color: var(--line-4); }
 .tcard.fcard .sub { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
-.tcard.fcard .code { font-size: 11.5px; line-height: 1.6; padding: 8px 10px; border-radius: 6px; white-space: pre; overflow-x: auto; }
+.tcard.fcard .code { font-size: 11.5px; line-height: 1.6; padding: 8px 10px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: balance; }
 .fcard-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .fcard-acts .btn { height: 30px; border-radius: var(--r); }
 

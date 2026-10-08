@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import type { AgentDef, AgentLook, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, useBusy } from '../../ui'
+import { clearOverlaps } from '../../floor/clear'
 import { ART, SEATS, WORD, deskless, limitBanner, lookFor, overflowShirt, pct, type Seating } from '../../floor/layout'
 import floorDark from '../../floor/floor.svg'
 import floorLight from '../../floor/floor-light.svg'
@@ -13,6 +14,7 @@ import type { Pose } from './motion/useWalks'
 import type { Say } from './moments/moments'
 import './moments/moments.css'
 
+const BUBBLE = 'bubble'
 const SEATED: Pose = { at: 'seat', moving: false }
 
 /** The selected person's card, open beside their seat, or beside the no-desk card when they have no desk. */
@@ -34,20 +36,61 @@ export function Stage({ room, agents, seats, status, words, poses, say, instant,
   const order = (a: AgentDef) => Math.max(0, agents.indexOf(a))
   const waiting = deskless(overflow, status)
   const seatOf = popover ? seated.findIndex((a) => a.id === popover.agent.id) : -1
+  const stage = useRef<HTMLDivElement>(null)
+  const lift = useLifts(stage, seated.map((a, i) => `${a.id}:${pose(a.id).at}:${status[a.id] ?? 'idle'}:${words?.[a.id] ?? ''}`).join() + (say ? `|${say.agentId}:${say.text}:${say.link?.label ?? ''}` : ''))
   const card = popover && <AgentCard agent={popover.agent} roomId={room.id} agents={agents} status={status[popover.agent.id] ?? 'idle'} note={popover.note} />
   return (
-    <div className="floor-stage" data-instant={instant ? 'true' : undefined}>
+    <div ref={stage} className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} look={lookFor(a, order(a))} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
       {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, order(a))} facing={p.facing} /> })}
-      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} walking={pose(a.id).at !== 'seat'} lift={lift[`tag-${a.id}`]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
       {seatOf >= 0 && <div className="agent-pop" data-side={SEATS[seatOf][0] >= 400 ? 'left' : 'right'} style={pct(SEATS[seatOf][0] + (SEATS[seatOf][0] >= 400 ? -26 : 26), SEATS[seatOf][1] + (SEATS[seatOf][1] >= 450 ? -140 : 28))}>{card}</div>}
-      {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
+      {say && speaker >= 0 && <Bubble text={say.text} lift={lift[BUBBLE]} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
       {waiting.length > 0 && <Overflow room={room} agents={waiting} all={overflow} status={status} selectedId={selectedId} onSelect={onSelect} card={popover && waiting.some((a) => a.id === popover.agent.id) ? card : undefined} />}
     </div>
   )
+}
+
+/**
+ * How far each tag and the speech bubble is lifted so none covers another, keyed by its `data-clear` value. It measures them where
+ * they are drawn right now, so it also keeps them apart while someone glides across the floor, and again when the stage is resized.
+ * `lifted` names the elements to measure; it changes when a tag or the bubble appears, goes or moves.
+ */
+function useLifts(stage: RefObject<HTMLDivElement | null>, lifted: string): Record<string, number> {
+  const [lift, setLift] = useState<Record<string, number>>({})
+  const measure = useRef(() => {})
+  measure.current = () => {
+    const el = stage.current
+    if (!el) return
+    // offsetLeft and offsetTop are the element's own place (a tag's center and its bottom edge), before its lift and in the middle of its glide.
+    const boxes = [...el.querySelectorAll<HTMLElement>('[data-clear]')].map((n) => ({ id: n.dataset.clear!, x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight, walking: n.dataset.walking === 'true' }))
+    const next = clearOverlaps(boxes, BUBBLE)
+    setLift((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next))
+  }
+  useEffect(() => {
+    const el = stage.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const watch = new ResizeObserver(() => measure.current())
+    watch.observe(el)
+    // The tags' widths change when the page font loads.
+    void document.fonts?.ready.then(() => measure.current())
+    return () => watch.disconnect()
+  }, [stage])
+  useLayoutEffect(() => {
+    const el = stage.current
+    if (!el) return
+    measure.current()
+    // While a tag or the bubble is still gliding to its place, look again every frame.
+    const gliding = () => typeof el.getAnimations === 'function' && el.getAnimations({ subtree: true }).some((a) => a instanceof CSSTransition && a.playState === 'running' && ['left', 'top'].includes(a.transitionProperty))
+    let frame = 0
+    const tick = () => { measure.current(); if (gliding()) frame = requestAnimationFrame(tick) }
+    if (gliding()) frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [stage, lifted])
+  return lift
 }
 
 /** Someone at their desk. Working people bob, a person who needs you raises a hand, an offline desk or one whose owner is up walking is empty. */
@@ -74,15 +117,15 @@ function Person({ look, seat, status, present }: { agent: AgentDef; look: AgentL
 }
 
 /** The name, plus a status word unless they are idle. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
-function Tag({ agent, seat, at, status, word: shown, selected, onSelect }: { agent: AgentDef; seat: number; at: [number, number]; status: AgentStatus; word?: string; selected: boolean; onSelect: () => void }) {
+function Tag({ agent, seat, at, status, word: shown, walking, lift, selected, onSelect }: { agent: AgentDef; seat: number; at: [number, number]; status: AgentStatus; word?: string; /** Up from their desk. */ walking?: boolean; /** Pixels to stand above its place so it clears a neighbor. */ lift?: number; selected: boolean; onSelect: () => void }) {
   const word = shown ?? WORD[status]
   // A change of desk is a jump: the tag skips its glide for the render that moves it.
   const was = useRef(seat)
   const moved = was.current !== seat
   useEffect(() => { was.current = seat })
   return (
-    <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
-      style={{ ...pct(at[0], at[1]), transition: moved ? 'none' : undefined }}>
+    <button type="button" className="floor-tag" data-clear={`tag-${agent.id}`} data-walking={walking || undefined} aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
+      style={{ ...pct(at[0], at[1]), '--lift': `${lift ?? 0}px`, transition: moved ? 'none' : undefined } as CSSProperties}>
       <span className="floor-tag-pill" data-status={status}>{agent.name}{(shown || status !== 'idle') && <span>{word}</span>}</span>
     </button>
   )
