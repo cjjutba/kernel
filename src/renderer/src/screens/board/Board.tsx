@@ -81,7 +81,7 @@ export function Board({ roomId, taskId }: { roomId: string; taskId?: string }) {
                   <h2>{col.name}</h2>
                   <span className="muted bd-count">{cards.length}</span>
                   <span className="grow" />
-                  {col.gate && <span className="bd-gate" title="You approve this step"><Icon name="lock" size={10} />You</span>}
+                  {col.gate && <span className="bd-gate" data-tip="You approve this step"><Icon name="lock" size={10} />You</span>}
                 </div>
                 {cards.map((t) => <Card key={t.id} task={t} ws={wsOf(t)} selected={t.id === taskId} />)}
               </section>

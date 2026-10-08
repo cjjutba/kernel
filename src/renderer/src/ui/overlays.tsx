@@ -84,12 +84,16 @@ export function MenuItem({ icon, shortcut, children, ...rest }: React.ButtonHTML
   )
 }
 
-/** Anything anchored below a trigger: a small panel that closes on Escape or an outside press. Pass the trigger's wrapper as `anchorRef` so pressing the trigger toggles it instead of closing then reopening. */
-export function Popover({ open, onClose, children, label, align = 'left', anchorRef }: { open: boolean; onClose: () => void; children: ReactNode; label: string; align?: 'left' | 'right'; anchorRef?: RefObject<HTMLElement | null> }) {
+/**
+ * Anything anchored to a trigger: a small panel that closes on Escape or an outside press. It opens below the trigger, or above it
+ * with `side="top"` for triggers at the bottom of the window. Pass the trigger's wrapper as `anchorRef` so pressing the trigger
+ * toggles it instead of closing then reopening.
+ */
+export function Popover({ open, onClose, children, label, align = 'left', side = 'bottom', className, anchorRef }: { open: boolean; onClose: () => void; children: ReactNode; label: string; align?: 'left' | 'right'; side?: 'top' | 'bottom'; className?: string; anchorRef?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef }, open)
   if (!open) return null
-  return <div ref={ref} role="dialog" aria-label={label} className="popover" style={{ [align]: 0 }}>{children}</div>
+  return <div ref={ref} role="dialog" aria-label={label} className={['popover', className].filter(Boolean).join(' ')} data-side={side} style={{ [align]: 0 }}>{children}</div>
 }
 
 /**

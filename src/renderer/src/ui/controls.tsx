@@ -17,7 +17,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, className, ch
 
 /** `label` is required: it is the accessible name and the tooltip. */
 export function IconButton({ icon, label, size = 16, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: number }) {
-  return <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={label} title={label} {...rest}><Icon name={icon} size={size} /></button>
+  return <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={label} {...rest}><Icon name={icon} size={size} /></button>
 }
 
 /** A rounded filter or toggle. `pressed` marks the active one. */
