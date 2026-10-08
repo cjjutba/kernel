@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { defaultBranch, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
-import { parsePrList } from '../src/main/services/github'
+import { parseIssueList, parsePrList } from '../src/main/services/github'
 import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
 import { Kernel } from '../src/main/kernel'
 
@@ -33,6 +33,14 @@ describe('listBranches', () => {
   })
 })
 
+describe('parseIssueList', () => {
+  it('reads gh issue list output as GitHub issues', () => {
+    expect(parseIssueList(JSON.stringify([{ number: 41, title: 'Export fails', url: 'https://github.com/a/b/issues/41' }])))
+      .toEqual([{ id: '#41', title: 'Export fails', url: 'https://github.com/a/b/issues/41', source: 'github' }])
+    expect(parseIssueList('not json')).toEqual([])
+  })
+})
+
 describe('parsePrList', () => {
   it('maps gh pr list json', () => {
     const json = JSON.stringify([{ number: 44, title: 'feat(invoices): PDF renderer', headRefName: 'feat/pdf', author: { login: 'samrivera' } }, { number: 43, title: 'fix(auth)', headRefName: 'fix/auth' }])
@@ -50,7 +58,7 @@ describe('searchIssues', () => {
   it('maps issues and sends the token raw', async () => {
     let seen: { headers: Record<string, string>; body: string } | undefined
     const f = (async (_u: string, init: { headers: Record<string, string>; body: string }) => { seen = init; return new Response(JSON.stringify({ data: { issues: { nodes: [{ identifier: 'KERNEL-16', title: 'New workspace modal', url: 'https://linear.app/x' }] } } })) }) as unknown as typeof fetch
-    expect(await searchIssues('lin_key', 'kernel-16', f)).toEqual([{ id: 'KERNEL-16', title: 'New workspace modal', url: 'https://linear.app/x' }])
+    expect(await searchIssues('lin_key', 'kernel-16', f)).toEqual([{ id: 'KERNEL-16', title: 'New workspace modal', url: 'https://linear.app/x', source: 'linear' }])
     expect(seen?.headers.authorization).toBe('lin_key')
     expect(JSON.parse(seen!.body).variables.filter.and[1].or).toContainEqual({ number: { eq: 16 } })
   })
