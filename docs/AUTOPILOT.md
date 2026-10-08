@@ -134,7 +134,7 @@ DETAIL: only for FAILED, NEEDS_DECISION and OUTSIDE_REPO. The failing command an
 
 Permission rules can't say "outside this repo" or catch every spelling of a force push, so `.claude/hooks/guard.mjs` runs before every Bash, Edit and Write call and denies:
 
-- an Edit or Write to any path outside the repo
+- an Edit or Write to any path outside the repo, except a plan file (`~/.claude/plans/<slug>.md`)
 - `git push` with `-f`, `--force*`, `--mirror`, `--all` or a `+` refspec
 - `git push` to `main`, including a bare `git push` while on `main`
 - `rm -r` on anything outside the repo, on the repo itself or on `.git`
