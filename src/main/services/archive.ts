@@ -23,6 +23,23 @@ export async function gitStatus(path: string, branch: string, baseRef: string): 
   return { branch, ahead: ahead ?? 0, behind: behind ?? 0, dirty }
 }
 
+/**
+ * Commits on `branch` that exist nowhere else: not on its upstream, not on `origin/<branch>`, not on the base. This is
+ * what deleting the branch would lose, so it reads the branch itself (not the worktree's HEAD) from the main repo, which
+ * also works when the worktree folder is gone. Null when it can't be counted; callers keep the branch then (KERNEL-70).
+ */
+export async function unpushedCommits(repo: string, branch: string, baseRef: string): Promise<number | null> {
+  // No branch, nothing to lose.
+  if (!(await resolves(repo, `refs/heads/${branch}`))) return 0
+  const upstream = await exec('git', ['-C', repo, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', `${branch}@{u}`])
+  const elsewhere: string[] = []
+  for (const ref of [upstream.code === 0 ? upstream.stdout.trim() : '', `origin/${branch}`, baseRef]) if (ref && await resolves(repo, ref)) elsewhere.push(ref)
+  if (!elsewhere.length) return null
+  const count = await exec('git', ['-C', repo, 'rev-list', '--count', `refs/heads/${branch}`, '--not', ...elsewhere])
+  const n = Number(count.stdout.trim())
+  return count.code === 0 && count.stdout.trim() !== '' && Number.isInteger(n) ? n : null
+}
+
 /** Push the branch to origin and track it. Throws with git's own words when it can't. */
 export async function pushBranch(path: string, branch: string): Promise<void> {
   await git(path, 'push', '-u', 'origin', branch)
