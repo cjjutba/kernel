@@ -70,7 +70,7 @@ function PreviewButton({ name, preview, previewClass, modal, modalWidth, onOpen,
       >
         {children}
       </button>
-      {at && createPortal(<div className={previewClass} style={previewPlace(at)}>{preview}</div>, document.body)}
+      {at && createPortal(<div className={previewClass} style={previewPlace(at)} aria-hidden="true">{preview}</div>, document.body)}
       {big && createPortal(<Modal title={name} width={modalWidth} onClose={() => setBig(false)}>{modal}</Modal>, document.body)}
     </>
   )
