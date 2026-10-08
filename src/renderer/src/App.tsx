@@ -5,6 +5,7 @@ import { toggleFocus, toggleRightPanel, toggleSidebar } from './components/Panel
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
+import { openLead } from './lead'
 import { AgentProfile } from './screens/agent/AgentProfile'
 import { Board } from './screens/board/Board'
 import { Floor } from './screens/floor/Floor'
@@ -22,6 +23,7 @@ import { OpenFolder } from './screens/rooms/OpenFolder'
 import { Rooms } from './screens/rooms/Rooms'
 import { RoomSetup } from './screens/rooms/RoomSetup'
 import { CommandPalette } from './screens/search/CommandPalette'
+import { roomInView } from './screens/search/model'
 import { Settings, SettingsNav } from './screens/settings/Settings'
 import { useAppearance } from './screens/settings/appearance'
 import { ConfirmRetire } from './screens/team/ConfirmRetire'
@@ -121,6 +123,13 @@ export function App() {
       // Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
+      // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
+      if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        const s = getState()
+        const room = roomInView(s.ui.route, s.rooms, s.workspaces)
+        if (room) void openLead(room.id)
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
