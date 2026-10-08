@@ -56,6 +56,8 @@ function bootFailed(err: unknown) {
 }
 
 app.whenReady().then(async () => {
+  // A packaged app takes its icon from build/icon.icns. Dev runs would show Electron's, so set the same mark here.
+  if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), 'build/icon.png'))
   const known = fixtureName ? (await import('../../fixtures')).fixtures : {}
   const fixture = fixtureName ? known[fixtureName] : undefined
   if (fixtureName && !fixture) {
