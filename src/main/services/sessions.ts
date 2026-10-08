@@ -43,8 +43,12 @@ export class InputQueue<T> implements AsyncIterable<T> {
 
 interface Live {
   query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
-  /** A hook refused a step and the agent has not moved on yet. */
-  blocked?: boolean
+  /**
+   * The hook event that refused a step, while the agent has not moved on. A new message ends it. After PreToolUse, so does a
+   * later tool call that succeeds. After the hooks that refuse to let the agent finish (Stop and the task hooks), so does a turn
+   * that ends successfully. A turn that ends any other way keeps it, since the agent gave up.
+   */
+  blocked?: string
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
   /** An api_retry is counting down. The next reply or result clears the banner. */
@@ -306,6 +310,8 @@ export class Sessions {
     this.setCutOff(chat.id, false)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
+    // A new message takes the agent past whatever a hook refused.
+    live.blocked = undefined
     live.input.push(toUserMessage(parts))
     this.setRunning(chat, ws, live, true)
   }
@@ -409,6 +415,8 @@ export class Sessions {
   stop(chatId: string) {
     const live = this.live.get(chatId)
     if (!live) return
+    // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up.
+    live.blocked = undefined
     live.input.close()
     live.abort.abort()
     this.live.delete(chatId)
@@ -418,11 +426,12 @@ export class Sessions {
   /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
   async restart(chatId: string): Promise<void> {
     this.mustChat(chatId)
-    // Messages held while the session was down or the room was paused still go out.
+    // Messages held while the session was down or the room was paused still go out, first, and the nudge follows them.
     const held = this.queued(chatId)
     this.stop(chatId)
-    if (held.length) this.setQueue(chatId, held)
-    await this.send(chatId, [{ type: 'text', text: 'Your session ended unexpectedly. Check the worktree and pick up where you left off.' }])
+    if (!held.length) { await this.send(chatId, [{ type: 'text', text: RESTART_NUDGE }]); return }
+    this.setQueue(chatId, [...held, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RESTART_NUDGE }], ts: Date.now() }])
+    this.drain(chatId)
   }
 
   stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
@@ -536,7 +545,6 @@ export class Sessions {
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
         if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
-        if (live.blocked) { live.blocked = false; this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working') }
         msg.message.content.forEach((block: any, i: number) => {
           const id = `${msg.uuid}:${i}`
           if (block.type === 'text' && block.text?.trim()) this.item(chat, { kind: 'text', id, ts: now, text: block.text })
@@ -557,6 +565,8 @@ export class Sessions {
           if (block?.type !== 'tool_result') continue
           const item = live.toolItems.get(block.tool_use_id)
           live.commands.delete(block.tool_use_id)
+          // A step that went through after a PreToolUse refusal: the agent found its way past it.
+          if (item && !block.is_error && live.blocked === 'PreToolUse') this.unblock(chat, ws, live)
           if (!item) continue
           const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
           const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, 4000), ts: item.ts } as ChatItem & { kind: 'tool' }
@@ -577,7 +587,8 @@ export class Sessions {
         if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, true)
         live.interrupted = false
         live.sendNext = false
-        live.blocked = false
+        // The hook that refused to let the agent finish has now let it finish.
+        if (ok && live.blocked !== 'PreToolUse') live.blocked = undefined
         live.limited = false
         live.cleared = false
         this.setRunning(chat, ws, live, false)
@@ -628,7 +639,7 @@ export class Sessions {
       }, { signal })
       this.placeApproval(chat.id, approval.id)
       const result = await decision
-      this.setStatus(ws, agent, 'working')
+      if (!this.showBlocked(ws, this.live.get(chat.id))) this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
       // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
       if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
@@ -645,6 +656,8 @@ export class Sessions {
     if (live.running === running) return
     live.running = running
     bus.push({ type: 'chat.running', chatId: chat.id, running })
+    // An agent that gave up after a hook refused it still needs someone to look.
+    if (!running && this.showBlocked(ws, live)) return
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')
   }
 
@@ -683,9 +696,9 @@ export class Sessions {
     } catch { /* the composer keeps the last number */ }
   }
 
-  /** A paused room shows everyone as paused, except an agent waiting on the user. */
+  /** A paused room shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */
   private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus, activity?: string) {
-    const shown = this.paused.has(ws.roomId) && status !== 'needs' ? 'paused' : status
+    const shown = this.paused.has(ws.roomId) && !PAUSE_KEEPS.has(status) ? 'paused' : status
     if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown, activity })
   }
 
@@ -698,13 +711,25 @@ export class Sessions {
 
   /** A hook exited with code 2: it refused the step. The agent shows as blocked with the hook's own words. */
   private blocked(ws: Workspace, live: Live, event: string, output: string) {
-    live.blocked = true
+    live.blocked = event
     const lines = output.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4)
-    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${event} hook`)
+    this.showBlocked(ws, live)
     bus.activity({
       kind: 'agent.status', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'was blocked on', object: ws.name, warn: true,
       data: { status: 'blocked', detail: `The ${event} hook refused the last step. Read its output, then fix it or ask the agent to.`, output: lines.length ? lines : undefined }
     })
+  }
+
+  /** Shows the agent as blocked while a hook's refusal stands. False when nothing blocks it. */
+  private showBlocked(ws: Workspace, live: Live | undefined): boolean {
+    if (!live?.blocked) return false
+    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${live.blocked} hook`)
+    return true
+  }
+
+  private unblock(chat: Chat, ws: Workspace, live: Live) {
+    live.blocked = undefined
+    this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working')
   }
 
   private item(chat: Chat, item: ChatItem) {
@@ -782,8 +807,14 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
   const hold: HookCallback = async (_input, _id, { signal }) => {
     const open = held()
-    // A Stop ends the wait too, so no promise is left pending.
-    if (open) await Promise.race([open, new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }) })])
+    // A Stop ends the wait too, so no promise is left pending. A Resume takes the abort listener off again.
+    if (open && !signal.aborted) {
+      await new Promise<void>((resolve) => {
+        const done = () => { signal.removeEventListener('abort', done); resolve() }
+        signal.addEventListener('abort', done, { once: true })
+        void open.then(done)
+      })
+    }
     return {}
   }
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
@@ -802,6 +833,12 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
 
 /** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
 interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
+
+/** What Restart session sends, after any messages held for the chat. */
+export const RESTART_NUDGE = 'Your session ended unexpectedly. Check the worktree and pick up where you left off.'
+
+/** Statuses a pause leaves showing: the user still has to act on them. */
+const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 
 /** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
