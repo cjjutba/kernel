@@ -4,7 +4,7 @@ import { call } from '../../api'
 import { Icon, useBusy } from '../../ui'
 import { actions, go } from '../../store'
 import { pct } from '../../floor/layout'
-import { planSteps } from '../workspace/cards/steps'
+import { planSteps, planTitle } from '../workspace/cards/steps'
 import { FloorCard } from './FloorCard'
 
 // What the briefing sequence draws besides people walking (FloorSent to FloorReview): the speech bubble over the office,
@@ -35,7 +35,7 @@ export function PlanCard({ approval: a, agents }: { approval: Approval; agents: 
     <FloorCard title={`${lead}’s plan is ready`}
       actions={asking ? [{ label: 'Cancel', onClick: () => setAsking(false) }, { label: 'Send', primary: true, onClick: send, busy: busy === 'send', busyLabel: 'Sending' }]
         : [{ label: 'Request changes', onClick: () => setAsking(true) }, { label: 'Approve plan', primary: true, onClick: () => void run('approve', () => decide(a, { behavior: 'allow' })), busy: busy === 'approve', busyLabel: 'Approving' }]}>
-      <span className="fcard-meta">{a.title}</span>
+      <span className="fcard-meta">{planTitle(a)}</span>
       <ol className="fcard-rows">
         {steps.map((s, i) => (
           <li key={i}>

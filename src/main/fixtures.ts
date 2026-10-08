@@ -100,7 +100,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.discard': async () => ok,
     'git.branches': async ({ roomId }) => f.branches ?? [...new Set(f.workspaces.filter((w) => w.roomId === roomId).map((w) => w.branch))],
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
-    'issues.list': async ({ roomId, query }) => (f.issues ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
+    'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
     'chats.create': async ({ workspaceId, kind }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)
@@ -134,6 +135,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const a = f.approvals.find((x) => x.id === id)
       if (!a) throw new Error('This request already timed out or was answered.')
       return decided(a, decision)
+    },
+    'approvals.planFile': async ({ id }) => {
+      const a = f.approvals.find((x) => x.id === id)
+      const ws = a?.workspaceId ? workspace(a.workspaceId) : undefined
+      if (!a?.planFile || !ws) throw new Error('This plan has no file.')
+      return { path: join(ws.path, a.planFile), relative: a.planFile }
     },
     'tasks.list': async ({ roomId }) => f.tasks?.[roomId] ?? [],
     'notifications.list': async () => f.notifications ?? [],

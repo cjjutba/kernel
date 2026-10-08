@@ -76,6 +76,8 @@ export interface KernelApi {
   'workspaces.discard': { req: { workspaceId: string }; res: Ok }
   'git.branches': { req: { roomId: string }; res: string[] }
   'github.prs': { req: { roomId: string; query?: string }; res: PrSummary[] }
+  /** + > Link issue, GitHub tab: the room's open issues through gh. */
+  'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
 
   // chats (KERNEL-10, 11, 12, 28)
@@ -112,6 +114,8 @@ export interface KernelApi {
   // approvals
   'approvals.list': { req: { roomId?: string }; res: Approval[] }
   'approvals.decide': { req: { id: string; decision: Decision }; res: Approval }
+  /** The plan's file, written again from the approval if it was deleted. `relative` is from the workspace folder. */
+  'approvals.planFile': { req: { id: string }; res: { path: string; relative: string } }
 
   // board (KERNEL-18)
   'tasks.list': { req: { roomId: string }; res: Task[] }

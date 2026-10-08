@@ -19,7 +19,9 @@
 .nw-foot { position: relative; display: flex; align-items: center; gap: 6px; padding: 10px 10px 12px 12px; }
 .nw-foot .grow { flex: 1; min-width: 0; }
 .nw-model { gap: 7px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; font-size: 13px; }
-.nw-plan { height: 26px; padding: 0 9px; gap: 6px; border-color: var(--line-4); background: var(--surface-3); border-radius: 7px; font-size: 12px; }
+.nw[data-plan] .nw-head { background: var(--surface-2); }
+.nw-plus > .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
+.nw-plus > .icon-btn[aria-expanded='true'] { background: var(--card-line); }
 .nw-create { gap: 8px; height: 32px; padding: 0 14px; border-radius: 8px; }
 .nw-status { display: flex; align-items: center; gap: 8px; padding: 0 8px; font-size: 12.5px; color: var(--ink-2); }
 .nw-status[role='alert'] { color: var(--ink); }
