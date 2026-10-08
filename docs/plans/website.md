@@ -537,7 +537,7 @@ Prepare the repo so CJ only clicks through:
 CJ's steps (list them in the PR description):
 
 1. Vercel: Add New Project, import `cjjutba/kernel`, Root Directory `site`, Framework Next.js, Node 22.
-2. Ignored Build Step: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- .` (skips builds when the site did not change since the last successful deployment). Vercel runs it from the Root Directory, so `.` means `site/`. See D-057.
+2. Ignored Build Step: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && [ "$VERCEL_GIT_PREVIOUS_SHA" != "$(git rev-parse HEAD)" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- .` (skips builds when the site did not change since the last successful deployment). Vercel runs it from the Root Directory, so `.` means `site/`. See D-057.
 3. Environment: `NEXT_PUBLIC_SITE_URL` set to `https://kernel.cjjutba.dev` (Production); optionally `GITHUB_TOKEN` (a fine grained token with no permissions is enough for the public API).
 4. Domain: `kernel.cjjutba.dev`. Add it in Vercel and create the CNAME record it shows at Porkbun.
 5. After the first production deploy: add the website link to `README.md` (section 4.7) in a follow up commit.
