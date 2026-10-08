@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef } from '../src/shared/types'
-import { SEATS, defaultSelected, dayLabel, limitBanner, modelLabel, needsCount, seating } from '../src/renderer/src/floor/layout'
+import { LOOKS, SEATS, defaultSelected, dayLabel, deskless, limitBanner, lookFor, modelLabel, needsCount, seating } from '../src/renderer/src/floor/layout'
 
 const a = (id: string, lead = false): AgentDef => ({ id, name: id, role: 'Dev', description: '', lead, prompt: '', file: `${id}.md` })
 
@@ -20,11 +20,63 @@ describe('floor layout', () => {
     expect(overflow.map((x) => x.id)).toEqual(['sol'])
   })
 
-  it('shows the agent that needs the user before the lead, and a click beats both', () => {
-    const team = [a('rowan', true), a('ivy')]
-    expect(defaultSelected(team, { ivy: 'blocked' })?.id).toBe('ivy')
-    expect(defaultSelected(team, { ivy: 'idle' })?.id).toBe('rowan')
+  it('seats the lead first, then agents with a workspace or a status, then the rest by newest activity', () => {
+    const team = [a('rowan', true), a('worker'), a('worker-opus'), a('kai'), a('ivy'), a('noor'), a('theo')]
+    const workspaces = [{ agentId: 'ivy', status: 'ready' as const }, { agentId: 'kai', status: 'archived' as const }]
+    const status = { theo: 'working' as const, noor: 'idle' as const }
+    const activity = [{ agentId: 'noor', ts: 30 }, { agentId: 'worker', ts: 10 }, { agentId: 'kai', ts: 20 }]
+    const { seated, overflow } = seating(team, {}, { workspaces, status, activity })
+    // ivy has an open workspace and theo is working, both in file order. kai's workspace is archived, so he joins the idle agents.
+    expect(seated.map((x) => x.id)).toEqual(['rowan', 'ivy', 'theo', 'noor', 'kai', 'worker'])
+    expect(overflow.map((x) => x.id)).toEqual(['worker-opus'])
+  })
+
+  it('seats Noor and Theo ahead of the Issue Workers when everyone is idle', () => {
+    const team = [a('issue-worker'), a('issue-worker-opus'), a('ivy'), a('kai'), a('lumi'), a('noor'), a('rowan', true), a('theo')]
+    const activity = [{ agentId: 'theo', ts: 50 }, { agentId: 'noor', ts: 40 }, { agentId: 'rowan', ts: 60 }, { agentId: 'kai', ts: 30 }, { agentId: 'ivy', ts: 20 }, { agentId: 'issue-worker', ts: 1 }]
+    const { seated, overflow } = seating(team, {}, { activity })
+    expect(seated.map((x) => x.id)).toEqual(['rowan', 'theo', 'noor', 'kai', 'ivy', 'issue-worker'])
+    expect(overflow.map((x) => x.id)).toEqual(['issue-worker-opus', 'lumi'])
+  })
+
+  it('keeps file order for agents with no activity, and for any room that sends none', () => {
+    const team = [a('kai'), a('rowan', true), a('noor')]
+    expect(seating(team).seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'noor'])
+    expect(seating(team, {}, { activity: [{ agentId: 'noor', ts: 5 }] }).seated.map((x) => x.id)).toEqual(['rowan', 'noor', 'kai'])
+  })
+
+  it('lets room.desks win over workspaces, status and activity', () => {
+    const team = [a('rowan', true), a('kai'), a('noor')]
+    const ctx = { workspaces: [{ agentId: 'noor', status: 'ready' as const }], status: { noor: 'working' as const }, activity: [{ agentId: 'noor', ts: 9 }] }
+    expect(seating(team, { desks: ['rowan', 'kai', 'noor'] }, ctx).seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'noor'])
+  })
+
+  it('gives an agent the same look whichever desk they sit at', () => {
+    const team = [a('rowan', true), a('kai'), a('noor')]
+    const look = (id: string, seated: AgentDef[]) => lookFor(seated.find((x) => x.id === id)!, team.findIndex((x) => x.id === id))
+    const before = seating(team).seated
+    const after = seating(team, {}, { status: { noor: 'working' } }).seated
+    expect(before.map((x) => x.id)).not.toEqual(after.map((x) => x.id))
+    expect(look('noor', after)).toEqual(look('noor', before))
+    expect(lookFor(team[2], 2)).toBe(LOOKS[2])
+  })
+
+  it('lists only agents who are not idle under No desk yet', () => {
+    const team = [a('kai'), a('noor'), a('theo')]
+    expect(deskless(team, { kai: 'working', noor: 'idle' }).map((x) => x.id)).toEqual(['kai'])
+    expect(deskless(team, { kai: 'needs', noor: 'offline', theo: 'blocked' })).toHaveLength(3)
+    expect(deskless(team, {})).toEqual([])
+  })
+
+  it('selects nobody by default, the first agent that needs the user, and the clicked agent over both', () => {
+    const team = [a('rowan', true), a('ivy'), a('kai')]
+    expect(defaultSelected(team, {})).toBeUndefined()
+    expect(defaultSelected(team, { ivy: 'idle', kai: 'working', rowan: 'working' })).toBeUndefined()
+    expect(defaultSelected(team, { ivy: 'blocked', kai: 'offline' })?.id).toBe('ivy')
+    expect(defaultSelected(team, { kai: 'needs' })?.id).toBe('kai')
     expect(defaultSelected(team, { ivy: 'blocked' }, 'rowan')?.id).toBe('rowan')
+    // A click on someone who has left the room is ignored.
+    expect(defaultSelected(team, {}, 'gone')).toBeUndefined()
   })
 
   it('counts an agent once when it needs you and has an approval', () => {

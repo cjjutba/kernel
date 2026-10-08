@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
+import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { Icon, IconButton, Menu } from '../../ui'
 import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
@@ -14,14 +15,16 @@ const base = (path: string) => path.split('/').pop() ?? path
  * a close button on hover and the Checkpoints button.
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, onCloseFile, onCloseImage }: {
-  workspaceId: string; chats: Chat[]; files: string[]; images: { id: string; name: string }[]; active?: string
-  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseImage: (id: string) => void
+export function ChatTabs({ workspaceId, chats, files, images, texts, active, onSelect, onCloseFile, onCloseImage, onCloseText }: {
+  workspaceId: string; chats: Chat[]; files: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
   const newAnchor = useRef<HTMLSpanElement>(null)
   const tabAnchor = useRef<HTMLSpanElement>(null)
   const checkpoints = useStore((s) => s.ui.workspace.checkpoints)
+  const approvals = useStore((s) => s.approvals)
+  const running = useStore((s) => s.running)
   const [renaming, setRenaming] = useState<string | null>(null)
   const closeMenu = () => actions.ui.closeMenu()
 
@@ -57,14 +60,15 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
 
   // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, onCloseImage, active, chats })
-  latest.current = { create, close, onCloseFile, onCloseImage, active, chats }
+  const latest = useRef({ create, close, onCloseFile, onCloseImage, onCloseText, active, chats })
+  latest.current = { create, close, onCloseFile, onCloseImage, onCloseText, active, chats }
   useEffect(() => {
     const closeActive = () => {
-      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseImage: img } = latest.current
+      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseImage: img, onCloseText: txt } = latest.current
       if (!a) return
       if (a.startsWith('file:')) f(a.slice(5))
       else if (a.startsWith('image:')) img(a)
+      else if (a.startsWith('text:')) txt(a)
       else if (cs.some((x) => x.id === a)) void c([a])
     }
     const onKey = (e: KeyboardEvent) => {
@@ -88,10 +92,11 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'image' | 'terminal'; path?: string }[] = [
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'image' | 'text' | 'terminal'; path?: string }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p })),
-    ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const }))
+    ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const })),
+    ...texts.map((t) => ({ id: t.id, title: t.name, kind: 'text' as const }))
   ]
   return (
     <div className="ws-tabs">
@@ -99,6 +104,8 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
         {tabs.map((t) => {
           const on = t.id === active
           const editing = renaming === t.id
+          // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
+          const g = t.kind === 'chat' ? chatGlyph({ needsYou: approvals.some((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
           return (
             <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (
@@ -107,11 +114,14 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
                 <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)}
-                  aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
+                  aria-label={g?.label ? `${t.title}, ${g.label}` : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
-                  <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' ? 'doc' : t.kind === 'image' ? 'image' : 'chat'} size={14} />
+                  {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
+                  <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
+                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                  </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>
               )}
@@ -120,7 +130,7 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
                 <span className="tab-end">
                   {t.kind === 'chat' && on && <span className="tab-pen"><Icon name="pen" size={12} /></span>}
                   <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
-                    onClick={() => (t.path ? onCloseFile(t.path) : t.kind === 'image' ? onCloseImage(t.id) : void close([t.id]))} />
+                    onClick={() => (t.path ? onCloseFile(t.path) : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
                 </span>
               )}
               {t.kind === 'chat' && on && menu === 'tab' && (

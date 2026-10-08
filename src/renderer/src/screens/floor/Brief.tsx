@@ -54,8 +54,8 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
         <span className="brief-to">
           <label htmlFor="floor-to" className="sr-only">Send to</label>
           <select id="floor-to" value={picked} onChange={(e) => setTo(e.target.value)}>
-            <option value="">{lead ? `To ${lead.name} · Lead` : 'To the Lead'}</option>
-            {reachable.map((a) => <option key={a.id} value={a.id}>To {a.name} · {a.role}</option>)}
+            <option value="">{lead ? `To ${lead.name}` : 'To the Lead'}</option>
+            {reachable.map((a) => <option key={a.id} value={a.id}>To {a.name}</option>)}
           </select>
           <Icon name="chevron" size={10} stroke={1.4} />
         </span>
