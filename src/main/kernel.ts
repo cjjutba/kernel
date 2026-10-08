@@ -20,7 +20,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -32,7 +32,7 @@ import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
-import { discardChanges, gitStatus, pushBranch } from './services/archive'
+import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 
 const COPY = 'fork:'
 
@@ -134,9 +134,13 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws, chat) => {
+      onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
-        void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined)
+        const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+        this.notifications.turnDone(ws, chat, { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 })
+        // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
+        if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
+        void this.overlaps.check(ws.roomId).catch(() => undefined)
       },
       onFailure: (failure) => {
         if (failure === 'auth') this.signedOut()
@@ -708,7 +712,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -723,7 +727,9 @@ export class Kernel {
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
-      branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
+      // The Lead can name the branch, for a repo that names branches after its issues (KERNEL-68). A taken name gets a suffix.
+      if (o.branch && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
+      branch = await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -746,15 +752,18 @@ export class Kernel {
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     const parts = messageOf(o.prompt, o.parts)
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
+    // Archived while setup ran: archive stopped the script, and the workspace stays archived.
+    if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
-    if (!ready) { this.sessions.hold(chat.id, parts); return this.saveWs({ ...ws, status: 'failed' }) }
+    if (!ready) { this.sessions.hold(chat.id, parts); return this.updateWs(ws.id, { status: 'failed' }) }
     return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts) })
   }
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
   private async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
     const repo = await loadRepoSettings(room.path)
-    const done = this.saveWs({ ...ws, status: 'ready' })
+    const done = this.updateWs(ws.id, { status: 'ready' })
+    if (done.status === 'archived') return done
     if (this.settings.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
     // The start of chat: reverting to it undoes everything the agent did.
     await snapshot(ws, { chatId: chat.id, title: prompt, start: true }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }), () => undefined)
@@ -781,7 +790,7 @@ export class Kernel {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
       if (!this.setupPassed(ws, code)) return this.mustWs(workspaceId)
     }
-    if (!chat) return this.saveWs({ ...ws, status: 'ready' })
+    if (!chat) return this.updateWs(ws.id, { status: 'ready' })
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id))
   }
@@ -800,18 +809,23 @@ export class Kernel {
   }
 
   async archiveWorkspace(id: string, deleteBranch?: boolean) {
-    const ws = this.mustWs(id)
+    // The branch the work is on now: archive deletes it, and restore brings it back.
+    const ws = await this.syncBranch(id)
     const room = this.mustRoom(ws.roomId)
     this.sessions.stopWorkspace(id)
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopScript(id, 'run')
+    // A setup still running would finish after the archive and report on a workspace that is gone.
+    stopScript(id, 'setup')
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
-    // Commits that never left this machine live only on the branch, so it stays whatever was asked.
-    const unpushed = ws.mode === 'worktree' ? (await gitStatus(ws.path, ws.branch, ws.baseRef).catch(() => null))?.ahead ?? 0 : 0
-    const drop = (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) && unpushed === 0
-    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: drop ? ws.branch : undefined })
-    this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
+    // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
+    // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
+    const wanted = ws.mode === 'worktree' && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
+    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef) : 0
+    if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
+    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
+    this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
@@ -834,8 +848,7 @@ export class Kernel {
     // Another workspace may have taken this port while it was archived.
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = taken.has(ws.port) ? await freePort(4300, taken) : ws.port
-    const { archivedAt: _gone, ...rest } = ws
-    const back = this.saveWs({ ...rest, port, status: 'ready' })
+    const back = this.updateWs(id, { archivedAt: undefined, port, status: 'ready' }, { archived: true })
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
     return back
   }
@@ -1078,8 +1091,9 @@ export class Kernel {
   }
 
   private setPrState(ws: Workspace, prState: PrState) {
-    const next = this.saveWs({ ...ws, prState })
-    if (prState !== ws.prState) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
+    const before = this.mustWs(ws.id).prState
+    const next = this.updateWs(ws.id, { prState })
+    if (next.prState !== before) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
     return next
   }
 
@@ -1096,7 +1110,7 @@ export class Kernel {
 
   /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
   async resolvePr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
@@ -1109,7 +1123,7 @@ export class Kernel {
 
   /** The PR's checks, review comments and conflicts, for the Checks tab and the review card. */
   async getPr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     if (!ws.prNumber) return null
     const info = await this.github.info(ws.path, ws.branch, id)
     if (info) bus.push({ type: 'pr.info', info })
@@ -1122,10 +1136,13 @@ export class Kernel {
    * A workspace with no PR yet only adopts an open one, never an old merged or closed PR on the same branch name.
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
+    const asked = await this.syncBranch(id)
+    if (asked.status === 'archived') return asked
+    const info = await this.github.info(asked.path, asked.branch, id)
+    if (info) bus.push({ type: 'pr.info', info })
+    // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
-    const info = await this.github.info(ws.path, ws.branch, id)
-    if (info) bus.push({ type: 'pr.info', info })
     const settle = o.settle ?? !this.agentBusy(ws)
     const hold = this.merging.has(id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
     let state: PrState
@@ -1134,8 +1151,8 @@ export class Kernel {
     else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
     else state = info.state
     const adopt = info && state !== 'none'
-    const next = this.saveWs({
-      ...ws, prState: state,
+    const next = this.updateWs(id, {
+      prState: state,
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
@@ -1151,7 +1168,7 @@ export class Kernel {
 
   /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
   async mergePr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
     if (this.settings.pr.requireGreen) {
       const info = await this.github.info(ws.path, ws.branch, id)
@@ -1174,8 +1191,26 @@ export class Kernel {
     return this.refreshPr(id, { settle: true })
   }
 
-  async readyPr(id: string) { const ws = this.mustWs(id); await this.github.ready(ws.path, ws.branch); return this.refreshPr(id) }
-  async reopenPr(id: string) { const ws = this.mustWs(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
+  async readyPr(id: string) { const ws = await this.syncBranch(id); await this.github.ready(ws.path, ws.branch); return this.refreshPr(id) }
+  async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
+
+  /**
+   * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, often
+   * to use the issue's branch name, and PRs, merge, push, archive and restore must use the branch the work is on
+   * (KERNEL-68). A PR belongs to its branch, so a switch drops the old branch's PR; the next refresh finds the new one.
+   * A detached HEAD, or a folder git can't read, changes nothing.
+   */
+  async syncBranch(id: string): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (ws.mode !== 'worktree' || ws.status === 'archived') return ws
+    const now = await currentBranch(ws.path).catch(() => null)
+    if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)
+    const next = this.updateWs(id, { branch: now, prState: ws.prState === 'creating' ? 'creating' : 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    if (next.branch !== now) return next
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `moved ${ws.name} to the branch`, object: now })
+    if (next.prState !== ws.prState) bus.push({ type: 'pr', workspaceId: id, state: next.prState })
+    return next
+  }
 
   /** After a merge or close: a fresh branch from the base in the same worktree. The chat stays. */
   async continuePr(id: string) {
@@ -1188,7 +1223,7 @@ export class Kernel {
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
     await git(ws.path, 'checkout', '-b', branch, ws.baseRef)
-    const next = this.saveWs({ ...ws, branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
     this.note(id, `Continuing on ${branch} from ${ws.baseRef.replace(/^origin\//, '')}. The chat stays.`)
     return next
@@ -1214,8 +1249,20 @@ export class Kernel {
   }
 
   private saveWs(ws: Workspace) { this.store.saveWorkspace(ws); bus.push({ type: 'workspace', workspace: ws }); return ws }
+
+  /**
+   * Saves a change to the workspace as it is in the store now, never a copy read before an await, which would put back
+   * whatever changed meanwhile (KERNEL-70). An archived workspace only changes through archive and restore, so a slow
+   * PR refresh or setup that finishes late leaves it archived. A key set to undefined is dropped when it is stored.
+   */
+  private updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}): Workspace {
+    const cur = this.mustWs(id)
+    if (cur.status === 'archived' && !o.archived) return cur
+    return this.saveWs({ ...cur, ...patch })
+  }
   private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }
   private mustWs(id: string) { const w = this.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
+  private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
 
   /** Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. */
   handlers(): Handlers {
@@ -1290,11 +1337,11 @@ export class Kernel {
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
-        if (push) { const ws = this.mustWs(workspaceId); await pushBranch(ws.path, ws.branch) }
+        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch) }
         await this.archiveWorkspace(workspaceId, deleteBranch)
         return { ok: true }
       },
-      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
       'usage.notifyOnReset': async ({ type }) => {

@@ -67,7 +67,7 @@ function Detail({ item }: { item: InboxItem }) {
       {!pending && (
         <div className="ib-outcome">
           {result && <span>{result}</span>}
-          {n.workspaceId && <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>Open workspace</button>}
+          {n.workspaceId && <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'finished' ? 'Review diff' : 'Open workspace'}</button>}
         </div>
       )}
     </article>
