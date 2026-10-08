@@ -79,6 +79,8 @@ button.ap-card:hover { background: var(--surface); }
 .na-code { display: block; width: 100%; box-sizing: border-box; height: 224px; padding: 12px; border: 0; background: var(--code-bg); color: var(--ink-2); font: 12.5px/1.7 var(--mono); outline: none; resize: none; }
 .na-link { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 13px; text-decoration: underline; }
 .na-link:hover { color: var(--ink); }
+.na-link:disabled { opacity: 0.55; cursor: default; }
+.na-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; text-decoration: none; }
 .na-done { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 28px 40px 26px; text-align: center; }
 .na-done h3 { margin: 6px 0 0; font-size: 16px; font-weight: 600; }
 .na-done p { margin: 0; max-width: 420px; color: var(--muted); line-height: 1.5; }

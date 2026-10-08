@@ -176,6 +176,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
 .btn.lg { height: 32px; font-size: 13px; padding: 0 14px; border-radius: var(--r); }
 .btn:disabled { opacity: 0.55; cursor: default; }
+/* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
+.btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
 .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
 .icon-btn:hover { background: var(--surface-3); color: var(--ink-2); }
 .pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; }

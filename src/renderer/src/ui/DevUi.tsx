@@ -23,7 +23,8 @@ function Controls() {
         <div className="devui-row">
           <Button variant="primary">Approve</Button><Button>Deny</Button><Button variant="ghost">Cancel</Button>
           <Button variant="danger">Discard</Button><Button variant="merged" icon="pr">Merged</Button><Button disabled>Disabled</Button>
-          <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" />
+          <Button variant="primary" busy busyLabel="Archiving">Archive</Button>
+          <IconButton icon="plus" label="Add" /><IconButton icon="more" label="More" /><IconButton icon="archive" label="Archive" busy busyLabel="Archiving" />
         </div>
       </Section>
       <Section title="Pills, tabs, segmented control, toggle, select">

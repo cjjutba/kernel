@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useState } from 'react'
 import type { NewRoomPrefill, RoomKind } from '@shared/types'
 import { call } from '../../api'
 import { actions, go } from '../../store'
-import { Button, Icon, Modal, Toggle, type IconName } from '../../ui'
+import { Button, Icon, Modal, Toggle, useBusy, type IconName } from '../../ui'
 import { patchDraft, resetDraft, STARTER_TEAM, tilde, useDraft } from './draft'
 import './rooms.css'
 
@@ -16,7 +16,7 @@ const SOURCES: { id: RoomKind; icon: IconName; title: string; sub: string }[] = 
 export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
   useLayoutEffect(() => { if (prefill) resetDraft({ ...prefill, desc: prefill.desc ?? '', baseBranch: prefill.baseBranch ?? '', named: true }) }, [])
   const d = useDraft()
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   const id = useId()
 
@@ -25,8 +25,8 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
   const change = () => actions.ui.openModal({ name: d.source === 'repo' ? 'connectRepo' : 'openFolder' })
   const toggle = (member: string) => patchDraft({ team: d.team.includes(member) ? d.team.filter((m) => m !== member) : [...d.team, member] })
 
-  const create = async () => {
-    setBusy(true); setError(null)
+  const create = () => run('create', async () => {
+    setError(null)
     try {
       const room = await call('rooms.create', {
         source: d.source, name: d.name.trim(), desc: d.desc.trim() || undefined, from: d.from.trim(), baseBranch: d.baseBranch.trim() || undefined,
@@ -34,8 +34,8 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
       })
       actions.rooms.upsert(room)
       go({ name: 'onboarding', step: 'room', roomId: room.id })
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')); setBusy(false) }
-  }
+    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+  })
 
   const field = d.source === 'repo'
     ? { label: 'Repository', value: d.from || 'Choose a repository', action: 'Change' }
@@ -53,7 +53,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
             {error ? <span role="alert" className="del">{error}</span> : 'Brief Rowan right away'}
           </span>
           <Button variant="ghost" size="lg" onClick={close}>Cancel</Button>
-          <Button variant="primary" size="lg" disabled={!ready || busy} onClick={() => void create()}>Create room</Button>
+          <Button variant="primary" size="lg" busy={!!busy} busyLabel="Creating" disabled={!ready} onClick={() => void create()}>Create room</Button>
         </>
       }
     >

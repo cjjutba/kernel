@@ -33,7 +33,7 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
     : <>
         <span className="wn-note">{busy ? 'Agents pause, Kernel restarts, agents resume.' : 'Running agents pause for a few seconds.'}</span>
         <Button variant="ghost" size="lg" onClick={close}>Later</Button>
-        <Button variant="primary" size="lg" disabled={busy} onClick={restart}>{busy && <span className="spin wn-spin" aria-hidden="true" />}{busy ? 'Restarting' : 'Restart to update'}</Button>
+        <Button variant="primary" size="lg" busy={busy} busyLabel="Restarting" onClick={restart}>Restart to update</Button>
       </>
   return (
     <Modal title={installed ? `What's new in Kernel ${version}` : `Kernel ${version} is ready`} onClose={close} width={520} top={130} footer={footer}>
