@@ -5,7 +5,7 @@ import { ConfirmDialog } from '../../ui'
 import { tilde } from './draft'
 import './rooms.css'
 
-/** ConfirmRemoveRoom.png. Removes Kernel's record of the room. The folder on disk and .claude/agents stay. */
+/** ConfirmRemoveRoom.png. Archives the room's workspaces, then removes Kernel's record of the room. The folder on disk and .claude/agents stay. */
 export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId]?.length ?? 0)
@@ -33,7 +33,7 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   return (
     <ConfirmDialog
       title={`Remove ${room.name}?`} danger busy={busy} confirmLabel="Remove room" onConfirm={() => void remove()} onCancel={cancel}
-      body={`Kernel stops ${n(agents, 'agent')} and removes ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
+      body={`Kernel stops ${n(agents, 'agent')} and archives ${n(workspaces, 'workspace')}. Your repo on disk and .claude/agents are not touched.`}
     >
       <div className="rm-box mono"><span>{tilde(room.path)}</span><span className="muted">{n(workspaces, 'workspace')} · {n(agents, 'agent')}</span></div>
       <label className="rm-check"><input type="checkbox" checked={worktrees} onChange={(e) => setWorktrees(e.target.checked)} />Also delete the worktrees in {root ? tilde(root) : '~/kernel/worktrees'}</label>
