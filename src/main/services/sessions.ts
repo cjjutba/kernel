@@ -73,6 +73,8 @@ export interface SessionDeps {
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
   allowInRoom: (roomId: string, rule: string) => void
+  /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
+  onReply?: (ws: Workspace, chat: Chat) => void
   /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it. */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean }) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
@@ -549,6 +551,7 @@ export class Sessions {
         const failure = failureOf(msg.error)
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
+        this.d.onReply?.(ws, chat)
         if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
         msg.message.content.forEach((block: any, i: number) => {
           const id = `${msg.uuid}:${i}`

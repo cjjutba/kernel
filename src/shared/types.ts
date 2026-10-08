@@ -710,6 +710,8 @@ export type Modal =
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
   | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
+  /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
+  | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
 
 /**
  * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu.
