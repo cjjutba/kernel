@@ -428,7 +428,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }),
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude()
     }
     const q = query({ prompt: input, options })
@@ -742,7 +742,7 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
     if (open) await Promise.race([open, new Promise<void>((resolve) => { if (signal.aborted) resolve(); else signal.addEventListener('abort', () => resolve(), { once: true }) })])
     return {}
   }
-  const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted']
+  const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
@@ -837,12 +837,18 @@ export function roomRule(command: string, suggestions?: PermissionUpdate[], supp
 }
 
 /** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
+  // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
+  if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
+  else if (o.agentTeams === false) delete env[AGENT_TEAMS]
   return env
 }
+
+/** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
+export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
 
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'] as const
 

@@ -106,7 +106,7 @@ export const base: Fixture = {
   },
   workspaces: [
     ws(ids.lead, 'lead', 'main', 'rowan', 4300, { path: '/Users/you/code/client-a', mode: 'current', baseRef: 'main', createdAt: at(9, 5) }),
-    ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312),
+    ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
     ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
     ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
   ],

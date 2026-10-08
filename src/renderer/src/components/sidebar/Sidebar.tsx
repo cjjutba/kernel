@@ -1,8 +1,9 @@
-import { useRef, type ReactNode } from 'react'
-import type { Room } from '@shared/types'
+import { useEffect, useRef, type ReactNode } from 'react'
+import type { Room, Workspace } from '@shared/types'
+import { call } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton } from '../../ui'
-import { actions, go, useStore, type Route } from '../../store'
+import { actions, getState, go, useStore, type Route } from '../../store'
 import { inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
@@ -10,14 +11,16 @@ import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
+import { workspaceGlyph } from './workspaceGlyph'
+import './sidebar.css'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
 
-function NavItem({ route, icon, label, right, sub }: { route: Route; icon: string; label: ReactNode; right?: ReactNode; sub?: boolean }) {
+function NavItem({ route, icon, label, right, sub }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean }) {
   const current = useStore((s) => same(s.ui.route, route))
   return (
     <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} onClick={() => go(route)}>
-      <Icon name={icon} />
+      {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {right}
     </button>
@@ -38,11 +41,46 @@ function LeadItem({ roomId }: { roomId: string }) {
   )
 }
 
+/** A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. */
+function WorkspaceItem({ ws }: { ws: Workspace }) {
+  const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
+  const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
+  const g = workspaceGlyph(ws, { needsYou, running })
+  const glyph = (
+    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} title={g.label}>
+      {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
+    </span>
+  )
+  return (
+    <NavItem
+      sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name}
+      right={ws.stat && (ws.stat.added || ws.stat.removed)
+        ? <span className="mono" style={{ fontSize: 11, display: 'inline-flex', gap: 6 }}>{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
+        : ws.prNumber ? <span className="mono muted" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
+    />
+  )
+}
+
+/**
+ * Chat lists for the workspace rows, which load only when a workspace opens. With them a row shows it is working before
+ * you open it; chat pushes keep them current after that.
+ */
+function useChatLists(workspaceIds: string[]) {
+  const key = workspaceIds.join()
+  useEffect(() => {
+    for (const id of workspaceIds) {
+      if (getState().chats[id]) continue
+      void call('chats.list', { workspaceId: id }).then((list) => { if (!getState().chats[id]) actions.chats.set(id, list) }).catch(() => undefined)
+    }
+  }, [key])
+}
+
 /** A room in the sidebar. Open rooms list Floor, Board, the Lead and their live workspaces. */
 function RoomItem({ room, open }: { room: Room; open: boolean }) {
   const live = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id && w.status !== 'archived' && w.name !== 'lead'))
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
+  useChatLists(open ? live.map((w) => w.id) : [])
   return (
     <div>
       <div ref={anchor} className="hv" style={{ position: 'relative' }}>
@@ -61,14 +99,7 @@ function RoomItem({ room, open }: { room: Room; open: boolean }) {
           <NavItem sub route={{ name: 'floor', roomId: room.id }} icon="floor" label="Floor" />
           <NavItem sub route={{ name: 'board', roomId: room.id }} icon="board" label="Board" />
           <LeadItem roomId={room.id} />
-          {live.map((w) => (
-            <NavItem
-              key={w.id} sub route={{ name: 'workspace', workspaceId: w.id }} icon={w.prNumber ? 'pr' : 'branch'} label={w.name}
-              right={w.stat && (w.stat.added || w.stat.removed)
-                ? <span className="mono" style={{ fontSize: 11, display: 'inline-flex', gap: 6 }}><span className="add">+{w.stat.added}</span><span className="del">-{w.stat.removed}</span></span>
-                : w.prNumber ? <span className="mono muted" style={{ fontSize: 11 }}>#{w.prNumber}</span> : null}
-            />
-          ))}
+          {live.map((w) => <WorkspaceItem key={w.id} ws={w} />)}
         </>
       )}
     </div>

@@ -38,7 +38,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef; models?: Partial<AppSettings['models']> } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -46,7 +46,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   store.saveChat(chat)
   const allow: string[] = []
   const approvals = new Approvals(store)
-  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 } } as unknown as AppSettings
+  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }
@@ -361,5 +361,19 @@ describe('Approve and hand off (KERNEL-67)', () => {
     await approvePlan(s)
     expect(hooksFor(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([])
     expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+})
+
+describe('agent teams (KERNEL-73)', () => {
+  it('starts sessions with agent teams on when the setting is on, and off when it is off', async () => {
+    const on = await setup('acceptEdits', { models: { agentTeams: true } })
+    expect((on.options.env as Record<string, string>).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1')
+    const off = await setup('acceptEdits', { models: { agentTeams: false } })
+    expect((off.options.env as Record<string, string>).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBeUndefined()
+  })
+
+  it('reports TeammateIdle from Kernel sessions', async () => {
+    const { options } = await setup()
+    expect(Object.keys(options.hooks!)).toContain('TeammateIdle')
   })
 })

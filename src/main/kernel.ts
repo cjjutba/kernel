@@ -142,6 +142,7 @@ export class Kernel {
         const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
         this.notifications.turnDone(ws, chat, done)
         this.leadUpdates.turnDone(ws, chat, done)
+        void this.changes(ws.id).catch(() => undefined)
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -198,6 +199,7 @@ export class Kernel {
     this.o.onSettings?.(this.settings)
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
+    void this.countChanges()
     this.notifications.attach()
     this.leadUpdates.attach()
     if (this.o.probeNetwork) {
@@ -898,10 +900,16 @@ export class Kernel {
     bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
 
+  /** The files a workspace changed. Their totals are saved on the workspace too, for the sidebar and Home (+412 -38). */
   async changes(id: string) {
     const ws = this.mustWs(id)
-    if (ws.mode === 'current') return changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
-    return changedFiles(ws.path, await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef))
+    const files = ws.mode === 'current'
+      ? await changedFiles(ws.path, ws.baselineRef ?? 'HEAD')
+      : await changedFiles(ws.path, await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef))
+    const stat = { files: files.length, added: files.reduce((n, f) => n + f.added, 0), removed: files.reduce((n, f) => n + f.removed, 0) }
+    const old = this.mustWs(id).stat
+    if (!old || old.files !== stat.files || old.added !== stat.added || old.removed !== stat.removed) this.updateWs(id, { stat })
+    return files
   }
 
   async diff(id: string, file?: string) {
@@ -1013,7 +1021,7 @@ export class Kernel {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     this.ptys.start(id, {
       cwd: ws.path,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }),
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.settings.models.agentTeams }),
       command: plain ? undefined : 'claude',
       ...size
     })
@@ -1255,6 +1263,11 @@ export class Kernel {
     return chat ? this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 : false
   }
 
+  /** Diff totals for every live workspace, once at launch, so the sidebar has them before any turn ends. */
+  private async countChanges() {
+    for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && ws.status !== 'setup') await this.changes(ws.id).catch(() => undefined)
+  }
+
   private async pollPrs() {
     for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.refreshPr(ws.id).catch(() => undefined)
     // Updates held for a busy or paused Lead go out once it can take them.
@@ -1302,10 +1315,9 @@ export class Kernel {
       'update.install': async () => { if (!this.o.updater) throw new Error('No update to install'); this.o.updater.install(); return { ok: true } },
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
-        if (id === 'teams') {
-          this.settings = { ...this.settings, models: { ...this.settings.models, agentTeams: true } }
-          await saveAppSettings(this.settingsFile, this.settings)
-        } else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
+        // Through setSettings, so it is saved and applied like the Models page toggle.
+        if (id === 'teams') await this.setSettings({ models: { agentTeams: true } })
+        else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
         return this.preflight()
       },
       'hooks.status': async () => this.hooksStatus(),
