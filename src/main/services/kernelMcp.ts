@@ -1,6 +1,6 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, Decision, PrState, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
 import { renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
@@ -16,12 +16,22 @@ export interface KernelToolDeps {
   /** `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. */
   askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
+  /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
+  archiveWorkspace: (workspaceId: string) => Promise<void>
+  /** Whether any of the workspace's chats is running a turn. */
+  isRunning: (workspaceId: string) => boolean
+  /** Whether archiving would lose uncommitted work: 'dirty', 'unknown' when git can't tell, or false. */
+  unsaved: (workspaceId: string) => Promise<'dirty' | 'unknown' | false>
+
   /** The user approved a plan, and a workspace was created. Together they hold the Lead to the hand-off (KERNEL-67). */
   planApproved?: () => void
   handedOff?: () => void
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/** PR states the Lead may archive over. Every other state is a PR still in flight. */
+const CLOSED_PR = new Set<PrState>(['none', 'merged', 'closed'])
 
 /**
  * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces on the floor:
@@ -31,7 +41,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
     name: 'kernel',
     version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for short updates people see on the floor.',
+    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for short updates people see on the floor. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
     // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
     // so the hand-off doesn't depend on it.
     alwaysLoad: true,
@@ -88,6 +98,34 @@ export function kernelTools(d: KernelToolDeps) {
       // The speaker walks to the listener's desk and says the first line (KERNEL-24).
       if (ws && d.lead) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       return text('Sent.')
+    }),
+    tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
+      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
+    }, async ({ workspace_ids }) => {
+      const lines: string[] = []
+      // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
+      for (const id of workspace_ids) {
+        const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
+        const skip = !ws ? 'not an open workspace in this room'
+          // Only the Lead's current-branch workspace. One handed to the Lead when an agent retired can go.
+          : ws.mode === 'current' && !!d.lead && ws.agentId === d.lead.id ? 'it is your own workspace'
+          : d.isRunning(ws.id) ? 'its agent is still working'
+          : !CLOSED_PR.has(ws.prState) ? `its PR${ws.prNumber ? ' #' + ws.prNumber : ''} is open and not merged`
+          : undefined
+        // Archive removes the worktree with --force, and Restore can't bring back what was never committed.
+        // Unpushed commits stay on the kept branch (KERNEL-70), so only uncommitted work blocks, as in the sidebar.
+        const unsaved = !ws || skip ? false : await d.unsaved(ws.id)
+        const reason = skip ?? (unsaved === 'dirty' ? 'it has uncommitted changes' : unsaved === 'unknown' ? 'its git status could not be read' : undefined)
+        if (!ws || reason) { lines.push(`Skipped ${ws?.name ?? id}: ${reason}.`); continue }
+        try {
+          await d.archiveWorkspace(ws.id)
+          lines.push(`Archived ${ws.name}.`)
+        } catch (e) {
+          const why = firstLine(e instanceof Error ? e.message : String(e))
+          lines.push(`Skipped ${ws.name}: ${/[.!?…]$/.test(why) ? why : why + '.'}`)
+        }
+      }
+      return text(lines.join('\n'))
     }),
     tool('say', 'Say one short line out loud on the floor, like a speech bubble.', { text: z.string().max(140) }, async ({ text: t }) => {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working', activity: t })
