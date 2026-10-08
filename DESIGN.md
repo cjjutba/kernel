@@ -26,9 +26,11 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
+| working | #7cb2ff | status word in sidebar hover cards: work running |
+| needs | #f2c55c | status word in sidebar hover cards: waiting on you |
 | danger | #e5484d | destructive confirm buttons |
 
-There is no accent color. Primary buttons are ink on canvas.
+There is no brand accent. Primary buttons are ink on canvas. `working` and `needs` color the status word on the sidebar hover cards and nowhere else (D-084).
 
 ## Color (light)
 
@@ -52,6 +54,8 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | add | #166a45 | diff additions, passing checks |
 | del | #b32e2e | diff deletions, errors |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
+| working | #1a56b0 | status word in sidebar hover cards: work running |
+| needs | #7a4f00 | status word in sidebar hover cards: waiting on you |
 | danger | #bd2b2b | destructive confirm buttons |
 
 The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, made by `scripts/floor-light.mjs`) follow the theme. Colors live in `tokens.css` and the floor art only; `test/theme.test.ts` fails on a hex or rgb value anywhere else in the renderer.
@@ -73,6 +77,8 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - No status dots, anywhere. Status is a word ("working", "needs you"), sometimes with a ring on floor tags.
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 14px radius, 1px border.
 - Hover actions: message actions (copy, retry, edit, fork) and sidebar `...` menus appear on hover and on keyboard focus.
+- Sidebar rows sit 3px apart, so hover and selected fills never touch.
+- Sidebar hover cards: a workspace or Lead row shows a card after a short hover or on keyboard focus. Surface-2, 1px line-3 border, 10px radius, no shadow. The status word sits on a pill filled with its `--tint-*` token, at 4.5:1 or better, the one place status takes color beyond the diff and merged colors (D-084).
 - Banners for failures: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner). Never red backgrounds.
 - Toasts: bottom right, auto-dismiss after 2.6s.
 - Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.

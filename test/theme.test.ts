@@ -29,7 +29,7 @@ const lum = (h: string) => 0.2126 * channel(h, 1) + 0.7152 * channel(h, 3) + 0.0
 const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
 
 const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover', 'card-bg', 'code-bg', 'input-bg']
-const TEXT = ['ink', 'ink-2', 'ink-3', 'muted', 'add', 'del', 'merged']
+const TEXT = ['ink', 'ink-2', 'ink-3', 'muted', 'add', 'del', 'merged', 'working', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 
 describe('theme contrast', () => {
@@ -43,6 +43,12 @@ describe('theme contrast', () => {
   it('dark text, diff, merged and terminal colors reach 4.5:1 on the main surfaces', () => {
     const fails: string[] = []
     for (const t of [...TEXT, ...TERM.filter((n) => n !== 'term-black')]) for (const s of ['canvas', 'panel', 'surface', 'surface-2', 'code-bg']) if (contrast(dark[t], dark[s]) < 4.5) fails.push(`${t} on ${s}: ${contrast(dark[t], dark[s]).toFixed(2)}`)
+    expect(fails).toEqual([])
+  })
+  it('hover card status words reach 4.5:1 on their pill in both themes', () => {
+    const fails: string[] = []
+    for (const [name, theme] of [['light', light], ['dark', dark]] as const) for (const t of ['working', 'needs', 'add', 'del', 'merged', 'muted'])
+      if (contrast(theme[t], theme[`tint-${t}`]) < 4.5) fails.push(`${name} ${t} on tint-${t}: ${contrast(theme[t], theme[`tint-${t}`]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
   it('solid buttons keep readable labels in light', () => {

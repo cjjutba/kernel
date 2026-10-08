@@ -9,6 +9,7 @@ import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
+import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
@@ -17,10 +18,10 @@ import './sidebar.css'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
 
-function NavItem({ route, icon, label, right, sub }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean }) {
+function NavItem({ route, icon, label, right, sub, describedBy }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; describedBy?: string }) {
   const current = useStore((s) => same(s.ui.route, route))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} onClick={() => go(route)}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} onClick={() => go(route)}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {right}
@@ -28,17 +29,24 @@ function NavItem({ route, icon, label, right, sub }: { route: Route; icon: strin
   )
 }
 
-/** The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace. */
+/**
+ * The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace.
+ * Hovering it shows the Lead's card.
+ */
 function LeadItem({ roomId }: { roomId: string }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
+  const card = useHoverCard()
   if (!lead) return null
   return (
-    <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat`} onClick={() => void openLead(roomId)}>
-      <Icon name="chat" />
-      <span className="grow ellipsis">{lead.name}</span>
-      <span className="muted" style={{ fontSize: 12 }}>Lead</span>
-    </button>
+    <div {...card.bind}>
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
+        <Icon name="chat" />
+        <span className="grow ellipsis">{lead.name}</span>
+        <span className="muted" style={{ fontSize: 12 }}>Lead</span>
+      </button>
+      {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} />}
+    </div>
   )
 }
 
@@ -58,11 +66,15 @@ async function archiveFromSidebar(ws: Workspace) {
   } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: (e as Error).message }) }
 }
 
-/** A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals for Archive. */
+/**
+ * A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals
+ * for Archive and, after a moment, shows the workspace's card.
+ */
 function WorkspaceItem({ ws }: { ws: Workspace }) {
   const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, setBusy] = useState(false)
+  const card = useHoverCard()
   const g = workspaceGlyph(ws, { needsYou, running })
   const glyph = (
     <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} data-tip={g.label}>
@@ -71,16 +83,17 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
   )
   const archive = () => { setBusy(true); void archiveFromSidebar(ws).finally(() => setBusy(false)) }
   return (
-    <div className={`hv ws-row${busy ? ' busy' : ''}`}>
+    <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`}>
       <NavItem
-        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name}
+        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name} describedBy={card.at ? card.id : undefined}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
       />
-      <div className="more ws-archive">
+      <div className="more ws-archive" data-card-off>
         <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={busy} onClick={archive} />
       </div>
+      {card.at && <WorkspaceCard ws={ws} at={card.at} id={card.id} />}
     </div>
   )
 }
@@ -109,7 +122,7 @@ function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: 
   const anchor = useRef<HTMLDivElement>(null)
   useChatLists(expanded ? live.map((w) => w.id) : [])
   return (
-    <div>
+    <div className="nav-list">
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
           <span className="room-mark">
@@ -173,7 +186,7 @@ export function Sidebar() {
         <span className="grow" />
         <button className="icon-btn" aria-label="New workspace" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
-      <div className="col" style={{ gap: 1, marginTop: 10 }}>
+      <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
@@ -187,14 +200,14 @@ export function Sidebar() {
         {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
       </div>
       {/* A room's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
-      <div className="col" style={{ gap: 1, overflowY: 'auto', minHeight: 0 }} onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}>
+      <div className="nav-list" style={{ overflowY: 'auto', minHeight: 0 }} onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}>
         {rooms.map((r) => {
           const expanded = chosen[r.id] ?? r.id === openRoom
           return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} onToggle={() => toggle(r.id, expanded)} />
         })}
       </div>
       <div className="section-label" style={{ marginTop: 20 }}><span>Try</span></div>
-      <div className="col" style={{ gap: 1 }}>
+      <div className="nav-list">
         <button className="nav-item" onClick={() => { resetDraft({ source: 'repo' }); actions.ui.openModal({ name: 'connectRepo' }) }}><Icon name="branch" /><span className="grow">Connect a repo</span></button>
         <button className="nav-item" onClick={() => { resetDraft({ source: 'folder', baseBranch: '' }); actions.ui.openModal({ name: 'openFolder' }) }}><Icon name="folder" /><span className="grow">Open a folder</span></button>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" /><span className="grow">Check hooks</span></button>
