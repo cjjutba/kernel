@@ -132,15 +132,15 @@ DETAIL: only for FAILED, NEEDS_DECISION and OUTSIDE_REPO. The failing command an
 
 ## Guardrails
 
-`.claude/settings.json` allows the routine commands so a run doesn't stall on a prompt: `npm`, `npx`, `node`, `git`, `gh pr` and the Linear MCP tools. It denies force pushes, pushes to `main`, `gh repo delete`, `gh repo edit`, edits to `~/.claude/settings.json` and `~/Library/Application Support/Kernel`, the `KERNEL_LIVE` test, and `rm -rf` on absolute, home or parent paths.
+`.claude/settings.json` allows the routine commands so a run doesn't stall on a prompt: `npm`, `npx`, `node`, `git`, `gh pr` and the Linear MCP tools. It denies force pushes, pushes to `main`, `gh repo delete`, `gh repo edit`, edits to `~/.claude/settings.json`, the `KERNEL_LIVE` test, and `rm -rf` on absolute, home or parent paths.
 
 Permission rules can't say "outside this repo" or catch every spelling of a force push, so `.claude/hooks/guard.mjs` runs before every Bash, Edit and Write call and denies:
 
-- an Edit or Write to any path outside the repo, except a plan file (`~/.claude/plans/<slug>.md`)
+- an Edit or Write to any path outside the repo, except a plan file (`~/.claude/plans/<slug>.md`) and the app's data folder (`~/Library/Application Support/Kernel`, D-095)
 - `git push` with `-f`, `--force*`, `--mirror`, `--all` or a `+` refspec
 - `git push` to `main`, including a bare `git push` while on `main`
 - `rm -r` on anything outside the repo, on the repo itself or on `.git`
-- any command that sets `KERNEL_LIVE=` or mentions `~/.claude/settings` or `Application Support/Kernel`
+- any command that sets `KERNEL_LIVE=` or mentions `~/.claude/settings`
 - `gh repo delete` and `gh repo edit`
 
 Both apply to the coordinator, the workers and theo, in every permission mode. See D-023.

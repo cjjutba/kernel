@@ -72,13 +72,20 @@ function plan(p) {
   return path.dirname(file) === path.join(real(`${home}/.claude`), 'plans') && file.endsWith('.md')
 }
 
+// The app's own data folder (settings.json, kernel.db). Agents building Kernel
+// may read and change it (D-095). rm -r on it is still denied below.
+function appData(p) {
+  const rel = path.relative(real(`${home}/Library/Application Support/Kernel`), real(p))
+  return !rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel)
+}
+
 const tool = input.tool_name
 const args = input.tool_input ?? {}
 const cwd0 = input.cwd || process.cwd()
 
 if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool)) {
   const file = args.file_path ?? args.notebook_path
-  if (file && !inside(expand(file, cwd0)) && !plan(expand(file, cwd0))) deny(`${file} is outside this repo.`)
+  if (file && !inside(expand(file, cwd0)) && !plan(expand(file, cwd0)) && !appData(expand(file, cwd0))) deny(`${file} is outside this repo.`)
   process.exit(0)
 }
 
@@ -91,7 +98,6 @@ if (/\bgh\s+repo\s+(delete|edit)\b/.test(command)) deny('gh repo delete and gh r
 for (const h of ['~', '$HOME', '${HOME}', home]) {
   if (command.includes(`${h}/.claude/settings`)) deny('~/.claude/settings.json is off limits.')
 }
-if (/Application(\\ | )Support\/Kernel/.test(command)) deny('~/Library/Application Support/Kernel is off limits.')
 
 function currentBranch(dir) {
   try {
