@@ -1013,7 +1013,7 @@ export class Kernel {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     this.ptys.start(id, {
       cwd: ws.path,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }),
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.settings.models.agentTeams }),
       command: plain ? undefined : 'claude',
       ...size
     })
@@ -1302,10 +1302,9 @@ export class Kernel {
       'update.install': async () => { if (!this.o.updater) throw new Error('No update to install'); this.o.updater.install(); return { ok: true } },
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
-        if (id === 'teams') {
-          this.settings = { ...this.settings, models: { ...this.settings.models, agentTeams: true } }
-          await saveAppSettings(this.settingsFile, this.settings)
-        } else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
+        // Through setSettings, so it is saved and applied like the Models page toggle.
+        if (id === 'teams') await this.setSettings({ models: { agentTeams: true } })
+        else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
         return this.preflight()
       },
       'hooks.status': async () => this.hooksStatus(),

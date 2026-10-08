@@ -22,7 +22,7 @@ curl can't connect, prints nothing, and `|| true` exits 0, so Claude Code shows 
 | PermissionRequest | `*` | approvals from outside sessions (held, see below) |
 | Notification | none | log line |
 | Stop | none | turn finished |
-| TaskCreated, TaskCompleted, TeammateIdle | none | Board tasks and status for agent teams sessions |
+| TaskCreated, TaskCompleted, TeammateIdle | none | Board tasks and status for agent teams sessions. Kernel's own sessions report them in process, with agent teams on in Settings > Models (D-027) |
 
 Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, so newer Claude Code fields never break parsing. Unknown events still parse against the base shape and are logged. CLI 2.1.292 also sends `prompt_id` on every event, and `last_assistant_message`, `background_tasks` and `session_crons` on Stop; the loose schemas pass them through.
 
