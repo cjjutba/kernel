@@ -84,6 +84,21 @@ const toolCalls: ChatItem[] = [
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
+/** A chat 34% full, with the rows Claude Code's /context lists, adding up to the 200k window. */
+const contextChat = (f: Fixture) => f.chats.map((c) => c.id === ids.tableChat ? {
+  ...c,
+  context: 34,
+  contextUsage: { used: 68_000, max: 200_000, rows: [
+    { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
+    { name: 'System tools', tokens: 11_800, kind: 'used' as const },
+    { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
+    { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
+    { name: 'Messages', tokens: 44_000, kind: 'used' as const },
+    { name: 'Free space', tokens: 99_000, kind: 'free' as const },
+    { name: 'Autocompact buffer', tokens: 33_000, kind: 'buffer' as const }
+  ] }
+} : c)
+
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
 const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
@@ -344,6 +359,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ],
     draft: ''
   }),
+  WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
+  WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
   WorkspaceQueued: scene((f) => ({
