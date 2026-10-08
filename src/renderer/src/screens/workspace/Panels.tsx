@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { actions, setState, useStore } from '../../store'
+import { actions, go, setState, useStore } from '../../store'
 import { Button, Icon, Tabs } from '../../ui'
+import { useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
@@ -153,6 +154,9 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   const lines = useStore((s) => (s.scripts[ws.id] ?? []).filter((l) => l.kind === scriptKind))
   const exited = useStore((s) => s.scriptExit[ws.id]?.[scriptKind])
   const running = lines.length > 0 && exited === undefined
+  // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
+  const rs = useRoomSettings(ws.roomId)
+  const noSetup = !!rs && !rs.scripts.setup
   const start = () => {
     // A new run starts clean, so the last exit code no longer says it stopped.
     setState((s) => ({ scriptExit: { ...s.scriptExit, [ws.id]: { ...s.scriptExit[ws.id], [scriptKind]: undefined } } }))
@@ -165,13 +169,16 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <span className="grow" />
         {bottom === 'run' && running && <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>Stop</Button>}
         {bottom === 'run' && !running && <Button className="small" icon="play" onClick={start}>Run</Button>}
-        {bottom === 'setup' && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
+        {bottom === 'setup' && noSetup && <Button className="small" onClick={() => go({ name: 'settings', page: 'scripts', roomId: ws.roomId })}>Add setup script</Button>}
+        {bottom === 'setup' && !noSetup && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
       </div>
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
       {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`}>
         {lines.length
             ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
-            : <span className="muted">{bottom === 'setup' ? 'Setup output appears here.' : `Start the run script to see output. It gets port ${ws.port}.`}</span>}
+            : <span className="muted">{bottom === 'setup'
+                ? noSetup ? 'This room has no setup script. Add one and new workspaces run it before the agent starts.' : 'Setup output appears here.'
+                : `Start the run script to see output. It gets port ${ws.port}.`}</span>}
       </div>}
     </div>
   )

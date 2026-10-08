@@ -9,6 +9,7 @@ import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, roomState } from '../src/renderer/src/screens/rooms/roomInfo'
 import { assertFreeFolder, ensureRepoSettings, expandHome, inspectFolder, recentFolders, seatStarterTeam } from '../src/main/services/rooms'
+import { loadRepoSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
@@ -64,6 +65,16 @@ describe('rooms service', () => {
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[files]\ncopy = []\n')
     expect(await ensureRepoSettings(repo)).toBe(false)
     expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[files]\ncopy = []\n')
+  })
+
+  it('makes the lockfile\'s install the setup script, so new workspaces run it', async () => {
+    const pnpm = await tempRepo({ 'package.json': '{}', 'pnpm-lock.yaml': '' })
+    expect(await ensureRepoSettings(pnpm)).toBe(true)
+    expect((await loadRepoSettings(pnpm)).scripts.setup).toBe('pnpm install')
+    // No package manager: nothing to install, so setup stays a commented example.
+    const plain = await tempRepo()
+    await ensureRepoSettings(plain)
+    expect((await loadRepoSettings(plain)).scripts.setup).toBeUndefined()
   })
 
   it('refuses to clone into a folder that has files', async () => {
