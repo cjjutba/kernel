@@ -162,6 +162,7 @@ export const platformFixtures: Record<string, Fixture> = {
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({
+    ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
     items: {},
     push: [

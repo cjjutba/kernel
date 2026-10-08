@@ -125,32 +125,43 @@ export async function copyAgentFiles(fromRepo: string, toRepo: string): Promise<
   return files.length
 }
 
-/** The file Kernel writes when a repo has none. Every key has a default, so the file only documents the knobs. */
-export const DEFAULT_REPO_SETTINGS = `# Kernel settings for this repo. Commit it so the whole team shares it.
+/**
+ * The file Kernel writes when a repo has none. With an install command, setup is a real line, so every new worktree
+ * installs what the room's own checkout installed. Without one, the scripts stay commented examples.
+ */
+export function defaultRepoSettings(setup?: string): string {
+  const scripts = setup
+    ? `[scripts]\n# Runs in every new workspace before the agent starts.\nsetup = ${JSON.stringify(setup)}\n# run = "pnpm dev --port $KERNEL_PORT"\n# archive = ""\n`
+    : '# [scripts]\n# setup = "pnpm install"\n# run = "pnpm dev --port $KERNEL_PORT"\n# archive = ""\n'
+  return `# Kernel settings for this repo. Commit it so the whole team shares it.
 # Personal overrides go in .kernel/settings.local.toml, which stays out of git.
 
 [files]
 # Copied from this checkout into every new worktree.
 copy = [".env", ".env.local"]
 
-# [scripts]
-# setup = "pnpm install"
-# run = "pnpm dev --port $KERNEL_PORT"
-# archive = ""
-`
+${scripts}`
+}
 
-/** Writes .kernel/settings.toml when it is missing. Returns true when it wrote one. */
+/** Writes .kernel/settings.toml when it is missing, with the checkout's install command as the setup script. Returns true when it wrote one. */
 export async function ensureRepoSettings(repoPath: string): Promise<boolean> {
   const file = join(repoPath, '.kernel', 'settings.toml')
   if (await exists(file)) return false
   await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, DEFAULT_REPO_SETTINGS)
+  await writeFile(file, defaultRepoSettings(await lockfileInstall(repoPath)))
   return true
+}
+
+/** The install command a checkout's lockfile asks for, whether or not it has run. Undefined when it has no package manager. */
+export async function lockfileInstall(repoPath: string): Promise<string | undefined> {
+  const locks: [string, string][] = [['pnpm-lock.yaml', 'pnpm install'], ['yarn.lock', 'yarn install'], ['bun.lockb', 'bun install'], ['bun.lock', 'bun install'], ['package-lock.json', 'npm install']]
+  for (const [lock, command] of locks) if (await exists(join(repoPath, lock))) return command
+  return (await exists(join(repoPath, 'package.json'))) ? 'npm install' : undefined
 }
 
 /** The install command for a checkout, from its lockfile. Undefined when it has no package manager or already has node_modules. */
 export async function installCommand(repoPath: string): Promise<{ command?: string; reason?: string }> {
-  const locks: [string, string][] = [['pnpm-lock.yaml', 'pnpm install'], ['yarn.lock', 'yarn install'], ['bun.lockb', 'bun install'], ['bun.lock', 'bun install'], ['package-lock.json', 'npm install']]
-  for (const [lock, command] of locks) if (await exists(join(repoPath, lock))) return (await exists(join(repoPath, 'node_modules'))) ? { reason: 'Already installed' } : { command }
-  return (await exists(join(repoPath, 'package.json'))) ? ((await exists(join(repoPath, 'node_modules'))) ? { reason: 'Already installed' } : { command: 'npm install' }) : { reason: 'Nothing to install' }
+  const command = await lockfileInstall(repoPath)
+  if (!command) return { reason: 'Nothing to install' }
+  return (await exists(join(repoPath, 'node_modules'))) ? { reason: 'Already installed' } : { command }
 }
