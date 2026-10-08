@@ -1,11 +1,12 @@
-import { useState } from 'react'
-import type { AgentDef, AgentStatus, Room, TeamTemplate } from '@shared/types'
+import { useState, type ReactNode } from 'react'
+import type { AgentDef, AgentLook, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, useBusy } from '../../ui'
-import { ART, SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
+import { ART, SEATS, WORD, deskless, limitBanner, lookFor, overflowShirt, pct, type Seating } from '../../floor/layout'
 import floorDark from '../../floor/floor.svg'
 import floorLight from '../../floor/floor-light.svg'
+import { AgentCard } from './AgentCard'
 import { Bubble } from './Briefing'
 import { Walker, anchor } from './motion/Walker'
 import type { Pose } from './motion/useWalks'
@@ -14,36 +15,45 @@ import './moments/moments.css'
 
 const SEATED: Pose = { at: 'seat', moving: false }
 
+/** The selected person's card, open beside their seat, or beside the no-desk card when they have no desk. */
+export interface Popover { agent: AgentDef; note?: string }
+
 /**
  * The office: art, people at their desks or walking (KERNEL-23), a tag over each, a speech bubble, and the room-level states drawn on top.
- * `status` is what the floor shows, so someone away from their desk already reads "walking".
+ * `status` is what the floor shows, so someone away from their desk already reads "walking". `seats` is who sits where, worked out
+ * from the store's own status, so the desks don't shuffle while someone walks. `popover` is the selected person's card.
  */
-export function Stage({ room, agents, status, words, poses, say, instant, selectedId, onSelect, onTogglePause }: {
-  room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; /** A word to show instead of the status, for a new hire. */ words?: Record<string, string>; poses: Record<string, Pose>; say?: Say; instant: boolean
-  selectedId?: string; onSelect: (id: string) => void; onTogglePause: () => void
+export function Stage({ room, agents, seats, status, words, poses, say, instant, selectedId, popover, onSelect, onTogglePause }: {
+  room: Room; agents: AgentDef[]; seats: Seating; status: Record<string, AgentStatus>; /** A word to show instead of the status, for a new hire. */ words?: Record<string, string>; poses: Record<string, Pose>; say?: Say; instant: boolean
+  selectedId?: string; popover?: Popover; onSelect: (id: string) => void; onTogglePause: () => void
 }) {
-  const { seated, overflow } = seating(agents, room)
+  const { seated, overflow } = seats
   const theme = useStore((s) => s.ui.theme)
   const pose = (id: string) => poses[id] ?? SEATED
   const speaker = say ? seated.findIndex((a) => a.id === say.agentId) : -1
+  const order = (a: AgentDef) => Math.max(0, agents.indexOf(a))
+  const waiting = deskless(overflow, status)
+  const seatOf = popover ? seated.findIndex((a) => a.id === popover.agent.id) : -1
+  const card = popover && <AgentCard agent={popover.agent} roomId={room.id} agents={agents} status={status[popover.agent.id] ?? 'idle'} note={popover.note} />
   return (
     <div className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
-      {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
-      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} facing={p.facing} /> })}
-      {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seated.map((a, i) => <Person key={a.id} agent={a} look={lookFor(a, order(a))} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
+      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, order(a))} facing={p.facing} /> })}
+      {/* Keyed by seat as well, so a person who changes desks appears at the new one at once instead of gliding across the floor. */}
+      {seated.map((a, i) => <Tag key={`${a.id}:${i}`} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seatOf >= 0 && <div className="agent-pop" data-side={SEATS[seatOf][0] >= 400 ? 'left' : 'right'} style={pct(SEATS[seatOf][0] + (SEATS[seatOf][0] >= 400 ? -26 : 26), SEATS[seatOf][1] + 14)}>{card}</div>}
       {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
-      {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} selectedId={selectedId} onSelect={onSelect} />}
+      {waiting.length > 0 && <Overflow room={room} agents={waiting} status={status} selectedId={selectedId} onSelect={onSelect} card={popover && waiting.some((a) => a.id === popover.agent.id) ? card : undefined} />}
     </div>
   )
 }
 
 /** Someone at their desk. Working people bob, a person who needs you raises a hand, an offline desk or one whose owner is up walking is empty. */
-function Person({ agent, seat, status, present }: { agent: AgentDef; seat: number; status: AgentStatus; present: boolean }) {
+function Person({ look, seat, status, present }: { agent: AgentDef; look: AgentLook; seat: number; status: AgentStatus; present: boolean }) {
   const [x, y] = SEATS[seat]
-  const look = lookFor(agent, seat)
   return (
     <div aria-hidden="true" className="floor-seat" style={{ ...pct(x - 30, y - 80), zIndex: Math.round(y / 10) }}>
       <svg viewBox="-30 -80 60 88" width="100%" height="100%" style={{ display: 'block', overflow: 'visible' }}>
@@ -64,13 +74,13 @@ function Person({ agent, seat, status, present }: { agent: AgentDef; seat: numbe
   )
 }
 
-/** Name plus a status word. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
+/** The name, plus a status word unless they are idle. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
 function Tag({ agent, at, status, word: shown, selected, onSelect }: { agent: AgentDef; at: [number, number]; status: AgentStatus; word?: string; selected: boolean; onSelect: () => void }) {
   const word = shown ?? WORD[status]
   return (
     <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
       style={pct(at[0], at[1])}>
-      <span className="floor-tag-pill" data-status={status}>{agent.name}<span>{word}</span></span>
+      <span className="floor-tag-pill" data-status={status}>{agent.name}{(shown || status !== 'idle') && <span>{word}</span>}</span>
     </button>
   )
 }
@@ -139,11 +149,12 @@ function Templates({ room }: { room: Room }) {
   )
 }
 
-/** More agents than desks: the rest, still at work, listed with a way to add desks. */
-function Overflow({ room, agents, status, selectedId, onSelect }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void }) {
+/** More agents than desks: the ones without a desk who are doing something, listed with a way to add desks. */
+function Overflow({ room, agents, status, selectedId, onSelect, card }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void; card?: ReactNode }) {
   return (
     <section className="floor-overflow" aria-label="Agents without a desk">
-      <span className="muted" style={{ fontSize: 12 }}>No desk yet, still working</span>
+      {card && <div className="agent-pop" data-side="above">{card}</div>}
+      <span className="muted" style={{ fontSize: 12 }}>No desk yet</span>
       {agents.map((a, i) => (
         <button key={a.id} type="button" className="overflow-row" aria-pressed={selectedId === a.id} aria-label={`${a.name}, ${a.role}, ${WORD[status[a.id] ?? 'idle']}`} onClick={() => onSelect(a.id)}>
           <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i), color: ART.onShirt }}>{a.name[0]}</span>

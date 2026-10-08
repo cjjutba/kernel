@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentLook, AgentStatus, Approval, RateLimit, Room } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentLook, AgentStatus, Approval, RateLimit, Room, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 
 // Layout data for the floor art (floor.svg, 800x600). Numbers come from roster() in design/canvas/project/Main.dc.html.
@@ -6,7 +6,7 @@ import { MODELS } from '@shared/types'
 /** Seat anchors in the art's viewBox, lead desk first. */
 export const SEATS: [number, number][] = [[443.8, 293.6], [245.6, 298.0], [332.2, 348.0], [162.5, 346.0], [249.1, 396.0], [453.5, 458.0]]
 
-/** How people look when an agent file has no `look`. Taken in desk order. */
+/** How people look when an agent file has no `look`. Taken in file order, so a person keeps their look when they change desks. */
 export const LOOKS: AgentLook[] = [
   { shirt: '#3f4652', skin: '#d8b896', hair: '#2b2420' }, { shirt: '#5b6b5e', skin: '#c99b74', hair: '#1f1a17' },
   { shirt: '#6b5d73', skin: '#8d6346', hair: '#141212' }, { shirt: '#7a6a55', skin: '#e0c2a2', hair: '#5a4636' },
@@ -35,20 +35,43 @@ export interface Seating {
   overflow: AgentDef[]
 }
 
+/** What `seating` reads besides the agents. Pass the room's own lists: the workspaces, the store's status and the room's activity. */
+export interface SeatingContext {
+  workspaces?: Pick<Workspace, 'agentId' | 'status'>[]
+  status?: Record<string, AgentStatus>
+  activity?: Pick<ActivityEvent, 'agentId' | 'ts'>[]
+}
+
 /**
- * Who sits where. `room.desks` lists agent ids in desk order and anyone not listed has no desk;
- * without it the first six agents sit in the order of their files. The lead always takes the lead desk.
+ * Who sits where. `room.desks` lists agent ids in desk order and anyone not listed has no desk. Without it the lead sits first,
+ * then agents with an open workspace or a status other than idle (in file order), then everyone else by their newest activity
+ * in the room (file order breaks ties). The lead always takes the lead desk.
  */
-export function seating(agents: AgentDef[], room?: Pick<Room, 'desks'>): Seating {
+export function seating(agents: AgentDef[], room?: Pick<Room, 'desks'>, ctx: SeatingContext = {}): Seating {
   const live = agents.filter((a) => !a.retired)
-  const ordered = room?.desks ? room.desks.map((id) => live.find((a) => a.id === id)).filter((a): a is AgentDef => !!a) : live
   const lead = live.find((a) => a.lead)
+  let ordered: AgentDef[]
+  if (room?.desks) ordered = room.desks.map((id) => live.find((a) => a.id === id)).filter((a): a is AgentDef => !!a)
+  else {
+    const open = new Set((ctx.workspaces ?? []).filter((w) => w.status !== 'archived').map((w) => w.agentId))
+    const newest = new Map<string, number>()
+    for (const e of ctx.activity ?? []) if (e.agentId) newest.set(e.agentId, Math.max(newest.get(e.agentId) ?? 0, e.ts))
+    const tier = (a: AgentDef) => (a === lead ? 0 : open.has(a.id) || (ctx.status?.[a.id] ?? 'idle') !== 'idle' ? 1 : 2)
+    ordered = live
+      .map((a, i) => ({ a, i, t: tier(a) }))
+      .sort((x, y) => x.t - y.t || (x.t === 2 ? (newest.get(y.a.id) ?? 0) - (newest.get(x.a.id) ?? 0) : 0) || x.i - y.i)
+      .map((x) => x.a)
+  }
   const queue = lead && ordered.includes(lead) ? [lead, ...ordered.filter((a) => a !== lead)] : ordered
   const seated = queue.slice(0, SEATS.length)
   return { seated, overflow: live.filter((a) => !seated.includes(a)) }
 }
 
-export const lookFor = (agent: AgentDef, seat: number): AgentLook => agent.look ?? LOOKS[seat % LOOKS.length]
+/** The agents the no-desk card lists: those without a desk who are doing something. */
+export const deskless = (overflow: AgentDef[], status: Record<string, AgentStatus>) => overflow.filter((a) => (status[a.id] ?? 'idle') !== 'idle')
+
+/** How an agent looks: their file's `look`, else one by their place in the file (`order`), so a person keeps their look when they change desks. */
+export const lookFor = (agent: AgentDef, order: number): AgentLook => agent.look ?? LOOKS[order % LOOKS.length]
 export const overflowShirt = (i: number) => OVERFLOW_SHIRTS[i % OVERFLOW_SHIRTS.length]
 
 /** "Opus 5.5" from an agent's `model`, which is an alias ("opus") or a full model id. */
@@ -59,14 +82,12 @@ export function modelLabel(model?: string): string {
 }
 
 /**
- * The agent the card shows when nobody has been clicked: the first one that needs the user (needs you, blocked, offline), then the lead.
- * A click wins while that agent is still in the room.
+ * The agent the popover opens on: the one the user clicked while they are still in the room, else the first that needs the user
+ * (needs you, blocked, offline), else nobody.
  */
 export function defaultSelected(agents: AgentDef[], status: Record<string, AgentStatus>, clicked?: string | null): AgentDef | undefined {
   const picked = clicked ? agents.find((a) => a.id === clicked) : undefined
-  if (picked) return picked
-  const loud = agents.find((a) => ['needs', 'blocked', 'offline'].includes(status[a.id] ?? 'idle'))
-  return loud ?? agents.find((a) => a.lead) ?? agents[0]
+  return picked ?? agents.find((a) => ['needs', 'blocked', 'offline'].includes(status[a.id] ?? 'idle'))
 }
 
 /** Agents the user has to act on: status needs you, or a pending approval of theirs. Each agent counts once, and an approval with no agent counts on its own. */
