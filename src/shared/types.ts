@@ -638,7 +638,9 @@ export interface AppSettings {
   scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean }
   models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; maxConcurrent: number; agentTeams: boolean
     /** Kernel tells the Lead when teammates finish a turn or their PRs change (KERNEL-72). */
-    leadUpdates: boolean }
+    leadUpdates: boolean
+    /** Workspaces you start from New workspace begin in plan mode. The Lead's hand-offs don't (KERNEL-74). */
+    workspacePlanMode: boolean }
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }

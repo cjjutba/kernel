@@ -1372,7 +1372,8 @@ export class Kernel {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
-      'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
+      // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
+      'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
       'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),

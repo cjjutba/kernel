@@ -145,3 +145,34 @@ describe('the base a workspace starts from', () => {
     await k.stop()
   })
 })
+
+describe('plan mode for new workspaces (KERNEL-74)', () => {
+  async function kernel(workspacePlanMode?: boolean) {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(workspacePlanMode === undefined ? {} : { models: { workspacePlanMode } }) }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.addRoom(repo)
+    const planOf = (id: string) => k.store.chats(id)[0].plan
+    return { k, room, h: k.handlers(), planOf }
+  }
+
+  it('starts workspaces from New workspace in plan mode with the setting on, unless the modal says otherwise', async () => {
+    const { k, room, h, planOf } = await kernel(true)
+    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(true)
+    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai', plan: false })).id)).toBe(false)
+    // The Lead's hand-offs call createWorkspace directly and start without it.
+    expect(planOf((await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed off' })).id)).toBe(false)
+    await k.stop()
+  })
+
+  it('is off by default', async () => {
+    const { k, room, h, planOf } = await kernel()
+    expect(k.settings.models.workspacePlanMode).toBe(false)
+    expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(false)
+    await k.stop()
+  })
+})
