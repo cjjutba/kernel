@@ -89,6 +89,8 @@ export class Kernel {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
     /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
     probeNetwork?: () => Promise<boolean>
+    /** Re-reads the user's PATH before each preflight, so "Check again" finds a CLI installed after launch. Tests leave it out. */
+    refreshPath?: () => Promise<void>
     /** Kernel's version, for Settings > About. */
     version?: string
     /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */
@@ -1336,7 +1338,8 @@ export class Kernel {
     return integrationRows({ ghUser, linear: !!(linear ?? linearToken()) })
   }
 
-  private preflight() {
+  private async preflight() {
+    await this.o.refreshPath?.()
     return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
   }
 

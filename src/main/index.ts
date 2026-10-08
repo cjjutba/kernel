@@ -10,6 +10,7 @@ import { exec } from './services/exec'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { probeNetwork } from './services/health'
+import { refreshPath } from './services/shellPath'
 import type { Channel } from '@shared/ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -78,6 +79,7 @@ app.whenReady().then(async () => {
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
       probeNetwork: () => probeNetwork(),
+      refreshPath,
       version: app.getVersion(),
       updater,
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
@@ -91,7 +93,8 @@ app.whenReady().then(async () => {
     })
     app.on('before-quit', () => { updater?.stop(); void kernel.stop() })
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
-    started = kernel.start()
+    // PATH comes first so sessions and git calls made during start() find Homebrew and npm tools.
+    started = refreshPath().then(() => kernel.start())
     started.catch(bootFailed)
     void started.then(() => updater?.start(), () => undefined)
     handlers = kernel.handlers() as typeof handlers
