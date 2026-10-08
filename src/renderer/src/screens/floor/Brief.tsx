@@ -41,7 +41,7 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
       actions.ui.toast({ title: 'Could not send that', sub: (e as Error).message })
     }
   }
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send() }
     else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
@@ -49,8 +49,7 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
 
   return (
     <div className="floor-brief" {...d.drop}>
-      <label htmlFor="floor-brief" className="sr-only">Message</label>
-      <DraftInput d={d} id="floor-brief" placeholder={placeholder} onKeyDown={onKey} />
+      <DraftInput d={d} id="floor-brief" aria-label="Message" placeholder={placeholder} onKeyDown={onKey} />
       <div className="row" style={{ gap: 8 }}>
         <span className="brief-to">
           <label htmlFor="floor-to" className="sr-only">Send to</label>
