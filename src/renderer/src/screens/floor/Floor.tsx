@@ -121,7 +121,14 @@ export function Floor({ roomId }: { roomId: string }) {
   const clickedAgent = clicked ? live.find((a) => a.id === clicked && onStage(a)) : undefined
   const waiting = defaultSelected(live, shown)
   const sel = clickedAgent ?? (waiting && waiting.id !== closed ? waiting : undefined)
-  const close = () => { setClicked(null); setClosed(waiting?.id ?? null) }
+  // A click moves focus into the card, so keyboard users don't Tab past every tag. Closing it hands focus back to the person.
+  const [grab, setGrab] = useState(0)
+  useEffect(() => { if (grab) document.querySelector<HTMLElement>('.agent-card button')?.focus() }, [grab])
+  const close = () => {
+    const back = document.activeElement?.closest('.agent-pop') ? document.querySelector<HTMLElement>('.floor-tag[aria-pressed="true"], .overflow-row[aria-pressed="true"]') : null
+    setClicked(null); setClosed(waiting?.id ?? null)
+    back?.focus()
+  }
   useEffect(() => { if (clicked && !clickedAgent) setClicked(null) }, [clicked, clickedAgent])
   // A closed card stays closed while that agent needs you, and opens again the next time they do.
   useEffect(() => { if (closed && !live.some((a) => a.id === closed && LOUD.includes(shown[a.id] ?? 'idle'))) setClosed(null) }, [closed, live, shown])
@@ -166,7 +173,7 @@ export function Floor({ roomId }: { roomId: string }) {
         <main className="floor-main">
           <div className="floor-room" onClick={onFloorClick}>
             <Stage room={room} agents={live} seats={layout} status={shown} words={words} poses={faced} say={mo.say ?? seq.say} instant={instant || jumping}
-              selectedId={sel?.id} popover={sel && { agent: sel, note }} onSelect={(id) => (sel?.id === id ? close() : setClicked(id))} onTogglePause={() => void togglePause()} />
+              selectedId={sel?.id} popover={sel && { agent: sel, note }} onSelect={(id) => { if (sel?.id === id) close(); else { setClicked(id); setGrab((n) => n + 1) } }} onTogglePause={() => void togglePause()} />
           </div>
           <Brief roomId={roomId} agents={live} />
         </main>
