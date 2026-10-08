@@ -10,7 +10,7 @@ export function Welcome() {
       <main className="ob-center">
         <span className="ob-mark" aria-hidden="true"><Icon name="floor" size={34} stroke={1.2} /></span>
         <h1 className="ob-title">Welcome to Kernel</h1>
-        <p className="ob-lede">Give your Claude Code agents a desk. They do the work, you stay the director.</p>
+        <p className="ob-lede">Run your Claude Code agents as a team. They do the work, you stay the director.</p>
         <Button variant="primary" className="ob-cta" autoFocus onClick={() => go({ name: 'onboarding', step: 'checks' })}>Get started</Button>
       </main>
       <footer className="ob-foot">

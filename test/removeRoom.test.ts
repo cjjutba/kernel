@@ -55,7 +55,7 @@ describe('removing a room', () => {
 
   it('keeps the room and names the workspace when one fails to archive', async () => {
     const { k, room, repo, done } = await setup()
-    // The worktree is gone from git, but a folder is back at its path. It may hold the user's files, so archiving fails (D-104).
+    // The worktree is gone from git, but a folder is back at its path. It may hold the user's files, so archiving fails (D-105).
     await run('git', ['-C', repo, 'worktree', 'remove', '--force', done.path])
     await mkdir(done.path)
     await expect(k.removeRoom(room.id, true)).rejects.toThrow(`Could not archive a workspace, so ${room.name} stays. ${done.name}:`)

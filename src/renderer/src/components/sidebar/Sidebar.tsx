@@ -4,7 +4,7 @@ import { call } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
-import { inboxItems, needsYou } from '../../screens/inbox/model'
+import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
@@ -120,7 +120,7 @@ function useChatLists(workspaceIds: string[]) {
 }
 
 /**
- * A room in the sidebar. Expanded, it lists Floor, Board, the Lead and its live workspaces. Pressing the row folds or unfolds it,
+ * A room in the sidebar. Expanded, it lists Team, the Lead and its live workspaces (D-104 hid Floor and Board). Pressing the row folds or unfolds it,
  * as in Conductor, and hovering it swaps the room's letter for a chevron and shows the menu button.
  */
 function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: boolean; expanded: boolean; onToggle: () => void }) {
@@ -147,8 +147,7 @@ function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: 
       </div>
       {expanded && (
         <>
-          <NavItem sub route={{ name: 'floor', roomId: room.id }} icon="floor" label="Floor" />
-          <NavItem sub route={{ name: 'board', roomId: room.id }} icon="board" label="Board" />
+          <NavItem sub route={{ name: 'team', roomId: room.id }} icon="team" label="Team" />
           <LeadItem roomId={room.id} />
           {live.map((w) => <WorkspaceItem key={w.id} ws={w} />)}
         </>
@@ -169,7 +168,7 @@ function readExpanded(): Record<string, boolean> {
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms).filter(needsYou).length)
+  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps)).filter(needsYou).length)
   const route = useStore((s) => s.ui.route)
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const plan = useStore((s) => s.account?.plan)
@@ -197,7 +196,6 @@ export function Sidebar() {
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
-        <NavItem route={{ name: 'rooms' }} icon="rooms" label="All rooms" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
       <div className="sb-rule" role="separator" />

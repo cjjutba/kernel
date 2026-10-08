@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
-import type { Approval, Decision } from '@shared/types'
+import type { AgentDef, Approval, Decision, Overlap } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Pill, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
-import { age, agentOf, inboxItems, inTab, needsYou, type InboxItem, type InboxTab } from './model'
+import { openRoom } from '../../lead'
+import { age, agentOf, allOverlaps, fileName, inboxItems, inTab, names, needsYou, type InboxItem, type InboxTab } from './model'
 import './inbox.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -20,6 +21,43 @@ const decide = (a: Approval, decision: Decision) => attempt('Could not send your
 
 function Letter({ item, agents }: { item: InboxItem; agents: ReturnType<typeof agentOf> }) {
   return <span className="ib-av" aria-hidden="true">{(agents?.name ?? 'Kernel')[0].toUpperCase()}</span>
+}
+
+const NO_AGENTS: AgentDef[] = []
+
+/** Agents changing the same file in different worktrees, which the floor used to show (D-104). The Lead sorts it out. */
+export function SortOverlap({ overlap: o }: { overlap: Overlap }) {
+  const lead = useStore((s) => s.agents[o.roomId]?.find((a) => a.lead))
+  const [busy, run] = useBusy()
+  const name = lead?.name ?? 'the Lead'
+  return (
+    <Button variant="primary" busy={!!busy} busyLabel="Sending" disabled={!!busy} onClick={() => void run('sort', () => attempt(`Could not hand that to ${name}`, () => call('rooms.resolveOverlap', { overlapId: o.id })))}>
+      Let {name} sort it
+    </Button>
+  )
+}
+
+function OverlapDetail({ overlap: o }: { overlap: Overlap }) {
+  const team = useStore((s) => s.agents[o.roomId]) ?? NO_AGENTS
+  const workspaces = useStore((s) => s.workspaces)
+  const rows = o.parties.map((p) => ({ ...p, name: team.find((a) => a.id === p.agentId)?.name ?? p.agentId, ws: workspaces.find((w) => w.id === p.workspaceId) }))
+  return (
+    <>
+      <p className="ib-body">{names(rows.map((r) => r.name))} edited {fileName(o.path)} in different worktrees. Merging {rows.length > 2 ? 'them all' : 'both'} later will conflict.</p>
+      <dl className="ib-facts">
+        <dt>File</dt><dd className="mono">{o.path}</dd>
+        {rows.map((r) => (
+          <Fragment key={r.workspaceId}>
+            <dt>{r.name}</dt>
+            <dd className="mono">
+              {r.ws ? <button type="button" className="ib-link mono" aria-label={`Open ${r.name}'s workspace ${r.ws.name}`} onClick={() => go({ name: 'workspace', workspaceId: r.ws!.id })}>{r.ws.name}</button> : r.workspaceId}, {r.lines}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
+      <div className="ib-acts"><span className="grow" /><SortOverlap overlap={o} /></div>
+    </>
+  )
 }
 
 function Detail({ item }: { item: InboxItem }) {
@@ -44,6 +82,7 @@ function Detail({ item }: { item: InboxItem }) {
       </header>
       <h2>{heading}</h2>
       {n.body && <p className="ib-body">{n.body}</p>}
+      {item.overlap && <OverlapDetail overlap={item.overlap} />}
       {a && pending && isTool(a) && (
         <>
           {code && <div className="ib-code mono">{code}</div>}
@@ -80,12 +119,14 @@ export function Inbox() {
   const notifications = useStore((s) => s.notifications)
   const approvals = useStore((s) => s.approvals)
   const rooms = useStore((s) => s.rooms)
+  const overlaps = useStore((s) => s.overlaps)
   const agents = useStore((s) => s.agents)
   const firstRoom = useStore((s) => s.rooms.find((r) => !r.archived)?.id)
+  const lead = useStore((s) => (firstRoom ? s.agents[firstRoom]?.find((a) => a.lead) : undefined))
   const [tab, setTab] = useState<InboxTab>('all')
   const [sel, setSel] = useState<string | null>(null)
   const detail = useRef<HTMLDivElement>(null)
-  const all = useMemo(() => inboxItems(notifications, approvals, rooms), [notifications, approvals, rooms])
+  const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps)), [notifications, approvals, rooms, overlaps])
   const list = all.filter((i) => inTab(i, tab))
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
   const count = (t: InboxTab) => all.filter((i) => inTab(i, t)).length
@@ -151,7 +192,7 @@ export function Inbox() {
             <div className="ib-empty">
               <h2>You're all caught up</h2>
               <p>Approvals, plans to review and finished work land here. Nothing needs you right now.</p>
-              <button type="button" className="ib-link" onClick={() => go(firstRoom ? { name: 'floor', roomId: firstRoom } : { name: 'home' })}>Go to the floor</button>
+              <button type="button" className="ib-link" onClick={() => (firstRoom ? void openRoom(firstRoom) : go({ name: 'home' }))}>{!firstRoom ? 'Go home' : lead ? `Open ${lead.name}'s chat` : 'Open the team'}</button>
             </div>
           )}
         </div>

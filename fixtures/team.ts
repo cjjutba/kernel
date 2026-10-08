@@ -234,6 +234,8 @@ export const teamFixtures: Record<string, Fixture> = {
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
   BoardEmpty: scene((f) => ({ ...boardScene(f), tasks: { [ids.roomA]: [] }, ui: { route: { name: 'board', roomId: ids.roomA } } })),
   Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
+  // No PNG: a new room with no agents offers the team templates the empty floor had (D-104).
+  TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'team', roomId: clientC.id } } })),
   AgentProfile: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' } } })),
   NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
@@ -243,6 +245,15 @@ export const teamFixtures: Record<string, Fixture> = {
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
   InboxEmpty: scene((f) => ({ ...homeScene(f), approvals: [], notifications: [], ui: { route: { name: 'inbox' } } })),
+  // No PNG: two agents in the same file, which the floor showed until D-104. The newest row, so the detail pane opens on it.
+  InboxOverlap: scene((f) => ({
+    ...homeScene(f),
+    overlaps: [{
+      id: 'ov-invoices', roomId: ids.roomA, path: 'src/app/invoices/invoices.ts', ts: Date.now(),
+      parties: [{ agentId: 'kai', workspaceId: ids.table, lines: 'lines 20-34' }, { agentId: 'noor', workspaceId: ids.schema, lines: 'lines 18-40' }]
+    }],
+    ui: { route: { name: 'inbox' } }
+  })),
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
     ...roomsScene(f),
@@ -266,6 +277,6 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
-  SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'floor', roomId: ids.roomA }),
-  ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
+  SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
+  ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }

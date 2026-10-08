@@ -149,7 +149,7 @@ const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() =
     { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'jordan' }
   ],
   issues: [{ id: 'T-16', title: 'Client portal login' }, { id: 'T-17', title: 'Bulk export for accountants' }, { id: 'T-18', title: 'Dark mode for invoice PDFs' }],
-  ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
+  ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
 }))
 
 /** The invoice table's turns, newest first, as the Checkpoints drawer lists them (WorkspaceCheckpoints.png). */

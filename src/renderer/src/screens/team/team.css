@@ -109,3 +109,11 @@ button.ap-card:hover { background: var(--surface); }
   .ap-main { overflow: visible; }
   .ap-form { padding: 20px 24px 32px; }
 }
+
+/* An empty room's team choices (D-104, from the empty floor) */
+.tm-templates { display: flex; flex-direction: column; gap: 8px; width: min(380px, 100%); margin-top: 8px; }
+.tm-template { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--card-line); border-radius: var(--r); background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
+.tm-template:hover:not(:disabled) { background: var(--hover); }
+.tm-template:disabled { opacity: 0.55; cursor: default; }
+.tm-template[aria-busy='true'] { opacity: 1; background: var(--hover); }
+.tm-template-busy { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }

@@ -27,6 +27,10 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
     actions.rooms.upsert(hidden)
     actions.ui.toast({ title: `${room.name} is hidden`, sub: 'It stays on All rooms.' })
   }
+  // Pause and Resume lived on the floor's header until D-104 hid the floor. A paused room offers Resume.
+  const togglePause = () => call('rooms.setPaused', { roomId: room.id, paused: !room.paused })
+    .then(actions.rooms.upsert)
+    .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: e.message }))
   if (!at) return null
   return createPortal(
     <div ref={box} className="room-menu" style={{ left: at.left - 4, width: at.width + 8, ...(up ? { bottom: window.innerHeight - at.top + GAP } : { top: at.bottom + GAP }) }}>
@@ -35,6 +39,7 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
         items={[
           { id: 'ws', label: 'New workspace', icon: 'plus', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
           { id: 'from', label: 'New workspace from...', icon: 'link', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
+          { id: 'pause', label: room.paused ? 'Resume room' : 'Pause room', icon: room.paused ? 'play' : 'pause', onSelect: () => void togglePause() },
           { id: 'settings', label: 'Room settings', icon: 'sliders', onSelect: () => go({ name: 'settings', page: 'git', roomId: room.id }) },
           { id: 'hide', label: 'Hide room', icon: 'eyeoff', onSelect: () => void hide() },
           MENU_SEPARATOR,

@@ -31,7 +31,7 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
   return (
     <ConfirmDialog
       title={`Retire ${agent.name}?`} busy={!!busy} busyLabel="Retiring" confirmLabel={`Retire ${agent.name}`} onConfirm={() => void retire()} onCancel={actions.ui.closeModal}
-      body={`${agent.name} finishes the current turn, then leaves the floor and the workspace picker. The file moves to .claude/retired-agents so you can bring ${agent.name} back.`}
+      body={`${agent.name} finishes the current turn, then leaves the team and the workspace picker. The file moves to .claude/retired-agents so you can bring ${agent.name} back.`}
     >
       <div className="tm-box mono"><span>{shortFile(agent.file)}</span><span>{handoff}</span></div>
       {error && <p role="alert" style={{ color: 'var(--del)' }}>{error}</p>}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Room } from '@shared/types'
-import { actions, go, useStore } from '../../store'
+import { actions, useStore } from '../../store'
+import { openRoom } from '../../lead'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
 import { openNewRoom } from './draft'
@@ -16,7 +17,7 @@ function RoomRow({ room }: { room: Room }) {
   const approvals = useStore((s) => s.approvals)
   const lastActive = useStore((s) => s.activity.find((e) => e.roomId === room.id)?.ts)
   const state = roomState(room, approvals, status)
-  const open = () => go({ name: 'floor', roomId: room.id })
+  const open = () => void openRoom(room.id)
   const show = () => void call('rooms.update', { roomId: room.id, patch: { hidden: false } }).then((r) => actions.rooms.upsert(r))
   return (
     <div className="rm-row" onClick={open}>

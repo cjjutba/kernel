@@ -3,7 +3,6 @@ import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
-import { useSeating } from '../../floor/useSeating'
 import { shirtOf, shortFile } from './model'
 import './team.css'
 
@@ -25,7 +24,6 @@ const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remo
 export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step; prefill?: NewAgentPrefill }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId])
-  const seats = useSeating(roomId)
   const [name, setName] = useState(prefill?.name ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
@@ -63,7 +61,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
     try {
       await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
       const home = getState().workspaces.find((w) => w.roomId === roomId && w.name === 'lead' && w.status !== 'archived')
-      actions.ui.go(home ? { name: 'workspace', workspaceId: home.id } : { name: 'floor', roomId })
+      actions.ui.go(home ? { name: 'workspace', workspaceId: home.id } : { name: 'team', roomId })
     } catch (e) { setError(clean(e)) }
   })
 
@@ -114,17 +112,16 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   }
 
   const team = agents ?? []
-  const seated = seats.seated.some((a) => a.id === draft.id)
   const joined = team.find((a) => a.id === draft.id)
   return (
     <Modal
       title="New agent" onClose={close} width={600} top={122}
-      footer={<><span className="grow" /><Button variant="ghost" size="lg" onClick={close}>Close</Button><Button variant="primary" size="lg" onClick={() => actions.ui.go({ name: 'floor', roomId })}>See on the floor</Button></>}
+      footer={<><span className="grow" /><Button variant="primary" size="lg" onClick={close}>Close</Button></>}
     >
       <div className="na-done">
         <span className="tm-av xl" aria-hidden="true" style={{ background: joined ? shirtOf(joined, team, room) : undefined }}>{draft.name[0]}</span>
         <h3>{draft.name} is on the team</h3>
-        <p>Saved to {shortFile(draft.file)}. {seated || !joined ? `${draft.name} takes the open desk on the floor and shows up in every new workspace picker.` : `${draft.name} waits by the wall until a desk frees up, and shows up in every new workspace picker.`}</p>
+        <p>Saved to {shortFile(draft.file)}. {draft.name} shows up in every new workspace picker.</p>
       </div>
     </Modal>
   )
