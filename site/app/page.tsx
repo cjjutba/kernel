@@ -7,6 +7,7 @@ import { Privacy } from '@/components/landing/Privacy'
 import { ProductTour } from '@/components/landing/ProductTour'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
+import { latestRelease } from '@/content/changelog'
 import { latestVersionLabel } from '@/lib/format'
 
 export default function Home() {
@@ -14,7 +15,7 @@ export default function Home() {
     <>
       <SiteNav />
       <main id="content">
-        <Hero version={latestVersionLabel('0.1.0')} />
+        <Hero version={latestVersionLabel(latestRelease.version)} />
         <HowItWorks />
         <ProductTour />
         <Details />

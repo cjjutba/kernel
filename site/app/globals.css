@@ -327,6 +327,11 @@
   }
 }
 
+/* PR chips sit a pixel above the text baseline. */
+@utility align-nudge {
+  vertical-align: 1px;
+}
+
 /* A hairline that spans the content width, not the gutters. */
 @utility rule-inset {
   position: relative;
