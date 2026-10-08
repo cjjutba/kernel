@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Checkpoint } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { IconButton } from '../../../ui'
+import { IconButton, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import './checkpoints.css'
 
@@ -24,7 +24,7 @@ export function checkpointDetail(c: Checkpoint): string {
 export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
   const list = useStore((s) => s.checkpoints[workspaceId] ?? EMPTY)
   const [asking, setAsking] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const ref = useRef<HTMLDivElement>(null)
   const close = () => actions.ui.setWorkspaceView({ checkpoints: false })
 
@@ -34,14 +34,11 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
   useEffect(() => { ref.current?.focus() }, [])
 
   const sorted = [...list].sort((a, b) => b.ts - a.ts || Number(b.id) - Number(a.id))
-  const revert = (c: Checkpoint) => attempt('Could not revert', async () => {
-    setBusy(true)
-    try {
-      await call('checkpoints.revert', { workspaceId, checkpointId: c.id })
-      setAsking(null)
-      close()
-    } finally { setBusy(false) }
-  })
+  const revert = (c: Checkpoint) => run('revert', () => attempt('Could not revert', async () => {
+    await call('checkpoints.revert', { workspaceId, checkpointId: c.id })
+    setAsking(null)
+    close()
+  }))
 
   return (
     <div ref={ref} tabIndex={-1} role="dialog" aria-label="Checkpoints" className="ck-drawer" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); if (asking) setAsking(null); else close() } }}>
@@ -70,7 +67,7 @@ export function CheckpointsDrawer({ workspaceId }: { workspaceId: string }) {
                   <span>Restore files to {time}? Changes after this turn move to a backup branch.</span>
                   <div className="row" style={{ gap: 8 }}>
                     <button type="button" className="ck-cancel" onClick={() => setAsking(null)}>Cancel</button>
-                    <button type="button" className="ck-go" disabled={busy} onClick={() => void revert(c)}>Revert</button>
+                    <button type="button" className="ck-go" disabled={!!busy} aria-busy={!!busy || undefined} onClick={() => void revert(c)}>{busy && <span className="spin" aria-hidden="true" />}{busy ? 'Reverting' : 'Revert'}</button>
                   </div>
                 </div>
               )}

@@ -7,17 +7,30 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant
   size?: 'md' | 'lg'
   icon?: IconName
+  /** The work this button started is running: it spins, says `busyLabel` and can't be pressed again (DESIGN.md, Busy buttons). */
+  busy?: boolean
+  /** What it says while busy, such as "Archiving". Without one it keeps its label. */
+  busyLabel?: ReactNode
 }
 
 /** Primary is ink on canvas. Danger is red and belongs on the final confirm button only. Merged is purple, for merged PRs only. */
-export function Button({ variant = 'secondary', size = 'md', icon, className, children, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, busy, busyLabel, disabled, className, children, type = 'button', ...rest }: ButtonProps) {
   const cls = ['btn', variant !== 'secondary' && variant, size === 'lg' && 'lg', className].filter(Boolean).join(' ')
-  return <button type={type} className={cls} {...rest}>{icon && <Icon name={icon} size={14} />}{children}</button>
+  return (
+    <button type={type} className={cls} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
+      {busy ? <span className="spin" aria-hidden="true" /> : icon && <Icon name={icon} size={14} />}
+      {busy && busyLabel !== undefined ? busyLabel : children}
+    </button>
+  )
 }
 
-/** `label` is required: it is the accessible name and the tooltip. */
-export function IconButton({ icon, label, size = 16, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: number }) {
-  return <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={label} {...rest}><Icon name={icon} size={size} /></button>
+/** `label` is required: it is the accessible name and the tooltip. `busy` swaps the icon for a spinner and the label for `busyLabel`. */
+export function IconButton({ icon, label, size = 16, busy, busyLabel, disabled, className, type = 'button', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> & { icon: IconName; label: string; size?: number; busy?: boolean; busyLabel?: string }) {
+  return (
+    <button type={type} className={['icon-btn', className].filter(Boolean).join(' ')} aria-label={busy && busyLabel ? busyLabel : label} disabled={disabled || busy} aria-busy={busy || undefined} {...rest}>
+      {busy ? <span className="spin" aria-hidden="true" /> : <Icon name={icon} size={size} />}
+    </button>
+  )
 }
 
 /** A rounded filter or toggle. `pressed` marks the active one. */

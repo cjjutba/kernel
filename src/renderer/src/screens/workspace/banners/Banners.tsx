@@ -2,13 +2,19 @@ import { useEffect, useState } from 'react'
 import type { Chat, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, loadWorkspace, useStore } from '../../../store'
-import { Banner, Button } from '../../../ui'
+import { Banner, Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { commandComposer } from '../composer/bus'
 import { bannerFor, type BannerAction, type BannerView } from './model'
 import './banners.css'
 
 const NO_LINES: never[] = []
+
+/** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
+const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
+  notify: 'Setting up', usage: 'Opening', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
+  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting'
+}
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
 export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean): BannerView | null {
@@ -35,7 +41,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
  * real recovery path: Notify me, Switch model, Compact, Sign in, Run again and Reconnect all call main.
  */
 export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Workspace; chat?: Chat }) {
-  const [busy, setBusy] = useState<BannerAction | null>(null)
+  const [busy, track] = useBusy<BannerAction>()
   // "Notify me" and "Wait" settle the banner without clearing it, as the canvas does. Keyed by banner, so a new one starts fresh.
   const [settled, setSettled] = useState<{ id: string; notified?: boolean } | null>(null)
   const mine = settled?.id === view.id ? settled : null
@@ -49,10 +55,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
     return () => window.removeEventListener('focus', check)
   }, [view.id])
 
-  const run = (id: BannerAction, label: string, fn: () => Promise<unknown>) => {
-    setBusy(id)
-    void attempt(label, fn).finally(() => setBusy(null))
-  }
+  const run = (id: BannerAction, label: string, fn: () => Promise<unknown>) => void track(id, () => attempt(label, fn))
 
   const act = (id: BannerAction) => {
     switch (id) {
@@ -98,7 +101,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
     <Banner
       kind={view.kind} title={view.title}
       actions={shown.length ? <span className="wsb-actions">{shown.map((a) => (
-        <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" disabled={busy !== null} onClick={() => act(a.id)}>{busy === a.id && a.primary ? <span className="spin" aria-hidden="true" /> : null}{a.label}</Button>
+        <Button key={a.id} variant={a.primary ? 'primary' : 'secondary'} className="wsb-btn" busy={busy === a.id} busyLabel={BUSY_LABEL[a.id]} disabled={busy !== null} onClick={() => act(a.id)}>{a.label}</Button>
       ))}</span> : undefined}
     >{sub}</Banner>
   )

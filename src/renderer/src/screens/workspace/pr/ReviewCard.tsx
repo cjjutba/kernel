@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import type { PrInfo, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions } from '../../../store'
+import { Button, useBusy } from '../../../ui'
 import { openComments, reviewLines } from './model'
 import '../cards/cards.css'
 
@@ -10,14 +10,13 @@ import '../cards/cards.css'
  * Send to the agent is the header's Address review: both send address-review.md with these comments.
  */
 export function ReviewCard({ ws, pr, agentName }: { ws: Workspace; pr: PrInfo; agentName: string }) {
-  const [sending, setSending] = useState(false)
+  const [busy, run] = useBusy()
   const comments = openComments(pr)
   if (!comments.length) return null
   const reviewer = comments[0].author || 'A reviewer'
-  const send = async () => {
-    setSending(true)
-    try { await call('pr.resolve', { workspaceId: ws.id }) } catch (e) { actions.ui.toast({ title: 'Could not send to the agent', sub: (e as Error).message }) } finally { setSending(false) }
-  }
+  const send = () => run('send', async () => {
+    try { await call('pr.resolve', { workspaceId: ws.id }) } catch (e) { actions.ui.toast({ title: 'Could not send to the agent', sub: (e as Error).message }) }
+  })
   return (
     <section aria-label="Review comments" className="card tcard">
       <h3>{reviewer} requested changes on #{pr.number}</h3>
@@ -25,7 +24,7 @@ export function ReviewCard({ ws, pr, agentName }: { ws: Workspace; pr: PrInfo; a
       <div className="code">{reviewLines(comments).join('\n')}</div>
       <div className="acts">
         <button type="button" className="btn" onClick={() => void call('system.openExternal', { url: pr.url })}>Open on GitHub</button>
-        <button type="button" className="btn primary" disabled={sending} onClick={() => void send()}>Send to {agentName}</button>
+        <Button variant="primary" busy={!!busy} busyLabel="Sending" onClick={() => void send()}>Send to {agentName}</Button>
       </div>
     </section>
   )

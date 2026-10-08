@@ -27,6 +27,7 @@
 .ib-link:hover:not(:disabled) { color: var(--ink); text-decoration: underline; }
 .ib-link.muted { color: var(--muted); }
 .ib-link:disabled { opacity: 0.55; cursor: default; }
+.ib-link[aria-busy='true'] { display: inline-flex; align-items: center; gap: 7px; opacity: 1; }
 .ib-card { margin-top: 4px; }
 .ib-outcome { display: flex; align-items: center; gap: 16px; color: var(--ink-2); }
 .ib-empty { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding-bottom: 20px; }

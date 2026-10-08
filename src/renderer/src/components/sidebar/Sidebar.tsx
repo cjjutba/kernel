@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Room, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
-import { IconButton } from '../../ui'
+import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead } from '../../lead'
@@ -73,7 +73,7 @@ async function archiveFromSidebar(ws: Workspace) {
 function WorkspaceItem({ ws }: { ws: Workspace }) {
   const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const card = useHoverCard()
   const g = workspaceGlyph(ws, { needsYou, running })
   const glyph = (
@@ -81,7 +81,7 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
       {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
     </span>
   )
-  const archive = () => { setBusy(true); void archiveFromSidebar(ws).finally(() => setBusy(false)) }
+  const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`}>
       <NavItem
@@ -91,7 +91,8 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
       />
       <div className="more ws-archive" data-card-off>
-        <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={busy} onClick={archive} />
+        {/* Just the icon, with no spinner or word (DESIGN.md, Busy buttons). useBusy still ignores a second click. */}
+        <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={!!busy} onClick={archive} />
       </div>
       {card.at && <WorkspaceCard ws={ws} at={card.at} id={card.id} />}
     </div>

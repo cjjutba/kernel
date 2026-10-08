@@ -1,7 +1,7 @@
 import { MODELS, type RateLimit } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
-import { Button, Meter, Toggle } from '../../../ui'
+import { Button, Meter, Toggle, useBusy } from '../../../ui'
 import { resetPhrase } from '../../workspace/banners/model'
 import { Page, Row, Section } from '../kit'
 import { patchSettings, useSettings } from '../useSettings'
@@ -33,17 +33,18 @@ export function Account() {
   const usage = useStore((s) => s.usage)
   const account = useStore((s) => s.account)
   const s = useSettings()
+  const [busy, run] = useBusy<'signOut' | 'usage'>()
   const now = Date.now()
-  const signOut = async () => {
+  const signOut = () => run('signOut', async () => {
     try {
       actions.account.set(await call('account.signOut', undefined))
       actions.system.setPreflight(await call('preflight.run', undefined))
       go({ name: 'onboarding', step: 'checks' })
     } catch (e) { actions.ui.toast({ title: 'Could not sign out', sub: (e as Error).message }) }
-  }
-  const openUsage = async () => {
+  })
+  const openUsage = () => run('usage', async () => {
     try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'claude /usage' }) } catch (e) { actions.ui.toast({ title: 'Could not open a terminal', sub: (e as Error).message }) }
-  }
+  })
   return (
     <Page title="Account and usage">
       <Section title="Usage">
@@ -58,7 +59,7 @@ export function Account() {
       </Section>
       <Section title="Claude">
         <Row label="Plan"><span className="set-value">{account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')}</span></Row>
-        <Row label="Details" desc="The same numbers Claude Code shows"><Button onClick={() => void openUsage()}>Open /usage</Button></Row>
+        <Row label="Details" desc="The same numbers Claude Code shows"><Button busy={busy === 'usage'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openUsage()}>Open /usage</Button></Row>
         {s && (
           <>
             <Row label="Warn me before the weekly limit"><Toggle label="Warn me before the weekly limit" checked={s.usage.warnBeforeWeekly} onChange={(v) => void patchSettings({ usage: { warnBeforeWeekly: v } })} /></Row>
@@ -67,7 +68,7 @@ export function Account() {
         )}
       </Section>
       <Section title="Session">
-        <Row label="Sign out" desc="Agents stop until you sign in again"><Button onClick={() => void signOut()}>Sign out</Button></Row>
+        <Row label="Sign out" desc="Agents stop until you sign in again"><Button busy={busy === 'signOut'} busyLabel="Signing out" disabled={busy !== null} onClick={() => void signOut()}>Sign out</Button></Row>
       </Section>
     </Page>
   )

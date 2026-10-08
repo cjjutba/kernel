@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
-import { Button, Icon, Menu } from '../../../ui'
+import { Button, Icon, Menu, useBusy } from '../../../ui'
 import { busyLabel, failTitle, headerView, type PrAction } from './model'
 import './pr.css'
 
-const run: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
+const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
   create: (workspaceId) => call('pr.create', { workspaceId }),
   resolve: (workspaceId) => call('pr.resolve', { workspaceId }),
   merge: (workspaceId) => call('pr.merge', { workspaceId }),
@@ -27,17 +27,17 @@ const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden=
  * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071).
  */
 export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
-  const [busy, setBusy] = useState<string | null>(null)
+  // The key is the spinner's label, such as "Merging".
+  const [busy, run] = useBusy()
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
   const view = headerView(ws.prState)
 
-  const act = async (label: string, title: string, fn: () => Promise<unknown>) => {
-    setBusy(label)
-    try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) } finally { setBusy(null) }
-  }
-  const start = (a: PrAction) => void act(busyLabel[a], failTitle[a], () => run[a](id))
+  const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
+    try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
+  })
+  const start = (a: PrAction) => void act(busyLabel[a], failTitle[a], () => request[a](id))
   const createDraft = () => void act(busyLabel.create, failTitle.create, () => call('pr.create', { workspaceId: id, draft: true }))
 
   // Checks, review comments and conflicts for the Checks tab and the review card. Main pushes fresh ones on every refresh.
@@ -66,7 +66,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
     ? <a className="pr-link" data-merged={view.merged || undefined} href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}>#{ws.prNumber}<Icon name="ext" size={11} stroke={1.8} /></a>
     : null
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
-  const spinner = (label: string) => <Button className="pr-busy" disabled><span className="spin" aria-hidden="true" />{label}</Button>
+  const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
 
   if (busy) return <>{link}{gap}{spinner(busy)}</>

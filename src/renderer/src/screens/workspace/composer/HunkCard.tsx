@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Hunk, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions } from '../../../store'
-import { Button } from '../../../ui'
+import { Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 
 /**
@@ -12,7 +12,7 @@ import { attempt } from '../MessageActions'
 export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentName: string; refreshKey: unknown }) {
   const [hunks, setHunks] = useState<Hunk[]>([])
   const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
 
   useEffect(() => {
     let live = true
@@ -35,15 +35,11 @@ export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentNa
   const name = file.slice(file.lastIndexOf('/') + 1)
   const toggle = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const ids = rows.filter((h) => picked.has(h.id)).map((h) => h.id)
-  const commit = async () => {
-    setBusy(true)
-    await attempt('Could not commit', async () => {
-      await call('workspaces.commit', { workspaceId: ws.id, hunkIds: ids })
-      actions.ui.toast({ title: 'Committed', sub: `${ids.length} ${ids.length === 1 ? 'change' : 'changes'} from ${name}` })
-      setHunks((all) => all.filter((h) => !ids.includes(h.id)))
-    })
-    setBusy(false)
-  }
+  const commit = () => run('commit', () => attempt('Could not commit', async () => {
+    await call('workspaces.commit', { workspaceId: ws.id, hunkIds: ids })
+    actions.ui.toast({ title: 'Committed', sub: `${ids.length} ${ids.length === 1 ? 'change' : 'changes'} from ${name}` })
+    setHunks((all) => all.filter((h) => !ids.includes(h.id)))
+  }))
 
   return (
     <section className="hunk-card" aria-label={`Changes in ${name}`}>
@@ -62,7 +58,7 @@ export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentNa
       </div>
       <div className="row" style={{ gap: 8 }}>
         <Button onClick={() => actions.ui.setWorkspaceView({ diff: file })}>Open diff</Button>
-        <Button variant="primary" disabled={!ids.length || busy} onClick={() => void commit()}>Commit selected</Button>
+        <Button variant="primary" busy={!!busy} busyLabel="Committing" disabled={!ids.length} onClick={() => void commit()}>Commit selected</Button>
       </div>
     </section>
   )

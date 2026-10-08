@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
-import { Button, ConfirmDialog } from '../../ui'
+import { Button, ConfirmDialog, useBusy } from '../../ui'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -19,7 +19,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   // The status couldn't be read: archiving still works, and the branch stays (KERNEL-70).
   const [unread, setUnread] = useState(false)
   const [deleteBranch, setDeleteBranch] = useState(deleteByDefault)
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy<'main' | 'anyway'>()
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch(() => setUnread(true))
@@ -28,15 +28,17 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
 
   const unpushed = git?.ahead ?? 0
   const current = ws.mode === 'current'
-  const archive = async (push: boolean) => {
-    setBusy(true); setError(null)
+  // The main button pushes first when there are unpushed commits. Archive anyway doesn't.
+  const archive = (key: 'main' | 'anyway') => run(key, async () => {
+    const push = key === 'main' && unpushed > 0
+    setError(null)
     try {
       // Archive anyway keeps the branch: it holds the only copy of the unpushed commits. Main refuses to delete it too.
       await call('workspaces.archive', { workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
       actions.ui.closeModal()
       actions.ui.toast({ title: push ? `Pushed ${plural(unpushed, 'commit')} and archived ${ws.name}.` : unpushed ? 'Archived without pushing. The commits are on the local branch.' : `Archived ${ws.name}.` })
-    } catch (e) { setError(clean(e)); setBusy(false) }
-  }
+    } catch (e) { setError(clean(e)) }
+  })
 
   const removes = current ? 'This workspace is on your current branch, so no files are removed. The chat stays, and you can restore it from History.' : 'Archiving removes the worktree. The branch and chat stay, and you can restore it from History.'
   const dirty = git?.dirty.files ? `${plural(git.dirty.files, 'file')} with uncommitted changes · +${git.dirty.added} -${git.dirty.removed}` : null
@@ -49,10 +51,10 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
 
   return (
     <ConfirmDialog
-      title={`Archive ${ws.name}?`} body={body} busy={busy || (!git && !unread)}
-      confirmLabel={unpushed ? 'Push and archive' : 'Archive'}
-      extra={unpushed ? <Button variant="ghost" size="lg" className="wsc-anyway" disabled={busy} onClick={() => void archive(false)}>Archive anyway</Button> : undefined}
-      onConfirm={() => void archive(unpushed > 0)} onCancel={actions.ui.closeModal}
+      title={`Archive ${ws.name}?`} body={body} busy={busy === 'main'} disabled={busy !== null || (!git && !unread)}
+      confirmLabel={unpushed ? 'Push and archive' : 'Archive'} busyLabel={unpushed ? 'Pushing and archiving' : 'Archiving'}
+      extra={unpushed ? <Button variant="ghost" size="lg" className="wsc-anyway" busy={busy === 'anyway'} busyLabel="Archiving" disabled={busy !== null} onClick={() => void archive('anyway')}>Archive anyway</Button> : undefined}
+      onConfirm={() => void archive('main')} onCancel={actions.ui.closeModal}
     >
       <div className="wsc-facts mono">
         <span>{ws.branch}</span>

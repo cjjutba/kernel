@@ -3,7 +3,7 @@ import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Select, Toggle } from '../../../ui'
+import { Button, Select, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
@@ -29,34 +29,32 @@ export function seenAgo(ts: number | undefined, now = Date.now()): string {
 /** Settings > Hooks (SettingsHooks.png). Events, port, the snippet and Remove sit below what the canvas draws. */
 export function Hooks({ s }: { s: AppSettings }) {
   const status = useStore((x) => x.system.hooks)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, track] = useBusy<'test' | 'remove' | 'install' | 'open' | 'port'>()
   const [port, setPort] = useState('')
   const timeout = s.permissions.approvalTimeoutSec
-  const run = async (id: string, fn: () => Promise<HookStatus | unknown>, done: string) => {
-    setBusy(id)
+  const run = (id: 'test' | 'remove' | 'install' | 'port', fn: () => Promise<HookStatus | unknown>, done: string) => track(id, async () => {
     try {
       const r = await fn()
       if (r && typeof r === 'object' && 'events' in r && 'port' in r) actions.system.setHooks(r as HookStatus)
       else actions.system.setHooks(await call('hooks.status', undefined))
       actions.ui.toast({ title: done })
     } catch (e) { actions.ui.toast({ title: 'Hooks did not change', sub: (e as Error).message }) }
-    setBusy(null)
-  }
+  })
   const installed = !!status?.installed
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
   const copy = async () => {
     if (!status) return
     try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); actions.ui.toast({ title: 'Copied the hooks snippet' }) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Select the snippet and copy it by hand.' }) }
   }
-  const openFile = async () => {
+  const openFile = () => track('open', async () => {
     try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'open ~/.claude/settings.json' }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: (e as Error).message }) }
-  }
+  })
   const newPort = Number(port)
   return (
     <Page title="Hooks">
       <Section title="Status">
         <Row label="Hook server"><span className="set-value">{status ? (status.listening ? `Live on localhost:${status.port}` : `Not listening on localhost:${status.port}`) : 'Checking'}</span></Row>
-        <Row label="Test"><Button disabled={busy === 'test'} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button></Row>
+        <Row label="Test"><Button busy={busy === 'test'} busyLabel="Sending" disabled={busy !== null} onClick={() => void run('test', () => call('hooks.test', undefined), 'The hook server answered')}>Send test event</Button></Row>
       </Section>
       <Section title="Gates">
         <Row label="Block TaskCompleted without test output"><Toggle label="Block TaskCompleted without test output" checked={s.hooks.requireTestOutput} onChange={(v) => void patchSettings({ hooks: { requireTestOutput: v } })} /></Row>
@@ -68,11 +66,11 @@ export function Hooks({ s }: { s: AppSettings }) {
       <Section title="Maintenance">
         <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites the office entries in ~/.claude/settings.json">
           <span className="set-actions">
-            {status && installed && <Button disabled={busy === 'remove'} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
-            <Button disabled={!status || busy === 'install'} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
+            {status && installed && <Button busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
+            <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>
           </span>
         </Row>
-        <Row label="Settings file"><Button onClick={() => void openFile()}>Open settings.json</Button></Row>
+        <Row label="Settings file"><Button busy={busy === 'open'} busyLabel="Opening" disabled={busy !== null} onClick={() => void openFile()}>Open settings.json</Button></Row>
       </Section>
       {status && (
         <>
@@ -86,7 +84,7 @@ export function Hooks({ s }: { s: AppSettings }) {
             <Row label="Hook server port" desc="Moving it restarts the server and rewrites the hooks that are installed">
               <span className="set-actions">
                 <input className="set-token" style={{ width: 90 }} aria-label="Hook server port" inputMode="numeric" placeholder={String(status.port)} value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, ''))} />
-                <Button disabled={!newPort || newPort === status.port || busy === 'port'} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>
+                <Button busy={busy === 'port'} busyLabel="Moving" disabled={!newPort || newPort === status.port || busy !== null} onClick={() => void run('port', () => call('hooks.restart', { port: newPort }), `Hook server moved to ${newPort}`).then(() => setPort(''))}>Move</Button>
               </span>
             </Row>
           </Section>
