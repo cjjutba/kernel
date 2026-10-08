@@ -15,7 +15,8 @@ mkdirSync(outDir, { recursive: true })
 
 const targets = pairs.length
   ? pairs.map((p) => {
-      const [name, sels] = p.split('=')
+      const i = p.indexOf('=')
+      const [name, sels] = [p.slice(0, i), p.slice(i + 1)]
       const [ref, local = ref] = sels.split('|')
       return { name, ref, local }
     })
