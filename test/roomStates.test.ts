@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { getEventListeners } from 'node:events'
 import { mkdtemp, readdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +10,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { HOLD_TIMEOUT_SEC, Sessions } from '../src/main/services/sessions'
+import { HOLD_TIMEOUT_SEC, RESTART_NUDGE, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
@@ -59,6 +60,10 @@ async function runner() {
 }
 
 const text = (t: string) => [{ type: 'text' as const, text: t }]
+const hookExit2 = (event: string, stderr = 'refused') => ({ type: 'system', subtype: 'hook_response', hook_id: 'h', hook_name: event, hook_event: event, output: '', stdout: '', stderr, exit_code: 2, outcome: 'error', uuid: `h-${event}`, session_id: 's1' })
+const toolUse = (id: string) => ({ type: 'assistant', uuid: `a-${id}`, parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id, name: 'Read', input: { file_path: 'a.ts' } }] } })
+const toolResult = (id: string, isError = false) => ({ type: 'user', parent_tool_use_id: null, message: { content: [{ type: 'tool_result', tool_use_id: id, content: isError ? 'refused' : 'ok', is_error: isError }] } })
+const success = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1 })
 
 describe('pausing a room', () => {
   it('lets a running turn reach its next tool call, holds it there, and holds new sends until Resume', async () => {
@@ -115,18 +120,74 @@ describe('the pause hold', () => {
     done()
   })
 
-  it('keeps held sends across a restart, and leaves needs, blocked and offline alone when pausing', async () => {
+  it('takes its abort listener off the call when Resume ends the wait', async () => {
     const { sessions, chat, done } = await runner()
+    await sessions.send(chat.id, text('first'))
+    const matcher = (sdk.calls.at(-1)!.options as Options).hooks!.PreToolUse!.find((m) => m.timeout !== undefined)!
     sessions.pause('room')
+    const abort = new AbortController()
+    const waiting = (matcher.hooks[0] as HookCallback)({ hook_event_name: 'PreToolUse', tool_name: 'Edit', tool_input: {}, tool_use_id: 'x', session_id: 's', transcript_path: '', cwd: '/tmp' } as never, 'x', { signal: abort.signal } as never)
+    await flush()
+    expect(getEventListeners(abort.signal, 'abort')).toHaveLength(1)
+    sessions.resume('room')
+    await waiting
+    expect(getEventListeners(abort.signal, 'abort')).toHaveLength(0)
+    done()
+  })
+
+  it('keeps held sends across a restart, and leaves needs, blocked and offline alone when pausing', async () => {
+    const { sessions, chat, statuses, done } = await runner()
+    await sessions.send(chat.id, text('first'))
+    const call = sdk.calls.at(-1)!
+    sessions.pause('room')
+    expect(statuses().at(-1)).toMatchObject({ status: 'working' })
+
+    // A permission request during the pause shows as needs.
+    const abort = new AbortController()
+    const asking = (call.options as Options).canUseTool!('Edit', { file_path: 'a.ts' }, { signal: abort.signal, suggestions: [], toolUseID: 't1' } as never)
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'needs' })
+    abort.abort()
+    await asking
+    expect(statuses().at(-1)).toMatchObject({ status: 'paused' })
+
+    // A hook that refuses a step during the pause shows as blocked.
+    call.feed(hookExit2('PreToolUse'))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the PreToolUse hook' })
+
+    // A process that dies during the pause shows as offline.
+    call.fail(new Error('exit code 137'))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'offline' })
+
     await sessions.send(chat.id, text('held'))
     await sessions.restart(chat.id)
-    expect(sessions.queued(chat.id).map((q) => q.parts)).toEqual([text('held'), text('Your session ended unexpectedly. Check the worktree and pick up where you left off.')])
+    expect(sessions.queued(chat.id).map((q) => q.parts)).toEqual([text('held'), text(RESTART_NUDGE)])
+    done()
+  })
+
+  it('sends held messages before the restart nudge when the room is not paused', async () => {
+    const { sessions, chat, store, done } = await runner()
+    await sessions.send(chat.id, text('first'))
+    expect(await sessions.send(chat.id, text('held'))).toEqual({ queued: true })
+    const before = sdk.calls.length
+    await sessions.restart(chat.id)
+    expect(sdk.calls.length).toBe(before + 1)
+    const users = () => store.items(chat.id).filter((i) => i.kind === 'user').map((i) => (i.kind === 'user' ? i.parts : []))
+    expect(users().at(-1)).toEqual(text('held'))
+    expect(sessions.queued(chat.id).map((q) => q.parts)).toEqual([text(RESTART_NUDGE)])
+
+    sdk.calls.at(-1)!.feed(success('r1'))
+    await flush()
+    expect(users().at(-1)).toEqual(text(RESTART_NUDGE))
+    expect(sessions.queued(chat.id)).toEqual([])
     done()
   })
 })
 
 describe('agent states from real events', () => {
-  it('shows an agent as blocked with the hook\'s own output when a hook exits 2, and clears it when the agent moves on', async () => {
+  it('shows an agent as blocked with the hook\'s own output when a hook exits 2, and keeps it until the turn may finish', async () => {
     const { sessions, chat, statuses, done } = await runner()
     const events: { kind: string; data?: Record<string, unknown>; warn?: boolean }[] = []
     const onAct = (e: { kind: string; data?: Record<string, unknown>; warn?: boolean }) => events.push(e)
@@ -140,14 +201,90 @@ describe('agent states from real events', () => {
     expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the TaskCompleted hook' })
     expect(events.find((e) => e.warn)).toMatchObject({ kind: 'agent.status', data: { detail: expect.stringContaining('TaskCompleted hook'), output: ['exit 2: no test output attached to T-11'] } })
 
-    // A hook that passes is not a block.
+    // The agent answering the hook is still blocked: the hook has not let the task finish yet.
     call.feed({ type: 'assistant', uuid: 'a', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Attaching it.' }] } })
     await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
+    // PostToolUse cannot refuse a step, so its exit 2 is not a block.
+    const warned = events.filter((e) => e.warn).length
+    call.feed(hookExit2('PostToolUse', 'oops'))
+    await flush()
+    expect(events.filter((e) => e.warn)).toHaveLength(warned)
+    // The turn finishing means the hook let it through.
+    call.feed(success('r'))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'idle' })
+    bus.off('activity', onAct)
+    done()
+  })
+
+  it('keeps a PreToolUse block through the agent giving up, and ends it with a new message or a step that goes through', async () => {
+    const { sessions, chat, statuses, done } = await runner()
+    await sessions.send(chat.id, text('push it'))
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 's1', apiKeySource: 'none' })
+    call.feed(toolUse('t1'))
+    call.feed(hookExit2('PreToolUse', 'no pushes to main'))
+    call.feed(toolResult('t1', true))
+    call.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'The hook refused the push.' }] } })
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the PreToolUse hook' })
+
+    // The agent gives up and ends its turn: it still needs someone to look.
+    call.feed(success('r1'))
+    await flush()
+    expect(sessions.isRunning(chat.id)).toBe(false)
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
+
+    // A new message ends it.
+    await sessions.send(chat.id, text('push to a branch instead'))
     expect(statuses().at(-1)).toMatchObject({ status: 'working' })
-    call.feed({ type: 'system', subtype: 'hook_response', hook_id: 'h', hook_name: 'PostToolUse', hook_event: 'PostToolUse', output: '', stdout: '', stderr: 'oops', exit_code: 2, outcome: 'error', uuid: 'u2', session_id: 's1' })
+
+    // So does a later step that goes through.
+    call.feed(toolUse('t2'))
+    call.feed(hookExit2('PreToolUse'))
+    call.feed(toolResult('t2', true))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
+    call.feed(toolUse('t3'))
+    call.feed(toolResult('t3'))
     await flush()
     expect(statuses().at(-1)).toMatchObject({ status: 'working' })
-    bus.off('activity', onAct)
+    done()
+  })
+
+  it('drops a block the agent gave up on when its chat is stopped, as Archive and Close chat do', async () => {
+    const { sessions, chat, statuses, done } = await runner()
+    await sessions.send(chat.id, text('push it'))
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 's1', apiKeySource: 'none' })
+    call.feed(toolUse('t1'))
+    call.feed(hookExit2('PreToolUse', 'no pushes to main'))
+    call.feed(toolResult('t1', true))
+    call.feed(success('r1'))
+    await flush()
+    expect(sessions.isRunning(chat.id)).toBe(false)
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
+
+    sessions.stop(chat.id)
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'idle' })
+    done()
+  })
+
+  it('keeps a Stop block while the agent works on what the hook asked, until the turn may end', async () => {
+    const { sessions, chat, statuses, done } = await runner()
+    await sessions.send(chat.id, text('finish up'))
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 's1', apiKeySource: 'none' })
+    call.feed(hookExit2('Stop', 'tests have not run'))
+    call.feed(toolUse('t1'))
+    call.feed(toolResult('t1'))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked', activity: 'Blocked by the Stop hook' })
+    call.feed(success('r1'))
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ status: 'idle' })
     done()
   })
 
@@ -224,17 +361,37 @@ describe('room pause and team templates', () => {
 
   it('keeps needs, blocked and offline through a pause and a resume', async () => {
     const k = await kernel()
-    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.' }))
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.', '.claude/agents/ivy.md': '---\nname: ivy\ndescription: QA.\n---\nIvy.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nNoor.' }))
     await k.agents(room.id)
     const seen: Record<string, string> = {}
     const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
     bus.on('push', on)
     bus.push({ type: 'agent.status', roomId: room.id, agentId: 'kai', status: 'needs' })
+    bus.push({ type: 'agent.status', roomId: room.id, agentId: 'noor', status: 'blocked' })
     bus.push({ type: 'agent.status', roomId: room.id, agentId: 'ivy', status: 'offline' })
     k.pauseRoom(room.id, 'you')
-    expect(seen).toMatchObject({ rowan: 'paused', kai: 'needs', ivy: 'offline' })
+    expect(seen).toMatchObject({ rowan: 'paused', kai: 'needs', noor: 'blocked', ivy: 'offline' })
     k.resumeRoom(room.id)
-    expect(seen).toMatchObject({ rowan: 'idle', kai: 'needs', ivy: 'offline' })
+    expect(seen).toMatchObject({ rowan: 'idle', kai: 'needs', noor: 'blocked', ivy: 'offline' })
+    bus.off('push', on)
+    await k.stop()
+  })
+
+  it('gives an agent whose running chat is in plan mode planning on resume, not working', async () => {
+    const k = await kernel()
+    const room = await k.addRoom(await tempRepo({ '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.' }))
+    await k.agents(room.id)
+    const chat = await k.leadChat(room.id)
+    await k.sessions.configure(chat.id, { plan: true })
+    const seen: Record<string, string> = {}
+    const on = (e: PushEvent) => { if (e.type === 'agent.status') seen[e.agentId] = e.status }
+    bus.on('push', on)
+    await k.sessions.send(chat.id, text('plan the invoices page'))
+    expect(seen.rowan).toBe('planning')
+    k.pauseRoom(room.id, 'you')
+    expect(seen.rowan).toBe('paused')
+    k.resumeRoom(room.id)
+    expect(seen.rowan).toBe('planning')
     bus.off('push', on)
     await k.stop()
   })

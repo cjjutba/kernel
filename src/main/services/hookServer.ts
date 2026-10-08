@@ -1,9 +1,9 @@
-import { firstLine } from './kernelMcp'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent } from '@shared/types'
 import { bus } from '../bus'
 import { describeTool, type Approvals } from './approvals'
+import { firstLine } from './text'
 
 export interface HookContext { roomId?: string; workspaceId?: string; agentId?: string }
 

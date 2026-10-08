@@ -12,7 +12,7 @@ import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
-import { Sessions, sessionEnv } from './services/sessions'
+import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
@@ -171,7 +171,8 @@ export class Kernel {
     this.overlaps = new Overlaps({
       workspaces: (roomId) => this.store.workspaces(roomId),
       since: async (ws) => (ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)),
-      leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id
+      leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id,
+      saved: this.store
     })
     const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
     const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => {
@@ -562,7 +563,7 @@ export class Kernel {
     this.sessions.pause(roomId)
     // Someone who needs the user, is blocked or is offline keeps saying so.
     const now = this.statusOf(roomId)
-    for (const a of this.agentsSync(roomId)) if (!['needs', 'blocked', 'offline'].includes(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
+    for (const a of this.agentsSync(roomId)) if (!PAUSE_KEEPS.has(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
     bus.push({ type: 'room', room })
     bus.activity({ kind: 'room.paused', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'paused' : 'paused the room for', object: by === 'you' ? room.name : 'a usage limit' })
     return room
@@ -573,8 +574,10 @@ export class Kernel {
     const room = this.store.saveRoom({ ...rest, paused: false })
     const before = this.statusOf(roomId)
     this.sessions.resume(roomId)
-    const live = new Map(this.store.workspaces(roomId).map((w) => [w.agentId, this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id))]))
-    for (const a of this.agentsSync(roomId)) if (before[a.id] === 'paused') bus.push({ type: 'agent.status', roomId, agentId: a.id, status: live.get(a.id) ? 'working' : 'idle' })
+    // A running chat in plan mode is planning, as it was before the pause.
+    const running = (agentId: string) => this.store.workspaces(roomId).filter((w) => w.agentId === agentId).flatMap((w) => this.store.chats(w.id)).filter((c) => this.sessions.isRunning(c.id))
+    const resumed = (agentId: string): AgentStatus => { const r = running(agentId); return !r.length ? 'idle' : r.some((c) => !c.plan) ? 'working' : 'planning' }
+    for (const a of this.agentsSync(roomId)) if (before[a.id] === 'paused') bus.push({ type: 'agent.status', roomId, agentId: a.id, status: resumed(a.id) })
     bus.push({ type: 'room', room })
     bus.activity({ kind: 'room.resumed', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'resumed' : 'resumed after the usage limit reset', object: by === 'you' ? room.name : undefined })
     return room

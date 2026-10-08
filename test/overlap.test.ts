@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ActivityEvent, Overlap, Workspace } from '../src/shared/types'
 import type { PushEvent } from '../src/shared/ipc'
 import { tempRepo } from './helpers'
 import { bus } from '../src/main/bus'
+import { Store } from '../src/main/db'
 import { createWorktree, freeBranch, mergeBase } from '../src/main/services/worktrees'
 import { Overlaps, formatRanges, lineRanges } from '../src/main/services/overlap'
 
@@ -32,10 +34,11 @@ const onActivity = (e: ActivityEvent) => logged.push(e)
 bus.on('push', onPush).on('activity', onActivity)
 afterEach(() => { pushed.length = 0; logged.length = 0 })
 
-const service = (all: () => Workspace[]) => new Overlaps({
+const service = (all: () => Workspace[], saved?: Store) => new Overlaps({
   workspaces: () => all(),
   since: (ws) => mergeBase(ws.path, ws.baseRef),
-  leadId: () => 'rowan'
+  leadId: () => 'rowan',
+  saved
 })
 const overlapEvents = () => pushed.filter((e): e is Extract<PushEvent, { type: 'overlap' }> => e.type === 'overlap').map((e) => e.overlap)
 
@@ -124,5 +127,32 @@ describe('overlap detection across two real worktrees', () => {
     await edit(kai.path, 'src/invoices.ts', 1, 3)
     await edit(noor.path, 'src/invoices.ts', 1, 3)
     expect(await service(() => [kai, { ...noor, status: 'archived' }]).check('r')).toEqual([])
+  })
+})
+
+describe('overlaps across a restart', () => {
+  it('keeps an overlap and its dismissal, so a restart neither logs it again nor brings it back, and drops it once it clears', async () => {
+    const { kai, noor } = await room()
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-overlaps-')), 'kernel.db')
+    await edit(kai.path, 'src/invoices.ts', 20, 34)
+    await edit(noor.path, 'src/invoices.ts', 18, 40)
+    const first = service(() => [kai, noor], new Store(file))
+    const [o] = await first.check('r')
+    first.resolve(o.id)
+    expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
+
+    // Kernel starts again on the same database.
+    const store = new Store(file)
+    const svc = service(() => [kai, noor], store)
+    expect(svc.list('r')).toEqual([{ ...o, resolved: true }])
+    pushed.length = 0
+    expect(await svc.check('r')).toEqual([{ ...o, resolved: true }])
+    expect(logged.filter((e) => e.kind === 'overlap')).toHaveLength(1)
+    expect(overlapEvents()).toEqual([])
+
+    await writeFile(join(noor.path, 'src/invoices.ts'), lines(60))
+    expect(await svc.check('r')).toEqual([])
+    expect(store.overlaps()).toEqual([])
+    expect(service(() => [kai, noor], new Store(file)).list('r')).toEqual([])
   })
 })
