@@ -44,6 +44,13 @@ echo "release: verifying"
 codesign --verify --deep --strict --verbose=2 "$app"
 spctl --assess --type execute --verbose=2 "$app" 2>&1 | tee /dev/stderr | grep -q "Notarized Developer ID" || fail "Gatekeeper does not see a notarized Developer ID app."
 xcrun stapler validate "$app"
+# The package ships only the build/Release binaries of the native modules (D-052), so a build that skipped the
+# Electron rebuild packages cleanly. Load both with the app's own Electron, the way the app does, before anything ships.
+ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Kernel" -e '
+  const modules = process.argv[1] + "/Contents/Resources/app.asar/node_modules/";
+  new (require(modules + "better-sqlite3"))(":memory:").close();
+  require(modules + "node-pty");
+' "$PWD/$app" || fail "the packaged app can't load better-sqlite3 or node-pty. Run npm install and release again."
 
 if $dry; then
   echo "release: dry run done. Artifacts are in dist/."
