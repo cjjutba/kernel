@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ActivityEvent, AgentStatus, Workspace } from '@shared/types'
 import { Icon } from '../../ui'
@@ -90,7 +90,7 @@ function Status({ accent, spin, icon, label }: { accent: Accent; spin?: boolean;
 
 function glyphAccent(g: WorkspaceGlyph): Accent {
   if (g.icon === 'spin') return 'working'
-  if (g.icon === 'question') return 'needs'
+  if (g.icon === 'question' || g.icon === 'plan') return 'needs'
   return g.tone === 'ink' ? 'muted' : g.tone
 }
 
@@ -127,10 +127,11 @@ function Card({ eyebrow, status, title, line, meta, when }: { eyebrow: ReactNode
 export function WorkspaceCard({ ws, at, id }: { ws: Workspace; at: DOMRect; id: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId)?.name)
   const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
-  const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
+  const approvals = useStore((s) => s.approvals)
+  const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const last = useStore((s) => newest(s.activity, (e) => e.workspaceId === ws.id))
-  const g = workspaceGlyph(ws, { needsYou, running })
+  const g = workspaceGlyph(ws, { waiting, running })
   const stat = ws.stat && (ws.stat.added || ws.stat.removed) ? ws.stat : undefined
   const meta = (
     <>

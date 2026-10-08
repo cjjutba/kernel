@@ -1,6 +1,7 @@
-import type { AgentStatus, Workspace } from '@shared/types'
+import type { AgentStatus, Approval, Workspace } from '@shared/types'
 import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
+import { isPlanApproval } from '../../screens/workspace/cards/steps'
 
 /** The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. */
 export type GlyphTone = 'muted' | 'ink' | 'add' | 'del' | 'merged'
@@ -16,11 +17,20 @@ export interface WorkspaceGlyph {
 const spin = (label: string): WorkspaceGlyph => ({ icon: 'spin', tone: 'muted', label })
 
 /**
- * The icon in front of a workspace in the sidebar: what waits on you first, then what is running, then the pull request.
+ * The icon for approvals that wait on the user. A plan alone shows the clipboard, since it only asks for a review. A question
+ * or a tool approval wins when one waits too, because it blocks the agent mid-turn. Pass the pending ones; empty means nothing waits.
+ */
+const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
+  waiting.every(isPlanApproval)
+    ? { icon: 'plan', tone: 'ink', label: 'Plan to review' }
+    : { icon: 'question', tone: 'ink', label: 'Needs you' }
+
+/**
+ * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, or something that needs you), then what is running, then the pull request.
  * Every input is a real signal: a pending approval, a running chat, setup's status, the PR state from GitHub.
  */
-export function workspaceGlyph(ws: Workspace, o: { needsYou: boolean; running: boolean }): WorkspaceGlyph {
-  if (o.needsYou) return { icon: 'question', tone: 'ink', label: 'Needs you' }
+export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
+  if (o.waiting.length) return waitingGlyph(o.waiting)
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
@@ -43,13 +53,13 @@ export function workspaceGlyph(ws: Workspace, o: { needsYou: boolean; running: b
 
 /**
  * The icon in front of the Lead in the sidebar. It reads the Lead's floor status, the same one the Lead's hover card shows,
- * so the row and the card never disagree. Idle keeps the chat icon, since the row opens the Lead's chat.
+ * so the row and the card never disagree. While Rowan's plan is the only thing waiting, the clipboard replaces the question mark. Idle keeps the chat icon, since the row opens the Lead's chat.
  */
-export function leadGlyph(status: AgentStatus): WorkspaceGlyph {
+export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGlyph {
   const label = STATUS_WORD[status]
   switch (status) {
     case 'working': case 'planning': case 'walking': return spin(label)
-    case 'needs': return { icon: 'question', tone: 'ink', label }
+    case 'needs': return waiting.length ? waitingGlyph(waiting) : { icon: 'question', tone: 'ink', label }
     case 'blocked': return { icon: 'warning', tone: 'del', label }
     case 'offline': return { icon: 'warning', tone: 'muted', label }
     case 'paused': return { icon: 'pause', tone: 'muted', label }
@@ -58,11 +68,11 @@ export function leadGlyph(status: AgentStatus): WorkspaceGlyph {
 }
 
 /**
- * The icon in front of a chat's tab: what waits on the user first, then a running turn, then the plain chat icon.
+ * The icon in front of a chat's tab: what waits on the user first (a plan to review, or something that needs you), then a running turn, then the plain chat icon.
  * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree.
  */
-export function chatGlyph(o: { needsYou: boolean; running: boolean }): WorkspaceGlyph {
-  if (o.needsYou) return { icon: 'question', tone: 'ink', label: 'Needs you' }
+export function chatGlyph(o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
+  if (o.waiting.length) return waitingGlyph(o.waiting)
   if (o.running) return spin('Working')
   return { icon: 'chat', tone: 'muted', label: '' }
 }
