@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Approval, Decision, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon } from '../../ui'
+import { Button, Icon, useBusy } from '../../ui'
 import { attempt } from '../workspace/MessageActions'
 import { inboxItems, needsYou, type InboxItem } from '../inbox/model'
 import { openNewRoom, resetDraft } from '../rooms/draft'
@@ -24,6 +24,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
   const { n, approval: a } = item
   const agents = useStore((s) => (n.roomId ? s.agents[n.roomId] : undefined)) ?? []
   const room = useStore((s) => s.rooms.find((r) => r.id === n.roomId))
+  const [busy, run] = useBusy<'deny' | 'approve'>()
   const agent = agents.find((x) => x.id === n.agentId)
   const who = agent?.name ?? 'An agent'
   const letter = room ? roomLetter(room.name) : 'K'
@@ -37,8 +38,8 @@ function NeedsRow({ item }: { item: InboxItem }) {
       : <span>{who} wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
     actionsEl = (
       <>
-        <Button onClick={() => void decide(a, { behavior: 'deny', message: 'Denied in Kernel.' })} aria-label={`Deny: ${a.title}`}>Deny</Button>
-        <Button variant="primary" onClick={() => void decide(a, { behavior: 'allow' })} aria-label={`Approve: ${a.title}`}>Approve</Button>
+        <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))} aria-label={busy === 'deny' ? `Denying: ${a.title}` : `Deny: ${a.title}`}>Deny</Button>
+        <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))} aria-label={busy === 'approve' ? `Approving: ${a.title}` : `Approve: ${a.title}`}>Approve</Button>
       </>
     )
   } else if (plan) {

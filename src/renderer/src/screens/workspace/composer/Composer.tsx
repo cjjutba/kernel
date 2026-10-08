@@ -2,20 +2,24 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../../api'
-import { actions, loadWorkspace, useStore } from '../../../store'
-import { Button, Icon, IconButton, Menu } from '../../../ui'
+import { actions, getState, loadWorkspace, useStore } from '../../../store'
+import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
+import { PlanBar } from '../cards/plan'
+import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { HunkCard } from './HunkCard'
-import { EFFORTS, ModelPicker } from './ModelPicker'
+import { ModelPicker } from './ModelPicker'
+import { effortFor, effortLabel, nextEffort, readEffortMemory, rememberEffort } from './modelPrefs'
+import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
 
-type MenuName = null | 'model' | 'plus'
+type MenuName = 'model' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
@@ -26,6 +30,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
+  // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
+  const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced)
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
@@ -34,7 +40,6 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
   const filePick = useRef<HTMLInputElement>(null)
-  const imagePick = useRef<HTMLInputElement>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
   const name = agent?.name ?? 'the agent'
@@ -79,21 +84,32 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
   }
 
-  /** Sends what is in the box, or `picked` in its place (a command run from the / menu). */
+  /**
+   * Sends what is in the box, or `picked` in its place (a command run from the / menu). While a plan waits, a typed
+   * message is the change to ask for instead: the agent reads it as the reason the plan was sent back, and keeps planning.
+   */
   const send = async (picked?: ChatPart[]) => {
     const parts = picked ?? d.message()
     if (!parts.length || blocked) return
+    if (plan && !picked && parts.some((p) => p.type === 'image')) {
+      actions.ui.toast({ title: 'Plan changes are text only', sub: 'Describe the change in words, or send the image after you approve the plan.' })
+      return
+    }
     const kept = d.snapshot()
     d.reset()
-    try { await call('chats.send', { chatId: chat.id, parts }) }
+    try {
+      if (plan && !picked) await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts) } })
+      else await call('chats.send', { chatId: chat.id, parts })
+    }
     catch (e) {
       d.reset(kept)
       actions.ui.toast({ title: 'Could not send', sub: (e as Error).message })
     }
   }
 
-  const mentionFile = () => d.insertText(d.before && !/\s$/.test(d.before) ? ' @' : '@')
   const togglePlan = () => void configure({ plan: !chat.plan })
+  const pickModel = (m: ModelId, effort: Effort) => void configure({ model: m, effort })
+  const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -105,6 +121,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
+    if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
   const configure = (patch: { model?: ModelId; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
@@ -116,9 +133,28 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }
 
   const model = MODELS.find((m) => m.id === chat.model)?.label ?? chat.model
-  const effort = EFFORTS.find((x) => x.id === chat.effort)?.label ?? chat.effort
+  const effort = effortLabel(chat.effort)
   const hasDraft = !d.empty
-  const placeholder = blocked ? 'Paused until this is resolved' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
+  const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
+
+  // ^⌘1 to 4 pick a model (at the effort it last ran at) and ⌘⇧/ cycles the effort, with the picker open or not.
+  // The open picker handles them itself and marks the event handled.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented || getState().ui.modal) return
+      if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) {
+        const m = MODELS[Number(e.key) - 1]
+        if (!m) return
+        e.preventDefault()
+        pickModel(m.id, m.id === chat.model ? chat.effort : effortFor(m.id, readEffortMemory(), chat.effort))
+      } else if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) {
+        e.preventDefault()
+        setEffort(nextEffort(chat.effort))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
   // A banner's "Queue message" sends what is typed (main holds it while the limit lasts), "Switch model" opens the picker.
   // Subscribed on every render, so the listener always sees the current draft.
@@ -166,7 +202,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
             <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
           )}
-          <div className="composer cmp" style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
+          <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
+            {plan && <PlanBar a={plan} />}
             <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
               onInput={() => setDismissed('')} onKeyDown={onKey} />
             <div className="row" style={{ gap: 6 }}>
@@ -174,31 +211,21 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               <span className="cmp-sep" />
               <span ref={modelAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={10} /></Button>
-                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} onClose={() => setMenu(null)} onModel={(m) => { setMenu(null); void configure({ model: m }) }} onEffort={(x) => void configure({ effort: x })} />}
+                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
-              {chat.plan && <Button className="cmp-plan" aria-label="Turn off plan mode" onClick={() => void configure({ plan: false })}>Plan mode<Icon name="close" size={9} stroke={2} /></Button>}
               {chat.context ? <span className="ink2 cmp-context">Context {chat.context}%</span> : null}
               <span className="grow" />
               <span ref={plusAnchor} style={{ position: 'relative' }}>
-                <IconButton icon="plus" label="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')} />
-                {menu === 'plus' && (
-                  <Menu label="Add" anchorRef={plusAnchor} onClose={() => setMenu(null)} style={{ right: 0, bottom: 'calc(100% + 8px)', width: 240 }} items={[
-                    { id: 'plan', label: chat.plan ? 'Plan mode is on' : 'Plan mode', shortcut: '⇧Tab', onSelect: togglePlan },
-                    { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() },
-                    { id: 'image', label: 'Add image', onSelect: () => imagePick.current?.click() },
-                    { id: 'mention', label: 'Mention a file', shortcut: '@', onSelect: mentionFile },
-                    { id: 'skill', label: 'Run a skill', shortcut: '/', disabled: d.parts.length > 0, onSelect: () => d.setText('/') }
-                  ]} />
-                )}
+                <PlusMenu panel={menu === 'model' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
+                  plan={chat.plan} onPlan={togglePlan} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
               </span>
               {running && !hasDraft
                 ? <button type="button" className="icon-btn send stop" aria-label="Stop" onClick={() => void call('chats.interrupt', { chatId: chat.id })}><span /></button>
-                : <button type="button" className="icon-btn send" aria-label={running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} stroke={1.8} /></button>}
+                : <button type="button" className="icon-btn send" aria-label={plan ? 'Send plan adjustments' : running ? 'Queue message' : 'Send'} data-ready={hasDraft && !blocked} disabled={blocked} onClick={() => void send()}><Icon name="up" size={14} stroke={1.8} /></button>}
             </div>
           </div>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
-        <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
     </div>
   )

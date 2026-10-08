@@ -9,12 +9,13 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
+import { planExists, savePlan } from './services/plans'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
-import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
+import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
@@ -28,7 +29,7 @@ import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettin
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { allGreen, gh, ghUser as ghUserName, openPrs, prNote, resolveFile, type GitHub } from './services/github'
+import { allGreen, gh, ghUser as ghUserName, openIssues, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
@@ -36,6 +37,9 @@ import { blockingLimit, NetworkMonitor, terminalScript } from './services/health
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 
 const COPY = 'fork:'
+
+/** The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session (`nameChat`). */
+const NEW_CHAT = 'New chat'
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
 const LIMIT_RECHECK_MS = 90_000
@@ -82,6 +86,8 @@ export class Kernel {
   readonly ptys = new Ptys()
   /** The SDK call behind a fork. Tests swap it for a stub. */
   forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
+  /** The SDK call that reads a session's title from its transcript. Tests swap it for a stub. */
+  sessionInfo: typeof GetSessionInfo = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).getSessionInfo(id, o)
   settings!: AppSettings
   private hookServer?: Server
   private agentCache = new Map<string, AgentDef[]>()
@@ -136,8 +142,10 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
+      onReply: (ws, chat) => void this.nameChat(ws, chat),
       onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
+        void this.nameChat(ws, chat, true)
         const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
         const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
         this.notifications.turnDone(ws, chat, done)
@@ -920,6 +928,19 @@ export class Kernel {
     return files
   }
 
+  /** A plan's file for Open in editor, written again from the approval when it is missing (D-092). */
+  async planFile(id: string): Promise<{ path: string; relative: string }> {
+    const a = this.store.approvals().find((x) => x.id === id)
+    const text = a ? String(a.detail || (a.input as { plan?: unknown } | undefined)?.plan || '') : ''
+    if (!a || !text.trim()) throw new Error('This plan has no text to save.')
+    const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
+    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error('Its workspace folder is gone. Copy the plan instead.')
+    if (a.planFile && (await planExists(ws.path, a.planFile))) return { path: join(ws.path, a.planFile), relative: a.planFile }
+    const relative = await savePlan(ws.path, text, { fallback: a.title, reuse: a.planFile })
+    if (relative !== a.planFile) this.approvals.update(a.id, { planFile: relative })
+    return { path: join(ws.path, relative), relative }
+  }
+
   async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
     const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
@@ -980,13 +1001,33 @@ export class Kernel {
     return this.saveChat({ ...this.mustChat(chatId), title: t })
   }
 
+  /** When Kernel last looked for a session title, by chat, so a busy turn reads the transcript at most every few seconds. */
+  private titleChecked = new Map<string, number>()
+
+  /**
+   * A chat still called "New chat" takes the title Claude Code writes into its transcript a few seconds after the first prompt,
+   * the same one Claude Code's own session list shows. The SDK sends no event for it, so Kernel looks on replies and at the end
+   * of each turn until it finds one. A chat the user renamed keeps its name (D-089).
+   */
+  private async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
+    if (chat.kind === 'terminal' || chat.title !== NEW_CHAT || !chat.sessionId) return
+    const last = this.titleChecked.get(chat.id) ?? 0
+    if (!turnEnded && Date.now() - last < 3000) return
+    this.titleChecked.set(chat.id, Date.now())
+    const title = (await this.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.customTitle?.trim().slice(0, 60)
+    const now = this.store.chat(chat.id)
+    if (!title || !now || now.title !== NEW_CHAT) return
+    this.titleChecked.delete(chat.id)
+    this.saveChat({ ...now, title })
+  }
+
   /** The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab is replaced by a fresh chat. */
   closeChat(chatId: string) {
     const chat = this.mustChat(chatId)
     this.sessions.stop(chatId)
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
-    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, 'New chat', { model: chat.model, effort: chat.effort, plan: false }))
+    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: chat.effort, plan: false }))
   }
 
   private saveChat(chat: Chat): Chat {
@@ -1083,6 +1124,16 @@ export class Kernel {
         })
         this.sessions.placeApproval(chat.id, approval.id)
         return decision
+      },
+      archiveWorkspace: (id) => this.archiveWorkspace(id),
+      isRunning: (id) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id)),
+      // The sidebar's check before a one-click archive. A current-branch workspace removes no files.
+      unsaved: async (id) => {
+        try {
+          const ws = await this.syncBranch(id)
+          if (ws.mode !== 'worktree') return false
+          return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
+        } catch { return 'unknown' }
       },
       planApproved: () => this.sessions.handoffs.approved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
@@ -1378,6 +1429,7 @@ export class Kernel {
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
+      'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
@@ -1413,7 +1465,7 @@ export class Kernel {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : 'New chat', { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
+      'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : NEW_CHAT, { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'checkpoints.list': async ({ workspaceId }) => listCheckpoints(this.mustWs(workspaceId)),
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId),
@@ -1441,6 +1493,7 @@ export class Kernel {
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, decision); if (!a) throw new Error('This request already timed out or was answered.'); return a },
+      'approvals.planFile': async ({ id }) => this.planFile(id),
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),

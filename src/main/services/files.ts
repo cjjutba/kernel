@@ -2,6 +2,7 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { ChangedFile, FileEntry, Skill } from '@shared/types'
 import { git } from './exec'
+import { PLANS_DIR } from './plans'
 
 const MAX_ENTRIES = 5000
 export const MAX_FILE_BYTES = 1024 * 1024
@@ -57,11 +58,13 @@ export async function readWorkspaceFile(root: string, path: string): Promise<str
 
 /**
  * Files for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit together,
- * start a path segment or fall in the file name score higher, and shorter paths win ties.
+ * start a path segment or fall in the file name score higher, and shorter paths win ties. Saved plans are listed too,
+ * though git ignores them, so a new chat can build from one (D-092).
  */
 export async function searchFiles(root: string, query: string, limit = 8): Promise<FileEntry[]> {
   const out = await git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')
-  const files = [...new Set(out.split('\0').filter(Boolean))].slice(0, MAX_ENTRIES)
+  const plans = await readdir(join(root, PLANS_DIR)).then((names) => names.filter((n) => n.endsWith('.md')).map((n) => `${PLANS_DIR}/${n}`), () => [])
+  const files = [...new Set([...out.split('\0').filter(Boolean), ...plans])].slice(0, MAX_ENTRIES)
   const q = query.trim().toLowerCase()
   if (!q) return files.slice(0, limit).map((path) => ({ path, dir: false }))
   const scored: { path: string; score: number }[] = []

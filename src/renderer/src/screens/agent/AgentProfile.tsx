@@ -3,7 +3,7 @@ import type { AgentDef, AgentEdit, Effort } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
-import { Button, SegmentedControl } from '../../ui'
+import { Button, SegmentedControl, useBusy } from '../../ui'
 import { STANDARD_TOOLS, STATUS_WORD, currentWorkspace, modelAlias, recentWork, sameModel, shirtOf, shortFile, withExtras } from '../team/model'
 import '../team/team.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -30,7 +30,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   useEffect(() => { void loadRoom(roomId) }, [roomId])
 
   const [form, setForm] = useState<Form | null>(agent ? formOf(agent) : null)
-  const [saving, setSaving] = useState(false)
+  const [saving, run] = useBusy()
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [skillNames, setSkillNames] = useState<string[]>([])
@@ -70,8 +70,8 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const modelId = MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffort ?? 'high'
 
-  const save = async () => {
-    setSaving(true); setError(null)
+  const save = () => run('save', async () => {
+    setError(null)
     const patch: AgentEdit = {
       description: form.description.trim(), model: form.model || undefined, effort: form.effort, tools: form.tools, skills: form.skills.map(slash), prompt: form.prompt
     }
@@ -82,8 +82,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
       setForm(formOf(def))
       setSaved(true)
     } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
-    setSaving(false)
-  }
+  })
   const retire = () => actions.ui.openModal({ name: 'confirm', kind: 'retire', roomId, agentId: agent.id })
 
   return (
@@ -97,7 +96,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
         {error && <span role="alert" className="ap-save-note del">{error}</span>}
         {saved && !dirty && <span role="status" className="ap-save-note">Saved to {shortFile(agent.file)}</span>}
         <Button variant="ghost" disabled={agent.lead} title={agent.lead ? `${agent.name} leads this room. Mark another agent as the Lead first.` : undefined} onClick={retire}>Retire</Button>
-        <Button variant={dirty ? 'primary' : 'secondary'} disabled={!dirty || saving || !form.description.trim()} onClick={() => void save()}>Save changes</Button>
+        <Button variant={dirty ? 'primary' : 'secondary'} busy={!!saving} busyLabel="Saving" disabled={!dirty || !form.description.trim()} onClick={() => void save()}>Save changes</Button>
       </header>
       <div className="ap-body">
         <aside className="ap-side" aria-label={agent.name}>

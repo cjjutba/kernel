@@ -2,6 +2,8 @@
 .fopts { display: flex; flex-direction: column; gap: 6px; }
 .fopt { height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 7px; background: transparent; color: var(--ink); font-size: 12.5px; text-align: left; cursor: pointer; }
 .fopt:hover { background: var(--hover); }
+.fopt:disabled { opacity: 0.55; cursor: default; }
+.fopt[aria-busy='true'] { display: flex; align-items: center; gap: 8px; opacity: 1; background: var(--hover); }
 .fopt-send { align-self: flex-end; height: 30px; }
 .fcard-grid { display: flex; flex-direction: column; padding: 8px 10px; border-radius: 6px; background: var(--code-bg); font-size: 11.5px; line-height: 1.6; color: var(--ink-3); }
 .fcard-grid-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; column-gap: 12px; white-space: pre; }

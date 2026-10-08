@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
 import { call } from '../../api'
-import { Icon } from '../../ui'
+import { Icon, useBusy } from '../../ui'
 import { actions, go } from '../../store'
 import { pct } from '../../floor/layout'
-import { planSteps } from '../workspace/cards/steps'
+import { planSteps, planTitle } from '../workspace/cards/steps'
 import { FloorCard } from './FloorCard'
 
 // What the briefing sequence draws besides people walking (FloorSent to FloorReview): the speech bubble over the office,
@@ -27,14 +27,15 @@ export function Bubble({ text, at, link }: { text: string; at: [number, number];
 export function PlanCard({ approval: a, agents }: { approval: Approval; agents: AgentDef[] }) {
   const [asking, setAsking] = useState(false)
   const [note, setNote] = useState('')
+  const [busy, run] = useBusy<'send' | 'approve'>()
   const lead = agents.find((x) => x.id === a.agentId)?.name ?? 'The Lead'
   const steps = planSteps(a)
-  const send = () => void decide(a, { behavior: 'deny', message: note.trim() || 'Please revise the plan.' })
+  const send = () => void run('send', () => decide(a, { behavior: 'deny', message: note.trim() || 'Please revise the plan.' }))
   return (
     <FloorCard title={`${lead}’s plan is ready`}
-      actions={asking ? [{ label: 'Cancel', onClick: () => setAsking(false) }, { label: 'Send', primary: true, onClick: send }]
-        : [{ label: 'Request changes', onClick: () => setAsking(true) }, { label: 'Approve plan', primary: true, onClick: () => void decide(a, { behavior: 'allow' }) }]}>
-      <span className="fcard-meta">{a.title}</span>
+      actions={asking ? [{ label: 'Cancel', onClick: () => setAsking(false) }, { label: 'Send', primary: true, onClick: send, busy: busy === 'send', busyLabel: 'Sending' }]
+        : [{ label: 'Request changes', onClick: () => setAsking(true) }, { label: 'Approve plan', primary: true, onClick: () => void run('approve', () => decide(a, { behavior: 'allow' })), busy: busy === 'approve', busyLabel: 'Approving' }]}>
+      <span className="fcard-meta">{planTitle(a)}</span>
       <ol className="fcard-rows">
         {steps.map((s, i) => (
           <li key={i}>
@@ -57,11 +58,12 @@ export function PermCard({ approval: a, agents }: { approval: Approval; agents: 
   const who = agents.find((x) => x.id === a.agentId)?.name ?? 'An agent'
   const input = (a.input ?? {}) as Record<string, unknown>
   const what = a.toolName === 'Bash' ? String(input.command ?? '') : String(input.file_path ?? input.path ?? a.toolName ?? a.title)
+  const [busy, run] = useBusy<'deny' | 'approve'>()
   return (
     <FloorCard title={`${who} needs you`}
       actions={[
-        { label: 'Deny', onClick: () => void decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }) },
-        { label: 'Approve', primary: true, onClick: () => void decide(a, { behavior: 'allow' }) }
+        { label: 'Deny', onClick: () => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' })), busy: busy === 'deny', busyLabel: 'Denying' },
+        { label: 'Approve', primary: true, onClick: () => void run('approve', () => decide(a, { behavior: 'allow' })), busy: busy === 'approve', busyLabel: 'Approving' }
       ]}>
       {what && <p className="mono fcard-cmd">{what}</p>}
     </FloorCard>

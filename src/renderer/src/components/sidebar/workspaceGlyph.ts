@@ -1,5 +1,6 @@
-import type { Workspace } from '@shared/types'
+import type { AgentStatus, Workspace } from '@shared/types'
 import type { IconName } from '../../icons'
+import { STATUS_WORD } from '../../screens/team/model'
 
 /** The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. */
 export type GlyphTone = 'muted' | 'ink' | 'add' | 'del' | 'merged'
@@ -37,5 +38,21 @@ export function workspaceGlyph(ws: Workspace, o: { needsYou: boolean; running: b
     case 'merged': return { icon: 'merged', tone: 'merged', label: 'Merged' }
     case 'closed': return { icon: 'prClosed', tone: 'muted', label: 'PR closed' }
     case 'none': return { icon: 'branch', tone: 'muted', label: ws.stat?.files ? 'No PR yet' : 'No changes yet' }
+  }
+}
+
+/**
+ * The icon in front of the Lead in the sidebar. It reads the Lead's floor status, the same one the Lead's hover card shows,
+ * so the row and the card never disagree. Idle keeps the chat icon, since the row opens the Lead's chat.
+ */
+export function leadGlyph(status: AgentStatus): WorkspaceGlyph {
+  const label = STATUS_WORD[status]
+  switch (status) {
+    case 'working': case 'planning': case 'walking': return spin(label)
+    case 'needs': return { icon: 'question', tone: 'ink', label }
+    case 'blocked': return { icon: 'warning', tone: 'del', label }
+    case 'offline': return { icon: 'warning', tone: 'muted', label }
+    case 'paused': return { icon: 'pause', tone: 'muted', label }
+    case 'idle': return { icon: 'chat', tone: 'muted', label }
   }
 }

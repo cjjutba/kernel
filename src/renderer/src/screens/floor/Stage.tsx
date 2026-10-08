@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentDef, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
+import { Button, useBusy } from '../../ui'
 import { ART, SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
 import floorDark from '../../floor/floor.svg'
 import floorLight from '../../floor/floor-light.svg'
@@ -80,6 +81,7 @@ function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
   const [notified, setNotified] = useState(false)
   // Done only closes the notification line; the room is still paused, so the banner stays up.
   const [done, setDone] = useState(false)
+  const [busy, run] = useBusy()
   if (room.pausedBy !== 'limit') {
     return (
       <div role="status" className="floor-banner">
@@ -89,11 +91,11 @@ function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
     )
   }
   const limit = limitBanner(usage)
-  const notify = () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message }))
+  const notify = () => run('notify', () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message })))
   return (
     <div role="status" className="floor-banner">
       <span>{notified && !done ? 'You will get a notification when the limit resets.' : limit.text}</span>
-      {!done && <button type="button" className="floor-banner-btn" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</button>}
+      {!done && <Button variant="primary" className="floor-banner-btn" busy={!!busy} busyLabel="Setting up" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</Button>}
     </div>
   )
 }
@@ -111,13 +113,12 @@ function Templates({ room }: { room: Room }) {
     return r ? { id: r.id, name: r.name } : null
   })
   const preferred = useStore((x) => x.settings?.team.defaultTemplate ?? 'starter')
-  const [busy, setBusy] = useState(false)
-  const seed = async (template: TeamTemplate) => {
-    setBusy(true)
+  const [busy, run] = useBusy()
+  const seed = (name: string, template: TeamTemplate) => run(name, async () => {
     try { await call('agents.seed', { roomId: room.id, template }); await loadRoom(room.id) } catch (e) {
       actions.ui.toast({ title: 'Could not seat that team', sub: (e as Error).message })
-    } finally { setBusy(false) }
-  }
+    }
+  })
   return (
     <section className="floor-empty" aria-label="No agents in this room yet">
       <h2>No agents in this room yet</h2>
@@ -125,9 +126,11 @@ function Templates({ room }: { room: Room }) {
       {[...TEMPLATES].sort((a, b) => Number(b.template().kind === preferred) - Number(a.template().kind === preferred)).map((t) => {
         const copy = t.name === 'From another room'
         return (
-          <button key={t.name} type="button" className="floor-template" disabled={busy || (copy && !other)} onClick={() => void seed(t.template(other?.id))}>
+          <button key={t.name} type="button" className="floor-template" disabled={busy !== null || (copy && !other)} aria-busy={busy === t.name || undefined} onClick={() => void seed(t.name, t.template(other?.id))}>
             <span style={{ fontWeight: 500 }}>{t.name}</span>
-            <span className="muted" style={{ fontSize: 12 }}>{copy ? (other ? `Copy agents from ${other.name}` : 'No other room has agents yet') : t.sub}</span>
+            {busy === t.name
+              ? <span className="muted floor-template-busy"><span className="spin" aria-hidden="true" />Seating the team</span>
+              : <span className="muted" style={{ fontSize: 12 }}>{copy ? (other ? `Copy agents from ${other.name}` : 'No other room has agents yet') : t.sub}</span>}
           </button>
         )
       })}

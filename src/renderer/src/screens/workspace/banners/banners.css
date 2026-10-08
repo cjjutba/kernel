@@ -3,4 +3,3 @@
 .composer-inner > .banner .muted { font-size: 12.5px; }
 .wsb-actions { display: flex; gap: 8px; flex-shrink: 0; }
 .wsb-btn { height: 30px; }
-.wsb-btn .spin { width: 11px; height: 11px; }

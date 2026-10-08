@@ -19,13 +19,21 @@
 
 /* tabs row */
 .ws-tabs { position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.tab-group { display: inline-flex; align-items: flex-end; min-width: 0; }
-.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+/* The underline spans the whole group, so the pen and the close button sit inside the tab, as in Conductor (D-088). */
+.tab-group { position: relative; display: inline-flex; align-items: center; height: 40px; min-width: 0; padding-right: 4px; border-bottom: 2px solid transparent; }
+.tab-group[data-on] { border-bottom-color: var(--ink); }
+.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .ws-tab:hover { color: var(--ink-2); }
-.ws-tab[aria-selected='true'] { border-bottom-color: var(--ink); color: var(--ink); }
+.ws-tab[aria-selected='true'] { color: var(--ink); }
+/* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
+.tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
+.tab-end > * { grid-area: 1 / 1; }
+.tab-pen { display: flex; color: var(--muted); pointer-events: none; }
 .tab-caret { width: 22px; height: 22px; border-radius: 5px; }
+.tab-caret.more, .tab-pen { transition: opacity 0.12s; }
 .tab-caret.more { opacity: 0; }
-.tab-group:hover .tab-caret.more, .tab-group:focus-within .tab-caret.more { opacity: 1; }
+.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more { opacity: 1; }
+.tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
 .cp-btn { flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12.5px; }
 .cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
@@ -49,9 +57,41 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
 .md p { white-space: pre-wrap; }
-.md-h { font-weight: 600; }
+.md-h { font-weight: 600; color: var(--ink); line-height: 1.4; }
+.md-h[data-level='1'] { font-size: 17px; }
+.md-h[data-level='2'] { font-size: 15px; }
+.md-h[data-level='3'] { font-size: 14px; }
+.md-h[data-level='4'] { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+.md > .md-h:not(:first-child) { margin-top: 20px; }
+.md > .md-h[data-level='3']:not(:first-child), .md > .md-h[data-level='4']:not(:first-child) { margin-top: 14px; }
 .md ul, .md ol { padding-left: 22px; }
-.md-code { padding: 1px 5px; border-radius: 5px; background: var(--surface-3); font: 12.5px var(--mono); }
+.md li + li { margin-top: 3px; }
+.md li::marker { color: var(--muted); }
+.md ol > li::marker { font: 12.5px var(--mono); }
+.md li > ul, .md li > ol, .md li > p, .md li > blockquote, .md li > .codeblock, .md li > .md-table { margin: 4px 0 0; }
+.md ul[data-tasks] { padding-left: 2px; }
+.md li[data-task] { list-style: none; display: grid; grid-template-columns: 22px minmax(0, 1fr); }
+.md li[data-task] > :not(.md-box) { grid-column: 2; }
+.md-box { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; margin-top: 4px; border: 1px solid var(--line-4); border-radius: 4px; color: var(--ink); }
+.md li[data-task='done'] > .md-li { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line-4); }
+.md blockquote { margin-left: 0; margin-right: 0; padding: 2px 0 2px 14px; border-left: 2px solid var(--line-3); color: var(--ink-2); }
+.md blockquote > * { margin: 0 0 6px; }
+.md blockquote > *:last-child { margin-bottom: 0; }
+.md hr { height: 0; margin: 18px 0; border: 0; border-top: 1px solid var(--line-2); }
+.md-table { overflow-x: auto; border: 1px solid var(--line-2); border-radius: var(--r); }
+.md-table table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.md-table th, .md-table td { padding: 7px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--line-2); }
+.md-table th { border-top: 0; font-weight: 500; color: var(--ink-2); background: var(--surface); }
+.md-table:focus-visible { outline: 1px solid var(--ink-3); outline-offset: 1px; }
+.md-doc .md-h[data-level='1'] { font-size: 26px; line-height: 1.25; letter-spacing: -0.01em; }
+.md-doc .md-h[data-level='2'] { font-size: 19px; line-height: 1.3; }
+.md-doc .md-h[data-level='3'] { font-size: 15.5px; }
+.md-doc > * { margin-bottom: 12px; }
+.md-doc > .md-h { margin-bottom: 12px; }
+.md-doc > .md-h:not(:first-child) { margin-top: 28px; }
+.md-doc > .md-h[data-level='3']:not(:first-child), .md-doc > .md-h[data-level='4']:not(:first-child) { margin-top: 18px; }
+.md-doc li + li { margin-top: 5px; }
+.md-code { padding: 1px 5px; border-radius: 5px; background: var(--surface-3); font: 12.5px var(--mono); overflow-wrap: anywhere; }
 .md a { color: var(--ink); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .trow-btn { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; cursor: default; }

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, EmptyState, Icon, Pill } from '../../ui'
+import { Button, EmptyState, Icon, Pill, useBusy } from '../../ui'
 import { archivedList, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import './history.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -17,7 +17,7 @@ export function History() {
   const agents = useStore((s) => s.agents)
   const [tab, setTab] = useState<HistoryTab>('all')
   const [q, setQ] = useState('')
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, run] = useBusy()
   const roomName = (w: Workspace) => rooms.find((r) => r.id === w.roomId)?.name
   const agentName = (w: Workspace) => agents[w.roomId]?.find((a) => a.id === w.agentId)?.name ?? w.agentId
 
@@ -26,8 +26,7 @@ export function History() {
   const rows = found.filter((w) => inTab(w, tab))
   const count = (t: HistoryTab) => found.filter((w) => inTab(w, t)).length
 
-  const restore = async (w: Workspace) => {
-    setBusy(w.id)
+  const restore = (w: Workspace) => run(w.id, async () => {
     try {
       const back = await call('workspaces.restore', { workspaceId: w.id })
       actions.workspaces.upsert(back)
@@ -35,8 +34,8 @@ export function History() {
       go({ name: 'workspace', workspaceId: w.id })
     } catch (e) {
       actions.ui.toast({ title: `Could not restore ${w.name}`, sub: (e as Error).message })
-    } finally { setBusy(null) }
-  }
+    }
+  })
 
   return (
     <div className="panel">
@@ -65,7 +64,7 @@ export function History() {
                     <span className="ellipsis hs-room">{roomName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
-                    <Button disabled={busy === w.id} aria-label={`Restore ${w.name}`} onClick={() => void restore(w)}>Restore</Button>
+                    <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${w.name}` : `Restore ${w.name}`} onClick={() => void restore(w)}>Restore</Button>
                   </li>
                 ))}
               </ul>

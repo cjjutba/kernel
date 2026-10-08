@@ -1,7 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ActivityEvent, AgentDef, AgentStatus, Approval, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { Icon } from '../../ui'
+import { Icon, useBusy } from '../../ui'
 import { actions, go, useStore } from '../../store'
 import { latestWarn } from '../../floor/layout'
 import { byDay, earlierLabel, logRows, type LogRow } from '../../floor/logs'
@@ -12,6 +12,37 @@ import type { Sequence } from './sequence'
 import { OverlapCard, OverlapLinks, QuestionCard } from './moments/Cards'
 
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
+
+const failed = (e: unknown) => actions.ui.toast({ title: 'That did not work', sub: (e as Error).message })
+
+/** An agent a hook stopped: what stopped it, and Attach output, which asks the agent to attach it. */
+function BlockedCard({ roomId, agent: a, ws, ev, saying }: { roomId: string; agent: AgentDef; ws?: Workspace; ev?: ActivityEvent; saying?: string }) {
+  const [busy, run] = useBusy()
+  const task = ev?.object ?? ws?.name
+  const output = ev?.data?.output
+  return (
+    <FloorCard title={`${a.name} is blocked${task ? ` on ${task}` : ''}`}
+      sub={typeof ev?.data?.detail === 'string' ? ev.data.detail : saying ?? 'A hook stopped the last step.'}
+      code={Array.isArray(output) ? output.map(String) : typeof output === 'string' ? [output] : undefined}
+      actions={[
+        ...(ws ? [{ label: 'Open workspace', onClick: () => go({ name: 'workspace', workspaceId: ws.id }) }] : []),
+        { label: 'Attach output', primary: true, busy: !!busy, busyLabel: 'Sending', onClick: () => void run('attach', () => call('rooms.brief', { roomId, agentId: a.id, text: `Attach the test output${task ? ` to ${task}` : ''} so the hook lets the task close.` }).catch(failed)) }
+      ]} />
+  )
+}
+
+/** An agent whose Claude Code session ended: a terminal in its worktree, or a new session in the same chat. */
+function OfflineCard({ agent: a, ws, ev }: { agent: AgentDef; ws?: Workspace; ev?: ActivityEvent }) {
+  const [busy, run] = useBusy<'terminal' | 'restart'>()
+  return (
+    <FloorCard title={`${a.name}’s session ended`}
+      sub={typeof ev?.data?.detail === 'string' ? ev.data.detail : `Claude Code exited${ws ? ` in ${ws.name}` : ''}. The worktree and chat are saved.`}
+      actions={ws ? [
+        { label: 'Open terminal', busy: busy === 'terminal', busyLabel: 'Opening', onClick: () => void run('terminal', () => call('app.openTerminal', { cwd: ws.path }).catch(failed)) },
+        { label: 'Restart session', primary: true, busy: busy === 'restart', busyLabel: 'Restarting', onClick: () => void run('restart', () => call('chats.list', { workspaceId: ws.id }).then((cs) => (cs[0] ? call('chats.restart', { chatId: cs[0].id }) : undefined)).catch(failed)) }
+      ] : []} />
+  )
+}
 
 /**
  * Things waiting on the user first, as cards in one pattern, then what the team did, newest first.
@@ -30,7 +61,6 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   const blocked = agents.filter((a) => status[a.id] === 'blocked')
   const offline = agents.filter((a) => status[a.id] === 'offline')
   const wsOf = (a: AgentDef) => workspaces.find((w) => w.agentId === a.id)
-  const failed = (e: unknown) => actions.ui.toast({ title: 'That did not work', sub: (e as Error).message })
 
   return (
     <aside aria-label="Logs" className="floor-logs">
@@ -42,33 +72,8 @@ export function Logs({ roomId, agents, status, approvals, review }: {
           : <ApprovalCard key={a.id} approval={a} />))}
         {(overlaps ?? []).filter((o) => !o.resolved).map((o) => <OverlapCard key={o.id} overlap={o} roomId={roomId} agents={agents} workspaces={workspaces} />)}
         {review && <ReviewCard roomId={roomId} title={review.title} sub={review.sub} />}
-        {blocked.map((a) => {
-          const ev = latestWarn(events, a.id, ['agent.status', 'tool.failed', 'note'])
-          const ws = wsOf(a)
-          const task = ev?.object ?? ws?.name
-          const output = ev?.data?.output
-          return (
-            <FloorCard key={`blocked-${a.id}`} title={`${a.name} is blocked${task ? ` on ${task}` : ''}`}
-              sub={typeof ev?.data?.detail === 'string' ? ev.data.detail : saying[a.id] ?? 'A hook stopped the last step.'}
-              code={Array.isArray(output) ? output.map(String) : typeof output === 'string' ? [output] : undefined}
-              actions={[
-                ...(ws ? [{ label: 'Open workspace', onClick: () => go({ name: 'workspace', workspaceId: ws.id }) }] : []),
-                { label: 'Attach output', primary: true, onClick: () => void call('rooms.brief', { roomId, agentId: a.id, text: `Attach the test output${task ? ` to ${task}` : ''} so the hook lets the task close.` }).catch(failed) }
-              ]} />
-          )
-        })}
-        {offline.map((a) => {
-          const ev = latestWarn(events, a.id, ['session.end', 'note'])
-          const ws = wsOf(a)
-          return (
-            <FloorCard key={`offline-${a.id}`} title={`${a.name}’s session ended`}
-              sub={typeof ev?.data?.detail === 'string' ? ev.data.detail : `Claude Code exited${ws ? ` in ${ws.name}` : ''}. The worktree and chat are saved.`}
-              actions={ws ? [
-                { label: 'Open terminal', onClick: () => void call('app.openTerminal', { cwd: ws.path }).catch(failed) },
-                { label: 'Restart session', primary: true, onClick: () => void call('chats.list', { workspaceId: ws.id }).then((cs) => (cs[0] ? call('chats.restart', { chatId: cs[0].id }) : undefined)).catch(failed) }
-              ] : []} />
-          )
-        })}
+        {blocked.map((a) => <BlockedCard key={`blocked-${a.id}`} roomId={roomId} agent={a} ws={wsOf(a)} ev={latestWarn(events, a.id, ['agent.status', 'tool.failed', 'note'])} saying={saying[a.id]} />)}
+        {offline.map((a) => <OfflineCard key={`offline-${a.id}`} agent={a} ws={wsOf(a)} ev={latestWarn(events, a.id, ['session.end', 'note'])} />)}
         {days.map((d) => (
           <div key={d.label} className="log-group">
             <p className="log-day">{d.label}</p>

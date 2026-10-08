@@ -8,7 +8,6 @@
 .pr-status.merged-label { font-size: 13px; font-weight: 500; color: var(--merged); }
 .btn.continue { border-style: dashed; border-color: color-mix(in srgb, var(--merged-solid) 85%, var(--panel)); color: var(--merged); }
 .btn.pr-strong { border-color: var(--line-4); }
-.btn.pr-busy:disabled { opacity: 1; background: var(--surface-3); color: var(--ink-3); }
 
 /* Create PR: a squared right edge, then the caret that opens the menu. */
 .pr-split { display: inline-flex; align-items: center; }
