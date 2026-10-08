@@ -6,7 +6,7 @@ import './footer.css'
 
 /**
  * The strip under every main panel: the update pill and Ask Rowan on the right. Hook health shows on the left only when the
- * hook server is down (D-079); Settings, Hooks has the port and status.
+ * hook server is down (D-082); Settings, Hooks has the port and status.
  */
 export function Footer() {
   const down = useStore((s) => s.system.hooks?.listening === false)

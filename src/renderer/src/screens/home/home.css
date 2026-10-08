@@ -1,7 +1,7 @@
 /* Home and HomeEmpty (KERNEL-17). Tokens only. */
 .hm-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 .hm-page { padding: 32px 56px 48px; max-width: 1200px; }
-.hm-top { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 22px; }
+.hm-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-bottom: 22px; }
 .hm-hello { margin: 0; font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.6px; }
 .hm-count { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
 .hm-cols { display: grid; grid-template-columns: minmax(0, 662px) minmax(0, 390px); gap: 28px; align-items: start; }
@@ -53,3 +53,14 @@
 .hm-starts svg { color: var(--ink-2); margin-bottom: 6px; }
 .hm-starts b { font-weight: 500; font-size: 13px; }
 .hm-starts span { font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+
+/* Narrower than the two columns: Rooms drops under the lists as a grid of cards, and the page pulls in (D-080). */
+@container panel (max-width: 960px) {
+  .hm-cols { grid-template-columns: minmax(0, 1fr); }
+  .hm-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+}
+@container panel (max-width: 720px) {
+  .hm-page { padding: 24px 20px 32px; }
+  .hm-ship { grid-template-columns: 18px minmax(0, 1fr) 90px 52px; }
+  .hm-ship-room { display: none; }
+}

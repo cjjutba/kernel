@@ -1,7 +1,7 @@
 /* Team, agent profile, New agent, Retire (KERNEL-19). Tokens only. */
 .tm-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.tm-filter { display: flex; gap: 2px; padding: 2px; border-radius: var(--r); border: 1px solid var(--pill-line); }
-.tm-filter button { height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
+.tm-filter { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 2px; border-radius: var(--r); border: 1px solid var(--pill-line); }
+.tm-filter button { flex-shrink: 0; white-space: nowrap; height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
 .tm-filter button[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
 .tm-filter .tm-n { margin-left: 6px; color: var(--muted); }
 .tm-body { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 28px; }
@@ -16,7 +16,9 @@
 .tm-av.lg { width: 44px; height: 44px; font-size: 18px; }
 .tm-av.xl { width: 52px; height: 52px; font-size: 20px; }
 .tm-text { display: flex; flex-direction: column; min-width: 0; }
-.tm-line { display: flex; align-items: center; gap: 8px; }
+.tm-line { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.tm-line > * { flex-shrink: 0; }
+.tm-line > .tm-role { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .tm-name { font-weight: 500; }
 .tm-role, .tm-desc { font-size: 12px; color: var(--muted); }
 .tm-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -86,3 +88,22 @@ button.ap-card:hover { background: var(--surface); }
 .tm-ink3 { color: var(--ink-3); }
 .tm-box { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: var(--r); background: var(--code-bg); font-size: 12px; }
 .ap-two .segmented button { white-space: nowrap; padding: 0 6px; }
+
+/* Narrow screens (D-080). The team table drops File, then Workspace. */
+@container panel (max-width: 900px) {
+  .tm-body { padding: 16px; }
+  .tm-grid { grid-template-columns: minmax(0, 1fr) 110px 100px minmax(0, 0.8fr); }
+  .tm-grid > :nth-child(5) { display: none; }
+  .ap-two { grid-template-columns: minmax(0, 1fr); }
+}
+@container panel (max-width: 640px) {
+  .tm-grid { grid-template-columns: minmax(0, 1fr) 100px 90px; }
+  .tm-grid > :nth-child(4) { display: none; }
+}
+/* The agent profile stacks its facts above the form. */
+@container panel (max-width: 720px) {
+  .ap-body { flex-direction: column; overflow-y: auto; }
+  .ap-side { width: auto; overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+  .ap-main { overflow: visible; }
+  .ap-form { padding: 20px 24px 32px; }
+}

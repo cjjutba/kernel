@@ -2,27 +2,31 @@
 
 /* layout: three columns with the sidebar. The header tops the chat column; the right panel runs the full height. */
 .panel.ws-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto minmax(0, 1fr); }
-.ws-panel > .header { grid-column: 1; grid-row: 1; }
-.ws-main { position: relative; grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
-.ws-aside { grid-column: 2; grid-row: 1 / span 2; width: 400px; display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; }
+.ws-panel > .header { grid-column: 1; grid-row: 1; container: ws-head / inline-size; }
+.ws-main { position: relative; grid-column: 1; grid-row: 2; min-width: 0; min-height: 0; display: flex; flex-direction: column; container: chat / inline-size; }
+/* 28% of the window between 320 and 400px, so 400px at 1440 as on the canvas. The panel folds below 1024px (D-080). */
+.ws-aside { grid-column: 2; grid-row: 1 / span 2; width: clamp(320px, 28vw, 400px); display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; }
 .ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); }
 .crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
-.crumb { padding: 0; border: 0; background: transparent; color: var(--ink-2); }
+.crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
+/* The branch gives way before the workspace name, then goes once the header is narrow. */
+.ws-branch { flex-shrink: 4; min-width: 0; font-size: 12px; }
+@container ws-head (max-width: 480px) { .ws-branch { display: none; } }
 
 /* header: the pull request area is in pr/pr.css */
 .btn.small { height: 26px; padding: 0 10px; border-radius: var(--r-sm); font-size: 12px; }
 
 /* tabs row */
 .ws-tabs { position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.tab-group { display: inline-flex; align-items: flex-end; }
-.ws-tab { display: inline-flex; align-items: center; gap: 7px; height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+.tab-group { display: inline-flex; align-items: flex-end; min-width: 0; }
+.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .ws-tab:hover { color: var(--ink-2); }
 .ws-tab[aria-selected='true'] { border-bottom-color: var(--ink); color: var(--ink); }
 .tab-caret { width: 22px; height: 22px; border-radius: 5px; }
 .tab-caret.more { opacity: 0; }
 .tab-group:hover .tab-caret.more, .tab-group:focus-within .tab-caret.more { opacity: 1; }
-.cp-btn { align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12.5px; }
+.cp-btn { flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12.5px; }
 .cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
 /* transcript */
@@ -79,7 +83,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .change-row:hover { background: var(--nav-hover); }
 
 /* bottom panel */
-.bottom-panel { height: 280px; flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.bottom-panel { height: clamp(160px, 38%, 280px); flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .bottom-tabs { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 10px; }
 .bottom-tabs .tab { height: 26px; border-radius: var(--r-sm); font-size: 12.5px; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
@@ -119,3 +123,10 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .chat-suggest button { height: 30px; padding: 0 12px; border: 1px solid var(--line-3); border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 13px; }
 .chat-suggest button:hover { background: var(--surface-3); }
 .tab-rename { height: 26px; width: 150px; padding: 0 8px; margin: 0 6px; align-self: center; border: 1px solid var(--line-4); border-radius: 6px; background: var(--input-bg); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; }
+
+/* A narrow chat column: Checkpoints keeps its icon, and the transcript and composer pull in from the edges (D-080). */
+@container chat (max-width: 520px) {
+  .cp-btn { width: 28px; justify-content: center; padding: 0; }
+  .cp-label { display: none; }
+  .ws-scroll { padding: 16px 16px 8px; }
+}

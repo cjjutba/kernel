@@ -147,7 +147,7 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
       </span>
       <span className="grow" />
       <button type="button" className="cp-btn" aria-expanded={checkpoints} aria-label="Checkpoints" onClick={() => actions.ui.setWorkspaceView({ checkpoints: !checkpoints })}>
-        <Icon name="history" size={14} />Checkpoints
+        <Icon name="history" size={14} /><span className="cp-label">Checkpoints</span>
       </button>
     </div>
   )

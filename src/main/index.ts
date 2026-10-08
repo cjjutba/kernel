@@ -31,8 +31,9 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1440,
     height: 900,
-    minWidth: 1100,
-    minHeight: 700,
+    // Small enough to tile half of a laptop screen. Below 1024 and 900 the right panel and sidebar fold (D-080).
+    minWidth: 720,
+    minHeight: 520,
     backgroundColor: '#08090a',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: LIGHTS.sidebar,

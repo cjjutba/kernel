@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
-import { toggleFocus, toggleRightPanel, toggleSidebar } from './components/PanelToggles'
+import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
@@ -109,6 +109,7 @@ function useDevUiHash() {
 export function App() {
   useDevUiHash()
   useAppearance()
+  useFoldPanels()
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
