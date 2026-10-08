@@ -1,5 +1,6 @@
 @import './ui/ui.css';
-/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. */
+/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working`, `--needs` and the
+   `--tint-*` pill fills color status words in the sidebar's hover cards only (D-084). */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
@@ -23,6 +24,14 @@
   --del: #eb5757;
   --merged: #b9a3f5;
   --merged-solid: #7c5ce0;
+  --working: #7cb2ff;
+  --needs: #f2c55c;
+  --tint-working: #1c2b45;
+  --tint-needs: #40330f;
+  --tint-add: #173327;
+  --tint-del: #2f191b;
+  --tint-merged: #2c2545;
+  --tint-muted: #222428;
   --danger: #e5484d;
   --on-solid: #ffffff;
   --on-ink: #08090a;
@@ -68,6 +77,14 @@
   --del: #b32e2e;
   --merged: #6b4bd0;
   --merged-solid: #7c5ce0;
+  --working: #1a56b0;
+  --needs: #7a4f00;
+  --tint-working: #d6e4fb;
+  --tint-needs: #fce9a8;
+  --tint-add: #d7f0e2;
+  --tint-del: #fbe1e1;
+  --tint-merged: #ebe5fc;
+  --tint-muted: #e8e8ec;
   --danger: #bd2b2b;
   --on-solid: #ffffff;
   --on-ink: #f3f3f4;
@@ -121,7 +138,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nodrag { -webkit-app-region: no-drag; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; }
 .panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
-/* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-080). */
+/* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-084). */
 .panel { container: panel / inline-size; }
 .header { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 /* A header never wraps. Its mono detail (repo, branch, task count) gives way first. */
@@ -142,6 +159,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nav-item svg { color: var(--muted); flex-shrink: 0; }
 .nav-item[aria-current='page'] svg { color: var(--ink-2); }
 .nav-sub { padding-left: 30px; }
+/* A few pixels between rows, so a hovered row's fill never touches the selected row's (Conductor). */
+.nav-list { display: flex; flex-direction: column; gap: 3px; }
 .section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
 .hv .more { opacity: 0; transition: opacity 0.12s; }
 .hv:hover .more, .hv:focus-within .more { opacity: 1; }
@@ -174,7 +193,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 
 /* modal: one shell for every dialog */
 .scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(8px); }
-/* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-080). */
+/* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
 .modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); }
 .modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
 .modal-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 500; }
