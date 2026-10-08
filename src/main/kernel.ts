@@ -22,7 +22,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -858,7 +858,7 @@ export class Kernel {
     stopScript(id, 'setup')
     const repo = await loadRepoSettings(room.path)
     // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
-    const gone = await stat(ws.path).then(() => false, () => true)
+    const gone = await folderGone(ws.path)
     if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
@@ -1146,7 +1146,7 @@ export class Kernel {
         try {
           const ws = await this.syncBranch(id)
           if (ws.mode !== 'worktree') return false
-          if (await stat(ws.path).then(() => false, () => true)) return false
+          if (await folderGone(ws.path)) return false
           return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
         } catch { return 'unknown' }
       },
@@ -1244,8 +1244,7 @@ export class Kernel {
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
-    const gone = await stat(asked.path).then(() => false, () => true)
-    const info = gone
+    const info = await folderGone(asked.path)
       ? await this.github.info(this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, id, { conflicts: false })
       : await this.github.info(asked.path, asked.branch, id)
     if (info) bus.push({ type: 'pr.info', info })

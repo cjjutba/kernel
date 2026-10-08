@@ -107,12 +107,25 @@ export async function restoreWorktree(o: { repo: string; path: string; branch: s
 }
 
 /**
+ * Whether the folder at `path` no longer exists. Only ENOENT says so: a folder Kernel can't read (EACCES) may still hold
+ * files, so any other error is thrown (KERNEL-109).
+ */
+export async function folderGone(path: string): Promise<boolean> {
+  try {
+    await stat(path)
+    return false
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return true
+    throw e
+  }
+}
+
+/**
  * A folder that is already gone counts as removed: git only needs its record pruned (KERNEL-109). A folder that exists
- * but isn't a worktree still throws, since it may hold the user's files.
+ * but isn't a worktree still throws, since it may hold the user's files, and so does one that can't be read.
  */
 export async function removeWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean } = {}) {
-  const gone = await stat(path).then(() => false, () => true)
-  if (gone) await git(repo, 'worktree', 'prune')
+  if (await folderGone(path)) await git(repo, 'worktree', 'prune')
   else await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
 }

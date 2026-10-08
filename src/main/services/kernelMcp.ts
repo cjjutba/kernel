@@ -63,6 +63,14 @@ export function kernelTools(d: KernelToolDeps) {
     const title = d.chatTitle?.(w.leadChatId)
     return title ? ` · from Lead chat "${title}"` : ' · from another Lead chat'
   }
+  /**
+   * The workspace with its PR state as GitHub has it. A saved open state can be stale, as when the PR merged after the
+   * folder was deleted. A closed one needs no check, and when GitHub can't be reached the saved state decides (KERNEL-109).
+   */
+  const latestPr = async (ws: Workspace): Promise<Workspace> => {
+    if (CLOSED_PR.has(ws.prState) || !d.refreshPr) return ws
+    return d.refreshPr(ws.id).catch(() => ws)
+  }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
       const agents = await d.agents()
@@ -125,10 +133,9 @@ export function kernelTools(d: KernelToolDeps) {
           : ws.mode === 'current' && !!d.lead && ws.agentId === d.lead.id ? 'it is your own workspace'
           : d.isRunning(ws.id) ? 'its agent is still working'
           : undefined
-        // The saved state can be stale, as when the PR merged after the folder was deleted, so GitHub decides. If it
-        // can't be reached, the saved state does (KERNEL-109).
-        const pr = !ws || first || CLOSED_PR.has(ws.prState) ? ws : await d.refreshPr?.(ws.id).catch(() => ws) ?? ws
-        const skip = first ?? (pr && !CLOSED_PR.has(pr.prState) ? `its PR${pr.prNumber ? ' #' + pr.prNumber : ''} is open and not merged` : undefined)
+        const pr = ws && !first ? await latestPr(ws) : undefined
+        const prOpen = pr && !CLOSED_PR.has(pr.prState) ? `its PR${pr.prNumber ? ' #' + pr.prNumber : ''} is open and not merged` : undefined
+        const skip = first ?? prOpen
         // Archive removes the worktree with --force, and Restore can't bring back what was never committed.
         // Unpushed commits stay on the kept branch (KERNEL-70), so only uncommitted work blocks, as in the sidebar.
         const unsaved = !ws || skip ? false : await d.unsaved(ws.id)

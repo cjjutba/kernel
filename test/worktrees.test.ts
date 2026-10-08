@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -48,6 +48,7 @@ describe('worktrees', () => {
     await git(repo, 'worktree', 'prune')
     await rm(kept, { recursive: true, force: true })
     await removeWorktree(repo, kept, { force: true })
+    // Resolving at all proves `worktree remove` was skipped for `dropped`: with its record pruned, it would exit 128.
     await removeWorktree(repo, dropped, { force: true, deleteBranch: 'feat/dropped' })
     const paths = (await git(repo, 'worktree', 'list', '--porcelain'))
     expect(paths).not.toContain(basename(kept))
@@ -62,6 +63,18 @@ describe('worktrees', () => {
     await writeFile(join(folder, 'notes.md'), 'mine\n')
     await expect(removeWorktree(repo, folder, { force: true })).rejects.toThrow()
     expect(await readFile(join(folder, 'notes.md'), 'utf8')).toBe('mine\n')
+  })
+
+  it('refuses a worktree it cannot read, rather than taking it for gone', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-locked-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/locked', baseRef: 'main' })
+    await writeFile(join(path, 'draft.ts'), 'export {}\n')
+    await chmod(root, 0o000)
+    onTestFinished(() => chmod(root, 0o755))
+    // stat fails with EACCES, not ENOENT, so the files may still be there and git's record must stay.
+    await expect(removeWorktree(repo, path, { force: true })).rejects.toThrow(/EACCES/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
   })
 
   it('hides pre-existing changes for current-branch workspaces', async () => {

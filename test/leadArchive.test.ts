@@ -1,8 +1,10 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { AgentDef, PrState, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
@@ -112,7 +114,7 @@ describe('archive_workspace (KERNEL-93)', () => {
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
   })
 
-  it('falls back to the saved PR state when GitHub cannot be reached', async () => {
+  it('falls back to the saved PR state when the refresh throws', async () => {
     const t = leadTools([ws('offline', { prState: 'ready', prNumber: 9 })], { refreshed: { offline: new Error('gh failed') } })
     expect(await t.archive(['offline'])).toBe('Skipped offline: its PR #9 is open and not merged.')
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
@@ -143,21 +145,28 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 })
 
+/** A started Kernel over a temp repo with Rowan as Lead and Kai, plus any `files`. Sessions never start a real turn. */
+async function kernelRoom(files: Record<string, string> = {}) {
+  const repo = await tempRepo({
+    'README.md': '# client\n',
+    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+    ...files
+  })
+  const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+  const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  const k = new Kernel({ dataDir, home })
+  await k.start()
+  onTestFinished(() => k.stop())
+  k.sessions.send = async () => ({ queued: false })
+  const room = await k.addRoom(repo)
+  return { k, repo, room }
+}
+
 describe('archive_workspace in the Kernel (KERNEL-93)', () => {
   it('archives through the sidebar path on a real repo, and skips the Lead, a running agent and uncommitted work', async () => {
-    const repo = await tempRepo({
-      'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    })
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const k = new Kernel({ dataDir, home })
-    await k.start()
-    onTestFinished(() => k.stop())
-    k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const { k, repo, room } = await kernelRoom()
     const done = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     const busy = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Still going' })
     const dirty = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Half done' })
@@ -188,19 +197,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
   })
 
   it('archives a workspace whose folder was deleted and whose saved PR state is stale (KERNEL-109)', async () => {
-    const repo = await tempRepo({
-      'README.md': '# client\n',
-      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
-      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
-    })
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const k = new Kernel({ dataDir, home })
-    await k.start()
-    onTestFinished(() => k.stop())
-    k.sessions.send = async () => ({ queued: false })
-    const room = await k.addRoom(repo)
+    const { k, repo, room } = await kernelRoom()
     const made = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     // The PR merged on GitHub while Kernel still had it failing checks, and the folder was deleted by hand.
     const gone = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, prState: 'cifail', prNumber: 12 })
@@ -227,5 +224,52 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     expect(asked).toEqual([[room.path, '12', { conflicts: false }]])
     expect(k.store.workspace(gone.id)).toMatchObject({ status: 'archived', prState: 'merged' })
     expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain(basename(gone.path))
+  })
+
+  it('reports unknown, not gone, for a worktree whose folder it cannot read', async () => {
+    const { k, room } = await kernelRoom()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const lead = await k.leadChat(room.id)
+    const agents = await k.agents(room.id)
+    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    await chmod(dirname(ws.path), 0o000)
+    onTestFinished(() => chmod(dirname(ws.path), 0o755))
+    expect(await wired!.unsaved(ws.id)).toBe('unknown')
+  })
+
+  it("skips the repo's archive script for a workspace whose folder is gone, and still runs it for one that is there", async () => {
+    const { k, room } = await kernelRoom({ '.kernel/settings.toml': '[scripts]\narchive = "echo tearing down"\n' })
+    const gone = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const there = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Export button' })
+    await rm(gone.path, { recursive: true, force: true })
+    const ran: string[] = []
+    const on = (e: PushEvent) => { if ((e.type === 'script.output' || e.type === 'script.exit') && e.kind === 'archive') ran.push(e.workspaceId) }
+    bus.on('push', on)
+    onTestFinished(() => { bus.off('push', on) })
+
+    await k.archiveWorkspace(gone.id)
+    await k.archiveWorkspace(there.id)
+    expect(k.store.workspace(gone.id)?.status).toBe('archived')
+    expect(k.store.workspace(there.id)?.status).toBe('archived')
+    expect(ran).not.toContain(gone.id)
+    expect(ran).toContain(there.id)
+  })
+
+  it('looks a PR up by branch from the room when the folder is gone and there is no PR number yet', async () => {
+    const { k, room } = await kernelRoom()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    await rm(ws.path, { recursive: true, force: true })
+    const asked: [string, string, { conflicts?: boolean } | undefined][] = []
+    k.github = {
+      ...k.github,
+      info: async (cwd, ref, workspaceId, o) => {
+        asked.push([cwd, ref, o])
+        return { workspaceId, number: 31, url: 'https://github.com/o/r/pull/31', title: 'feat: table', state: 'open', baseRef: 'main', checks: [], comments: [], conflicts: [] }
+      }
+    }
+
+    const next = await k.refreshPr(ws.id, { settle: true })
+    expect(asked).toEqual([[room.path, ws.branch, { conflicts: false }]])
+    expect(next).toMatchObject({ prState: 'open', prNumber: 31 })
   })
 })
