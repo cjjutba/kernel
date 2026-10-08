@@ -73,6 +73,7 @@ export class Store {
       .run(item.id, chatId, item.id, Date.now() * 1000 + (this.seq++ % 1000), JSON.stringify(item))
     return item
   }
+  clearItems(chatId: string) { this.db.prepare('delete from chat_items where chat_id = ?').run(chatId) }
 
   // approvals
   approvals(filter: { roomId?: string; pendingOnly?: boolean } = {}): Approval[] {

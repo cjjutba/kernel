@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
+import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -51,6 +51,8 @@ interface Live {
   retrying?: boolean
   /** Claude Code answered this turn with a usage limit, so the turn ended early. */
   limited?: boolean
+  /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
+  cleared?: boolean
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
@@ -92,6 +94,8 @@ export class Sessions {
   private waiting = new Set<string>()
   /** Chats a usage limit stopped mid-turn. They carry on by themselves once the limit lifts (`carryOn`). */
   private cutOff = new Set<string>()
+  /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
+  private builtins?: Promise<BuiltinCommand[]>
   constructor(private d: SessionDeps) {}
 
   /**
@@ -196,6 +200,29 @@ export class Sessions {
     const ask = q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
     if (typeof ask !== 'function') return
     try { this.mergeLimits(limitsFromUsage(await withTimeout(ask.call(q, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
+  }
+
+  /**
+   * Claude Code's own slash commands, for the composer's / menu. A live session answers; without one, Claude Code starts with
+   * no prompt, no settings and no transcript, lists them and stops, which sends no message. A failed read is tried again next time.
+   */
+  commands(cwd: string): Promise<BuiltinCommand[]> {
+    this.builtins ??= this.readCommands(cwd).catch((err) => { this.builtins = undefined; throw err })
+    return this.builtins
+  }
+
+  private async readCommands(cwd: string): Promise<BuiltinCommand[]> {
+    const live = [...this.live.values()].find((l) => !l.abort.signal.aborted)
+    if (live) return builtinCommands(await withTimeout(live.query.supportedCommands(), 15_000))
+    const input = new InputQueue<SDKUserMessage>()
+    const abort = new AbortController()
+    try {
+      const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
+      return builtinCommands(await withTimeout(q.supportedCommands(), 15_000))
+    } finally {
+      input.close()
+      abort.abort()
+    }
   }
 
   /** Claude Code started with no prompt, no settings and no transcript, asked for usage and stopped. It sends no message, so it uses none of the plan. */
@@ -490,6 +517,17 @@ export class Sessions {
           else { live.retrying = true; bus.push({ type: 'retry', chatId, retry: { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms } }) }
         }
         if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
+        // Most commands answer with an assistant message; some print here instead.
+        if (msg.subtype === 'local_command_output' && msg.content.trim()) this.item(chat, { kind: 'text', id: msg.uuid, ts: now, text: msg.content })
+        return
+      }
+      case 'conversation_reset': {
+        // /clear (or /reset, /new): Claude Code starts a fresh conversation under a new session id, which the next init
+        // saves. The transcript starts over too, as the CLI's screen does. The old conversation stays in Claude Code's own history.
+        this.d.store.clearItems(chatId)
+        live.toolItems.clear()
+        if (msg.trigger === 'clear') live.cleared = true
+        bus.push({ type: 'chat.cleared', chatId })
         return
       }
       case 'assistant': {
@@ -530,7 +568,7 @@ export class Sessions {
       case 'result': {
         const ok = msg.subtype === 'success'
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
-        if (ok || !live.interrupted) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
+        if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
         this.clearRetry(chatId, live)
         void this.refreshContext(chatId, live)
         const stopped = live.interrupted && !live.sendNext
@@ -541,6 +579,7 @@ export class Sessions {
         live.sendNext = false
         live.blocked = false
         live.limited = false
+        live.cleared = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat, { ok, interrupted })
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
@@ -699,6 +738,11 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
   }
   if (lead) text('')
   return { type: 'user', message: { role: 'user', content: content.length ? content : [{ type: 'text', text: '' }] }, parent_tool_use_id: null } as SDKUserMessage
+}
+
+/** The commands the / menu offers: Claude Code's own, without its internal ones (named with a leading underscore). */
+export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
+  return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
 }
 
 function toolDetail(name: string, input: any): string {

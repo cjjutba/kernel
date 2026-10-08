@@ -261,6 +261,7 @@ export function apply(e: PushEvent) {
     case 'activity': return actions.activity.add(e.event)
     case 'chat': return actions.chats.upsert(e.chat)
     case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
+    case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue)
     case 'terminal.data': return actions.chats.appendTerminal(e.chatId, e.data)

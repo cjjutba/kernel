@@ -39,6 +39,7 @@
 
 .cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }
+.cmp-ac-row + p { margin-top: 10px; }
 .cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
