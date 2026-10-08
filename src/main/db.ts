@@ -16,6 +16,7 @@ create table if not exists notifications (id text primary key, room_id text, dat
 create table if not exists activity (id text primary key, room_id text, ts integer not null, data text not null);
 create index if not exists activity_by_room on activity (room_id, ts);
 create table if not exists tasks (room_id text not null, id text not null, data text not null, created_at integer not null, primary key (room_id, id));
+create table if not exists meta (key text primary key, data text not null);
 `
 
 export class Store {
@@ -93,6 +94,10 @@ export class Store {
     return roomId ? this.all('select data from activity where room_id = ? order by ts desc limit ?', roomId, limit) : this.all('select data from activity order by ts desc limit ?', limit)
   }
   saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, room_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.roomId ?? null, e.ts, JSON.stringify(e)); return e }
+
+  // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)
+  meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }
+  saveMeta<T>(key: string, value: T) { this.db.prepare('insert or replace into meta (key, data) values (?, ?)').run(key, JSON.stringify(value)); return value }
 
   private all<T>(sql: string, ...args: unknown[]): T[] { return (this.db.prepare(sql).all(...args) as { data: string }[]).map((r) => JSON.parse(r.data)) }
   private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? JSON.parse(r.data) : undefined }

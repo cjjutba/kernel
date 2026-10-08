@@ -44,7 +44,6 @@ export interface BannerInput {
 /** From this much context use the chat offers to compact. */
 export const CONTEXT_WARN = 90
 
-const WEEKLY: RateLimit['type'][] = ['seven_day', 'seven_day_overage_included']
 const DAY = 24 * 3600_000
 
 /** `resetsAt` is epoch seconds. A rejection whose reset has passed no longer counts. */
@@ -104,7 +103,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     }
   }
 
-  const weekly = i.usage.filter((l) => WEEKLY.includes(l.type) && rejected(l, now)).sort((a, b) => (b.resetsAt ?? 0) - (a.resetsAt ?? 0))[0]
+  // Fable's own weekly limit (`seven_day_overage_included`) is a model limit, shown below.
+  const weekly = i.usage.find((l) => l.type === 'seven_day' && rejected(l, now))
   if (weekly) return {
     id: 'weekly', kind: 'limit', title: "You've used your weekly limit",
     sub: weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. Every room is paused.` : 'Every room is paused until it resets.',
