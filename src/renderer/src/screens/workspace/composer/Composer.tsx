@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, Chat, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../../api'
 import { actions, loadWorkspace, useStore } from '../../../store'
 import { Button, Icon, IconButton, Menu } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { baseName, dirName, filterSkills, mentionAt, slashAt } from './autocomplete'
+import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { HunkCard } from './HunkCard'
@@ -30,6 +30,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const { segs, draft, caret, input } = d
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
+  const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
@@ -44,13 +45,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const slash = slashAt(before, segs.length > 0)
   const acKey = mention ? `@${mention.query}` : slash ? `/${slash.query}` : ''
   const acOpen = !!acKey && dismissed !== acKey && !blocked
-  const skillRows = useMemo(() => (slash ? filterSkills(skills, slash.query, 5) : []), [skills, slash?.query])
-  const rows = mention ? files : skillRows
+  const groups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
+  const slashRows = groups.flatMap((g) => g.rows)
+  const rows = mention ? files : slashRows
   const roomId = ws?.roomId
 
   // The queue is also pushed as events; this reads what was queued before the screen opened.
   useEffect(() => { void call('chats.queue', { chatId: chat.id }).then((q) => actions.chats.setQueue(chat.id, q)).catch(() => undefined) }, [chat.id])
   useEffect(() => { if (roomId) void call('skills.list', { roomId }).then(setSkills).catch(() => setSkills([])) }, [roomId])
+  useEffect(() => { void call('commands.list', undefined).then(setCommands).catch(() => setCommands([])) }, [])
 
   // Files for the @ menu, as the query changes. Older answers are dropped.
   const query = mention?.query
@@ -67,13 +70,20 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   useEffect(() => { if (prefill) d.setText(prefill.text) }, [prefill])
   useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
-  const pickRow = (i: number) => {
+  /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
+  const pickRow = (i: number, run: boolean) => {
     if (mention) { const f = files[i]; if (f) d.insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
-    else if (slash) { const s = skillRows[i]; if (s) d.insert({ type: 'skill', name: s.name }, slash.query.length + 1) }
+    else if (slash) {
+      const s = slashRows[i]
+      if (!s) return
+      if (run && runsOnEnter(s, slash.query)) void send([{ type: 'text', text: [`/${s.name}`, draft.slice(caret).trim()].filter(Boolean).join(' ') }])
+      else d.insert({ type: 'skill', name: s.name }, slash.query.length + 1)
+    }
   }
 
-  const send = async () => {
-    const parts = d.message()
+  /** Sends what is in the box, or `picked` in its place (a command run from the / menu). */
+  const send = async (picked?: ChatPart[]) => {
+    const parts = picked ?? d.message()
     if (!parts.length || blocked) return
     const kept = d.snapshot()
     d.reset()
@@ -91,7 +101,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (acOpen && rows.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => (i + 1) % rows.length); return }
       if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => (i - 1 + rows.length) % rows.length); return }
-      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at); return }
+      if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') { e.preventDefault(); pickRow(at, e.key === 'Enter'); return }
     }
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
@@ -135,18 +145,25 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         {banner}
         <div className="cmp-box">
           {acOpen && rows.length > 0 && (
-            <div role="listbox" aria-label={mention ? 'Files' : 'Skills'} className="cmp-ac">
-              <p>{mention ? 'Files' : 'Skills'}</p>
+            <div role="listbox" aria-label={mention ? 'Files' : groups.map((g) => g.label).join(' and ')} className="cmp-ac">
               {mention
-                ? files.map((f, i) => (
-                  <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i)}>
+                ? <><p>Files</p>{files.map((f, i) => (
+                  <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
                     <span className="mono">{baseName(f.path)}</span><span className="sub ellipsis">{dirName(f.path)}</span>
                   </button>
-                ))
-                : skillRows.map((s, i) => (
-                  <button key={s.name} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i)}>
-                    <span className="mono">/{s.name}</span><span className="sub ellipsis">{s.description}</span>
-                  </button>
+                ))}</>
+                : groups.map((g) => (
+                  <Fragment key={g.label}>
+                    <p>{g.label}</p>
+                    {g.rows.map((s) => {
+                      const i = slashRows.indexOf(s)
+                      return (
+                        <button key={s.name} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
+                          <span className="mono">/{s.name}</span><span className="sub ellipsis">{s.description}</span>
+                        </button>
+                      )
+                    })}
+                  </Fragment>
                 ))}
             </div>
           )}

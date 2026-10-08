@@ -124,6 +124,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
+    'commands.list': async () => [],
     'terminal.write': async () => ok,
     'terminal.resize': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
