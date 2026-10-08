@@ -716,7 +716,7 @@ export type Modal =
  * Composer and new workspace menus share names because only one of the two is on screen.
  */
 export type MenuId =
-  | 'rooms' | `room:${string}` | 'account' | 'quickAsk'
+  | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash'
   | 'branch' | 'from'

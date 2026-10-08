@@ -5,6 +5,7 @@ import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './c
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
+import { Tooltips } from './ui'
 import { openLead } from './lead'
 import { AgentProfile } from './screens/agent/AgentProfile'
 import { Board } from './screens/board/Board'
@@ -146,6 +147,7 @@ export function App() {
       </div>
       {modal && <ModalView modal={modal} />}
       <Toasts />
+      <Tooltips />
     </div>
   )
 }

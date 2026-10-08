@@ -17,7 +17,6 @@
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }
-
 /* Hovering a workspace row swaps its diff totals for the archive button, the way Conductor does. The name stops short of it. */
 .ws-row { position: relative; }
 .ws-stat { font-size: 11px; display: inline-flex; gap: 6px; }
@@ -28,3 +27,19 @@
 .ws-row.busy .more { opacity: 1; }
 /* The archive icon brightens on hover with no square behind it. */
 .ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
+/* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
+.sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
+.sb-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 0 0 2px; }
+/* The plan pill and its popover, which opens above it (PlanMenu.tsx). */
+.plan-pill { height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 12px; display: inline-flex; align-items: center; }
+.plan-pill:hover, .plan-pill[aria-expanded='true'] { background: var(--nav-hover); color: var(--ink); }
+.plan-pill:focus-visible { outline-offset: 2px; }
+.popover.plan-pop { width: 264px; padding: 0; }
+.plan-head { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-bottom: 1px solid var(--line-3); }
+.plan-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+.plan-who { font-size: 12px; color: var(--muted); }
+.plan-rows { display: flex; flex-direction: column; gap: 14px; padding: 14px; }
+.plan-row { display: flex; flex-direction: column; gap: 6px; }
+.plan-title { font-size: 12.5px; color: var(--ink-2); }
+.plan-note { font-size: 11.5px; color: var(--muted); }
+.plan-foot { padding: 6px; border-top: 1px solid var(--line-3); }

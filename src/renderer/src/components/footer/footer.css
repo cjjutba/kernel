@@ -1,7 +1,6 @@
 /* Footer, Ask Rowan and the update pill (KERNEL-21). Tokens only. */
 .ft { padding: 0 12px 0 16px; gap: 10px; }
 .ft-hooks { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
-.ft-port { font-size: 12px; margin-left: 2px; }
 .ft-down { height: 24px; padding: 0 6px; margin-left: -6px; border: 0; border-radius: 6px; background: transparent; color: var(--ink-2); font-size: 12px; }
 .ft-down:hover { background: var(--surface-3); }
 .ft-fix { margin-left: 4px; color: var(--ink); text-decoration: underline; }

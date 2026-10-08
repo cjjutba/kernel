@@ -75,6 +75,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Hover actions: message actions (copy, retry, edit, fork) and sidebar `...` menus appear on hover and on keyboard focus.
 - Banners for failures: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner). Never red backgrounds.
 - Toasts: bottom right, auto-dismiss after 2.6s.
+- Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.
 - Danger: red only on the final confirm button, never on the trigger.
 - Merged is the only purple: the PR link, the Merged label, the merged History row.
 

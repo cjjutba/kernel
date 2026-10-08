@@ -35,6 +35,10 @@
 .menu-kbd { font: 11.5px var(--mono); color: var(--muted); }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
 .popover { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
+.popover[data-side='top'] { top: auto; bottom: calc(100% + 6px); }
+/* The one tooltip (Tooltips.tsx). Fixed at 0,0 and moved into place with a transform once measured. */
+.tooltip { position: fixed; top: 0; left: 0; z-index: 90; max-width: 280px; padding: 4px 8px; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-2); color: var(--ink); font-size: 12px; line-height: 16px; pointer-events: none; }
+.tooltip-kbd { margin-left: 8px; font: 11.5px var(--mono); color: var(--muted); }
 
 /* modal */
 .confirm-body { display: flex; flex-direction: column; gap: 10px; padding: 20px 20px 16px; }

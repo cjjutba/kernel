@@ -123,7 +123,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             )}
           </span>
           <span ref={branchAnchor}>
-            <button type="button" className="icon-btn nw-tool" aria-label="Branch options" title="Branch options" aria-haspopup="dialog" aria-expanded={menu === 'branch'} onClick={() => toggle('branch')}><Icon name="more" /></button>
+            <button type="button" className="icon-btn nw-tool" aria-label="Branch options" aria-haspopup="dialog" aria-expanded={menu === 'branch'} onClick={() => toggle('branch')}><Icon name="more" /></button>
           </span>
           {menu === 'branch' && <BranchMenu anchorRef={branchAnchor} target={target} targets={targets} onTarget={setBaseRef} mode={mode} onMode={setMode} hint={modeInfo.hint} />}
           <span className="grow" />
@@ -158,7 +158,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             )}
           </span>
           <span ref={plusAnchor} style={{ position: 'relative' }}>
-            <button type="button" className="icon-btn nw-tool" aria-label="Plan mode and attachments" title="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => toggle('plus')}><Icon name="plus" /></button>
+            <button type="button" className="icon-btn nw-tool" aria-label="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => toggle('plus')}><Icon name="plus" /></button>
             {menu === 'plus' && (
               <Menu label="Add" anchorRef={plusAnchor} onClose={actions.ui.closeMenu} style={{ right: 0, bottom: 'calc(100% + 8px)', width: 240 }} items={[
                 { id: 'plan', label: plan ? 'Plan mode is on' : 'Plan mode', shortcut: '⇧Tab', onSelect: togglePlan },

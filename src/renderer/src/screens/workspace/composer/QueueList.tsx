@@ -11,7 +11,7 @@ export function QueueList({ queue, onEdit, onNow, onRemove }: { queue: QueuedMes
       {queue.map((q) => (
         <li key={q.id} className="queue-row">
           <span className="muted" style={{ fontSize: 12 }}>Queued</span>
-          <button type="button" className="queue-text ellipsis" title="Edit this message" onClick={() => onEdit(q)}>{textOf(q.parts)}</button>
+          <button type="button" className="queue-text ellipsis" data-tip="Edit this message" onClick={() => onEdit(q)}>{textOf(q.parts)}</button>
           <Button className="queue-now" onClick={() => onNow(q)}>Send now</Button>
           <button type="button" className="queue-x" aria-label="Remove queued message" onClick={() => onRemove(q)}><Icon name="close" size={10} stroke={2} /></button>
         </li>

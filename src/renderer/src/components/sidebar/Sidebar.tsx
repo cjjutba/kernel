@@ -9,6 +9,7 @@ import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
+import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
 import { workspaceGlyph } from './workspaceGlyph'
@@ -64,7 +65,7 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
   const [busy, setBusy] = useState(false)
   const g = workspaceGlyph(ws, { needsYou, running })
   const glyph = (
-    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} title={g.label}>
+    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} data-tip={g.label}>
       {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
     </span>
   )
@@ -165,12 +166,12 @@ export function Sidebar() {
     <nav aria-label="Sidebar" className="sidebar">
       {/* The traffic lights end near x 70. The toggle sits just right of them, where the header's Show sidebar sits when hidden. */}
       <div className="drag" style={{ height: 42, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 70 }}>
-        <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" onClick={() => actions.ui.setSidebar(false)} />
+        <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
       </div>
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New workspace" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
+        <button className="icon-btn" aria-label="New workspace" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="col" style={{ gap: 1, marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
@@ -179,7 +180,8 @@ export function Sidebar() {
         <NavItem route={{ name: 'rooms' }} icon="rooms" label="All rooms" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
-      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative' }}>
+      <div className="sb-rule" role="separator" />
+      <div ref={roomsAnchor} className="section-label hv" style={{ position: 'relative', marginTop: 8 }}>
         <span>Your rooms</span>
         <button className="icon-btn more" style={{ width: 24, height: 24, opacity: roomsMenu ? 1 : undefined }} aria-label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')}><Icon name="more" size={14} /></button>
         {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
@@ -198,11 +200,13 @@ export function Sidebar() {
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" /><span className="grow">Check hooks</span></button>
       </div>
       <div style={{ flex: 1 }} />
-      {plan && (
-        <div className="row" style={{ height: 40, flexShrink: 0, padding: '0 2px' }}>
-          <span style={{ height: 24, padding: '0 9px', borderRadius: 999, border: '1px solid var(--line-2)', fontSize: 12, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>{plan}</span>
-        </div>
-      )}
+      {/* The plan on the left, What's new and Settings on the right, as in Conductor. */}
+      <div className="sb-foot">
+        {plan && <PlanButton plan={plan} />}
+        <span className="grow" />
+        <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
+        <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
+      </div>
     </nav>
   )
 }
