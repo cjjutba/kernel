@@ -3,9 +3,20 @@ import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, pastedText } from './attach'
 import { ComposerChip } from './Chip'
-import { loadDraft, saveDraft } from './draftStore'
+import { getState, subscribe } from '../../../store'
+import { liveChatIds, loadDraft, pruneDrafts, saveDraft } from './draftStore'
 
 const text = (t: string): ChatPart => ({ type: 'text', text: t })
+
+// A draft lasts as long as its chat. Checking the live chat list on every change of it covers a closed tab, an archived
+// workspace (from the sidebar or the Lead's archive_workspace) and a removed room, wherever the app is looking.
+let seen: { chats: unknown; workspaces: unknown } | null = null
+subscribe(() => {
+  const s = getState()
+  if (seen && seen.chats === s.chats && seen.workspaces === s.workspaces) return
+  seen = { chats: s.chats, workspaces: s.workspaces }
+  pruneDrafts(liveChatIds(s))
+})
 
 /** The message to send: leading blank text dropped, trailing space trimmed. Empty when there is nothing to send. */
 export function messageOf(parts: ChatPart[]): ChatPart[] {
@@ -255,9 +266,16 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     }
     if (document.activeElement === el) { getSelection()?.removeAllRanges(); getSelection()?.addRange(endOf(el)) }
     else {
-      // The old caret pointed into nodes that are gone. An unfocused box keeps the caret at the end for the next focus.
+      // The old caret pointed into nodes that are gone, so the next focus goes to the end. A selection that was in the box
+      // moves there too; one outside it stays. Chromium hands focus to a box that script selects in, so focus goes back to
+      // the element that had it, or arrow keys on the tab that was just clicked would stop working.
       saved.current = endOf(el)
-      if (shown.current) { getSelection()?.removeAllRanges(); getSelection()?.addRange(endOf(el)) }
+      const anchor = getSelection()?.anchorNode
+      if (anchor && el.contains(anchor)) {
+        const had = document.activeElement
+        getSelection()?.removeAllRanges(); getSelection()?.addRange(endOf(el))
+        if (had instanceof HTMLElement && document.activeElement !== had) had.focus({ preventScroll: true })
+      }
     }
     sync(true)
   }
@@ -368,8 +386,27 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     }
   }
 
+  /** `forKey` when its draft is not in the box: the composer shows another chat, or it unmounted while an await ran. */
+  const elsewhere = (forKey?: string) => (forKey !== undefined && (forKey !== shown.current || !input.current) ? forKey : undefined)
+
   return {
-    input, sync, focus, insert, insertText, attach, drop, onPaste, onKey, removeChip,
+    input, sync, focus,
+    /** Focus that arrives with the caret at the very start (Tab) or none puts it at the end. A click sets its own caret right after. */
+    onFocus: () => {
+      const el = input.current
+      const sel = getSelection()
+      const r = sel?.rangeCount ? sel.getRangeAt(0) : null
+      if (!el || !sel) return
+      if (r && el.contains(r.startContainer)) {
+        const head = document.createRange()
+        head.selectNodeContents(el)
+        head.setEnd(r.startContainer, r.startOffset)
+        if (!r.collapsed || head.toString() || head.cloneContents().querySelector('[data-chip]')) return
+      }
+      sel.removeAllRanges()
+      sel.addRange(endOf(el))
+    },
+    insert, insertText, attach, drop, onPaste, onKey, removeChip,
     onCopy: (e: ClipboardEvent<HTMLDivElement>) => copy(e, false),
     onCut: (e: ClipboardEvent<HTMLDivElement>) => copy(e, true),
     parts: view.parts,
@@ -389,16 +426,19 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
     setText: (t: string) => write([...read().filter((p) => p.type !== 'text'), ...(t ? [text(t)] : [])], true),
     /**
      * Replace everything, after a send, for a failed send, or a queued message brought back to edit. `forKey` is the chat
-     * the content belongs to: if the composer has moved on to another chat, it goes back to that chat's stored draft instead.
+     * the content belongs to. If the box has moved on to another chat, or the composer unmounted while the call ran, the
+     * content replaces that chat's stored draft instead, so it never lands in the wrong chat or gets lost.
      */
     reset: (next: ChatPart[] = [], forKey?: string) => {
-      if (forKey !== undefined && forKey !== shown.current) {
-        if (!loadDraft(forKey)) saveDraft(forKey, next)
-        return
-      }
-      write(next, false)
+      const gone = elsewhere(forKey)
+      if (gone !== undefined) saveDraft(gone, next)
+      else write(next, false)
     },
-    snapshot: () => read()
+    /** The parts in the box, or the stored draft of `forKey` when the box has moved on to another chat or is gone. */
+    snapshot: (forKey?: string) => {
+      const gone = elsewhere(forKey)
+      return gone !== undefined ? loadDraft(gone) ?? [] : read()
+    }
   }
 }
 
@@ -408,7 +448,7 @@ export type DraftState = ReturnType<typeof useDraft>
  * The editable part of every composer: text and chips inline, in order. The placeholder shows only while it is empty.
  * `onKeyDown` runs first; Enter it didn't take breaks the line.
  */
-export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onInput, ...rest }: { d: DraftState; className?: string; placeholder?: string; disabled?: boolean } & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className' | 'contentEditable' | 'onPaste' | 'onCopy' | 'onCut' | 'placeholder'>) {
+export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onInput, onFocus, ...rest }: { d: DraftState; className?: string; placeholder?: string; disabled?: boolean } & Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'className' | 'contentEditable' | 'onPaste' | 'onCopy' | 'onCut' | 'placeholder'>) {
   return (
     <>
       <div
@@ -419,6 +459,7 @@ export function DraftInput({ d, className, placeholder, disabled, onKeyDown, onI
         {...rest}
         onInput={(e) => { d.sync(); onInput?.(e) }}
         onKeyDown={(e) => { if (e.target !== e.currentTarget) return; onKeyDown?.(e); if (!e.defaultPrevented) d.onKey(e) }}
+        onFocus={(e) => { d.onFocus(); onFocus?.(e) }}
         onPaste={d.onPaste} onCopy={d.onCopy} onCut={d.onCut}
         onDragStart={(e) => e.preventDefault()}
       />
