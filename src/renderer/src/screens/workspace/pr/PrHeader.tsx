@@ -24,7 +24,7 @@ const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden=
 /**
  * The pull request actions, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed, WorkspaceChangesRequested,
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
- * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-070).
+ * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071).
  */
 export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null)
