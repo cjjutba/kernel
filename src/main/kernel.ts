@@ -9,6 +9,7 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
+import { planExists, savePlan } from './services/plans'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
@@ -28,7 +29,7 @@ import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettin
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { allGreen, gh, ghUser as ghUserName, openPrs, prNote, resolveFile, type GitHub } from './services/github'
+import { allGreen, gh, ghUser as ghUserName, openIssues, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
@@ -917,6 +918,19 @@ export class Kernel {
     return files
   }
 
+  /** A plan's file for Open in editor and Add to message, written again from the approval when it is missing (D-085). */
+  async planFile(id: string): Promise<{ path: string; relative: string }> {
+    const a = this.store.approvals().find((x) => x.id === id)
+    const text = a ? String(a.detail || (a.input as { plan?: unknown } | undefined)?.plan || '') : ''
+    if (!a || !text.trim()) throw new Error('This plan has no text to save.')
+    const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
+    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error('Its workspace folder is gone. Copy the plan instead.')
+    if (a.planFile && (await planExists(ws.path, a.planFile))) return { path: join(ws.path, a.planFile), relative: a.planFile }
+    const relative = await savePlan(ws.path, text, { fallback: a.title, reuse: a.planFile })
+    if (relative !== a.planFile) this.approvals.update(a.id, { planFile: relative })
+    return { path: join(ws.path, relative), relative }
+  }
+
   async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
     const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
@@ -1375,6 +1389,7 @@ export class Kernel {
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
+      'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
@@ -1438,6 +1453,7 @@ export class Kernel {
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
       'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, decision); if (!a) throw new Error('This request already timed out or was answered.'); return a },
+      'approvals.planFile': async ({ id }) => this.planFile(id),
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),

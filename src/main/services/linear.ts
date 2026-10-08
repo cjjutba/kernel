@@ -31,5 +31,5 @@ export async function searchIssues(token: string | undefined, query = '', fetchI
   if (res.status === 401 || res.status === 403) throw new Error('Linear rejected the token. Reconnect it in Settings > Integrations.')
   const body = (await res.json().catch(() => null)) as { data?: { issues?: { nodes?: { identifier: string; title: string; url?: string }[] } }; errors?: { message: string }[] } | null
   if (!res.ok || body?.errors?.length || !body?.data) throw new Error(body?.errors?.[0]?.message ?? `Linear answered ${res.status}.`)
-  return (body.data.issues?.nodes ?? []).map((n) => ({ id: n.identifier, title: n.title, url: n.url }))
+  return (body.data.issues?.nodes ?? []).map((n) => ({ id: n.identifier, title: n.title, url: n.url, source: 'linear' as const }))
 }

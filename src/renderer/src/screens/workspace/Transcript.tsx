@@ -4,10 +4,11 @@ import { call } from '../../api'
 import { Icon, Skeleton, Spinner } from '../../ui'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { ApprovalCard } from './cards/ApprovalCard'
+import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, copyText, MessageActions } from './MessageActions'
-import { ImageButton } from './composer/Chip'
+import { chipIcon, ImageButton } from './composer/Chip'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -19,7 +20,7 @@ const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text'
 
 function PartChip({ part }: { part: ChatPart }) {
   if (part.type === 'text') return null
-  const icon = part.type === 'image' ? 'image' : part.type === 'file' ? 'doc' : null
+  const icon = part.type === 'skill' ? null : chipIcon(part)
   const body = <>{icon ? <Icon name={icon} size={12} /> : <span aria-hidden="true" className="muted">/</span>}{part.name}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
   return <span className="msg-chip" data-kind={part.type}>{body}</span>
@@ -118,7 +119,7 @@ function Elapsed({ since }: { since: number }) {
 
 function ApprovalRow({ id }: { id: string }) {
   const a = useStore((s) => s.approvals.find((x) => x.id === id))
-  return a ? <ApprovalCard approval={a} /> : null
+  return a ? <ApprovalCard approval={a} inChat /> : null
 }
 
 function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: { block: ThreadBlock; chat: Chat; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => void; onTerminal: () => void }) {
@@ -173,6 +174,8 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
   const items = useStore((s) => s.items[chat.id] ?? EMPTY)
   const running = useStore((s) => !!s.running[chat.id])
   const approvals = useStore((s) => s.approvals)
+  // The agent is waiting on you, not working, while its plan waits.
+  const planWaits = useStore((s) => !!waitingPlan(s.approvals, chat))
   const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
@@ -215,9 +218,9 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
       )}
       <div className="thread" style={empty ? { display: 'none' } : undefined}>
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chat={chat} changes={changes} agentName={agentName} onEdit={onEdit} onFork={fork} onTerminal={terminal} />)}
-        {loose.map((a) => <ApprovalCard key={a.id} approval={a} />)}
+        {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
         {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
-        {running && <Elapsed since={since} />}
+        {running && !planWaits && <Elapsed since={since} />}
         <div ref={end} />
       </div>
     </div>
