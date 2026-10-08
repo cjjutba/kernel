@@ -13,7 +13,7 @@ import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
-import { workspaceGlyph } from './workspaceGlyph'
+import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
@@ -29,19 +29,30 @@ function NavItem({ route, icon, label, right, sub, describedBy }: { route: Route
   )
 }
 
+/** A row's state icon, with its state as the tooltip and the accessible name. */
+function Glyph({ g }: { g: WorkspaceGlyph }) {
+  return (
+    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} data-tip={g.label}>
+      {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
+    </span>
+  )
+}
+
 /**
  * The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace.
- * Hovering it shows the Lead's card.
+ * Its icon shows the Lead's floor status, and hovering it shows the Lead's card.
  */
 function LeadItem({ roomId }: { roomId: string }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
+  const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
   const card = useHoverCard()
   if (!lead) return null
+  const g = leadGlyph(status)
   return (
     <div {...card.bind}>
-      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
-        <Icon name="chat" />
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
+        <Glyph g={g} />
         <span className="grow ellipsis">{lead.name}</span>
         <span className="muted" style={{ fontSize: 12 }}>Lead</span>
       </button>
@@ -76,16 +87,11 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
   const [busy, setBusy] = useState(false)
   const card = useHoverCard()
   const g = workspaceGlyph(ws, { needsYou, running })
-  const glyph = (
-    <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} data-tip={g.label}>
-      {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
-    </span>
-  )
   const archive = () => { setBusy(true); void archiveFromSidebar(ws).finally(() => setBusy(false)) }
   return (
     <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`}>
       <NavItem
-        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name} describedBy={card.at ? card.id : undefined}
+        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
