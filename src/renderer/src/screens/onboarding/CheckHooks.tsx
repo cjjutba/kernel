@@ -66,7 +66,7 @@ export function CheckHooks() {
         <Button disabled={busy || !hooks?.installed || !hooks.listening} onClick={() => void test()}>Send test event</Button>
         <span className="hk-note" role="status" aria-live="polite">{note}</span>
       </div>
-      <pre className="code hk-snip"><span className="path">~/.claude/settings.json</span>{`\n"hooks": {\n  "PreToolUse": [{\n    "hooks": [{ "type": "command", "command": "/usr/bin/curl ..." }]\n  }],\n  ...one entry per event\n}`}</pre>
+      <pre className="code hk-snip"><span className="path">~/.claude/settings.json</span>{`\n"hooks": {\n  "PreToolUse": [{\n    "hooks": [{ "type": "command", "command": "/usr/bin/curl ... || true" }]\n  }],\n  ...one entry per event\n}`}</pre>
     </Modal>
   )
 }
