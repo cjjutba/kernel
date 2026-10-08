@@ -4,12 +4,27 @@ import { call } from '../../api'
 import { Icon, useBusy } from '../../ui'
 import { actions, go, useStore } from '../../store'
 import { latestWarn } from '../../floor/layout'
-import { byDay, earlierLabel, logRows, type LogRow } from '../../floor/logs'
+import { earlierLabel, foldWhat, foldWho, logDays, type LogRow } from '../../floor/logs'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { PermCard, PlanCard, ReviewCard } from './Briefing'
 import { FloorCard } from './FloorCard'
 import type { Sequence } from './sequence'
 import { OverlapCard, OverlapLinks, QuestionCard } from './moments/Cards'
+import './logs.css'
+
+/** Show everything outlasts a restart. localStorage may be missing or blocked, so every access is guarded. */
+const EVERYTHING = 'kernel.logsEverything'
+export function readEverything(): boolean {
+  try { return localStorage.getItem(EVERYTHING) === '1' } catch { return false }
+}
+export function keepEverything(on: boolean) {
+  try { if (on) localStorage.setItem(EVERYTHING, '1'); else localStorage.removeItem(EVERYTHING) } catch { /* not remembered */ }
+}
+
+/** The Logs header's switch between what the team did and the whole log. */
+export function ShowEverything({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return <button type="button" className="btn log-all" aria-pressed={on} onClick={() => onChange(!on)}>Show everything</button>
+}
 
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
 
@@ -48,12 +63,14 @@ function OfflineCard({ agent: a, ws, ev }: { agent: AgentDef; ws?: Workspace; ev
  * Things waiting on the user first, as cards in one pattern, then what the team did, newest first.
  * Lines said out loud (`agent.say`) show as the speech bubble on the floor, not here.
  * An agent's tool calls fold into one row (`logRows`), so a busy room stays readable.
+ * Lifecycle events (sessions, turns, archives) stay out of the list until Show everything is on.
  */
 export function Logs({ roomId, agents, status, approvals, review }: {
   roomId: string; agents: AgentDef[]; status: Record<string, AgentStatus>; approvals: Approval[]; review?: Sequence['review']
 }) {
   const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId && e.kind !== 'agent.say'))
-  const days = useMemo(() => { const d = byDay(logRows(events)); return d.length ? d : [{ label: 'Today', rows: [] }] }, [events])
+  const [everything, setEverything] = useState(readEverything)
+  const days = useMemo(() => { const d = logDays(events, everything); return d.length ? d : [{ label: 'Today', rows: [] }] }, [events, everything])
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived'))
   const saying = useStore((s) => s.saying)
   const overlaps = useStore((s) => s.overlaps[roomId])
@@ -64,7 +81,10 @@ export function Logs({ roomId, agents, status, approvals, review }: {
 
   return (
     <aside aria-label="Logs" className="floor-logs">
-      <div className="floor-logs-head"><h2>Logs</h2></div>
+      <div className="floor-logs-head">
+        <h2>Logs</h2>
+        <ShowEverything on={everything} onChange={(on) => { keepEverything(on); setEverything(on) }} />
+      </div>
       <div className="floor-logs-body">
         {approvals.map((a) => (a.kind === 'plan' || a.toolName === 'ExitPlanMode' ? <PlanCard key={a.id} approval={a} agents={agents} />
           : a.kind === 'question' ? <QuestionCard key={a.id} approval={a} agents={agents} />
@@ -87,17 +107,24 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   )
 }
 
+const whoOf = (e: ActivityEvent, agents: AgentDef[]) =>
+  (e.actor ?? 'agent') === 'you' ? 'You' : e.actor === 'kernel' ? 'Kernel' : agents.find((a) => a.id === e.agentId)?.name ?? 'An agent'
+
 function Line({ row, agents, workspaces, you }: { row: LogRow; agents: AgentDef[]; workspaces: Workspace[]; you: string }) {
   const [open, setOpen] = useState(false)
   const e = row.event
   const actor = e.actor ?? 'agent'
-  const who = actor === 'you' ? 'You' : actor === 'kernel' ? 'Kernel' : agents.find((a) => a.id === e.agentId)?.name ?? 'An agent'
+  const who = whoOf(e, agents)
   const list = `log-steps-${row.id}`
+  const fold = row.fold
+  const all = fold ? [e, ...row.earlier] : []
   return (
     <li className="log-line">
       <span aria-hidden="true" className="log-av" data-you={actor === 'you' ? 'true' : undefined}>{actor === 'you' ? you : who[0]}</span>
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
-        <p className="log-text"><span className="log-who">{who}</span><What e={e} /></p>
+        {fold
+          ? <p className="log-text"><span className="log-who">{foldWho(all.map((x) => whoOf(x, agents)))}</span><span>{foldWhat(fold, all.length)}</span></p>
+          : <p className="log-text"><span className="log-who">{who}</span><What e={e} /></p>}
         {e.kind === 'overlap' && Array.isArray(e.data?.workspaceIds) && <OverlapLinks workspaceIds={e.data.workspaceIds.map(String)} workspaces={workspaces} />}
         {e.quote && <Quote text={e.quote} />}
       </div>
@@ -106,13 +133,13 @@ function Line({ row, agents, workspaces, you }: { row: LogRow; agents: AgentDef[
         <div className="log-run">
           <button type="button" className="log-fold" aria-expanded={open} aria-controls={list} onClick={() => setOpen(!open)}>
             <span className="log-chev" data-open={open}><Icon name="right" size={11} /></span>
-            {earlierLabel(row.earlier.length)}
+            {fold ? `Show all ${all.length}` : earlierLabel(row.earlier.length, e.kind === 'tool.failed' && row.earlier.every((s) => s.kind === 'tool.failed'))}
           </button>
           {open && (
             <ol id={list} className="log-steps">
-              {row.earlier.map((s) => (
+              {(fold ? all : row.earlier).map((s) => (
                 <li key={s.id} className="log-step">
-                  <p className="log-text"><What e={s} /></p>
+                  <p className="log-text">{fold && <span className="log-who">{whoOf(s, agents)}</span>}<What e={s} /></p>
                   <Time ts={s.ts} />
                 </li>
               ))}
