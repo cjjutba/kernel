@@ -34,10 +34,31 @@ export async function currentBranch(repo: string): Promise<string> {
   return (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 }
 
+/** origin/HEAD when it is set, else main, then master (on origin or locally), else the current branch. */
 export async function defaultBranch(repo: string): Promise<string> {
   const r = await exec('git', ['-C', repo, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
   if (r.code === 0) return r.stdout.trim().replace(/^origin\//, '')
+  for (const b of ['main', 'master']) if (await refExists(repo, `origin/${b}`) || await branchExists(repo, b)) return b
   return currentBranch(repo)
+}
+
+async function refExists(repo: string, ref: string): Promise<boolean> {
+  return (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).code === 0
+}
+
+/**
+ * The ref a workspace starts from: `wanted` when it exists, else the same branch without `origin/` locally,
+ * else the default branch, `origin/<default>` when the remote has it. A folder with no remote and only
+ * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, an `origin/` ref fetches first.
+ * `strict` is for a base CJ picked (a PR or a branch): it throws rather than start somewhere else.
+ */
+export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean } = {}): Promise<string> {
+  if (o.fetch && wanted.startsWith('origin/')) await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+  const name = wanted.replace(/^origin\//, '')
+  for (const ref of new Set([wanted, name])) if (await refExists(repo, ref)) return ref
+  if (o.strict) throw new Error(`${name} is not on origin or in this repo, so there is nothing to start from.`)
+  const d = await defaultBranch(repo)
+  return await refExists(repo, `origin/${d}`) ? `origin/${d}` : d
 }
 
 export async function remoteRepo(repo: string): Promise<string | undefined> {
@@ -58,11 +79,10 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
   return name
 }
 
-export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string; fetch?: boolean }
+export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
 
-/** Creates <root>/<branch-slug> on a new branch from baseRef. Returns the worktree path. */
+/** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
-  if (o.fetch) await exec('git', ['-C', o.repo, 'fetch', '--quiet', 'origin'])
   await mkdir(o.root, { recursive: true })
   const path = join(o.root, slugify(o.branch.replace(/\//g, '-'), 80))
   await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
