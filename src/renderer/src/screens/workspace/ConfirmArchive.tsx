@@ -16,11 +16,13 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const deleteByDefault = useStore((s) => s.settings?.workspace.deleteBranchOnArchive ?? false)
   const [git, setGit] = useState<WorkspaceGitStatus | null>(null)
+  // The status couldn't be read: archiving still works, and the branch stays (KERNEL-70).
+  const [unread, setUnread] = useState(false)
   const [deleteBranch, setDeleteBranch] = useState(deleteByDefault)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch((e) => setError(clean(e)))
+    void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch(() => setUnread(true))
   }, [workspaceId])
   if (!ws) return null
 
@@ -30,7 +32,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
     setBusy(true); setError(null)
     try {
       // Archive anyway keeps the branch: it holds the only copy of the unpushed commits. Main refuses to delete it too.
-      await call('workspaces.archive', { workspaceId, deleteBranch: current || (!push && unpushed > 0) ? false : deleteBranch, push })
+      await call('workspaces.archive', { workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
       actions.ui.closeModal()
       actions.ui.toast({ title: push ? `Pushed ${plural(unpushed, 'commit')} and archived ${ws.name}.` : unpushed ? 'Archived without pushing. The commits are on the local branch.' : `Archived ${ws.name}.` })
     } catch (e) { setError(clean(e)); setBusy(false) }
@@ -40,13 +42,14 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   const dirty = git?.dirty.files ? `${plural(git.dirty.files, 'file')} with uncommitted changes · +${git.dirty.added} -${git.dirty.removed}` : null
   const body = [
     unpushed ? `This branch has ${plural(unpushed, 'commit')} that ${unpushed === 1 ? 'is' : 'are'} not on GitHub yet.` : '',
+    unread ? "Kernel couldn't read this branch's status, so the branch stays." : '',
     removes,
     dirty && !current ? 'Uncommitted changes go with the worktree.' : ''
   ].filter(Boolean).join(' ')
 
   return (
     <ConfirmDialog
-      title={`Archive ${ws.name}?`} body={body} busy={busy || !git}
+      title={`Archive ${ws.name}?`} body={body} busy={busy || (!git && !unread)}
       confirmLabel={unpushed ? 'Push and archive' : 'Archive'}
       extra={unpushed ? <Button variant="ghost" size="lg" className="wsc-anyway" disabled={busy} onClick={() => void archive(false)}>Archive anyway</Button> : undefined}
       onConfirm={() => void archive(unpushed > 0)} onCancel={actions.ui.closeModal}
@@ -56,7 +59,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
         {git && unpushed > 0 && <span>{plural(unpushed, 'commit')} ahead of origin</span>}
         {dirty && <span>{dirty}</span>}
       </div>
-      {!current && <label className="wsc-check"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} />Also delete the local branch</label>}
+      {!current && !unread && <label className="wsc-check"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} />Also delete the local branch</label>}
       {error && <p role="alert" className="wsc-error">{error}</p>}
     </ConfirmDialog>
   )

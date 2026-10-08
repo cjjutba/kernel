@@ -32,7 +32,7 @@ import { linearToken, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
-import { discardChanges, gitStatus, pushBranch } from './services/archive'
+import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 
 const COPY = 'fork:'
 
@@ -125,7 +125,9 @@ export class Kernel {
       },
       onTurnDone: (ws, chat) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
-        void this.refreshPr(ws.id).catch(() => undefined); void this.overlaps.check(ws.roomId).catch(() => undefined)
+        // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
+        if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
+        void this.overlaps.check(ws.roomId).catch(() => undefined)
       },
       onFailure: (failure) => {
         if (failure === 'auth') this.signedOut()
@@ -699,15 +701,18 @@ export class Kernel {
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     const parts = messageOf(o.prompt, o.parts)
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
+    // Archived while setup ran: archive stopped the script, and the workspace stays archived.
+    if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
-    if (!ready) { this.sessions.hold(chat.id, parts); return this.saveWs({ ...ws, status: 'failed' }) }
+    if (!ready) { this.sessions.hold(chat.id, parts); return this.updateWs(ws.id, { status: 'failed' }) }
     return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts) })
   }
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
   private async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
     const repo = await loadRepoSettings(room.path)
-    const done = this.saveWs({ ...ws, status: 'ready' })
+    const done = this.updateWs(ws.id, { status: 'ready' })
+    if (done.status === 'archived') return done
     if (this.settings.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
     // The start of chat: reverting to it undoes everything the agent did.
     await snapshot(ws, { chatId: chat.id, title: prompt, start: true }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }), () => undefined)
@@ -734,7 +739,7 @@ export class Kernel {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
       if (!this.setupPassed(ws, code)) return this.mustWs(workspaceId)
     }
-    if (!chat) return this.saveWs({ ...ws, status: 'ready' })
+    if (!chat) return this.updateWs(ws.id, { status: 'ready' })
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id))
   }
@@ -758,13 +763,17 @@ export class Kernel {
     this.sessions.stopWorkspace(id)
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopScript(id, 'run')
+    // A setup still running would finish after the archive and report on a workspace that is gone.
+    stopScript(id, 'setup')
     const repo = await loadRepoSettings(room.path)
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
-    // Commits that never left this machine live only on the branch, so it stays whatever was asked.
-    const unpushed = ws.mode === 'worktree' ? (await gitStatus(ws.path, ws.branch, ws.baseRef).catch(() => null))?.ahead ?? 0 : 0
-    const drop = (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive) && unpushed === 0
-    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: drop ? ws.branch : undefined })
-    this.saveWs({ ...ws, status: 'archived', archivedAt: Date.now() })
+    // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
+    // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
+    const wanted = ws.mode === 'worktree' && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
+    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef) : 0
+    if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
+    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
+    this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
@@ -787,8 +796,7 @@ export class Kernel {
     // Another workspace may have taken this port while it was archived.
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = taken.has(ws.port) ? await freePort(4300, taken) : ws.port
-    const { archivedAt: _gone, ...rest } = ws
-    const back = this.saveWs({ ...rest, port, status: 'ready' })
+    const back = this.updateWs(id, { archivedAt: undefined, port, status: 'ready' }, { archived: true })
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
     return back
   }
@@ -1031,8 +1039,9 @@ export class Kernel {
   }
 
   private setPrState(ws: Workspace, prState: PrState) {
-    const next = this.saveWs({ ...ws, prState })
-    if (prState !== ws.prState) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
+    const before = this.mustWs(ws.id).prState
+    const next = this.updateWs(ws.id, { prState })
+    if (next.prState !== before) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
     return next
   }
 
@@ -1075,10 +1084,13 @@ export class Kernel {
    * A workspace with no PR yet only adopts an open one, never an old merged or closed PR on the same branch name.
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
+    const asked = this.mustWs(id)
+    if (asked.status === 'archived') return asked
+    const info = await this.github.info(asked.path, asked.branch, id)
+    if (info) bus.push({ type: 'pr.info', info })
+    // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
-    const info = await this.github.info(ws.path, ws.branch, id)
-    if (info) bus.push({ type: 'pr.info', info })
     const settle = o.settle ?? !this.agentBusy(ws)
     const hold = this.merging.has(id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
     let state: PrState
@@ -1087,8 +1099,8 @@ export class Kernel {
     else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
     else state = info.state
     const adopt = info && state !== 'none'
-    const next = this.saveWs({
-      ...ws, prState: state,
+    const next = this.updateWs(id, {
+      prState: state,
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
@@ -1141,7 +1153,7 @@ export class Kernel {
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
     await git(ws.path, 'checkout', '-b', branch, ws.baseRef)
-    const next = this.saveWs({ ...ws, branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
     this.note(id, `Continuing on ${branch} from ${ws.baseRef.replace(/^origin\//, '')}. The chat stays.`)
     return next
@@ -1167,8 +1179,20 @@ export class Kernel {
   }
 
   private saveWs(ws: Workspace) { this.store.saveWorkspace(ws); bus.push({ type: 'workspace', workspace: ws }); return ws }
+
+  /**
+   * Saves a change to the workspace as it is in the store now, never a copy read before an await, which would put back
+   * whatever changed meanwhile (KERNEL-70). An archived workspace only changes through archive and restore, so a slow
+   * PR refresh or setup that finishes late leaves it archived. A key set to undefined is dropped when it is stored.
+   */
+  private updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}): Workspace {
+    const cur = this.mustWs(id)
+    if (cur.status === 'archived' && !o.archived) return cur
+    return this.saveWs({ ...cur, ...patch })
+  }
   private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }
   private mustWs(id: string) { const w = this.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
+  private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
 
   /** Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. */
   handlers(): Handlers {
