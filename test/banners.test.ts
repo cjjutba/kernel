@@ -32,7 +32,8 @@ describe('workspace banners', () => {
   })
 
   it('offers another model in one click when the chat\'s own model is limited', () => {
-    const b = bannerFor(input({ chat: { ...chat, model: 'claude-fable-5-1' }, usage: [{ type: 'seven_day_opus', status: 'rejected', model: 'claude-fable-5-1', resetsAt: S(now + 3 * 86_400_000 - 3600_000) }] }))
+    // Claude Code calls `seven_day_overage_included` the Fable limit. It is not the weekly limit, so no room is paused.
+    const b = bannerFor(input({ chat: { ...chat, model: 'claude-fable-5-1' }, usage: [{ type: 'seven_day_overage_included', status: 'rejected', model: 'claude-fable-5-1', resetsAt: S(now + 3 * 86_400_000 - 3600_000) }] }))
     expect(b).toMatchObject({ id: 'model', title: "You've reached your Fable 5.1 limit", sub: 'It resets in 3 days. Opus 5.5 can pick up where this left off.', switchTo: 'claude-opus-5-5', blocks: false })
     expect(b?.actions.map((a) => a.label)).toEqual(['Wait', 'Switch to Opus 5.5'])
     // A limit on another model is not this chat's banner.

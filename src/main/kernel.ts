@@ -11,6 +11,7 @@ import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAge
 import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
+import { LeadUpdates } from './services/leadUpdates'
 import { Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
@@ -35,6 +36,14 @@ import { blockingLimit, NetworkMonitor, terminalScript } from './services/health
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 
 const COPY = 'fork:'
+
+/** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
+const LIMIT_RECHECK_MS = 90_000
+
+/** What the "Notify me" notification calls each window. Claude Code calls `seven_day_overage_included` the Fable limit. */
+const LIMIT_NAME: Record<RateLimit['type'], string> = {
+  five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
+}
 
 /** How a hook from an outside session moves its agent on the floor. */
 const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
@@ -66,6 +75,7 @@ export class Kernel {
   readonly store: Store
   readonly approvals: Approvals
   readonly notifications: Notifications
+  readonly leadUpdates: LeadUpdates
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
@@ -88,6 +98,9 @@ export class Kernel {
   private account?: import('@shared/types').ClaudeAccount
   /** Windows the user asked to hear about when they reset ("Notify me"). */
   private notifyReset = new Set<RateLimit['type']>()
+  /** Runs `checkLimits` while any window is rejected. */
+  private limitCheck?: NodeJS.Timeout
+  private limitChecking?: Promise<void>
 
   constructor(private o: {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
@@ -123,8 +136,12 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws, chat) => {
+      onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
+        const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+        const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
+        this.notifications.turnDone(ws, chat, done)
+        this.leadUpdates.turnDone(ws, chat, done)
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -133,7 +150,22 @@ export class Kernel {
         if (failure === 'auth') this.signedOut()
         else if (failure === 'network') void this.network?.check()
       },
-      onLimits: (limits) => this.applyLimits(limits)
+      onLimits: (limits) => this.applyLimits(limits),
+      onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds)
+    })
+    this.leadUpdates = new LeadUpdates({
+      store: this.store,
+      enabled: () => this.settings.models.leadUpdates !== false,
+      leadChat: (roomId) => this.existingLeadChat(roomId),
+      isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
+      agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
+      post: (chatId, text) => this.sessions.post(chatId, [{ type: 'text', text }]),
+      // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
+      // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
+      delivered: (roomId, chat, lines) => {
+        const ws = this.store.workspace(chat.workspaceId)
+        bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object: lines.length === 1 ? 'one teammate update' : `${lines.length} teammate updates`, data: { leadUpdate: true } })
+      }
     })
     this.overlaps = new Overlaps({
       workspaces: (roomId) => this.store.workspaces(roomId),
@@ -167,17 +199,18 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
+    this.leadUpdates.attach()
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
       this.network.start()
     }
     this.tasks.attach()
-    // A room paused before the app quit is still paused: its agents wait and its sends are held. A limit pause is not:
-    // the limits and their reset timers lived in memory, so nothing would lift it. The next rejection pauses it again.
-    for (const r of this.store.rooms()) {
-      if (r.paused && r.pausedBy === 'limit') { const { pausedBy: _by, ...rest } = r; bus.push({ type: 'room', room: this.store.saveRoom({ ...rest, paused: false }) }) }
-      else if (r.paused) this.sessions.pause(r.id)
-    }
+    // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
+    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
+    for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [])
+    // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
+    if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
   }
 
   /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
@@ -295,11 +328,14 @@ export class Kernel {
   }
 
   /**
-   * A 5-hour or weekly rejection pauses every room by `limit` (FloorLimit.png); its end resumes them. Each rejected
-   * window gets a timer at its reset time, which marks it allowed again and sends "Notify me".
+   * A 5-hour or weekly rejection pauses every room by `limit` (FloorLimit.png); its end resumes them, and the chats it
+   * stopped mid-turn carry on (`Sessions.carryOn`). The limits are saved, so a restart keeps the pause. Each rejected
+   * window gets a timer at its reset time, which marks it allowed again. While any window is rejected, `checkLimits`
+   * also runs every LIMIT_RECHECK_MS. A window lifting by any route sends "Notify me".
    */
   private applyLimits(limits: RateLimit[]) {
     const now = Date.now()
+    this.store.saveMeta('limits', limits)
     const rooms = this.store.rooms().filter((r) => !r.archived)
     if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.pauseRoom(r.id, 'limit') }
     else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.resumeRoom(r.id, 'limit')
@@ -313,14 +349,44 @@ export class Kernel {
       timer.unref?.()
       this.limitTimers.set(l.type, { at, timer })
     }
+    for (const type of this.notifyReset) {
+      if (limits.some((l) => l.type === type && l.status === 'rejected')) continue
+      this.notifyReset.delete(type)
+      this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
+    }
+    const rejected = limits.some((l) => l.status === 'rejected')
+    if (rejected && !this.limitCheck) { this.limitCheck = setInterval(() => void this.checkLimits(), LIMIT_RECHECK_MS); this.limitCheck.unref?.() }
+    if (!rejected && this.limitCheck) { clearInterval(this.limitCheck); this.limitCheck = undefined }
   }
 
   private limitReset(type: RateLimit['type']) {
+    const held = this.limitTimers.get(type)
+    if (held) clearTimeout(held.timer)
     this.limitTimers.delete(type)
     this.sessions.resetLimit(type)
-    if (!this.notifyReset.delete(type)) return
-    const name = type === 'five_hour' ? '5-hour limit' : type === 'seven_day_opus' ? 'Opus limit' : type === 'seven_day_sonnet' ? 'Sonnet limit' : 'weekly limit'
-    this.o.showNotification?.({ id: `limit-${type}-${Date.now()}`, kind: 'system', title: `Your ${name} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: Date.now() }, { silent: false })
+  }
+
+  /**
+   * A rejected window can lift without Kernel hearing: its timer fires late after the Mac slept, or the limit is reset
+   * on claude.ai. Lift what the clock says has reset, then ask Claude Code for the real numbers. While a limit pauses
+   * the rooms and no session is live, a short session asks. Runs every LIMIT_RECHECK_MS while a window is rejected, and when the Mac wakes.
+   */
+  checkLimits(): Promise<void> {
+    this.limitChecking ??= (async () => {
+      for (const [type, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(type)
+      const paused = this.store.rooms().some((r) => r.pausedBy === 'limit')
+      await this.sessions.usage({ probeIn: paused ? this.o.dataDir : undefined })
+    })().catch(() => undefined).finally(() => { this.limitChecking = undefined })
+    return this.limitChecking
+  }
+
+  /**
+   * Send now in a room a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
+   * the room stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
+   */
+  private sendNow(chatId: string, id: string) {
+    const room = this.store.room(this.mustWs(this.mustChat(chatId).workspaceId).roomId)
+    return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
   }
 
   /** Opens Terminal.app in `cwd` and runs `command` there. */
@@ -354,12 +420,15 @@ export class Kernel {
   async stop() {
     this.unlisten()
     this.notifications.detach()
+    this.leadUpdates.detach()
     this.tasks.detach()
     clearInterval(this.prTimer)
     this.network?.stop()
     clearInterval(this.authTimer)
     for (const t of this.limitTimers.values()) clearTimeout(t.timer)
     this.limitTimers.clear()
+    clearInterval(this.limitCheck)
+    this.limitCheck = undefined
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
     this.sessions.stopAll()
@@ -1188,6 +1257,15 @@ export class Kernel {
 
   private async pollPrs() {
     for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.refreshPr(ws.id).catch(() => undefined)
+    // Updates held for a busy or paused Lead go out once it can take them.
+    this.leadUpdates.flushAll()
+  }
+
+  /** The room's Lead chat if the Lead has been briefed. Unlike `leadChat`, never creates one. */
+  private existingLeadChat(roomId: string): Chat | undefined {
+    const lead = this.agentsSync(roomId).find((a) => a.lead)
+    const ws = lead && this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
+    return ws ? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') : undefined
   }
 
   // ---------- helpers
@@ -1332,7 +1410,7 @@ export class Kernel {
       },
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
-      'chats.sendNow': async ({ chatId, id }) => this.sessions.sendNow(chatId, id),
+      'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId }) => { await this.sessions.retry(chatId, itemId); return { ok: true } },
       'chats.send': async ({ chatId, parts }) => this.sessions.send(chatId, parts),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },

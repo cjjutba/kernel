@@ -26,6 +26,13 @@
 .cmp-input textarea::placeholder { color: var(--muted); }
 .cmp-chip { gap: 6px; height: 24px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
+.chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
+.chip[data-kind='image'] > .chip-open > svg { color: var(--add); }
+/* An image chip's hover preview and its modal (Chip.tsx) */
+.img-preview { position: fixed; z-index: 65; display: flex; padding: 4px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
+.img-preview img { display: block; max-width: 470px; max-height: 310px; border-radius: var(--r-sm); }
+.img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
+.img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 
 .cmp-ac { position: absolute; left: 0; bottom: calc(100% + 8px); z-index: 60; width: 420px; max-width: 100%; padding: 6px; border-radius: 10px; border: 1px solid var(--line-3); background: var(--surface-2); }
 .cmp-ac p { margin: 2px 8px 6px; font-size: 12px; color: var(--muted); }

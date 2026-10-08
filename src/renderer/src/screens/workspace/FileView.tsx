@@ -47,6 +47,18 @@ export function FileView({ ws, path, editedBy, changed }: { ws: Workspace; path:
   )
 }
 
+/** An attached image opened from its chip, in a tab of its own, as in Conductor. */
+export function ImageView({ name, src, width, height }: { name: string; src: string; width?: number; height?: number }) {
+  return (
+    <div className="col grow" style={{ minHeight: 0 }}>
+      <ViewHead path={name} trailing={null}>
+        {width && height ? <span className="muted" style={{ fontSize: 12 }}>{width}×{height}</span> : null}
+      </ViewHead>
+      <div className="image-view"><img src={src} alt={name} /></div>
+    </div>
+  )
+}
+
 // ---------- diff
 
 /** The diff of one file, or of every changed file when `path` is empty. */

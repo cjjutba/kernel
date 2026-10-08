@@ -76,6 +76,13 @@ describe('briefing sequence', () => {
     expect(s.focus).toBe('noor')
   })
 
+  it("doesn't replay the hand-off walk when a Kernel update starts the Lead again (KERNEL-72)", () => {
+    const activity = [ev('u1', 400, { kind: 'note', agentId: 'rowan', data: { leadUpdate: true } }), handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor')]
+    const s = sequence(input({ status: { rowan: 'working', noor: 'working', kai: 'working' }, approvals: [planApproval('allowed', 200)], activity }))
+    expect(s.stage).toBe('working')
+    expect(s.legs).toEqual([{ key: 'seat', to: 'seat' }])
+  })
+
   it('needs you on any pending approval, and review when PRs are ready', () => {
     const perm: Approval = { id: 'a', kind: 'tool', source: 'sdk', roomId: 'r', agentId: 'noor', title: 'Run', status: 'pending', createdAt: 400 }
     expect(sequence(input({ status: { noor: 'needs' }, approvals: [perm] })).stage).toBe('needs')

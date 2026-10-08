@@ -68,6 +68,10 @@ describe('usage', () => {
       { type: 'five_hour', utilization: 0.58, resetsAt: 1791361200 },
       { type: 'seven_day', utilization: 0.17, resetsAt: undefined }
     ])
+    // Fable's own weekly window is the one rate_limit_event calls seven_day_overage_included.
+    const fable = usage(58, 17)
+    fable.rate_limits!.model_scoped = [{ display_name: 'Fable', utilization: 100, resets_at: '2026-10-07T08:20:00+00:00' }]
+    expect(limitsFromUsage(fable)).toContainEqual({ type: 'seven_day_overage_included', utilization: 1, resetsAt: 1791361200 })
   })
 
   it('clears a stored status once its window resets', () => {
@@ -75,6 +79,12 @@ describe('usage', () => {
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.99 }, 999_000).status).toBe('rejected')
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.02, resetsAt: 19000 }, 999_000)).toEqual({ type: 'five_hour', status: 'allowed', utilization: 0.02, resetsAt: 19000 })
     expect(mergeLimit(hit, { type: 'five_hour', utilization: 0.02 }, 1_000_001).status).toBe('allowed')
+  })
+
+  it('lifts a rejection early when a reading shows clear room, and not on a reset time read back a second off', () => {
+    const hit = { type: 'five_hour' as const, status: 'rejected' as const, utilization: 1, resetsAt: 1000 }
+    expect(mergeLimit(hit, { type: 'five_hour', utilization: 0 }, 999_000).status).toBe('allowed')
+    expect(mergeLimit(hit, { type: 'five_hour', utilization: 1, resetsAt: 1001 }, 999_000).status).toBe('rejected')
   })
 
   it('asks a live session on demand and falls back to event data when the call fails', async () => {

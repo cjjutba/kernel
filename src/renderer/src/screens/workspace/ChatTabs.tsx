@@ -9,11 +9,12 @@ export const fileTab = (path: string) => `file:${path}`
 const base = (path: string) => path.split('/').pop() ?? path
 
 /**
- * The row of chat, terminal and file tabs, with the new tab menu, the tab menu (rename, fork, close, close others) and the Checkpoints button.
+ * The row of chat, terminal, file and image tabs, with the new tab menu, the tab menu (rename, fork, close, close others) and the Checkpoints button.
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseFile }: {
-  workspaceId: string; chats: Chat[]; files: string[]; active?: string; onSelect: (tab: string) => void; onCloseFile: (path: string) => void
+export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, onCloseFile, onCloseImage }: {
+  workspaceId: string; chats: Chat[]; files: string[]; images: { id: string; name: string }[]; active?: string
+  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseImage: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
   const newAnchor = useRef<HTMLSpanElement>(null)
@@ -60,13 +61,14 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
 
   // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, active, chats })
-  latest.current = { create, close, onCloseFile, active, chats }
+  const latest = useRef({ create, close, onCloseFile, onCloseImage, active, chats })
+  latest.current = { create, close, onCloseFile, onCloseImage, active, chats }
   useEffect(() => {
     const closeActive = () => {
-      const { active: a, chats: cs, close: c, onCloseFile: f } = latest.current
+      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseImage: img } = latest.current
       if (!a) return
       if (a.startsWith('file:')) f(a.slice(5))
+      else if (a.startsWith('image:')) img(a)
       else if (cs.some((x) => x.id === a)) void c(a)
     }
     const onKey = (e: KeyboardEvent) => {
@@ -90,9 +92,10 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'terminal'; path?: string }[] = [
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'image' | 'terminal'; path?: string }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
-    ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p }))
+    ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p })),
+    ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const }))
   ]
   return (
     <div className="ws-tabs">
@@ -108,8 +111,8 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
                 <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)} onKeyDown={(e) => arrow(e, t.id)}
-                  onDoubleClick={() => t.kind !== 'file' && setRenaming(t.id)}>
-                  <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' ? 'doc' : 'chat'} size={14} />
+                  onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
+                  <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' ? 'doc' : t.kind === 'image' ? 'image' : 'chat'} size={14} />
                   <span className="ellipsis">{t.title}</span>
                 </button>
               )}
@@ -128,6 +131,7 @@ export function ChatTabs({ workspaceId, chats, files, active, onSelect, onCloseF
               )}
               {t.kind === 'terminal' && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => void close(t.id)} />}
               {t.path && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => onCloseFile(t.path!)} />}
+              {t.kind === 'image' && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => onCloseImage(t.id)} />}
             </span>
           )
         })}

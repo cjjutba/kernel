@@ -69,6 +69,8 @@ export function sequence(i: SequenceInput): Sequence {
   const briefAt = brief?.ts ?? -Infinity
   const planAt = lastPlan?.createdAt ?? -Infinity
   const leadStatus = lead ? i.status[lead.id] : undefined
+  // Kernel's teammate updates (KERNEL-72) start the Lead again after it handed off. That turn isn't another hand-off.
+  const updatedAt = events.find((e) => e.kind === 'note' && e.data?.leadUpdate === true)?.ts ?? -Infinity
 
   // Each `create_workspace` the Lead ran for the current plan, oldest first.
   const handoffs = events
@@ -86,7 +88,7 @@ export function sequence(i: SequenceInput): Sequence {
   let stage: Stage
   const onBrief = !!brief && busy(leadStatus) && (planAt < briefAt || revising)
   if (plans.some((a) => a.status === 'pending')) stage = 'plan'
-  else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt) stage = 'handoff'
+  else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt && updatedAt < planAt) stage = 'handoff'
   else if (onBrief) {
     const started = events.some((e) => e !== brief && e.ts >= openAt && byLead(e) && !QUIET.includes(e.kind))
     stage = started && leadStatus === 'planning' ? 'planning' : 'sent'

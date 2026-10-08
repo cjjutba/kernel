@@ -83,7 +83,7 @@ export function latestWarn(events: ActivityEvent[], agentId: string, kinds: Acti
 
 const LIMIT_NAME: Record<RateLimit['type'], string> = {
   five_hour: '5-hour limit', seven_day: 'Weekly limit', seven_day_opus: 'Weekly Opus limit', seven_day_sonnet: 'Weekly Sonnet limit',
-  seven_day_overage_included: 'Weekly limit', overage: 'Extra usage limit'
+  seven_day_overage_included: 'Weekly Fable limit', overage: 'Extra usage limit'
 }
 
 /** "Monday, 9:00 AM", or just "1:00 PM" when the reset is within a day. */
@@ -93,11 +93,14 @@ export function resetWhen(at: number, now = Date.now()): string {
   return at - now < 24 * 3600_000 ? time : `${d.toLocaleDateString('en-US', { weekday: 'long' })}, ${time}`
 }
 
-/** The banner for a room paused by a limit: the rejected limit that resets last decides the wording. */
+/**
+ * The banner for a room paused by a limit: of the limits that pause rooms (5-hour and weekly), the rejected one that
+ * resets last decides the wording. `resetsAt` is epoch seconds.
+ */
 export function limitBanner(usage: RateLimit[], now = Date.now()): { type: RateLimit['type']; text: string } {
-  const hit = usage.filter((l) => l.status === 'rejected').sort((a, b) => (b.resetsAt ?? 0) - (a.resetsAt ?? 0))[0]
+  const hit = usage.filter((l) => (l.type === 'five_hour' || l.type === 'seven_day') && l.status === 'rejected').sort((a, b) => (b.resetsAt ?? 0) - (a.resetsAt ?? 0))[0]
   if (!hit) return { type: 'five_hour', text: 'Usage limit reached. Every agent waits until it resets.' }
-  const until = hit.resetsAt ? `until ${resetWhen(hit.resetsAt, now)}` : 'until it resets'
+  const until = hit.resetsAt ? `until ${resetWhen(hit.resetsAt * 1000, now)}` : 'until it resets'
   return { type: hit.type, text: `${LIMIT_NAME[hit.type]} reached. Every agent waits ${until}.` }
 }
 
