@@ -66,6 +66,14 @@ const T15 = [
 const assigned = (i: number) => ev(`b-assign-${i}`, 11, 5, 10 + i * 10, {
   agentId: 'rowan', workspaceId: `ws-${T15[i].ws}`, kind: 'workspace.created', text: `assigned ${T15[i].task} to`, object: T15[i].name, data: { assignee: T15[i].agent }
 })
+/**
+ * The sidebar rows after the hand-off: the four new workspaces, with Client A's older ones archived (the Lead's own stays, it has no row).
+ * Seven rows would scroll the sidebar and push Portfolio off, and the other shots show four. Archived keeps their chats and items valid.
+ */
+const afterHandoff = (f: Fixture, extra?: (i: number) => Partial<Workspace>): Workspace[] => [
+  ...t15Workspaces(f, extra),
+  ...f.workspaces.map((w) => (w.roomId === A && w.id !== ids.lead ? { ...w, status: 'archived' as const } : w))
+]
 /** The workspaces the hand-off created, listed first so each agent's card shows the new one. */
 const t15Workspaces = (f: Fixture, extra: (i: number) => Partial<Workspace> = () => ({})): Workspace[] => T15.map((t, i) => ({
   ...f.workspaces[1], id: `ws-${t.ws}`, name: t.ws, branch: `feat/${t.task.toLowerCase()}-${t.ws}`, agentId: t.agent, port: 4316 + i,
@@ -118,7 +126,7 @@ const briefing: Record<string, Fixture> = {
     status: { [A]: { rowan: 'working', kai: 'planning', noor: 'working', ivy: 'idle', theo: 'working' } },
     says: { rowan: 'Handing out tasks', noor: 'Building the PDF renderer', kai: 'Reading T-15b' },
     approvals: [...f.approvals, t15Plan('allowed')],
-    workspaces: [...t15Workspaces(f), ...f.workspaces],
+    workspaces: afterHandoff(f),
     extra: [say('b-say-kai', 11, 5, 21, 'Kai, T-15b is yours. A Download PDF button on each row.'), assigned(1), assigned(0), created, approved],
     ui: staged('handoff')
   })),
@@ -126,7 +134,7 @@ const briefing: Record<string, Fixture> = {
     ...floorScene(f, {
       status: { [A]: working }, says: workingSays,
       approvals: [...f.approvals, t15Plan('allowed')],
-      workspaces: [...t15Workspaces(f), ...f.workspaces],
+      workspaces: afterHandoff(f),
       ui: staged('working')
     }),
     activity: workingEvents.map(retime)
@@ -135,7 +143,7 @@ const briefing: Record<string, Fixture> = {
     ...floorScene(f, {
       status: { [A]: { ...working, noor: 'needs' } }, says: { ...workingSays, noor: 'Wants to run drizzle-kit push' },
       approvals: [...f.approvals.filter((a) => a.id !== 'ap-migrate'), t15Plan('allowed'), drizzle],
-      workspaces: [...t15Workspaces(f), ...f.workspaces],
+      workspaces: afterHandoff(f),
       ui: staged('needs')
     }),
     activity: [ev('b-perm', 11, 7, 0, { agentId: 'noor', workspaceId: 'ws-invoice-pdf-renderer', kind: 'approval.requested', text: 'asked to run', object: 'drizzle-kit push', warn: true }), ...workingEvents].map(retime)
@@ -145,7 +153,7 @@ const briefing: Record<string, Fixture> = {
     const base = floorScene(f, {
       status: { [A]: status },
       says: { rowan: 'Posting the standup', theo: 'Approved 4 PRs', noor: 'Done with T-15a', kai: 'Done with T-15b', ivy: 'Done with T-15c' },
-      workspaces: [...t15Workspaces(f, (i) => ({ prState: 'ready', prNumber: 43 + i, prUrl: `https://github.com/samrivera/client-a/pull/${43 + i}` })), ...f.workspaces],
+      workspaces: afterHandoff(f, (i) => ({ prState: 'ready', prNumber: 43 + i, prUrl: `https://github.com/samrivera/client-a/pull/${43 + i}` })),
       tasks: { [A]: t15Tasks },
       ui: staged('review')
     })

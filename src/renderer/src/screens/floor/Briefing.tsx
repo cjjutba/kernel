@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
 import { call } from '../../api'
 import { Icon, useBusy } from '../../ui'
@@ -14,9 +14,9 @@ const decide = (a: Approval, decision: Decision) =>
   call('approvals.decide', { id: a.id, decision }).catch((e: Error) => actions.ui.toast({ title: 'Could not send your answer', sub: e.message }))
 
 /** A line someone said out loud, over their head, with an optional link under it (FloorTalk.png). Follows them while they walk. */
-export function Bubble({ text, at, link }: { text: string; at: [number, number]; link?: { label: string; onClick: () => void } }) {
+export function Bubble({ text, at, lift, link }: { text: string; at: [number, number]; /** Pixels to stand above its place so it clears the tags under it. */ lift?: number; link?: { label: string; onClick: () => void } }) {
   return (
-    <div className="floor-bubble" style={pct(at[0], at[1] - 30)}>
+    <div className="floor-bubble" data-clear="bubble" style={{ ...pct(at[0], at[1] - 30), '--lift': `${lift ?? 0}px` } as CSSProperties}>
       <span role="status">{text}</span>
       {link && <button type="button" className="floor-bubble-link" onClick={link.onClick}>{link.label}</button>}
     </div>

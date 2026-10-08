@@ -10,6 +10,7 @@ export function AgentCard({ agent, roomId, agents, status, note }: { agent: Agen
   const ws = useStore((s) => s.workspaces.find((w) => w.roomId === roomId && w.agentId === agent.id && w.status !== 'archived'))
   const shirt = lookFor(agent, Math.max(0, agents.indexOf(agent))).shirt
   const model = modelLabel(agent.model)
+  const where = ws ? (ws.mode === 'current' ? `${ws.branch} checkout` : ws.name) : 'none'
   const now = note ?? saying ?? (status === 'idle' ? 'No active task' : cap(WORD[status]))
   return (
     <section className="agent-card" aria-label={`${agent.name}, selected`}>
@@ -18,8 +19,8 @@ export function AgentCard({ agent, roomId, agents, status, note }: { agent: Agen
         <span className="col grow"><span className="agent-name">{agent.name}</span><span className="muted" style={{ fontSize: 12 }}>{agent.role}{model ? ` · ${model}` : ''}</span></span>
       </div>
       <span className="agent-status" data-loud={status === 'needs' || status === 'blocked' ? 'true' : undefined}>
-        {cap(WORD[status])}
-        <span className="faint">·</span><span className="mono muted">{ws ? (ws.mode === 'current' ? `${ws.branch} checkout` : ws.name) : 'none'}</span>
+        <span>{cap(WORD[status])}</span>
+        <span className="faint">·</span><span className="mono muted agent-ws" title={where}>{where}</span>
       </span>
       <span className="ink2">{now}</span>
       {/* Before the first brief the Lead has no workspace yet; opening its chat makes one. */}
