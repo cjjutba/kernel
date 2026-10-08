@@ -78,10 +78,11 @@ export function toActivity(e: HookPayload, ctx: HookContext): Omit<ActivityEvent
         const line = typeof input.description === 'string' ? input.description : typeof input.prompt === 'string' ? input.prompt : ''
         return { ...base, kind: 'agent.talk', text: 'delegated to', object: input.subagent_type, quote: line.slice(0, 280) || undefined, data: { from: ctx.agentId, to: input.subagent_type, line: firstLine(line), toolUseId: e.tool_use_id } }
       }
-      const d = describeTool(e.tool_name, e.tool_input); return { ...base, kind: 'tool.start', text: verb(e.tool_name), object: objectOf(e.tool_name, e.tool_input) ?? d.title, data: { toolUseId: e.tool_use_id } }
+      if (quiet(e.tool_name)) return null
+      return { ...base, kind: 'tool.start', text: verb(e.tool_name), object: objectOf(e.tool_name, e.tool_input), data: { tool: e.tool_name, toolUseId: e.tool_use_id } }
     }
-    case 'PostToolUse': return { ...base, kind: 'tool.end', text: verb(e.tool_name, true), object: objectOf(e.tool_name, e.tool_input), data: { toolUseId: e.tool_use_id, durationMs: e.duration_ms } }
-    case 'PostToolUseFailure': return { ...base, kind: 'tool.failed', text: `${verb(e.tool_name)} failed`, object: objectOf(e.tool_name, e.tool_input) }
+    case 'PostToolUse': return quiet(e.tool_name) ? null : { ...base, kind: 'tool.end', text: verb(e.tool_name, true), object: objectOf(e.tool_name, e.tool_input), data: { tool: e.tool_name, toolUseId: e.tool_use_id, durationMs: e.duration_ms } }
+    case 'PostToolUseFailure': return e.tool_name === 'ToolSearch' ? null : { ...base, kind: 'tool.failed', text: `failed to ${failVerb[e.tool_name] ?? 'use'}`, object: objectOf(e.tool_name, e.tool_input), data: { tool: e.tool_name, toolUseId: e.tool_use_id } }
     case 'Stop': return { ...base, kind: 'turn.done', text: 'finished its turn' }
     case 'Notification': return { ...base, kind: 'note', text: e.message }
     case 'TaskCreated': return { ...base, kind: 'task.created', text: 'created', object: e.task_subject, data: { taskId: e.task_id, teammate: e.teammate_name } }
@@ -95,14 +96,22 @@ const verb = (tool: string, past = false) => {
   const v: Record<string, [string, string]> = { Read: ['is reading', 'read'], Edit: ['is editing', 'edited'], MultiEdit: ['is editing', 'edited'], Write: ['is writing', 'wrote'], Bash: ['is running', 'ran'], Grep: ['is searching', 'searched'], Glob: ['is looking for', 'found'], WebFetch: ['is fetching', 'fetched'], Task: ['delegated', 'delegated'] }
   return (v[tool] ?? ['is using', 'used'])[past ? 1 : 0]
 }
+const failVerb: Record<string, string> = { Read: 'read', Edit: 'edit', MultiEdit: 'edit', Write: 'write', Bash: 'run', Grep: 'search for', Glob: 'find', WebFetch: 'fetch' }
 
-const objectOf = (tool: string, input: unknown): string | undefined => {
+/**
+ * Tool calls the logs leave out when they start and end. ToolSearch only loads other tools.
+ * Kernel's own tools log a line of their own (assigned, messaged, asked you to review), so their calls would say it twice.
+ */
+const quiet = (tool: string) => tool === 'ToolSearch' || tool.startsWith('mcp__kernel__')
+
+const objectOf = (tool: string, input: unknown): string => {
   const i = (input ?? {}) as Record<string, any>
-  if (i.file_path) return String(i.file_path).split('/').pop()
-  if (tool === 'Bash' && i.command) return String(i.command).split(/\s+/).slice(0, 3).join(' ')
+  if (i.file_path) return String(i.file_path).split('/').pop()!
+  // The whole first line: the logs cut it to fit and show the rest on hover.
+  if (tool === 'Bash' && i.command) return String(i.command).trim().split('\n')[0].replace(/\s+/g, ' ').slice(0, 160)
   if (i.pattern) return String(i.pattern)
   if (i.url) return String(i.url)
-  return tool.startsWith('mcp__') ? tool.split('__').pop() : undefined
+  return tool.startsWith('mcp__') ? tool.split('__').pop()! : describeTool(tool, input).title
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
