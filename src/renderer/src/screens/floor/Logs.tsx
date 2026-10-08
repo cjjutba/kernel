@@ -1,7 +1,10 @@
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ActivityEvent, AgentDef, AgentStatus, Approval, Workspace } from '@shared/types'
 import { call } from '../../api'
+import { Icon } from '../../ui'
 import { actions, go, useStore } from '../../store'
-import { dayLabel, latestWarn } from '../../floor/layout'
+import { latestWarn } from '../../floor/layout'
+import { byDay, earlierLabel, logRows, type LogRow } from '../../floor/logs'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { PermCard, PlanCard, ReviewCard } from './Briefing'
 import { FloorCard } from './FloorCard'
@@ -13,11 +16,13 @@ const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).sl
 /**
  * Things waiting on the user first, as cards in one pattern, then what the team did, newest first.
  * Lines said out loud (`agent.say`) show as the speech bubble on the floor, not here.
+ * An agent's tool calls fold into one row (`logRows`), so a busy room stays readable.
  */
 export function Logs({ roomId, agents, status, approvals, review }: {
   roomId: string; agents: AgentDef[]; status: Record<string, AgentStatus>; approvals: Approval[]; review?: Sequence['review']
 }) {
-  const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId && e.kind !== 'agent.say').slice(0, 40))
+  const events = useStore((s) => s.activity.filter((e) => e.roomId === roomId && e.kind !== 'agent.say'))
+  const days = useMemo(() => { const d = byDay(logRows(events)); return d.length ? d : [{ label: 'Today', rows: [] }] }, [events])
   const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived'))
   const saying = useStore((s) => s.saying)
   const overlaps = useStore((s) => s.overlaps[roomId])
@@ -26,16 +31,6 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   const offline = agents.filter((a) => status[a.id] === 'offline')
   const wsOf = (a: AgentDef) => workspaces.find((w) => w.agentId === a.id)
   const failed = (e: unknown) => actions.ui.toast({ title: 'That did not work', sub: (e as Error).message })
-
-  const groups: { label: string; events: ActivityEvent[] }[] = []
-  for (const e of events) {
-    const label = dayLabel(e.ts)
-    const last = groups[groups.length - 1]
-    if (last?.label === label) last.events.push(e)
-    else groups.push({ label, events: [e] })
-  }
-
-  if (!groups.length) groups.push({ label: 'Today', events: [] })
 
   return (
     <aside aria-label="Logs" className="floor-logs">
@@ -74,11 +69,11 @@ export function Logs({ roomId, agents, status, approvals, review }: {
               ] : []} />
           )
         })}
-        {groups.map((g) => (
-          <div key={g.label} className="log-group">
-            <p className="log-day">{g.label}</p>
+        {days.map((d) => (
+          <div key={d.label} className="log-group">
+            <p className="log-day">{d.label}</p>
             <ol className="log-list">
-              {g.events.map((e) => <Line key={e.id} e={e} agents={agents} workspaces={workspaces} you={initials(account?.name)} />)}
+              {d.rows.map((r) => <Line key={r.id} row={r} agents={agents} workspaces={workspaces} you={initials(account?.name)} />)}
             </ol>
           </div>
         ))}
@@ -87,18 +82,67 @@ export function Logs({ roomId, agents, status, approvals, review }: {
   )
 }
 
-function Line({ e, agents, workspaces, you }: { e: ActivityEvent; agents: AgentDef[]; workspaces: Workspace[]; you: string }) {
+function Line({ row, agents, workspaces, you }: { row: LogRow; agents: AgentDef[]; workspaces: Workspace[]; you: string }) {
+  const [open, setOpen] = useState(false)
+  const e = row.event
   const actor = e.actor ?? 'agent'
   const who = actor === 'you' ? 'You' : actor === 'kernel' ? 'Kernel' : agents.find((a) => a.id === e.agentId)?.name ?? 'An agent'
+  const list = `log-steps-${row.id}`
   return (
     <li className="log-line">
       <span aria-hidden="true" className="log-av" data-you={actor === 'you' ? 'true' : undefined}>{actor === 'you' ? you : who[0]}</span>
       <div className="col" style={{ gap: 4, minWidth: 0 }}>
-        <p className="log-text"><span className="log-who">{who}</span><span>{e.text}</span>{e.object && <span className="log-obj" data-warn={e.warn ? 'true' : undefined}>{e.object}</span>}</p>
+        <p className="log-text"><span className="log-who">{who}</span><What e={e} /></p>
         {e.kind === 'overlap' && Array.isArray(e.data?.workspaceIds) && <OverlapLinks workspaceIds={e.data.workspaceIds.map(String)} workspaces={workspaces} />}
-        {e.quote && <p className="log-quote">{e.quote}</p>}
+        {e.quote && <Quote text={e.quote} />}
       </div>
-      <time className="mono log-time" dateTime={new Date(e.ts).toISOString()}>{new Date(e.ts).toTimeString().slice(0, 5)}</time>
+      <Time ts={e.ts} />
+      {row.earlier.length > 0 && (
+        <div className="log-run">
+          <button type="button" className="log-fold" aria-expanded={open} aria-controls={list} onClick={() => setOpen(!open)}>
+            <span className="log-chev" data-open={open}><Icon name="right" size={11} /></span>
+            {earlierLabel(row.earlier.length)}
+          </button>
+          {open && (
+            <ol id={list} className="log-steps">
+              {row.earlier.map((s) => (
+                <li key={s.id} className="log-step">
+                  <p className="log-text"><What e={s} /></p>
+                  <Time ts={s.ts} />
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      )}
     </li>
   )
+}
+
+/** The verb and its object. The object stays on one line, cut to fit, with the whole of it on hover. */
+function What({ e }: { e: ActivityEvent }) {
+  return (
+    <>
+      <span>{e.text}</span>
+      {e.object && <span className="log-obj" title={e.object} data-warn={e.warn ? 'true' : undefined}>{e.object}</span>}
+    </>
+  )
+}
+
+function Time({ ts }: { ts: number }) {
+  return <time className="mono log-time" dateTime={new Date(ts).toISOString()}>{new Date(ts).toTimeString().slice(0, 5)}</time>
+}
+
+/** A brief or message, cut to three lines. A longer one opens in place when clicked. */
+function Quote({ text }: { text: string }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [long, setLong] = useState(false)
+  const [open, setOpen] = useState(false)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el && !open) setLong(el.scrollHeight > el.clientHeight + 1)
+  }, [text, open])
+  const body = <span ref={ref} className="log-quote-text" data-open={open}>{text}</span>
+  if (!long) return <p className="log-quote">{body}</p>
+  return <button type="button" className="log-quote" aria-expanded={open} onClick={() => setOpen(!open)}>{body}</button>
 }
