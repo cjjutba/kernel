@@ -1,6 +1,7 @@
 import type { AgentDef, AgentStatus } from '@shared/types'
 import { Icon } from '../../ui'
 import { go, useStore } from '../../store'
+import { openLead } from '../../lead'
 import { ART, LOOKS, WORD, cap, modelLabel } from '../../floor/layout'
 
 /** The selected agent: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. `status` is what the floor shows. */
@@ -21,7 +22,8 @@ export function AgentCard({ agent, roomId, agents, status, note }: { agent: Agen
         <span className="faint">·</span><span className="mono muted">{ws ? (ws.mode === 'current' ? `${ws.branch} checkout` : ws.name) : 'none'}</span>
       </span>
       <span className="ink2">{now}</span>
-      <button type="button" className="btn agent-open" onClick={() => go(ws ? { name: 'workspace', workspaceId: ws.id } : { name: 'team', roomId })}>{ws ? 'Open workspace' : 'Open team'}<Icon name="right" size={12} stroke={1.6} /></button>
+      {/* Before the first brief the Lead has no workspace yet; opening its chat makes one. */}
+      <button type="button" className="btn agent-open" onClick={() => (ws ? go({ name: 'workspace', workspaceId: ws.id }) : agent.lead ? void openLead(roomId) : go({ name: 'team', roomId }))}>{ws ? 'Open workspace' : agent.lead ? 'Open chat' : 'Open team'}<Icon name="right" size={12} stroke={1.6} /></button>
     </section>
   )
 }
