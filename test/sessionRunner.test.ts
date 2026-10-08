@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // After an abort it yields what was already fed, then throws, as the real one does.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; interrupts: number }[] }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; interrupts: number; flags: unknown[] }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ options }: { options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
@@ -22,7 +22,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
     signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
-    const call = { options, interrupts: 0, feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } }
+    const call = { options, interrupts: 0, flags: [] as unknown[], feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } }
     sdk.calls.push(call)
     return {
       [Symbol.asyncIterator]: () => ({
@@ -31,7 +31,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       }),
       interrupt: async () => { call.interrupts++ },
       setModel: async () => {},
-      setPermissionMode: async () => {}
+      setPermissionMode: async () => {},
+      applyFlagSettings: async (s: unknown) => { call.flags.push(s) }
     }
   }
 }))
@@ -278,6 +279,17 @@ describe('session runner (SDK scripted)', () => {
     expect(sessions.queued(chat.id)).toEqual([])
     expect(sessions.isRunning(chat.id)).toBe(false)
     expect(kinds().filter((k) => k === 'user')).toHaveLength(1)
+  })
+})
+
+describe('model and effort (D-093)', () => {
+  it('applies a new effort to the live session, so the next turn runs at it without a restart', async () => {
+    const s = await setup()
+    const call = sdk.calls[sdk.calls.length - 1]
+    await s.sessions.configure('chat', { model: 'claude-opus-5-5', effort: 'xhigh' })
+    expect(call.flags).toEqual([{ effortLevel: 'xhigh' }])
+    await s.sessions.configure('chat', { plan: true })
+    expect(call.flags).toHaveLength(1)
   })
 })
 

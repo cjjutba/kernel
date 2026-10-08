@@ -113,14 +113,17 @@ const LOCAL_SETTINGS = '.kernel/settings.local.toml'
  * `info/exclude`, which every worktree shares and no commit carries (KERNEL-69, the same way as `linkNodeModules`).
  * A repo whose `.gitignore` already covers it, or a folder that isn't a git repo, is left alone.
  */
-export async function ignoreLocalSettings(repo: string): Promise<void> {
-  if ((await exec('git', ['-C', repo, 'check-ignore', '-q', LOCAL_SETTINGS])).code !== 1) return
+export const ignoreLocalSettings = (repo: string) => excludeFromGit(repo, LOCAL_SETTINGS)
+
+/** The same for any repo-relative path. A folder ends in `/`, like `.kernel/plans/`. */
+export async function excludeFromGit(repo: string, entry: string): Promise<void> {
+  if ((await exec('git', ['-C', repo, 'check-ignore', '-q', entry])).code !== 1) return
   const path = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'info/exclude'])
   if (path.code !== 0) return
   const exclude = resolve(repo, path.stdout.trim())
   await mkdir(dirname(exclude), { recursive: true })
   const text = await readFile(exclude, 'utf8').catch(() => '')
-  await appendFile(exclude, `${text && !text.endsWith('\n') ? '\n' : ''}/${LOCAL_SETTINGS}\n`)
+  await appendFile(exclude, `${text && !text.endsWith('\n') ? '\n' : ''}/${entry}\n`)
 }
 
 export function deepMerge<T>(base: T, over: any): T {
