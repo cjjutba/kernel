@@ -341,13 +341,22 @@ export class Sessions {
     this.drainWaiting()
   }
 
-  /** Settings > Models: agents working at once. Read on every call, so a change applies to the next send. */
+  /**
+   * Settings > Models: agents working at once, 0 for no limit. Read on every call, so a change applies to the next send. The Lead's chats
+   * neither wait for a slot nor take one, so the Lead can plan in several chats while its teammates use the slots (D-094).
+   */
   private atCapacity(chatId: string): boolean {
-    const max = this.d.settings().models?.maxConcurrent
-    if (!max || max < 1) return false
+    const max = this.d.settings().models?.agentLimit
+    if (!max || max < 1 || this.isLeadChat(chatId)) return false
     let running = 0
-    for (const [id, l] of this.live) if (l.running && id !== chatId) running++
+    for (const [id, l] of this.live) if (l.running && id !== chatId && !this.isLeadChat(id)) running++
     return running >= max
+  }
+
+  private isLeadChat(chatId: string): boolean {
+    const chat = this.d.store.chat(chatId)
+    const ws = chat && this.d.store.workspace(chat.workspaceId)
+    return !!ws && !!this.d.agentFor(ws)?.lead
   }
 
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
