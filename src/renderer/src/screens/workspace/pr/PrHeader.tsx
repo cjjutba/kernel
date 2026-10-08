@@ -32,7 +32,9 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
-  const view = headerView(ws.prState)
+  // The Changes panel saves its file count on the workspace. No files, nothing to put in a PR.
+  const changed = (ws.stat?.files ?? 0) > 0
+  const view = headerView(ws.prState, changed)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
@@ -52,7 +54,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   useEffect(() => { if (ws.status === 'archived') go({ name: 'history' }) }, [ws.status])
 
   // ⌘⇧P creates the PR, as the menu says.
-  const canCreate = ws.prState === 'none' && !busy
+  const canCreate = ws.prState === 'none' && changed && !busy
   useEffect(() => {
     if (!canCreate) return
     const onKey = (e: KeyboardEvent) => {
