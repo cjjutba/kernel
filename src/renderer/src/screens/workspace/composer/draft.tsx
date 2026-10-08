@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardE
 import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, dropFiles, pastedText } from './attach'
 import { ComposerChip } from './Chip'
+import { loadDraft, saveDraft } from './draftStore'
 
 /** What a composer holds: typed text and chips in the order they were added, then the live text box and its caret. */
 export interface Draft { segs: ChatPart[]; draft: string; caret: number }
@@ -38,15 +39,36 @@ export const plainText = (d: Draft) => [...d.segs, text(d.draft)].map((p) => (p.
 /**
  * A composer's draft. Every chip lands where the caret is, as in Conductor: a pasted screenshot or long text, a dropped
  * or picked file, an @ file, a / skill. `insert` and `attach` run in order, so two images pasted at once both land.
+ * With a `key` (a chat id) the draft is kept per key outside the component: it comes back after a tab switch or a remount,
+ * and a key change swaps in that key's own draft. Without a key nothing is kept.
  */
-export function useDraft(init?: { parts?: ChatPart[]; draft?: string }) {
-  const [d, setD] = useState<Draft>(() => ({ segs: init?.parts ?? [], draft: init?.draft ?? '', caret: init?.draft?.length ?? 0 }))
+export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: string) {
+  const [d, setD] = useState<Draft>(() => {
+    const kept = key ? loadDraft(key) : undefined
+    return kept ? { ...kept, caret: kept.draft.length } : { segs: init?.parts ?? [], draft: init?.draft ?? '', caret: init?.draft?.length ?? 0 }
+  })
+  const [owner, setOwner] = useState(key)
+  const current = useRef(key)
+  current.current = key
+  if (owner !== key) {
+    // The composer now shows another chat: its own draft, or an empty box.
+    setOwner(key)
+    const kept = key ? loadDraft(key) : undefined
+    setD({ segs: kept?.segs ?? [], draft: kept?.draft ?? '', caret: kept?.draft.length ?? 0 })
+  }
+  useEffect(() => { if (key) saveDraft(key, d) }, [key, d])
   const input = useRef<HTMLTextAreaElement>(null)
   const caretTo = useRef<number | null>(null)
   /** A change that moves the caret, so the box takes focus with the caret where the change left it. */
   const move = (fn: (d: Draft) => Draft) => setD((cur) => { const next = fn(cur); caretTo.current = next.caret; return next })
 
   useEffect(() => { const el = input.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }, [d.draft])
+  // A draft that comes back has its caret at the end of the box. Set after the browser has laid the box out, which resets it.
+  useEffect(() => {
+    if (!key) return
+    const frame = requestAnimationFrame(() => input.current?.setSelectionRange(d.draft.length, d.draft.length))
+    return () => cancelAnimationFrame(frame)
+  }, [key])
   useLayoutEffect(() => {
     const el = input.current
     if (!el || caretTo.current === null) return
@@ -88,8 +110,17 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }) {
     setText: (t: string) => move((c) => ({ ...c, draft: t, caret: t.length })),
     type: (t: string, caret: number) => setD((c) => ({ ...c, draft: t, caret })),
     setCaret: (caret: number) => setD((c) => (c.caret === caret ? c : { ...c, caret })),
-    /** Replace everything, for a failed send or a queued message brought back to edit. */
-    reset: (next: { segs?: ChatPart[]; draft?: string } = {}) => move(() => ({ segs: next.segs ?? [], draft: next.draft ?? '', caret: next.draft?.length ?? 0 })),
+    /**
+     * Replace everything, for a failed send or a queued message brought back to edit. `forKey` is the chat the content
+     * belongs to: if the composer has moved on to another chat, it goes back to that chat's stored draft instead.
+     */
+    reset: (next: { segs?: ChatPart[]; draft?: string } = {}, forKey?: string) => {
+      if (forKey !== undefined && forKey !== current.current) {
+        if (!loadDraft(forKey)) saveDraft(forKey, { segs: next.segs ?? [], draft: next.draft ?? '' })
+        return
+      }
+      move(() => ({ segs: next.segs ?? [], draft: next.draft ?? '', caret: next.draft?.length ?? 0 }))
+    },
     snapshot: () => ({ segs: d.segs, draft: d.draft })
   }
 }

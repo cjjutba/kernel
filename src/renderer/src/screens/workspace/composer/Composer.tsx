@@ -14,6 +14,8 @@ import { QueueList } from './QueueList'
 import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
+/** The newest prefill already put in a box, so a composer that remounts doesn't write an old one over a restored draft. */
+let appliedPrefill = 0
 
 type MenuName = null | 'model' | 'plus'
 
@@ -26,7 +28,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
-  const d = useDraft(forced)
+  const d = useDraft(forced, chat.id)
   const { segs, draft, caret, input } = d
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
@@ -67,7 +69,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }, [query, ws?.id])
   useEffect(() => { setAt(0) }, [acKey])
 
-  useEffect(() => { if (prefill) d.setText(prefill.text) }, [prefill])
+  useEffect(() => { if (prefill && prefill.n > appliedPrefill) { appliedPrefill = prefill.n; d.setText(prefill.text) } }, [prefill])
   useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
@@ -89,7 +91,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     d.reset()
     try { await call('chats.send', { chatId: chat.id, parts }) }
     catch (e) {
-      d.reset(kept)
+      d.reset(kept, chat.id)
       actions.ui.toast({ title: 'Could not send', sub: (e as Error).message })
     }
   }
