@@ -1086,6 +1086,14 @@ export class Kernel {
       },
       archiveWorkspace: (id) => this.archiveWorkspace(id),
       isRunning: (id) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id)),
+      // The sidebar's check before a one-click archive. A current-branch workspace removes no files.
+      unsaved: async (id) => {
+        try {
+          const ws = await this.syncBranch(id)
+          if (ws.mode !== 'worktree') return false
+          return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
+        } catch { return 'unknown' }
+      },
       planApproved: () => this.sessions.handoffs.approved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {

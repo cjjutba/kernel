@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Workspace } from '@shared/types'
@@ -15,10 +15,10 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
   return { ...m, kernelMcpServer: (d: KernelToolDeps) => { wired = d; return m.kernelMcpServer(d) } }
 })
 
-const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', name: id, agentId: 'kai', status: 'ready', prState: 'merged', ...o }) as Workspace
+const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'merged', ...o }) as Workspace
 
-/** The Lead's tools over `list`, with `running` workspaces mid-turn and `failing` ones whose archive throws. */
-function leadTools(list: Workspace[], o: { running?: string[]; failing?: Record<string, string> } = {}) {
+/** The Lead's tools over `list`, with `running` workspaces mid-turn, `unsaved` ones git reports on and `failing` ones whose archive throws. */
+function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<string, 'dirty' | 'unknown'>; failing?: Record<string, string> } = {}) {
   const archiveWorkspace = vi.fn(async (id: string) => {
     if (o.failing?.[id]) throw new Error(o.failing[id])
     const w = list.find((x) => x.id === id)!
@@ -28,7 +28,7 @@ function leadTools(list: Workspace[], o: { running?: string[]; failing?: Record<
   const deps: KernelToolDeps = {
     roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => {}, askUser: async () => null, hireAgent: async () => '',
-    archiveWorkspace, isRunning: (id) => o.running?.includes(id) ?? false, handedOff
+    archiveWorkspace, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
   }
   const tool = kernelTools(deps).find((t) => t.name === 'archive_workspace')!
   const archive = async (ids: string[]) => ((await tool.handler({ workspace_ids: ids } as never, {})).content[0] as { text: string }).text
@@ -55,9 +55,25 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 
   it("skips the Lead's own workspace", async () => {
-    const t = leadTools([ws('lead', { agentId: 'rowan', prState: 'none' })])
+    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', prState: 'none' })])
     expect(await t.archive(['lead'])).toBe('Skipped lead: it is your own workspace.')
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('archives a worktree workspace handed to the Lead when its agent retired', async () => {
+    const t = leadTools([ws('inherited', { agentId: 'rowan' })])
+    expect(await t.archive(['inherited'])).toBe('Archived inherited.')
+  })
+
+  it('skips a workspace with uncommitted changes, or whose git status could not be read', async () => {
+    const t = leadTools([ws('dirty'), ws('unreadable')], { unsaved: { dirty: 'dirty', unreadable: 'unknown' } })
+    expect(await t.archive(['dirty', 'unreadable'])).toBe('Skipped dirty: it has uncommitted changes.\nSkipped unreadable: its git status could not be read.')
+    expect(t.archiveWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("names a failed archive by the error's first sentence", async () => {
+    const t = leadTools([ws('broken'), ws('terse')], { failing: { broken: 'git worktree remove failed. fatal: some detail\nmore output', terse: 'locked' } })
+    expect(await t.archive(['broken', 'terse'])).toBe('Skipped broken: git worktree remove failed.\nSkipped terse: locked.')
   })
 
   it('skips a workspace whose agent is mid-turn', async () => {
@@ -76,15 +92,16 @@ describe('archive_workspace (KERNEL-93)', () => {
 
   it('handles a mixed list one id at a time, and a failed archive does not stop the rest', async () => {
     const t = leadTools([
-      ws('first'), ws('lead', { agentId: 'rowan' }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('last', { prState: 'none' })
-    ], { running: ['busy'], failing: { broken: 'The folder is locked.' } })
-    expect(await t.archive(['first', 'lead', 'missing', 'broken', 'open-pr', 'busy', 'last', 'first'])).toBe([
+      ws('first'), ws('lead', { agentId: 'rowan', mode: 'current' }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('dirty'), ws('last', { prState: 'none' })
+    ], { running: ['busy'], unsaved: { dirty: 'dirty' }, failing: { broken: 'The folder is locked.' } })
+    expect(await t.archive(['first', 'lead', 'missing', 'broken', 'open-pr', 'busy', 'dirty', 'last', 'first'])).toBe([
       'Archived first.',
       'Skipped lead: it is your own workspace.',
       'Skipped missing: not an open workspace in this room.',
       'Skipped broken: The folder is locked.',
       'Skipped open-pr: its PR is open and not merged.',
       'Skipped busy: its agent is still working.',
+      'Skipped dirty: it has uncommitted changes.',
       'Archived last.',
       'Skipped first: not an open workspace in this room.'
     ].join('\n'))
@@ -93,7 +110,7 @@ describe('archive_workspace (KERNEL-93)', () => {
 })
 
 describe('archive_workspace in the Kernel (KERNEL-93)', () => {
-  it('archives through the sidebar path on a real repo, and skips the Lead and a running agent', async () => {
+  it('archives through the sidebar path on a real repo, and skips the Lead, a running agent and uncommitted work', async () => {
     const repo = await tempRepo({
       'README.md': '# client\n',
       '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
@@ -109,6 +126,8 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     const room = await k.addRoom(repo)
     const done = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     const busy = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Still going' })
+    const dirty = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Half done' })
+    await writeFile(join(dirty.path, 'draft.ts'), 'export {}\n')
     const busyChat = k.chatTabs(busy.id)[0].id
     k.sessions.isRunning = (chatId) => chatId === busyChat
     const lead = await k.leadChat(room.id)
@@ -116,10 +135,11 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
 
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
-    const result = await tool.handler({ workspace_ids: [lead.workspaceId, busy.id, done.id] } as never, {})
+    const result = await tool.handler({ workspace_ids: [lead.workspaceId, busy.id, dirty.id, done.id] } as never, {})
     expect((result.content[0] as { text: string }).text).toBe([
       'Skipped lead: it is your own workspace.',
       `Skipped ${busy.name}: its agent is still working.`,
+      `Skipped ${dirty.name}: it has uncommitted changes.`,
       `Archived ${done.name}.`
     ].join('\n'))
 
@@ -128,6 +148,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     // Settings keep branches on archive by default, so the branch stays for Restore.
     expect(await git(repo, 'branch', '--list', done.branch)).toContain(done.branch)
     expect(k.store.workspace(busy.id)?.status).not.toBe('archived')
+    expect(await readFile(join(dirty.path, 'draft.ts'), 'utf8')).toBe('export {}\n')
     expect(k.store.workspace(lead.workspaceId)?.status).not.toBe('archived')
     expect(k.store.activity(room.id).filter((a) => a.kind === 'workspace.archived').map((a) => a.workspaceId)).toEqual([done.id])
   })
