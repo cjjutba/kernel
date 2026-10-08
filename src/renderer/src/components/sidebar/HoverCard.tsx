@@ -1,9 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityEvent, Approval, Workspace } from '@shared/types'
+import type { ActivityEvent, Workspace } from '@shared/types'
 import { Icon } from '../../ui'
 import { useStore } from '../../store'
-import { isLeadWorkspace, leadOf } from '../../lead'
+import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
 import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
@@ -147,14 +147,6 @@ export function WorkspaceCard({ ws, at, id }: { ws: Workspace; at: DOMRect; id: 
       />
     </HoverCard>
   )
-}
-
-/** The Lead's pending approvals, found on its own workspace. The row and the card read the same ones, so they show the same icon. */
-export function useLeadWaiting(roomId: string): Approval[] {
-  const leadId = useStore((s) => leadOf(s.agents, roomId)?.id)
-  const workspaceId = useStore((s) => s.workspaces.find((w) => isLeadWorkspace(w, roomId, leadId))?.id)
-  const approvals = useStore((s) => s.approvals)
-  return useMemo(() => approvals.filter((a) => a.workspaceId === workspaceId && a.status === 'pending'), [approvals, workspaceId])
 }
 
 /** The Lead's card: its status on the floor, what it did or said last, and how many workspaces the room has open. */
