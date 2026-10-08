@@ -233,20 +233,20 @@ CJ Jutba
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { mode: 'folder', q: '', repo: 'client-c', folder: 'kalinga', tested: false };
+    this.state = { mode: 'folder', q: '', repo: 'client-c', folder: 'recipe-box', tested: false };
   }
 
   renderVals() {
     var self = this;
     var s = this.state;
     var accent = this.props.accent ?? '#f7f8f8';
-    var R = [['client-c', 'Private', '2h ago'], ['cjjutba.dev', 'Public', '1d ago'], ['upnext', 'Private', '3d ago'], ['kalinga', 'Private', '1w ago'], ['starter-kit', 'Private', '2w ago'], ['starter-kit-mobile', 'Private', '3w ago']];
+    var R = [['client-c', 'Private', '2h ago'], ['personal-site', 'Public', '1d ago'], ['habit-tracker', 'Private', '3d ago'], ['recipe-box', 'Private', '1w ago'], ['starter-kit', 'Private', '2w ago'], ['starter-kit-mobile', 'Private', '3w ago']];
     var q = (s.q || '').toLowerCase();
     var repos = R.filter(function (r) { return !q || r[0].indexOf(q) >= 0; }).map(function (r) {
       var on = s.repo === r[0];
       return { name: r[0], vis: r[1], updated: r[2], checked: on ? 'true' : 'false', border: on ? '#3a3c42' : 'transparent', bg: on ? '#1c1d21' : 'transparent', pick: function () { self.setState({ repo: r[0] }); } };
     });
-    var F = [['upnext', '~/Projects/upnext', 'git · main · clean', true], ['kalinga', '~/Projects/kalinga', 'git · dev · 3 uncommitted changes', true], ['cjjutba.dev', '~/Projects/cjjutba.dev', 'git · main · clean', true], ['sandbox', '~/Desktop/sandbox', 'Not a git repository', false]];
+    var F = [['habit-tracker', '~/Projects/habit-tracker', 'git · main · clean', true], ['recipe-box', '~/Projects/recipe-box', 'git · dev · 3 uncommitted changes', true], ['personal-site', '~/Projects/personal-site', 'git · main · clean', true], ['sandbox', '~/Desktop/sandbox', 'Not a git repository', false]];
     var folders = F.map(function (f) {
       var on = s.folder === f[0];
       return { path: f[1], sub: f[2], noGit: !f[3], subColor: f[3] ? '#8a8f98' : '#d0d6e0', checked: on ? 'true' : 'false', border: on ? '#3a3c42' : 'transparent', bg: on ? '#1c1d21' : 'transparent', pick: function () { self.setState({ folder: f[0] }); } };
@@ -266,9 +266,9 @@ class Component extends DCLogic {
       isRepo: s.mode === 'repo', isFolder: s.mode === 'folder', isHooks: s.mode === 'hooks', notHooks: s.mode !== 'hooks',
       title: meta.title, sub: meta.sub, footNote: meta.foot, primaryLabel: meta.label, primaryHref: meta.href,
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
-      repos: repos, folders: folders, dirtyNote: s.folder === 'kalinga',
+      repos: repos, folders: folders, dirtyNote: s.folder === 'recipe-box',
       events: events, tested: s.tested, test: function () { self.setState({ tested: true }); },
-      json: ['"hooks": {', '  "PreToolUse": [{', '    "hooks": [{ "type": "http", "url": "http://localhost:7420/hooks" }]', '  }],', '  ...one entry per event', '}']
+      json: ['"hooks": {', '  "PreToolUse": [{', '    "hooks": [{ "type": "command", "command": "/usr/bin/curl ... || true" }]', '  }],', '  ...one entry per event', '}']
     };
   }
 }
