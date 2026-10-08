@@ -31,7 +31,8 @@ export function kernelMcpServer(d: KernelToolDeps) {
     name: 'kernel',
     version: '0.1.0',
     instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for short updates people see on the floor.',
-    // Handing out work is the Lead's job, so these load with the prompt instead of waiting behind tool search.
+    // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
+    // so the hand-off doesn't depend on it.
     alwaysLoad: true,
     tools: kernelTools(d)
   })
