@@ -61,6 +61,7 @@
 /* chip */
 .chip[data-kind='mention'], .chip[data-kind='skill'] { color: var(--ink); }
 .chip svg { color: var(--muted); flex-shrink: 0; }
+.chip[data-kind='image'] > svg { color: var(--add); }
 .chip-x { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
 .chip-x:hover { background: var(--hover); color: var(--ink); }
 

@@ -34,8 +34,8 @@ export interface KernelApi {
   'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
-  /** Floor composer: send a brief to the room's Lead, or a message to one agent. */
-  'rooms.brief': { req: { roomId: string; text: string; agentId?: string }; res: { chatId: string; workspaceId: string } }
+  /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
+  'rooms.brief': { req: { roomId: string; text: string; parts?: ChatPart[]; agentId?: string }; res: { chatId: string; workspaceId: string } }
   'rooms.overlaps': { req: { roomId: string }; res: Overlap[] }
   /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
@@ -58,6 +58,7 @@ export interface KernelApi {
 
   // workspaces (KERNEL-10, 11, 16, 21, 28)
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
+  /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
   'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; model?: ModelId; effort?: Effort; plan?: boolean }; res: Workspace }
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */

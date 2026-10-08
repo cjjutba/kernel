@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadWorkspace, useStore } from '../../store'
 import { Button, Icon, Menu, Modal, Spinner } from '../../ui'
 import { useLayer } from '../../ui/hooks'
+import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { EFFORTS, ModelPicker } from '../workspace/composer/ModelPicker'
 import '../workspace/composer/composer.css'
-import { partOf } from './attach'
 import { FromPopover } from './FromPopover'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
@@ -32,15 +32,15 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const menu = useStore((s) => s.ui.menu)
   const [room, setRoom] = useState(roomId ?? rooms[0]?.id ?? '')
   const [roomMenu, setRoomMenu] = useState(false)
-  const [prompt, setPrompt] = useState('')
   const [source, setSource] = useState<WorkspaceSource | null>(initial ?? null)
-  const [filled, setFilled] = useState(false)
+  /** The prompt a picked source wrote, replaced by the next pick or cleared with the source until you edit it. */
+  const [filled, setFilled] = useState('')
   const [baseRef, setBaseRef] = useState('')
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
   const [model, setModel] = useState<ModelId>(settings?.models.engineers ?? 'claude-sonnet-5-5')
   const [effort, setEffort] = useState<Effort>(settings?.models.effort ?? 'high')
   const [plan, setPlan] = useState(false)
-  const [parts, setParts] = useState<ChatPart[]>([])
+  const d = useDraft()
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
   const [busy, setBusy] = useState(false)
@@ -55,16 +55,16 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
   const effortLabel = EFFORTS.find((x) => x.id === effort)?.label ?? effort
 
-  const textarea = useRef<HTMLTextAreaElement>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
   const roomAnchor = useRef<HTMLSpanElement>(null)
   const branchAnchor = useRef<HTMLSpanElement>(null)
   const fromAnchor = useRef<HTMLSpanElement>(null)
   const filePick = useRef<HTMLInputElement>(null)
+  const imagePick = useRef<HTMLInputElement>(null)
 
   // The modal shell focuses its first control. The prompt is where typing starts.
-  useEffect(() => { const t = requestAnimationFrame(() => textarea.current?.focus()); return () => cancelAnimationFrame(t) }, [])
+  useEffect(() => { const t = requestAnimationFrame(() => d.input.current?.focus()); return () => cancelAnimationFrame(t) }, [])
   useEffect(() => {
     if (!room) return
     let stale = false
@@ -79,26 +79,22 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const pick = (r: FromRow) => {
     setSource(r.source)
     if (r.baseRef) setBaseRef(r.baseRef)
-    if (!prompt.trim() || filled) { setPrompt(r.prompt); setFilled(true) }
     actions.ui.closeMenu()
-    requestAnimationFrame(() => { const t = textarea.current; if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length) } })
+    if (!d.plain() || (!!filled && d.draft === filled)) { d.setText(r.prompt); setFilled(r.prompt) }
+    else requestAnimationFrame(() => d.input.current?.focus())
   }
-  const clearSource = () => { setSource(null); setBaseRef(''); if (filled) { setPrompt(''); setFilled(false) } }
+  const clearSource = () => { setSource(null); setBaseRef(''); if (filled && d.draft === filled) d.setText(''); setFilled('') }
 
-  const attach = async (files: FileList | null) => {
-    for (const f of [...(files ?? [])]) {
-      try { const p = await partOf(f); setParts((all) => [...all, p]) } catch (e) { actions.ui.toast({ title: 'Could not attach', sub: (e as Error).message }) }
-    }
-  }
   const togglePlan = () => { setPlan((p) => !p); actions.ui.closeMenu() }
 
   const create = async () => {
     if (busy) return
-    if (!room || !prompt.trim()) { textarea.current?.focus(); return }
+    const prompt = d.plain()
+    if (!room || !prompt) { d.input.current?.focus(); return }
     setBusy(true); setError(null)
     try {
       const ws = await call('workspaces.create', {
-        roomId: room, prompt: prompt.trim(), parts: parts.length ? parts : undefined, mode,
+        roomId: room, prompt, parts: d.message(), mode,
         baseRef: mode === 'worktree' ? target : undefined, source: source ?? undefined, model, effort, plan
       })
       await loadWorkspace(ws.id)
@@ -109,13 +105,13 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); void create() }
-    else if (e.key === 'Tab' && e.shiftKey && e.target === textarea.current) { e.preventDefault(); togglePlan() }
+    else if (e.key === 'Tab' && e.shiftKey && e.target === d.input.current) { e.preventDefault(); togglePlan() }
     else if (e.key.toLowerCase() === 'u' && e.metaKey && !e.shiftKey) { e.preventDefault(); filePick.current?.click() }
   }
 
   return (
     <Modal title="New workspace" onClose={close} bare width={680} top={170}>
-      <div className="nw" onKeyDown={onKey}>
+      <div className="nw" onKeyDown={onKey} {...d.drop}>
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
@@ -140,22 +136,13 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         </div>
 
         <div className="nw-body">
-          {(source || parts.length > 0) && (
+          {source && (
             <div className="nw-chips">
-              {source && (
-                <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={9} stroke={2} /></button></span>
-              )}
-              {parts.map((p, i) => p.type === 'text' ? null : (
-                <span key={i} className="chip nw-chip">
-                  {p.type === 'image' && p.dataUrl ? <img src={p.dataUrl} alt="" style={{ width: 16, height: 16, borderRadius: 3, objectFit: 'cover' }} /> : <Icon name={p.type === 'image' ? 'image' : 'doc'} size={12} />}
-                  <span className="ellipsis">{p.type === 'skill' ? `/${p.name}` : p.name}</span>
-                  <button type="button" className="chip-x" aria-label={`Remove ${p.name}`} onClick={() => setParts((all) => all.filter((_, j) => j !== i))}><Icon name="close" size={9} stroke={2} /></button>
-                </span>
-              ))}
+              <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={9} stroke={2} /></button></span>
             </div>
           )}
           <label htmlFor="nw-prompt" className="sr-only">What do you want to work on?</label>
-          <textarea ref={textarea} id="nw-prompt" rows={7} placeholder="What do you want to work on?" disabled={busy} value={prompt} onChange={(e) => { setPrompt(e.target.value); setFilled(false) }} />
+          <DraftInput d={d} id="nw-prompt" placeholder="What do you want to work on?" disabled={busy} />
         </div>
 
         <div className="nw-foot">
@@ -175,13 +162,15 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             {menu === 'plus' && (
               <Menu label="Add" anchorRef={plusAnchor} onClose={actions.ui.closeMenu} style={{ right: 0, bottom: 'calc(100% + 8px)', width: 240 }} items={[
                 { id: 'plan', label: plan ? 'Plan mode is on' : 'Plan mode', shortcut: '⇧Tab', onSelect: togglePlan },
-                { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() }
+                { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() },
+                { id: 'image', label: 'Add image', onSelect: () => imagePick.current?.click() }
               ]} />
             )}
           </span>
           <Button variant="primary" className="nw-create" disabled={busy} onClick={() => void create()}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
         </div>
-        <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { void attach(e.target.files); e.target.value = '' }} />
+        <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
+        <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
     </Modal>
   )

@@ -38,6 +38,7 @@
 .bubble { padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: 1px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
+.msg-chip[data-kind='image'] svg { color: var(--add); }
 .msg-reply { gap: 6px; }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
 .msg-reply .msg-acts { margin-left: -6px; }

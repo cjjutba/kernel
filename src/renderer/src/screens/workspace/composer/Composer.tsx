@@ -1,76 +1,38 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import type { AgentDef, Chat, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../../api'
 import { actions, loadWorkspace, useStore } from '../../../store'
 import { Button, Icon, IconButton, Menu } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { baseName, dirName, filterSkills, isLongPaste, mentionAt, pasteLines, slashAt } from './autocomplete'
+import { baseName, dirName, filterSkills, mentionAt, slashAt } from './autocomplete'
 import { onAddToComposer, onComposerCommand } from './bus'
+import { DraftInput, useDraft } from './draft'
 import { HunkCard } from './HunkCard'
 import { EFFORTS, ModelPicker } from './ModelPicker'
 import { QueueList } from './QueueList'
 import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
-const MAX_ATTACH_BYTES = 1024 * 1024
-let pasteCount = 1
 
 type MenuName = null | 'model' | 'plus'
-
-/** A short label under a chip: lines of a pasted text, or the size of an image. */
-function chipMeta(p: ChatPart): string {
-  if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
-  if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
-  return ''
-}
-
-function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () => void }) {
-  if (part.type === 'text') return null
-  const label = part.type === 'skill' ? `/${part.name}` : part.name
-  const meta = chipMeta(part)
-  return (
-    <span className="chip cmp-chip" data-kind={part.type === 'skill' ? 'skill' : part.type === 'image' ? 'image' : 'file'}>
-      {part.type === 'image' && part.dataUrl ? <img src={part.dataUrl} alt="" /> : <Icon name={part.type === 'image' ? 'image' : 'doc'} size={12} />}
-      <span className="ellipsis" style={{ maxWidth: 220 }}>{label}</span>
-      {meta && <span className="chip-meta">{meta}</span>}
-      <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={10} /></button>
-    </span>
-  )
-}
-
-const readAsDataUrl = (file: Blob) => new Promise<string>((resolve, reject) => {
-  const r = new FileReader()
-  r.onload = () => resolve(String(r.result))
-  r.onerror = () => reject(new Error('Could not read that file.'))
-  r.readAsDataURL(file)
-})
-
-const imageSize = (src: string) => new Promise<{ width: number; height: number } | undefined>((resolve) => {
-  const img = new Image()
-  img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
-  img.onerror = () => resolve(undefined)
-  img.src = src
-})
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
  * files, skills, diff hunks) in the order they were added, then the live text box. Enter sends, Shift+Enter breaks the line,
- * Backspace in an empty box takes the last chip back. While the agent works, a sent message waits in the queue above the box.
+ * Backspace at the start of the box takes the chip before it back. While the agent works, a sent message waits in the queue above the box.
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
-  const [segs, setSegs] = useState<ChatPart[]>(() => forced?.parts ?? [])
-  const [draft, setDraft] = useState(() => forced?.draft ?? '')
-  const [caret, setCaret] = useState(() => forced?.draft.length ?? 0)
+  const d = useDraft(forced)
+  const { segs, draft, caret, input } = d
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
   const [at, setAt] = useState(0)
   const [dismissed, setDismissed] = useState('')
-  const input = useRef<HTMLTextAreaElement>(null)
   const filePick = useRef<HTMLInputElement>(null)
   const imagePick = useRef<HTMLInputElement>(null)
   const modelAnchor = useRef<HTMLSpanElement>(null)
@@ -102,61 +64,27 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }, [query, ws?.id])
   useEffect(() => { setAt(0) }, [acKey])
 
-  useEffect(() => { if (prefill) { setDraft(prefill.text); setCaret(prefill.text.length); input.current?.focus() } }, [prefill])
-  useEffect(() => { const el = input.current; if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` } }, [draft])
-  useEffect(() => onAddToComposer((part) => { setSegs((s) => [...s, part]); input.current?.focus() }), [])
-
-  /** Add a chip where the caret is. `drop` is how much typed text right before the caret the chip replaces (the @ or / word). */
-  const insert = useCallback((part: ChatPart, drop = 0) => {
-    const head = draft.slice(0, caret - drop)
-    const tail = draft.slice(caret)
-    setSegs((s) => [...s, ...(head ? [{ type: 'text' as const, text: head }] : []), part])
-    setDraft(tail); setCaret(0)
-    requestAnimationFrame(() => { input.current?.focus(); input.current?.setSelectionRange(0, 0) })
-  }, [draft, caret])
+  useEffect(() => { if (prefill) d.setText(prefill.text) }, [prefill])
+  useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
   const pickRow = (i: number) => {
-    if (mention) { const f = files[i]; if (f) insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
-    else if (slash) { const s = skillRows[i]; if (s) insert({ type: 'skill', name: s.name }, slash.query.length + 1) }
+    if (mention) { const f = files[i]; if (f) d.insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
+    else if (slash) { const s = skillRows[i]; if (s) d.insert({ type: 'skill', name: s.name }, slash.query.length + 1) }
   }
 
-  const attachFile = async (file: File) => {
-    try {
-      if (file.type.startsWith('image/')) {
-        const dataUrl = await readAsDataUrl(file)
-        const size = await imageSize(dataUrl)
-        setSegs((s) => [...s, { type: 'image', name: file.name || 'image.png', dataUrl, ...size }])
-      } else {
-        if (file.size > MAX_ATTACH_BYTES) throw new Error(`${file.name} is too large to attach (${Math.round(file.size / 1024)} KB).`)
-        const text = await file.text()
-        if (text.includes('\0')) throw new Error(`${file.name} is a binary file. Attach an image or a text file.`)
-        setSegs((s) => [...s, { type: 'file', name: file.name, lines: pasteLines(text), text }])
-      }
-    } catch (e) { actions.ui.toast({ title: 'Could not attach', sub: (e as Error).message }) }
-  }
-
-  const sendParts = (): ChatPart[] => {
-    const parts: ChatPart[] = [...segs, ...(draft ? [{ type: 'text' as const, text: draft }] : [])]
-    const first = parts.findIndex((p) => p.type !== 'text' || p.text.trim())
-    return first < 0 ? [] : parts.slice(first).map((p, i) => (p.type === 'text' ? { ...p, text: i === parts.length - first - 1 ? p.text.trimEnd() : p.text } : p))
-  }
   const send = async () => {
-    const parts = sendParts()
+    const parts = d.message()
     if (!parts.length || blocked) return
-    const kept = { segs, draft }
-    setSegs([]); setDraft(''); setCaret(0)
+    const kept = d.snapshot()
+    d.reset()
     try { await call('chats.send', { chatId: chat.id, parts }) }
     catch (e) {
-      setSegs(kept.segs); setDraft(kept.draft)
+      d.reset(kept)
       actions.ui.toast({ title: 'Could not send', sub: (e as Error).message })
     }
   }
 
-  const mentionFile = () => {
-    const next = `${draft}${draft && !/\s$/.test(draft) ? ' ' : ''}@`
-    setDraft(next); setCaret(next.length)
-    requestAnimationFrame(() => input.current?.focus())
-  }
+  const mentionFile = () => d.setText(`${draft}${draft && !/\s$/.test(draft) ? ' ' : ''}@`)
   const togglePlan = () => void configure({ plan: !chat.plan })
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return
@@ -168,27 +96,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (acOpen && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setDismissed(acKey); return }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return }
     if (e.key === 'Tab' && e.shiftKey) { e.preventDefault(); togglePlan(); return }
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click(); return }
-    if (e.key === 'Backspace' && !draft && segs.length) {
-      e.preventDefault()
-      const last = segs[segs.length - 1]
-      setSegs(segs.slice(0, -1))
-      if (last.type === 'text') { setDraft(last.text); setCaret(last.text.length) }
-    }
-  }
-  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const images = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
-    if (images.length) { e.preventDefault(); images.forEach((f) => void attachFile(f)); return }
-    const text = e.clipboardData.getData('text')
-    if (isLongPaste(text)) {
-      e.preventDefault()
-      insert({ type: 'file', name: `pasted_text_${pasteCount++}.txt`, lines: pasteLines(text), text })
-    }
-  }
-  const onDrop = (e: DragEvent) => {
-    if (!e.dataTransfer.files.length) return
-    e.preventDefault()
-    ;[...e.dataTransfer.files].forEach((f) => void attachFile(f))
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); filePick.current?.click() }
   }
 
   const configure = (patch: { model?: ModelId; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
@@ -197,22 +105,20 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id }))
       const last = q.parts[q.parts.length - 1]
       const text = last?.type === 'text' ? last.text : ''
-      setSegs([...segs, ...(draft ? [{ type: 'text' as const, text: draft }] : []), ...(text ? q.parts.slice(0, -1) : q.parts)])
-      setDraft(text); setCaret(text.length)
-      input.current?.focus()
+      d.reset({ segs: [...segs, ...(draft ? [{ type: 'text' as const, text: draft }] : []), ...(text ? q.parts.slice(0, -1) : q.parts)], draft: text })
     })
   }
 
   const model = MODELS.find((m) => m.id === chat.model)?.label ?? chat.model
   const effort = EFFORTS.find((x) => x.id === chat.effort)?.label ?? chat.effort
-  const hasDraft = !!draft.trim() || segs.length > 0
-  const placeholder = segs.length || draft ? '' : blocked ? 'Paused until this is resolved' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
+  const hasDraft = !d.empty
+  const placeholder = blocked ? 'Paused until this is resolved' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
 
   // A banner's "Queue message" sends what is typed (main holds it while the limit lasts), "Switch model" opens the picker.
   // Subscribed on every render, so the listener always sees the current draft.
   useEffect(() => onComposerCommand((c) => {
     if (c === 'model') { setMenu('model'); return }
-    if (sendParts().length) void send()
+    if (!d.empty) void send()
     else input.current?.focus()
   }))
 
@@ -247,19 +153,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
             <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
           )}
-          <div className="composer cmp" style={{ opacity: blocked ? 0.5 : 1 }} onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault() }} onDrop={onDrop}>
-            <div className="cmp-input" onClick={(e) => { if (e.target === e.currentTarget) input.current?.focus() }}>
-              {segs.map((p, i) => (p.type === 'text'
-                ? <span key={i} className="cmp-text">{p.text}</span>
-                : <ComposerChip key={i} part={p} onRemove={() => setSegs(segs.filter((_, j) => j !== i))} />))}
-              <textarea
-                ref={input} rows={1} aria-label={`Message ${name}`} aria-autocomplete="list" autoComplete="off" spellCheck
-                disabled={blocked} value={draft} placeholder={placeholder}
-                onChange={(e) => { setDraft(e.target.value); setCaret(e.target.selectionStart); setDismissed('') }}
-                onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
-                onKeyDown={onKey} onPaste={onPaste}
-              />
-            </div>
+          <div className="composer cmp" style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
+            <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
+              onChange={() => setDismissed('')} onKeyDown={onKey} />
             <div className="row" style={{ gap: 6 }}>
               <span className="cmp-agent"><span className="agent-dot" aria-hidden="true">{name[0]?.toUpperCase()}</span>{name}<span className="muted">{agent?.role}</span></span>
               <span className="cmp-sep" />
@@ -278,7 +174,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                     { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() },
                     { id: 'image', label: 'Add image', onSelect: () => imagePick.current?.click() },
                     { id: 'mention', label: 'Mention a file', shortcut: '@', onSelect: mentionFile },
-                    { id: 'skill', label: 'Run a skill', shortcut: '/', disabled: segs.length > 0 || !!draft, onSelect: () => { setDraft('/'); setCaret(1); requestAnimationFrame(() => input.current?.focus()) } }
+                    { id: 'skill', label: 'Run a skill', shortcut: '/', disabled: segs.length > 0 || !!draft, onSelect: () => d.setText('/') }
                   ]} />
                 )}
               </span>
@@ -288,8 +184,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
             </div>
           </div>
         </div>
-        <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { [...(e.target.files ?? [])].forEach((f) => void attachFile(f)); e.target.value = '' }} />
-        <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { [...(e.target.files ?? [])].forEach((f) => void attachFile(f)); e.target.value = '' }} />
+        <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
+        <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
     </div>
   )
