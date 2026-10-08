@@ -1,0 +1,4 @@
+/* Logs panel additions (KERNEL-99). The rest of the Logs styles sit in floor.css. */
+.floor-logs-head { gap: 8px; }
+.log-all { margin-left: auto; height: 24px; padding: 0 8px; font-size: 12px; }
+.log-all[aria-pressed='true'] { background: var(--surface-3); }
