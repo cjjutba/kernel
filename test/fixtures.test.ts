@@ -5,10 +5,12 @@ import { fixtures } from '../fixtures'
 import { fixtureHandlers } from '../src/main/fixtures'
 
 const entries = Object.entries(fixtures)
+/** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
+const noCanvas = ['WorkspaceTabStates']
 
 describe('fixtures', () => {
-  it('every fixture key has a PNG in design/screens, except the DevUi component gallery', () => {
-    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !existsSync(join('design/screens', `${name}.png`)))
+  it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {
+    const missing = entries.map(([name]) => name).filter((name) => !name.startsWith('DevUi') && !noCanvas.includes(name) && !existsSync(join('design/screens', `${name}.png`)))
     expect(missing).toEqual([])
   })
 

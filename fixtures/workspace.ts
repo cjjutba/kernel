@@ -190,6 +190,18 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
+  // No PNG draws a tab's state icon (D-092). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
+  WorkspaceTabStates: scene((f) => ({
+    chats: [
+      ...f.chats,
+      extraChat('chat-ask', 'Should the download keep the invoice number in the file name'),
+      extraChat('chat-run', 'Snapshot tests for the invoice PDF renderer'),
+      extraChat('chat-term', 'Terminal (claude)', 'terminal')
+    ],
+    approvals: [{ ...pending('question', 'kai', { title: 'Keep the invoice number in the file name?', options: ['Yes', 'No'] }), chatId: 'chat-ask' }, ...f.approvals],
+    push: [...f.push, { type: 'chat.running', chatId: 'chat-run', running: true }],
+    ui: open
+  })),
   WorkspaceTerminal: scene((f) => ({
     chats: [...f.chats, extraChat('chat-term', 'Terminal (claude)', 'terminal')],
     push: [...f.push, { type: 'terminal.data', chatId: 'chat-term', data: termScreen }],
