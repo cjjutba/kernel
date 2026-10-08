@@ -121,8 +121,10 @@ export function Floor({ roomId }: { roomId: string }) {
       <div className="floor-body">
         <main className="floor-main">
           {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} note={note} />}
-          <Stage room={room} agents={live} status={shown} words={words} poses={poses} say={mo.say ?? seq.say} instant={instant || jumping}
-            selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
+          <div className="floor-room">
+            <Stage room={room} agents={live} status={shown} words={words} poses={poses} say={mo.say ?? seq.say} instant={instant || jumping}
+              selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
+          </div>
           <Brief roomId={roomId} agents={live} />
         </main>
         <Logs roomId={roomId} agents={live} status={shown} approvals={approvals} review={seq.review} />
