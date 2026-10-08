@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
+import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { Icon, IconButton, Menu } from '../../ui'
 import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
@@ -22,6 +23,8 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
   const newAnchor = useRef<HTMLSpanElement>(null)
   const tabAnchor = useRef<HTMLSpanElement>(null)
   const checkpoints = useStore((s) => s.ui.workspace.checkpoints)
+  const approvals = useStore((s) => s.approvals)
+  const running = useStore((s) => s.running)
   const [renaming, setRenaming] = useState<string | null>(null)
   const closeMenu = () => actions.ui.closeMenu()
 
@@ -101,6 +104,8 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
         {tabs.map((t) => {
           const on = t.id === active
           const editing = renaming === t.id
+          // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
+          const g = t.kind === 'chat' ? chatGlyph({ needsYou: approvals.some((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
           return (
             <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (
@@ -109,11 +114,14 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
                 <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)}
-                  aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
+                  aria-label={g?.label ? `${t.title}, ${g.label}` : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
-                  <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat'} size={14} />
+                  {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
+                  <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
+                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                  </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>
               )}
