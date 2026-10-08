@@ -3,7 +3,8 @@ import type { AgentDef, AgentStatus, Overlap, Task } from '@shared/types'
 import { call } from '../../api'
 import { Icon, useEscape } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
-import { SEATS, defaultSelected, deskless, needsCount, seating } from '../../floor/layout'
+import { SEATS, defaultSelected, deskless, needsCount } from '../../floor/layout'
+import { useSeating } from '../../floor/useSeating'
 import { AgentCard } from './AgentCard'
 import { Brief } from './Brief'
 import { Logs } from './Logs'
@@ -47,8 +48,7 @@ export function Floor({ roomId }: { roomId: string }) {
   useEffect(() => { void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined) }, [roomId])
 
   const live = useMemo(() => agents.filter((a) => !a.retired), [agents])
-  // Desks follow the store's own status, not what the floor shows, so a walk doesn't move anyone's desk.
-  const layout = useMemo(() => seating(live, { desks: room?.desks }, { workspaces, status, activity }), [live, room?.desks, workspaces, status, activity])
+  const layout = useSeating(roomId)
   const { seated } = layout
   // The order the desks resolve to. Handing it on as `desks` keeps the briefing, the moments and the walks on the same seats.
   const deskIds = useMemo(() => seated.map((a) => a.id), [seated])
