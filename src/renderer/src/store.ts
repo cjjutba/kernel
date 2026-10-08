@@ -323,7 +323,7 @@ export async function boot() {
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
   else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' })
-  else go(homeRoute(settings, rooms))
+  else go(homeRoute(settings, rooms, workspaces))
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
@@ -332,12 +332,18 @@ export async function boot() {
   void update.then((u) => { if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u }) })
 }
 
-/** Settings > General > Default home view: where the app opens. */
-function homeRoute(settings: AppSettings, rooms: Room[]): Route {
+/**
+ * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
+ * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-102).
+ */
+function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]): Route {
   const { homeView } = settings.general
   const last = rooms.find((r) => r.id === lastRoom() && !r.hidden && !r.archived)
   if (homeView === 'inbox') return { name: 'inbox' }
-  if (homeView === 'lastRoom' && last) return { name: 'floor', roomId: last.id }
+  if (homeView === 'lastRoom' && last) {
+    const lead = workspaces.find((w) => w.roomId === last.id && w.name === 'lead' && w.mode === 'current' && w.status !== 'archived')
+    return lead ? { name: 'workspace', workspaceId: lead.id } : { name: 'team', roomId: last.id }
+  }
   return { name: 'home' }
 }
 
@@ -358,6 +364,8 @@ export async function loadRoom(roomId: string) {
   actions.tasks.set(roomId, tasks)
   actions.activity.setLast(roomId, last)
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
+  // The Inbox lists open overlaps (D-102). Pushes keep them current after this; a failed check only leaves them out.
+  void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
 }
 
 export async function loadWorkspace(workspaceId: string) {
