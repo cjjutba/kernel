@@ -30,6 +30,11 @@ export async function listBranches(repo: string): Promise<string[]> {
   return [...new Set(names)]
 }
 
+/** Whether git accepts `name` as a branch name (`git check-ref-format --branch`). */
+export async function validBranchName(repo: string, name: string): Promise<boolean> {
+  return (await exec('git', ['-C', repo, 'check-ref-format', '--branch', name])).code === 0
+}
+
 export async function currentBranch(repo: string): Promise<string> {
   return (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 }
