@@ -19,13 +19,21 @@
 
 /* tabs row */
 .ws-tabs { position: relative; height: 40px; flex-shrink: 0; display: flex; align-items: flex-end; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.tab-group { display: inline-flex; align-items: flex-end; min-width: 0; }
-.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+/* The underline spans the whole group, so the pen and the close button sit inside the tab, as in Conductor (D-088). */
+.tab-group { position: relative; display: inline-flex; align-items: center; height: 40px; min-width: 0; padding-right: 4px; border-bottom: 2px solid transparent; }
+.tab-group[data-on] { border-bottom-color: var(--ink); }
+.ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .ws-tab:hover { color: var(--ink-2); }
-.ws-tab[aria-selected='true'] { border-bottom-color: var(--ink); color: var(--ink); }
+.ws-tab[aria-selected='true'] { color: var(--ink); }
+/* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
+.tab-end { display: inline-grid; place-items: center; margin-left: -8px; }
+.tab-end > * { grid-area: 1 / 1; }
+.tab-pen { display: flex; color: var(--muted); pointer-events: none; }
 .tab-caret { width: 22px; height: 22px; border-radius: 5px; }
+.tab-caret.more, .tab-pen { transition: opacity 0.12s; }
 .tab-caret.more { opacity: 0; }
-.tab-group:hover .tab-caret.more, .tab-group:focus-within .tab-caret.more { opacity: 1; }
+.tab-group:hover .tab-caret.more, .tab-group:has(:focus-visible) .tab-caret.more { opacity: 1; }
+.tab-group:hover .tab-pen, .tab-group:has(:focus-visible) .tab-pen { opacity: 0; }
 .cp-btn { flex-shrink: 0; align-self: center; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 12.5px; }
 .cp-btn:hover, .cp-btn[aria-expanded='true'] { background: var(--surface-3); }
 
