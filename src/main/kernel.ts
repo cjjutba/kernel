@@ -20,7 +20,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -663,7 +663,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -678,7 +678,9 @@ export class Kernel {
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
-      branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
+      // The Lead can name the branch, for a repo that names branches after its issues (KERNEL-68). A taken name gets a suffix.
+      if (o.branch && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
+      branch = await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -758,7 +760,8 @@ export class Kernel {
   }
 
   async archiveWorkspace(id: string, deleteBranch?: boolean) {
-    const ws = this.mustWs(id)
+    // The branch the work is on now: archive deletes it, and restore brings it back.
+    const ws = await this.syncBranch(id)
     const room = this.mustRoom(ws.roomId)
     this.sessions.stopWorkspace(id)
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
@@ -1058,7 +1061,7 @@ export class Kernel {
 
   /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
   async resolvePr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
@@ -1071,7 +1074,7 @@ export class Kernel {
 
   /** The PR's checks, review comments and conflicts, for the Checks tab and the review card. */
   async getPr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     if (!ws.prNumber) return null
     const info = await this.github.info(ws.path, ws.branch, id)
     if (info) bus.push({ type: 'pr.info', info })
@@ -1084,7 +1087,7 @@ export class Kernel {
    * A workspace with no PR yet only adopts an open one, never an old merged or closed PR on the same branch name.
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
-    const asked = this.mustWs(id)
+    const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
     const info = await this.github.info(asked.path, asked.branch, id)
     if (info) bus.push({ type: 'pr.info', info })
@@ -1116,7 +1119,7 @@ export class Kernel {
 
   /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
   async mergePr(id: string) {
-    const ws = this.mustWs(id)
+    const ws = await this.syncBranch(id)
     if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
     if (this.settings.pr.requireGreen) {
       const info = await this.github.info(ws.path, ws.branch, id)
@@ -1139,8 +1142,26 @@ export class Kernel {
     return this.refreshPr(id, { settle: true })
   }
 
-  async readyPr(id: string) { const ws = this.mustWs(id); await this.github.ready(ws.path, ws.branch); return this.refreshPr(id) }
-  async reopenPr(id: string) { const ws = this.mustWs(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
+  async readyPr(id: string) { const ws = await this.syncBranch(id); await this.github.ready(ws.path, ws.branch); return this.refreshPr(id) }
+  async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
+
+  /**
+   * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, often
+   * to use the issue's branch name, and PRs, merge, push, archive and restore must use the branch the work is on
+   * (KERNEL-68). A PR belongs to its branch, so a switch drops the old branch's PR; the next refresh finds the new one.
+   * A detached HEAD, or a folder git can't read, changes nothing.
+   */
+  async syncBranch(id: string): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (ws.mode !== 'worktree' || ws.status === 'archived') return ws
+    const now = await currentBranch(ws.path).catch(() => null)
+    if (!now || now === 'HEAD' || now === ws.branch) return this.mustWs(id)
+    const next = this.updateWs(id, { branch: now, prState: ws.prState === 'creating' ? 'creating' : 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
+    if (next.branch !== now) return next
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `moved ${ws.name} to the branch`, object: now })
+    if (next.prState !== ws.prState) bus.push({ type: 'pr', workspaceId: id, state: next.prState })
+    return next
+  }
 
   /** After a merge or close: a fresh branch from the base in the same worktree. The chat stays. */
   async continuePr(id: string) {
@@ -1267,11 +1288,11 @@ export class Kernel {
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
-        if (push) { const ws = this.mustWs(workspaceId); await pushBranch(ws.path, ws.branch) }
+        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch) }
         await this.archiveWorkspace(workspaceId, deleteBranch)
         return { ok: true }
       },
-      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = this.mustWs(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
       'usage.notifyOnReset': async ({ type }) => {
