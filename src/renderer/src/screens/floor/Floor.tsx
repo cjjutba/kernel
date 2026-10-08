@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
-import type { AgentStatus, Overlap, Task } from '@shared/types'
+import type { AgentDef, AgentStatus, Overlap, Task } from '@shared/types'
 import { call } from '../../api'
-import { Icon } from '../../ui'
+import { Icon, useEscape } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
-import { SEATS, defaultSelected, needsCount, seating } from '../../floor/layout'
+import { SEATS, defaultSelected, deskless, needsCount, seating } from '../../floor/layout'
 import { AgentCard } from './AgentCard'
 import { Brief } from './Brief'
 import { Logs } from './Logs'
@@ -19,6 +19,7 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 const NO_TASKS: Task[] = []
 const NO_OVERLAPS: Overlap[] = []
 const BUSY: AgentStatus[] = ['working', 'planning']
+const LOUD: AgentStatus[] = ['needs', 'blocked', 'offline']
 
 /** The floor: the team seated in the office, the selected agent, the room logs and the brief box (Main.png and the Floor* states). */
 export function Floor({ roomId }: { roomId: string }) {
@@ -115,17 +116,16 @@ export function Floor({ roomId }: { roomId: string }) {
   }, [status, poses])
 
   // The popover: the clicked person, else the first who needs you, else nobody. A card you closed stays closed until someone else needs you.
-  const clickedAgent = defaultSelected(live, shown, clicked)
-  const waiting = defaultSelected(live, shown, null)
-  const sel = clicked && clickedAgent?.id === clicked ? clickedAgent : waiting && waiting.id !== closed ? waiting : undefined
+  // Someone can be selected while they sit at a desk or are listed under No desk yet. Anyone else has nowhere to hold the card.
+  const onStage = (a: AgentDef) => layout.seated.includes(a) || deskless(layout.overflow, shown).includes(a)
+  const clickedAgent = clicked ? live.find((a) => a.id === clicked && onStage(a)) : undefined
+  const waiting = defaultSelected(live, shown)
+  const sel = clickedAgent ?? (waiting && waiting.id !== closed ? waiting : undefined)
   const close = () => { setClicked(null); setClosed(waiting?.id ?? null) }
-  useEffect(() => { if (!waiting) setClosed(null) }, [waiting])
-  useEffect(() => {
-    if (!sel) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) close() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
+  useEffect(() => { if (clicked && !clickedAgent) setClicked(null) }, [clicked, clickedAgent])
+  // A closed card stays closed while that agent needs you, and opens again the next time they do.
+  useEffect(() => { if (closed && !live.some((a) => a.id === closed && LOUD.includes(shown[a.id] ?? 'idle'))) setClosed(null) }, [closed, live, shown])
+  useEscape(close, !!sel)
 
   if (!room) return <div className="panel" />
 

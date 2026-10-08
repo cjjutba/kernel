@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AgentDef, AgentLook, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
@@ -40,13 +40,12 @@ export function Stage({ room, agents, seats, status, words, poses, say, instant,
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} look={lookFor(a, order(a))} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
       {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, order(a))} facing={p.facing} /> })}
-      {/* Keyed by seat as well, so a person who changes desks appears at the new one at once instead of gliding across the floor. */}
-      {seated.map((a, i) => <Tag key={`${a.id}:${i}`} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
-      {seatOf >= 0 && <div className="agent-pop" data-side={SEATS[seatOf][0] >= 400 ? 'left' : 'right'} style={pct(SEATS[seatOf][0] + (SEATS[seatOf][0] >= 400 ? -26 : 26), SEATS[seatOf][1] + 14)}>{card}</div>}
+      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seatOf >= 0 && <div className="agent-pop" data-side={SEATS[seatOf][0] >= 400 ? 'left' : 'right'} style={pct(SEATS[seatOf][0] + (SEATS[seatOf][0] >= 400 ? -26 : 26), SEATS[seatOf][1] + (SEATS[seatOf][1] >= 450 ? -140 : 28))}>{card}</div>}
       {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
-      {waiting.length > 0 && <Overflow room={room} agents={waiting} status={status} selectedId={selectedId} onSelect={onSelect} card={popover && waiting.some((a) => a.id === popover.agent.id) ? card : undefined} />}
+      {waiting.length > 0 && <Overflow room={room} agents={waiting} all={overflow} status={status} selectedId={selectedId} onSelect={onSelect} card={popover && waiting.some((a) => a.id === popover.agent.id) ? card : undefined} />}
     </div>
   )
 }
@@ -75,11 +74,15 @@ function Person({ look, seat, status, present }: { agent: AgentDef; look: AgentL
 }
 
 /** The name, plus a status word unless they are idle. Needs you and blocked get the bright border; planning pulses a ring and walking holds one. No dots. */
-function Tag({ agent, at, status, word: shown, selected, onSelect }: { agent: AgentDef; at: [number, number]; status: AgentStatus; word?: string; selected: boolean; onSelect: () => void }) {
+function Tag({ agent, seat, at, status, word: shown, selected, onSelect }: { agent: AgentDef; seat: number; at: [number, number]; status: AgentStatus; word?: string; selected: boolean; onSelect: () => void }) {
   const word = shown ?? WORD[status]
+  // A change of desk is a jump: the tag skips its glide for the render that moves it.
+  const was = useRef(seat)
+  const moved = was.current !== seat
+  useEffect(() => { was.current = seat })
   return (
     <button type="button" className="floor-tag" aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
-      style={pct(at[0], at[1])}>
+      style={{ ...pct(at[0], at[1]), transition: moved ? 'none' : undefined }}>
       <span className="floor-tag-pill" data-status={status}>{agent.name}{(shown || status !== 'idle') && <span>{word}</span>}</span>
     </button>
   )
@@ -150,14 +153,14 @@ function Templates({ room }: { room: Room }) {
 }
 
 /** More agents than desks: the ones without a desk who are doing something, listed with a way to add desks. */
-function Overflow({ room, agents, status, selectedId, onSelect, card }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void; card?: ReactNode }) {
+function Overflow({ room, agents, all, status, selectedId, onSelect, card }: { room: Room; agents: AgentDef[]; /** Everyone without a desk, whose order picks each dot's color. */ all: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void; card?: ReactNode }) {
   return (
     <section className="floor-overflow" aria-label="Agents without a desk">
       {card && <div className="agent-pop" data-side="above">{card}</div>}
       <span className="muted" style={{ fontSize: 12 }}>No desk yet</span>
-      {agents.map((a, i) => (
+      {agents.map((a) => (
         <button key={a.id} type="button" className="overflow-row" aria-pressed={selectedId === a.id} aria-label={`${a.name}, ${a.role}, ${WORD[status[a.id] ?? 'idle']}`} onClick={() => onSelect(a.id)}>
-          <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i), color: ART.onShirt }}>{a.name[0]}</span>
+          <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(all.indexOf(a)), color: ART.onShirt }}>{a.name[0]}</span>
           <span style={{ fontWeight: 500 }}>{a.name}</span><span className="muted">{a.role}</span>
           <span className="grow" /><span className="muted" style={{ fontSize: 12 }}>{WORD[status[a.id] ?? 'idle']}</span>
         </button>
