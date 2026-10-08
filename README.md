@@ -51,12 +51,13 @@ Kernel snapshots the worktree after every agent turn. If a turn goes wrong, reve
 
 ## Privacy
 
-Kernel runs on your own Claude plan through the Claude Code you already have installed. There is no Kernel account and no Kernel server. Your rooms, chats, settings and history stay in a local database on your Mac.
+Kernel runs on your own Claude plan, using the Claude Code login you already have. There is no Kernel account and no Kernel server. Your rooms, chats, settings and history stay in a local database on your Mac.
 
-The app makes these network calls and no others:
+Kernel itself makes these network calls and no others:
 
 - Claude Code, which talks to Anthropic as it always does
 - `gh`, for pull requests and checks
+- git, to fetch and push branches on your repo's own remote, and your package manager when a new room installs dependencies
 - The update check, which reads this repo's GitHub Releases
 - An offline check, a DNS lookup of `api.anthropic.com`
 - Linear, only if you connect it in Settings
