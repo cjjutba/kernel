@@ -64,7 +64,8 @@ export interface SessionDeps {
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
   allowInRoom: (roomId: string, rule: string) => void
-  onTurnDone?: (ws: Workspace, chat: Chat) => void
+  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it. */
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean }) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
@@ -447,11 +448,12 @@ export class Sessions {
         this.clearRetry(chatId, live)
         void this.refreshContext(chatId, live)
         const stopped = live.interrupted && !live.sendNext
+        const interrupted = live.interrupted
         live.interrupted = false
         live.sendNext = false
         live.blocked = false
         this.setRunning(chat, ws, live, false)
-        this.d.onTurnDone?.(ws, chat)
+        this.d.onTurnDone?.(ws, chat, { ok, interrupted })
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
         if (stopped) this.setQueue(chatId, [])
         else this.drain(chatId)

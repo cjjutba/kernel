@@ -1,4 +1,4 @@
-import type { AppSettings, Approval, Notification, PrState } from '@shared/types'
+import type { AppSettings, Approval, Chat, Notification, PrState, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -13,6 +13,19 @@ type Deps = {
   /** True while no Kernel window has focus. */
   inBackground?: () => boolean
   now?: () => number
+  /** How long after a finished turn an agent counts as idle. Ten minutes; tests shorten it. */
+  idleAfterMs?: number
+}
+
+/** A finished turn, as Kernel reports it. `lead` and `queued` come from outside: the team and the chat's queue. */
+export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean }
+
+const IDLE_AFTER_MS = 10 * 60_000
+
+/** The start of the agent's last reply, for the detail pane: its first paragraph, cut at about 300 characters. */
+export function replyExcerpt(text: string, max = 300): string {
+  const first = text.trim().split(/\n\s*\n/)[0].replace(/\s+/g, ' ')
+  return first.length > max ? `${first.slice(0, max - 1).trimEnd()}…` : first
 }
 
 /** The inbox row that carries an approval. One per approval, so a decision updates it in place. */
@@ -46,12 +59,15 @@ const kindLabel = (a: Approval) => (a.kind === 'plan' || a.toolName === 'ExitPla
  */
 export class Notifications {
   private off: () => void = () => undefined
+  /** Idle checks waiting to fire, by workspace. The workspace's next turn cancels its check. */
+  private idle = new Map<string, NodeJS.Timeout>()
   constructor(private d: Deps) {}
 
   attach() {
     const on = (e: PushEvent) => {
       if (e.type === 'approval') this.onApproval(e.approval)
       else if (e.type === 'pr') this.onPr(e.workspaceId, e.state)
+      else if (e.type === 'chat.running' && e.running) { const ws = this.d.store.chat(e.chatId)?.workspaceId; if (ws) this.cancelIdle(ws) }
     }
     bus.on('push', on)
     this.off = () => bus.off('push', on)
@@ -59,7 +75,53 @@ export class Notifications {
     for (const a of this.d.store.approvals({ pendingOnly: true })) if (!this.d.store.notification(approvalNotificationId(a.id))) this.onApproval(a, false)
   }
 
-  detach() { this.off() }
+  detach() { this.off(); for (const id of [...this.idle.keys()]) this.cancelIdle(id) }
+
+  /**
+   * A teammate's turn ended with nothing left to do: a "Finished" row in Inbox > Updates (Inbox.png), one per workspace,
+   * replaced by the next. The Lead's turns, interrupted or failed turns, and turns with a message queued or an
+   * approval pending don't count. With "An agent is idle for 10 minutes" on, an idle row follows if nothing happens.
+   */
+  turnDone(asked: Workspace, chat: Chat, t: TurnDone) {
+    const ws = this.d.store.workspace(asked.id) ?? asked
+    if (t.lead || !t.ok || t.interrupted || t.queued || ws.status === 'archived') return
+    if (this.d.store.approvals({ pendingOnly: true }).some((a) => a.chatId === chat.id)) return
+    const room = this.d.store.room(ws.roomId)
+    const who = this.d.agentName(ws.roomId, ws.agentId) ?? 'An agent'
+    const task = ws.title ?? ws.name
+    const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
+    const now = this.d.now?.() ?? Date.now()
+    const n = this.save({
+      id: `n-finished-${ws.id}`, kind: 'finished', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId,
+      title: `Finished ${task}`, sub: `Workspace ready${room ? ` · ${room.name}` : ''}`,
+      heading: `${who} finished ${task}`, body: reply?.kind === 'text' ? replyExcerpt(reply.text) : undefined,
+      needsYou: false, read: false, createdAt: now
+    })
+    this.alert(n, 'finished')
+    this.cancelIdle(ws.id)
+    if (!this.d.settings().notifications.idle) return
+    this.idle.set(ws.id, setTimeout(() => this.idleNow(ws.id, who, task), this.d.idleAfterMs ?? IDLE_AFTER_MS))
+  }
+
+  private cancelIdle(workspaceId: string) {
+    const t = this.idle.get(workspaceId)
+    if (t) clearTimeout(t)
+    this.idle.delete(workspaceId)
+  }
+
+  private idleNow(workspaceId: string, who: string, task: string) {
+    this.idle.delete(workspaceId)
+    const ws = this.d.store.workspace(workspaceId)
+    if (!ws || ws.status === 'archived' || !this.d.settings().notifications.idle) return
+    const room = this.d.store.room(ws.roomId)
+    const n = this.save({
+      id: `n-idle-${ws.id}`, kind: 'idle', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId,
+      title: `${who} is idle`, sub: `${task}${room ? ` · ${room.name}` : ''}`,
+      heading: `${who} has been idle for 10 minutes`, body: `Nothing has happened in ${task} since ${who}'s last turn.`,
+      needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now()
+    })
+    this.alert(n, 'idle')
+  }
 
   list(): Notification[] { return this.d.store.notifications() }
 
@@ -120,7 +182,7 @@ export class Notifications {
     else if (state === 'closed') settle('The PR was closed.')
   }
 
-  private alert(n: Notification, gate: 'permission' | 'plan' | 'merge' | 'checkFailed') {
+  private alert(n: Notification, gate: 'permission' | 'plan' | 'merge' | 'checkFailed' | 'finished' | 'idle') {
     const s = this.d.settings().notifications
     if (!s[gate] || !this.d.show || !this.d.inBackground?.()) return
     if (inQuietHours(s.quietHours, new Date(this.d.now?.() ?? Date.now()))) return
