@@ -144,3 +144,5 @@ export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
   }
   return notes.filter((n) => n.title)
 }
+
+// Scratch change for the Release note check proof (KERNEL-66). Never merged.
