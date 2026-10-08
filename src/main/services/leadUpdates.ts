@@ -8,15 +8,20 @@ import type { TurnDone } from './notifications'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
- * reviewer when a PR is ready, and nobody tells the user. Events are collected per room and sent as one message once
- * things go quiet, only to a Lead chat that already exists and is idle. A busy, queued or paused Lead gets them later;
- * nothing is dropped except when the room has no Lead chat at all, because then there is nobody to tell.
+ * reviewer when a PR is ready, and nobody tells the user. Events are collected per Lead chat, the one that handed the
+ * workspace off (KERNEL-105), and sent as one message once things go quiet, only to a Lead chat that already exists and
+ * is idle. A busy, queued or paused chat gets them later, and doesn't hold up the others. Nothing is dropped except when
+ * the room has no open Lead chat at all, because then there is nobody to tell.
  */
 export interface LeadUpdateDeps {
   store: Store
   enabled: () => boolean
-  /** The room's Lead chat when it exists. Never creates one. */
-  leadChat: (roomId: string) => Chat | undefined
+  /**
+   * The open Lead chat that hears about workspaces handed off in `owner`, or about workspaces no Lead chat handed off
+   * when `owner` is unset. `closed` is the owner when it is closed and its updates go to another chat. Undefined when
+   * the room has no open Lead chat. Never creates one.
+   */
+  target: (roomId: string, owner?: string) => { chat: Chat; closed?: Chat } | undefined
   /** Whether the workspace is the Lead's own. Its events are never reported back to it. */
   isLead: (ws: Workspace) => boolean
   agentName: (roomId: string, agentId: string) => string | undefined
@@ -47,11 +52,19 @@ function prLine(state: PrState, pr: string): string | undefined {
 /** The most lines one update carries; older ones are summarized, so a long absence can't flood the Lead. */
 const MAX_LINES = 20
 
+/** One event, numbered so a message that mixes several chats' events still knows which are newest. */
+interface Line { n: number; text: string }
+
+/** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
+interface Pending { roomId: string; owner?: string; lines: Line[] }
+
 export class LeadUpdates {
-  private pending = new Map<string, string[]>()
+  /** Keyed by the owning Lead chat's id, or `room:<id>` for workspaces no Lead chat handed off. */
+  private pending = new Map<string, Pending>()
   private timers = new Map<string, NodeJS.Timeout>()
   /** The last PR state seen per workspace, to tell "opened" from a later change. */
   private prev = new Map<string, PrState>()
+  private seq = 0
   private off: () => void = () => undefined
 
   constructor(private d: LeadUpdateDeps) {}
@@ -93,25 +106,50 @@ export class LeadUpdates {
   private add(ws: Workspace, what: string) {
     if (!this.d.enabled()) return
     const who = this.d.agentName(ws.roomId, ws.agentId) ?? ws.agentId
-    const line = `- ${who} · ${ws.title ?? ws.name} (workspace ${ws.id}): ${what}`
-    this.pending.set(ws.roomId, [...(this.pending.get(ws.roomId) ?? []), line])
-    const old = this.timers.get(ws.roomId)
+    const key = ws.leadChatId ?? `room:${ws.roomId}`
+    const p = this.pending.get(key) ?? { roomId: ws.roomId, owner: ws.leadChatId, lines: [] }
+    p.lines.push({ n: this.seq++, text: `- ${who} · ${ws.title ?? ws.name} (workspace ${ws.id}): ${what}` })
+    this.pending.set(key, p)
+    const old = this.timers.get(key)
     if (old) clearTimeout(old)
-    this.timers.set(ws.roomId, setTimeout(() => { this.timers.delete(ws.roomId); this.flush(ws.roomId) }, this.d.delayMs ?? 5000))
+    this.timers.set(key, setTimeout(() => { this.timers.delete(key); this.flush(ws.roomId) }, this.d.delayMs ?? 5000))
   }
 
-  /** Sends what's waiting for the room, if its Lead can take it now. Kernel also calls this on its PR poll, so a pause or a busy Lead only delays it. */
+  /**
+   * Sends what's waiting in the room to each Lead chat that can take it now, one message per chat. A chat waits until
+   * every batch headed for it has gone quiet, so a closed chat's updates ride along with its own. Kernel also calls this
+   * on its PR poll, so a pause or a busy Lead chat only delays its own updates.
+   */
   flush(roomId: string) {
-    const lines = this.pending.get(roomId)
-    if (!lines?.length || this.timers.has(roomId)) return
-    if (!this.d.enabled()) { this.pending.delete(roomId); return }
-    const chat = this.d.leadChat(roomId)
-    if (!chat) { this.pending.delete(roomId); return }
-    const shown = lines.length > MAX_LINES ? [`- ${lines.length - MAX_LINES} earlier updates are left out.`, ...lines.slice(-MAX_LINES)] : lines
-    if (!this.d.post(chat.id, [UPDATE_HEADER, ...shown].join('\n'))) return
-    this.pending.delete(roomId)
-    this.d.delivered?.(roomId, chat, lines)
+    const waiting = [...this.pending].filter(([, p]) => p.roomId === roomId && p.lines.length)
+    if (!waiting.length) return
+    if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) this.pending.delete(key); return }
+    const byChat = new Map<string, { chat: Chat; own: Line[]; closed: { chat: Chat; lines: Line[] }[]; keys: string[]; quiet: boolean }>()
+    for (const [key, p] of waiting) {
+      const t = this.d.target(roomId, p.owner)
+      if (!t) { if (!this.timers.has(key)) this.pending.delete(key); continue }
+      const group = byChat.get(t.chat.id) ?? { chat: t.chat, own: [], closed: [], keys: [], quiet: true }
+      if (t.closed) group.closed.push({ chat: t.closed, lines: p.lines })
+      else group.own.push(...p.lines)
+      group.keys.push(key)
+      group.quiet &&= !this.timers.has(key)
+      byChat.set(t.chat.id, group)
+    }
+    for (const g of byChat.values()) {
+      if (!g.quiet) continue
+      const all = [...g.own, ...g.closed.flatMap((c) => c.lines)]
+      const kept = new Set([...all].sort((a, b) => b.n - a.n).slice(0, MAX_LINES).map((l) => l.n))
+      const shown = all.length > kept.size ? [`- ${all.length - kept.size} earlier updates are left out.`] : []
+      shown.push(...g.own.filter((l) => kept.has(l.n)).map((l) => l.text))
+      for (const c of g.closed) {
+        const lines = c.lines.filter((l) => kept.has(l.n))
+        if (lines.length) shown.push(`From "${c.chat.title}", a Lead chat that is now closed:`, ...lines.map((l) => l.text))
+      }
+      if (!this.d.post(g.chat.id, [UPDATE_HEADER, ...shown].join('\n'))) continue
+      for (const key of g.keys) this.pending.delete(key)
+      this.d.delivered?.(roomId, g.chat, all.map((l) => l.text))
+    }
   }
 
-  flushAll() { for (const roomId of [...this.pending.keys()]) this.flush(roomId) }
+  flushAll() { for (const roomId of new Set([...this.pending.values()].map((p) => p.roomId))) this.flush(roomId) }
 }
