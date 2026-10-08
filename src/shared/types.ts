@@ -212,6 +212,8 @@ export interface Workspace {
   source?: WorkspaceSource
   /** Board task this workspace builds, for example "T-14". */
   taskId?: string
+  /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
+  leadChatId?: string
   prNumber?: number
   prUrl?: string
   prTitle?: string
