@@ -94,7 +94,7 @@
 }
 :root {
   --r-sm: 6px; --r: 8px; --r-md: 10px; --r-lg: 12px; --r-xl: 14px;
-  --font: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font: 'Inter Variable', 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', monospace;
 }
 * { box-sizing: border-box; }

@@ -89,7 +89,7 @@ export interface Room {
   hidden?: boolean
   /** Archived from Settings > Room. Agents stop, workspaces archive, the room moves to Rooms > Archived. */
   archived?: boolean
-  /** Bash rules CJ chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
+  /** Bash rules the user chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
   createdAt: number
 }
@@ -143,7 +143,7 @@ export interface RoomSetupStep {
   error?: string
 }
 
-/** A repo on CJ's GitHub account (ConnectRepo.png). */
+/** A repo on the user's GitHub account (ConnectRepo.png). */
 export interface RepoSummary {
   fullName: string
   name: string
@@ -249,7 +249,7 @@ export interface FileEntry {
 }
 
 /**
- * One hunk of a file that has both CJ's earlier edits and the agent's (WorkspaceHunks.png).
+ * One hunk of a file that has both the user's earlier edits and the agent's (WorkspaceHunks.png).
  * `mine` hunks predate the workspace (the current-branch baseline) and stay uncommitted unless picked.
  */
 export interface Hunk {
@@ -410,7 +410,7 @@ export type Decision =
 
 // ---------- board
 
-/** Columns on the board. Spec, Plan and Review are gates that wait on CJ (Board.png). */
+/** Columns on the board. Spec, Plan and Review are gates that wait on the user (Board.png). */
 export type TaskColumn = 'spec' | 'plan' | 'build' | 'qa' | 'review' | 'done'
 export type TaskState = 'working' | 'needs' | 'blocked' | 'idle' | 'done'
 
@@ -467,7 +467,7 @@ export interface ActivityEvent {
   object?: string
   /** A quoted brief or message under the line (FloorSent.png). */
   quote?: string
-  /** Shows the object as something that needs CJ. */
+  /** Shows the object as something that needs the user. */
   warn?: boolean
   /** `agent.talk` carries `from` and `to` (agent ids) and `workspaceId`; `overlap` carries `overlapId` and `workspaceIds`. */
   data?: Record<string, unknown>
@@ -490,10 +490,10 @@ export interface Notification {
   /** The heading on the detail pane. */
   heading?: string
   body?: string
-  /** True while CJ still has to act on it. */
+  /** True while the user still has to act on it. */
   needsYou: boolean
   read: boolean
-  /** What the detail pane says after CJ acted. */
+  /** What the detail pane says after the user acted. */
   resolved?: string
   createdAt: number
 }

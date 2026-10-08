@@ -1,6 +1,6 @@
 # Kernel
 
-Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virtual office. CJ is the only user. He briefs Rowan (the Lead) on the floor, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. Read `docs/PRODUCT.md` once per session if you are new to it.
+Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virtual office. The user briefs Rowan (the Lead) on the floor, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. Read `docs/PRODUCT.md` once per session if you are new to it.
 
 ## Commands
 
@@ -45,7 +45,7 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` before changing a deliberate choice, and add an entry when you make a new one.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
-- Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<a side project> npm test -- test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
+- Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> npm test -- test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 
 ## Lanes

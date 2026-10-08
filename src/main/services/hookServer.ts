@@ -20,7 +20,7 @@ export interface HookServerOptions {
 
 /**
  * Receives Claude Code hooks on localhost, posted by the curl command the installer writes (D-050). Most events are fire and forget.
- * PermissionRequest is held open until CJ decides in Kernel, or the timeout passes and the
+ * PermissionRequest is held open until the user decides in Kernel, or the timeout passes and the
  * empty response lets Claude Code show its normal prompt in the terminal.
  */
 export function startHookServer(o: HookServerOptions): Promise<Server> {

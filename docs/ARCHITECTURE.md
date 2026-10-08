@@ -29,7 +29,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 `services/sessions.ts` runs each chat as a Claude Agent SDK `query()` in streaming input mode, with:
 - `cwd` set to the workspace path, `settingSources: ['user','project','local']` so CLAUDE.md, agents and skills load
 - `systemPrompt: { type: 'preset', preset: 'claude_code', append: <agent instructions + workspace context> }`
-- `canUseTool` routing whatever Claude Code would prompt for through `approvals.ts`. CJ's own allow rules still apply, so on his machine that is mostly Always ask commands (D-016)
+- `canUseTool` routing whatever Claude Code would prompt for through `approvals.ts`. The user's own allow rules still apply, so with a broad allow list that is mostly Always ask commands (D-016)
 - in-process `hooks` reporting activity, the same shape as the http hooks, plus a Bash guard that applies Never allow (`deny`) and Always ask (`ask`) and lets room "Always allow" rules through
 - `thinking: { type: 'adaptive', display: 'summarized' }` so thinking rows have text, a preset `sessionId` for new chats, and an env without API keys (D-018, D-019)
 - `mcpServers.kernel` for the Lead only (`services/kernelMcp.ts`): list_agents, list_workspaces, request_plan_approval, ask_user, create_workspace, message_agent, say, hire_agent

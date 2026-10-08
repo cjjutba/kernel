@@ -47,9 +47,9 @@ async function portOwner(port: number) {
   return r.code === 0 ? parseLsof(r.stdout) : null
 }
 
-/** "max" becomes "Claude Max". An API key login has no plan. */
-export function planName(subscriptionType: unknown): string {
-  return typeof subscriptionType === 'string' && subscriptionType ? `Claude ${subscriptionType[0].toUpperCase()}${subscriptionType.slice(1)}` : 'Claude account'
+/** "max" becomes "Claude Max". An API key login has no plan, so it reads as undefined. */
+export function planName(subscriptionType: unknown): string | undefined {
+  return typeof subscriptionType === 'string' && subscriptionType ? `Claude ${subscriptionType[0].toUpperCase()}${subscriptionType.slice(1)}` : undefined
 }
 
 /** The checks behind the "Getting Kernel ready" screens, in canvas order: Claude Code, sign in, agent teams, GitHub CLI, hook server. */
@@ -67,7 +67,7 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
     let status: { loggedIn?: boolean; subscriptionType?: unknown } = {}
     try { status = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
     checks.push(status.loggedIn
-      ? { id: 'auth', ok: true, title: 'Signed in', detail: planName(status.subscriptionType) }
+      ? { id: 'auth', ok: true, title: 'Signed in', detail: planName(status.subscriptionType) ?? 'Claude account' }
       : { id: 'auth', ok: false, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan. Sign in, then check again.', fix: { command: 'claude auth login' } })
   }
 

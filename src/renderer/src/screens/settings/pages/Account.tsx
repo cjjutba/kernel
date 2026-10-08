@@ -57,7 +57,7 @@ export function Account() {
         ))}
       </Section>
       <Section title="Claude">
-        <Row label="Plan"><span className="set-value">{account?.plan ?? (account?.signedIn ? 'Claude' : 'Signed out')}</span></Row>
+        <Row label="Plan"><span className="set-value">{account?.plan ?? (account?.signedIn ? 'Claude account' : 'Signed out')}</span></Row>
         <Row label="Details" desc="The same numbers Claude Code shows"><Button onClick={() => void openUsage()}>Open /usage</Button></Row>
         {s && (
           <>

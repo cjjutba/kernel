@@ -1,7 +1,7 @@
 # Packaging, signing, notarization and publishing (KERNEL-30). See docs/RELEASING.md.
 appId: com.cjjutba.kernel
 productName: Kernel
-copyright: Copyright © 2026 CJ Jutba
+copyright: Copyright © 2026 Christian Jerald Jutba
 directories:
   buildResources: build
   output: dist

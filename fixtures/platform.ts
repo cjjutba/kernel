@@ -16,7 +16,7 @@ const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], it
 const claudeOk: PreflightCheck = { id: 'claude', ok: true, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
 const authOk: PreflightCheck = { id: 'auth', ok: true, title: 'Signed in', detail: 'Claude Max' }
 const teamsOk: PreflightCheck = { id: 'teams', ok: true, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
-const ghOk: PreflightCheck = { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as cjjutba', meta: 'gh 2.62' }
+const ghOk: PreflightCheck = { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as samrivera', meta: 'gh 2.62' }
 const hooksOk: PreflightCheck = { id: 'hooks', ok: true, title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
 const allOk = [claudeOk, authOk, teamsOk, ghOk, hooksOk]
 /** Every check passing except the one at `id`, which is replaced by `failing`. */
@@ -62,7 +62,7 @@ const kernelFiles: RoomSettings = {
   disabled: { skills: [], mcp: ['Figma'] }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
-const prSettings = { ...DEFAULT_SETTINGS('/Users/cj'), pr: { ...DEFAULT_SETTINGS('/Users/cj').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
@@ -72,7 +72,7 @@ const sixAgents: AgentDef[] = [
   agentFile('theo', 'Theo', 'Reviewer', 'Types, security, tenancy'), agentFile('lumi', 'Lumi', 'Designer', 'Joined today')
 ]
 const integrationRows: Integration[] = [
-  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as cjjutba' },
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
   { id: 'linear', name: 'Linear', connected: false, detail: 'Create workspaces from issues' },
   { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
   { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
@@ -99,13 +99,13 @@ export const platformFixtures: Record<string, Fixture> = {
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
-  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/cj'), general: { ...DEFAULT_SETTINGS('/Users/cj').general, openAtLogin: true } } }),
+  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),
   SettingsShortcuts: settingsPage('shortcuts'),
   SettingsModels: settingsPage('models'),
-  SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/cj'), permissions: { ...DEFAULT_SETTINGS('/Users/cj').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
+  SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/you'), permissions: { ...DEFAULT_SETTINGS('/Users/you').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
@@ -118,7 +118,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene((f) => ({
     ...clientA({ scripts: { setup: 'pnpm install' } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/cj/Projects/client-a' } : r)),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
   })),
@@ -160,7 +160,7 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: open
   })),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
-  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }, ui: open })),
+  WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),
     items: {},

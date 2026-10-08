@@ -86,7 +86,7 @@ if (tool !== 'Bash') process.exit(0)
 
 const command = String(args.command ?? '')
 
-if (/\bKERNEL_LIVE=/.test(command)) deny('the live test (KERNEL_LIVE) needs CJ.')
+if (/\bKERNEL_LIVE=/.test(command)) deny('the live test (KERNEL_LIVE) needs a person.')
 if (/\bgh\s+repo\s+(delete|edit)\b/.test(command)) deny('gh repo delete and gh repo edit are off limits.')
 for (const h of ['~', '$HOME', '${HOME}', home]) {
   if (command.includes(`${h}/.claude/settings`)) deny('~/.claude/settings.json is off limits.')

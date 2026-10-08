@@ -41,7 +41,7 @@ describe('floor moments', () => {
     expect(moments(input({ activity: [talk, ev('d', 950, { kind: 'turn.done', agentId: 'rowan' })] })).talks[0].live).toBe(false)
   })
 
-  it('shows a chat with CJ unless the Lead is on a brief', () => {
+  it('shows a chat with the user unless the Lead is on a brief', () => {
     const chat = ev('c', 900, { kind: 'prompt', actor: 'you', agentId: 'rowan', workspaceId: 'w', object: 'plan' })
     const m = moments(input({ activity: [chat], status: { rowan: 'working' } }))
     expect(m.chatting).toBe('rowan')

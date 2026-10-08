@@ -33,7 +33,7 @@ export async function copyLocalFiles(repo: string, worktree: string, files: stri
   return copied
 }
 
-/** CJ's login shell so nvm, pnpm and PATH tweaks apply. Falls back to sh. */
+/** The user's login shell so nvm, pnpm and PATH tweaks apply. Falls back to sh. */
 export function loginShell(): string {
   if (process.env.SHELL && existsSync(process.env.SHELL)) return process.env.SHELL
   return existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh'

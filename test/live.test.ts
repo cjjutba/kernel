@@ -11,7 +11,7 @@ import { exec } from '../src/main/services/exec'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
-//   KERNEL_LIVE=1 KERNEL_LIVE_REPO=~/Projects/quarters npm test -- test/live.test.ts
+//   KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> npm test -- test/live.test.ts
 // KERNEL_LIVE_BASE overrides the base branch (origin/main), KERNEL_LIVE_OUT where the evidence JSON goes.
 // It never writes to ~/.claude/settings.json. Hooks for the outside session go to a temp settings file.
 

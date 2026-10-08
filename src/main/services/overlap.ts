@@ -70,7 +70,7 @@ export class Overlaps {
     return next
   }
 
-  /** CJ handed it to the Lead: it stays on record but leaves the floor. */
+  /** The user handed it to the Lead: it stays on record but leaves the floor. */
   resolve(id: string): Overlap | undefined {
     const o = this.known.get(id)
     if (!o) return undefined

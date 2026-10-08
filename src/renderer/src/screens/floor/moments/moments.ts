@@ -35,17 +35,17 @@ export interface MomentInput {
 }
 
 export interface Moments {
-  /** The newest question waiting on CJ. The floor card and the raised hand both read it. */
+  /** The newest question waiting on the user. The floor card and the raised hand both read it. */
   question?: Approval
   /** Overlaps still on the floor, newest first. */
   overlaps: Overlap[]
   talks: Talk[]
   say?: Say
-  /** Who CJ is chatting with in a workspace right now. */
+  /** Who the user is chatting with in a workspace right now. */
   chatting?: string
   /** A new agent walking in. `fresh` is true while the arrival is happening now, so the walk starts at the door. */
   hire?: { agentId: string; eventId: string; fresh: boolean }
-  /** Who the agent card follows when nobody was clicked and nobody needs CJ. */
+  /** Who the agent card follows when nobody was clicked and nobody needs the user. */
   focus?: string
 }
 
@@ -87,7 +87,7 @@ export function moments(i: MomentInput): Moments {
   const joined = events.find((e) => e.kind === 'agent.joined' && find(e.agentId) && (i.forced === 'hired' || i.now - e.ts < HIRE_KEEP_MS))
   if (joined) out.hire = { agentId: find(joined.agentId)!.id, eventId: joined.id, fresh: i.now - joined.ts < HIRE_FRESH_MS }
 
-  // CJ chatting with an agent in a workspace: his newest message to someone who is working on it and was not briefed since.
+  // The user chatting with an agent in a workspace: their newest message to someone who is working on it and was not briefed since.
   if (!BRIEFING.includes(i.stage)) {
     const chat = events.find((e) => {
       if (e.kind !== 'prompt' || e.actor !== 'you' || !e.agentId || !e.workspaceId) return false

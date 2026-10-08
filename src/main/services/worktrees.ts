@@ -50,7 +50,7 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
  * The ref a workspace starts from: `wanted` when it exists, else the same branch without `origin/` locally,
  * else the default branch, `origin/<default>` when the remote has it. A folder with no remote and only
  * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, an `origin/` ref fetches first.
- * `strict` is for a base CJ picked (a PR or a branch): it throws rather than start somewhere else.
+ * `strict` is for a base the user picked (a PR or a branch): it throws rather than start somewhere else.
  */
 export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean } = {}): Promise<string> {
   if (o.fetch && wanted.startsWith('origin/')) await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })

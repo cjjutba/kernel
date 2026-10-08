@@ -93,7 +93,7 @@ function Overlays() {
         </div>
       </Section>
       <Section title="Toast, bottom right, 2.6s">
-        <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="cjjutba/kernel-9" action={{ label: 'Undo' }} /></div></div>
+        <div className="devui-stage" style={{ minHeight: 70 }}><div className="toast-stack"><Toast title="Branch copied" sub="samrivera/kernel-9" action={{ label: 'Undo' }} /></div></div>
       </Section>
     </>
   )

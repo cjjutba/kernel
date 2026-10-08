@@ -37,7 +37,7 @@ describe('task status', () => {
     expect(derive(t, { workspace: ws(), agent: { role: 'Frontend' }, approvalPending: false })).toEqual({ column: 'build', state: 'working' })
     expect(derive(t, { workspace: ws({ status: 'setup' }), agent: { role: 'QA' }, approvalPending: false })).toEqual({ column: 'qa', state: 'working' })
   })
-  it('needs CJ while an approval waits, and a failed setup blocks', () => {
+  it('needs the user while an approval waits, and a failed setup blocks', () => {
     expect(derive(t, { workspace: ws(), approvalPending: true })).toEqual({ column: 'build', state: 'needs' })
     expect(derive(t, { workspace: ws({ status: 'failed' }), approvalPending: false })).toEqual({ column: 'build', state: 'blocked' })
   })

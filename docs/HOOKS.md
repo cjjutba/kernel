@@ -1,6 +1,6 @@
 # Hooks contract
 
-Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks CJ already has and saving a backup to `settings.json.kernel-backup`. Only the Install button writes them (CheckHooks, Settings > Hooks). A port or approval timeout change rewrites hooks that are already there and never adds them. Code: `src/main/services/hooksInstaller.ts`.
+Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has and saving a backup to `settings.json.kernel-backup`. Only the Install button writes them (CheckHooks, Settings > Hooks). A port or approval timeout change rewrites hooks that are already there and never adds them. Code: `src/main/services/hooksInstaller.ts`.
 
 Each entry is a command hook that pipes the payload to the server with curl (D-050):
 
@@ -40,7 +40,7 @@ Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, s
 
 ## Permission requests
 
-The server holds a `PermissionRequest` open and creates an approval in the Inbox. When CJ decides, it answers with `hookSpecificOutput.decision` (`allow`, or `deny` with a message). If nobody decides within the approval timeout (Settings > Permissions, 300s default), it answers `{}` and Claude Code falls back to its normal prompt in the terminal. curl prints the answer to stdout, where Claude Code reads it. curl's `-m` is the approval timeout plus 20s and the hook's `timeout` is plus 30s, so the server always answers first and curl exits before Claude Code would kill it.
+The server holds a `PermissionRequest` open and creates an approval in the Inbox. When the user decides, it answers with `hookSpecificOutput.decision` (`allow`, or `deny` with a message). If nobody decides within the approval timeout (Settings > Permissions, 300s default), it answers `{}` and Claude Code falls back to its normal prompt in the terminal. curl prints the answer to stdout, where Claude Code reads it. curl's `-m` is the approval timeout plus 20s and the hook's `timeout` is plus 30s, so the server always answers first and curl exits before Claude Code would kill it.
 
 ## Mapping a session to a room
 

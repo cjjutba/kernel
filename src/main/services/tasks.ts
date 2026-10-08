@@ -7,7 +7,7 @@ import { bus } from '../bus'
 export interface TaskContext {
   workspace?: Workspace
   agent?: Pick<AgentDef, 'role'>
-  /** An approval for this task's workspace is waiting on CJ. */
+  /** An approval for this task's workspace is waiting on the user. */
   approvalPending: boolean
 }
 
@@ -19,7 +19,7 @@ const PR_BLOCKED: Workspace['prState'][] = ['cifail', 'changes', 'conflict']
 /**
  * Where a task sits, from what is true now (Board.png). Nothing here is a timer.
  * No workspace is Plan. A running workspace is Building, or QA when a QA agent holds it.
- * An open PR is Review, a merged one is Done. Failures block. A waiting approval needs CJ.
+ * An open PR is Review, a merged one is Done. Failures block. A waiting approval needs the user.
  */
 export function derive(task: Pick<Task, 'completedAt' | 'externalId'>, ctx: TaskContext): { column: TaskColumn; state: TaskState } {
   const ws = ctx.workspace

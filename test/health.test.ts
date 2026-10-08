@@ -87,9 +87,9 @@ describe('failure signals', () => {
   })
 
   it('quotes the Terminal script so a path with quotes stays one argument', () => {
-    const script = terminalScript(`/Users/cj/it's "here"`, 'claude /login')
+    const script = terminalScript(`/Users/you/it's "here"`, 'claude /login')
     expect(script).toContain('tell application "Terminal"')
-    expect(script).toContain(`do script "cd '/Users/cj/it'\\\\''s \\"here\\"' && claude /login"`)
+    expect(script).toContain(`do script "cd '/Users/you/it'\\\\''s \\"here\\"' && claude /login"`)
   })
 
   it('reports a network flip once, repeats while offline, and shares one probe between callers', async () => {
@@ -315,7 +315,7 @@ describe('kernel recovery paths', () => {
     const { k, room } = await kernel()
     const { pushes, off } = listen()
     let signedIn = false
-    k.accountReader = async () => (signedIn ? { signedIn: true, name: 'CJ Jutba' } : { signedIn: false })
+    k.accountReader = async () => (signedIn ? { signedIn: true, name: 'Sam Rivera' } : { signedIn: false })
     const chat = await k.leadChat(room.id)
     await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
     sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 's' })
@@ -326,12 +326,12 @@ describe('kernel recovery paths', () => {
     signedIn = true
     expect(await k.handlers()['account.get'](undefined)).toMatchObject({ signedIn: true })
     expect(k.sessions.heldFor()).toEqual([])
-    expect(pushes.filter((e) => e.type === 'account').pop()).toMatchObject({ account: { signedIn: true, name: 'CJ Jutba' } })
+    expect(pushes.filter((e) => e.type === 'account').pop()).toMatchObject({ account: { signedIn: true, name: 'Sam Rivera' } })
     off()
     await k.stop()
   })
 
-  it('lifts a limit pause left from the last run, and keeps a pause CJ chose', async () => {
+  it('lifts a limit pause left from the last run, and keeps a pause the user chose', async () => {
     const { k, room } = await kernel()
     const other = await k.addRoom(await tempRepo())
     k.pauseRoom(room.id, 'limit')

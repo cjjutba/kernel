@@ -59,8 +59,8 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   return { store, sessions, call, options, runGuard, allow, approvals, kinds, chat }
 }
 
-describe('questions to CJ', () => {
-  it('sends ExitPlanMode to CJ as a plan card even when worktrees bypass permissions, and keeps the card in the chat', async () => {
+describe('questions to the user', () => {
+  it('sends ExitPlanMode to the user as a plan card even when worktrees bypass permissions, and keeps the card in the chat', async () => {
     const { options, approvals, store, kinds } = await setup('bypassInWorktrees')
     const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column\n2. Backfill it' }, { signal: new AbortController().signal, toolUseID: 'p1', requestId: 'r1' })
     await flush()
