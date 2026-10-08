@@ -36,7 +36,8 @@ function preview() {
 }
 
 function release(version: string) {
-  const today = new Date().toISOString().slice(0, 10)
+  // Local date as yyyy-mm-dd, so a release cut early in the morning isn't dated yesterday (UTC).
+  const today = new Date().toLocaleDateString('en-CA')
   const { file, release, collected, moved } = compile({ root, version, date: today })
   console.log(`Wrote ${file}`)
   for (const s of release.sections) console.log(`  ${s.title}: ${s.items.length}`)

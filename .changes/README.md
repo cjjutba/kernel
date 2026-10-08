@@ -42,7 +42,7 @@ The body is one sentence. Don't write the PR number: the release finds it from t
 
 ## What checks it
 
-- **CI.** The Release note check fails a PR that changes app files without adding a note: `src/`, `docs/starter-agents/`, `build/`, `electron-builder.yml`, `scripts/`, or the dependencies in `package.json`. An internal note counts. PRs that only touch `site/`, `docs/`, `design/`, `.github/`, `.claude/`, `.changes/` or tests need none, and neither do `release/*` branches. Dependabot PRs carry the `skip-release-note` label; use it yourself only in an emergency.
+- **CI.** The Release note check fails a PR that changes app files without adding a note: `src/`, `docs/starter-agents/`, `build/`, `electron-builder.yml`, `scripts/`, or the dependencies in `package.json`. An internal note counts. PRs that only touch `site/`, `docs/`, `design/`, `.github/`, `.claude/`, `.changes/` or tests need none, and neither do `release/*` branches in this repo (not forks). Dependabot PRs carry the `skip-release-note` label; use it yourself only in an emergency.
 - **The schema.** `scripts/notes.ts` validates every note on every PR, so a malformed one fails with the reason.
 
 Run the check locally with `node scripts/release-note-check.ts`.

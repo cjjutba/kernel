@@ -127,7 +127,7 @@ export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
   const text = Array.isArray(raw) ? raw.map((r) => r.note ?? '').join('\n') : raw
   const md = text
     .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '\n### $1\n')
-    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<li\b[^>]*>/gi, '\n- ')
     .replace(/<br\s*\/?>|<\/(p|li|div|ul|ol)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&(#?\w+);/g, (m, e: string) => ENTITIES[e] ?? m)

@@ -1,7 +1,7 @@
 // The Release note check (.github/workflows/release-note.yml, D-058). Fails a PR that changes app files without
 // adding a fragment in .changes/unreleased/, and any PR with a malformed fragment.
 //
-// CI sets BASE_SHA, HEAD_REF and LABELS (a JSON array). Locally it compares with origin/main:
+// CI sets BASE_SHA, HEAD_REF, FORK and LABELS (a JSON array). Locally it compares with origin/main:
 //   node scripts/release-note-check.ts
 import { appendFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
@@ -21,6 +21,7 @@ const show = (ref: string, file: string) => {
 const base = git('merge-base', process.env.BASE_SHA || 'origin/main', 'HEAD').trim()
 const branch = process.env.HEAD_REF || git('rev-parse', '--abbrev-ref', 'HEAD').trim()
 const labels = JSON.parse(process.env.LABELS || '[]') as string[]
+const fork = process.env.FORK === 'true'
 const files = git('diff', '--name-status', '--no-renames', base, 'HEAD')
   .split('\n')
   .filter(Boolean)
@@ -41,6 +42,7 @@ if (errors.length) fail('A release-note fragment is malformed.', `Fix these frag
 
 const result = checkPullRequest({
   branch,
+  fork,
   labels,
   files,
   dependenciesChanged: dependenciesChanged(show(base, 'package.json'), show('HEAD', 'package.json'))

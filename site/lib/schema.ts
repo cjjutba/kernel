@@ -81,7 +81,7 @@ export function parseFrontmatter(text: string): { data: Record<string, string>; 
 
 /** A frontmatter value, quoted when the flat parser (or a YAML reader) would misread it. */
 export function frontmatterValue(value: string): string {
-  return /^[\s"'#[\]{}&*!|>%@`-]|: | #|:$|\s$/.test(value) || value === '' ? JSON.stringify(value) : value
+  return /^[\s"'#[\]{}&*!|>%@`-]|: | #|:$|\s$|\n/.test(value) || value === '' ? JSON.stringify(value) : value
 }
 
 function parseItem(raw: string): ChangeItem {

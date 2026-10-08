@@ -64,7 +64,7 @@ When the release PR merges, Vercel redeploys the site, because the release file 
 
 ## When notarization is slow
 
-Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing is published until notarization passes, so a release you stop, or one that fails, leaves only the tag behind. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `npm run release` again on the same tag.
+Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `npm run release` again on the same tag.
 
 ## When a release is broken
 

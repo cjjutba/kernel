@@ -261,6 +261,8 @@ describe('the Release note check', () => {
     const before = JSON.stringify({ version: '0.1.0', scripts: { a: 'x' }, dependencies: { zod: '4.1' } })
     expect(dependenciesChanged(before, JSON.stringify({ version: '0.2.0', scripts: { a: 'y' }, dependencies: { zod: '4.1' } }))).toBe(false)
     expect(dependenciesChanged(before, JSON.stringify({ version: '0.1.0', devDependencies: { electron: '39' }, dependencies: { zod: '4.1' } }))).toBe(true)
+    const two = (a: object) => JSON.stringify({ dependencies: a })
+    expect(dependenciesChanged(two({ zod: '4.1', ajv: '8' }), two({ ajv: '8', zod: '4.1' }))).toBe(false)
   })
 
   it('passes with an added fragment of any type, including internal', () => {
@@ -272,5 +274,7 @@ describe('the Release note check', () => {
     expect(pr([['M', 'site/app/page.tsx'], ['M', 'docs/RELEASING.md'], ['M', '.github/workflows/site.yml'], ['A', 'test/x.test.ts'], ['M', '.claude/commands/issue.md'], ['M', 'design/screens/Home.png']])).toEqual({ ok: true, reason: 'no app files' })
     expect(pr([['M', 'package.json'], ['A', 'site/content/releases/0.2.0.md'], ['D', '.changes/unreleased/a.md']], { branch: 'release/0.2.0', dependenciesChanged: true })).toEqual({ ok: true, reason: 'release branch' })
     expect(pr([['M', 'package-lock.json'], ['M', 'package.json']], { labels: ['skip-release-note'], dependenciesChanged: true })).toEqual({ ok: true, reason: 'skip label' })
+    // Anyone can name a fork's branch release/x.
+    expect(pr([['M', 'src/main/kernel.ts']], { branch: 'release/0.2.0', fork: true }).ok).toBe(false)
   })
 })

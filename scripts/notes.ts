@@ -218,17 +218,20 @@ export const SKIP_LABEL = 'skip-release-note'
 
 export const isAppFile = (path: string) => APP_FILES.some((r) => r.test(path))
 
-/** True when the dependencies differ. A script or version change in package.json doesn't count. */
+/** True when the dependencies differ. A script or version change in package.json doesn't count, nor does their order. */
 export function dependenciesChanged(before: string, after: string): boolean {
   const deps = (text: string) => {
-    const p = JSON.parse(text) as Record<string, unknown>
-    return JSON.stringify([p.dependencies, p.devDependencies, p.optionalDependencies])
+    const p = JSON.parse(text) as Record<string, Record<string, string> | undefined>
+    const sorted = (d: Record<string, string> | undefined) => Object.entries(d ?? {}).sort(([a], [b]) => a.localeCompare(b))
+    return JSON.stringify([p.dependencies, p.devDependencies, p.optionalDependencies].map(sorted))
   }
   return deps(before) !== deps(after)
 }
 
 export interface PullRequest {
   branch: string
+  /** From a fork, where anyone can name a branch release/x. */
+  fork?: boolean
   labels: string[]
   /** `git diff --name-status --no-renames` against the base: A, M, D and so on. */
   files: { status: string; path: string }[]
@@ -241,7 +244,7 @@ export type CheckResult =
 
 /** Whether a PR needs a fragment and has one. Fragment contents are validated separately (readFragments). */
 export function checkPullRequest(pr: PullRequest): CheckResult {
-  if (pr.branch.startsWith('release/')) return { ok: true, reason: 'release branch' }
+  if (pr.branch.startsWith('release/') && !pr.fork) return { ok: true, reason: 'release branch' }
   if (pr.labels.includes(SKIP_LABEL)) return { ok: true, reason: 'skip label' }
   const appFiles = pr.files.map((f) => f.path).filter(isAppFile)
   if (pr.dependenciesChanged) appFiles.push('package.json (dependencies)')

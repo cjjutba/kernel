@@ -42,6 +42,9 @@ jobs:
       - name: Check for a release note
         run: node scripts/release-note-check.ts
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          # The checkout is the PR merged into main. Its first parent is the exact main it was merged with, which
+          # pull_request.base.sha isn't on a re-run after main moved.
+          BASE_SHA: HEAD^1
           HEAD_REF: ${{ github.head_ref }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
