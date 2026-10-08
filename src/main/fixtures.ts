@@ -167,6 +167,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
+    'rooms.lastActivity': async ({ roomId }) => {
+      const last: Record<string, number> = {}
+      for (const e of f.activity) if (e.roomId === roomId && e.agentId) last[e.agentId] = Math.max(last[e.agentId] ?? 0, e.ts)
+      return last
+    },
     'usage.get': async () => f.usage,
     'usage.notifyOnReset': async () => ok,
     'account.get': async () => account,

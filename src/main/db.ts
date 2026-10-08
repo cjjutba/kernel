@@ -96,6 +96,12 @@ export class Store {
   activity(roomId?: string, limit = 50): ActivityEvent[] {
     return roomId ? this.all('select data from activity where room_id = ? order by ts desc limit ?', roomId, limit) : this.all('select data from activity order by ts desc limit ?', limit)
   }
+  /** By agent id, the time of each agent's newest event in the room, over the whole log. */
+  lastActivity(roomId: string): Record<string, number> {
+    const rows = this.db.prepare(`select json_extract(data, '$.agentId') as agent, max(ts) as ts from activity
+      where room_id = ? and json_extract(data, '$.agentId') is not null group by agent`).all(roomId) as { agent: string; ts: number }[]
+    return Object.fromEntries(rows.map((r) => [r.agent, r.ts]))
+  }
   saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, room_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.roomId ?? null, e.ts, JSON.stringify(e)); return e }
 
   // overlaps the floor flagged, so a restart doesn't flag them again

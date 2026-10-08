@@ -10,6 +10,7 @@ import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
 import { onAddToComposer, onComposerCommand } from './bus'
 import { DraftInput, useDraft } from './draft'
+import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ModelPicker } from './ModelPicker'
 import { effortFor, effortLabel, nextEffort, readEffortMemory, rememberEffort } from './modelPrefs'
@@ -24,7 +25,7 @@ const EMPTY_QUEUE: QueuedMessage[] = []
  */
 let appliedPrefill = 0
 
-type MenuName = 'model' | PlusPanel
+type MenuName = 'model' | 'context' | PlusPanel
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
@@ -35,10 +36,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
+  // Fixtures open the context popover for a shot.
+  const contextForced = useStore((s) => s.ui.workspace.contextOpen)
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced, chat.id)
-  const [menu, setMenu] = useState<MenuName>(null)
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -223,10 +226,10 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={10} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
-              {chat.context ? <span className="ink2 cmp-context">Context {chat.context}%</span> : null}
               <span className="grow" />
+              {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}
               <span ref={plusAnchor} style={{ position: 'relative' }}>
-                <PlusMenu panel={menu === 'model' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
+                <PlusMenu panel={menu === 'model' || menu === 'context' ? null : menu} onPanel={setMenu} anchorRef={plusAnchor} roomId={roomId} workspaceId={chat.workspaceId}
                   plan={chat.plan} onPlan={togglePlan} onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
               </span>
               {running && !hasDraft

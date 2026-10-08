@@ -35,11 +35,12 @@ export interface Seating {
   overflow: AgentDef[]
 }
 
-/** What `seating` reads besides the agents. Pass the room's own lists: the workspaces, the store's status and the room's activity. */
+/** What `seating` reads besides the agents. Pass the room's own: the workspaces, the store's status and the store's `lastActivity`. */
 export interface SeatingContext {
   workspaces?: Pick<Workspace, 'agentId' | 'status'>[]
   status?: Record<string, AgentStatus>
-  activity?: Pick<ActivityEvent, 'agentId' | 'ts'>[]
+  /** By agent id, when the agent's newest event in the room happened. */
+  lastActivity?: Record<string, number>
 }
 
 /**
@@ -54,12 +55,11 @@ export function seating(agents: AgentDef[], room?: Pick<Room, 'desks'>, ctx: Sea
   if (room?.desks) ordered = room.desks.map((id) => live.find((a) => a.id === id)).filter((a): a is AgentDef => !!a)
   else {
     const open = new Set((ctx.workspaces ?? []).filter((w) => w.status !== 'archived').map((w) => w.agentId))
-    const newest = new Map<string, number>()
-    for (const e of ctx.activity ?? []) if (e.agentId) newest.set(e.agentId, Math.max(newest.get(e.agentId) ?? 0, e.ts))
+    const last = ctx.lastActivity ?? {}
     const tier = (a: AgentDef) => (a === lead ? 0 : open.has(a.id) || (ctx.status?.[a.id] ?? 'idle') !== 'idle' ? 1 : 2)
     ordered = live
       .map((a, i) => ({ a, i, t: tier(a) }))
-      .sort((x, y) => x.t - y.t || (x.t === 2 ? (newest.get(y.a.id) ?? 0) - (newest.get(x.a.id) ?? 0) : 0) || x.i - y.i)
+      .sort((x, y) => x.t - y.t || (x.t === 2 ? (last[y.a.id] ?? 0) - (last[x.a.id] ?? 0) : 0) || x.i - y.i)
       .map((x) => x.a)
   }
   const queue = lead && ordered.includes(lead) ? [lead, ...ordered.filter((a) => a !== lead)] : ordered

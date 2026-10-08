@@ -1565,6 +1565,7 @@ export class Kernel {
       'scripts.stop': async ({ workspaceId }) => { stopScript(workspaceId, 'run'); return { ok: true } },
       'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
+      'rooms.lastActivity': async ({ roomId }) => this.store.lastActivity(roomId),
       'usage.get': async () => this.sessions.usage(),
       'settings.get': async () => this.settings,
       'settings.set': async ({ patch }) => this.setSettings(patch),

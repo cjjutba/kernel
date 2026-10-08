@@ -3,7 +3,7 @@ import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
-import { seating } from '../../floor/layout'
+import { useSeating } from '../../floor/useSeating'
 import { shirtOf, shortFile } from './model'
 import './team.css'
 
@@ -25,6 +25,7 @@ const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remo
 export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step; prefill?: NewAgentPrefill }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId])
+  const seats = useSeating(roomId)
   const [name, setName] = useState(prefill?.name ?? '')
   const [description, setDescription] = useState(prefill?.description ?? '')
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
@@ -113,7 +114,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   }
 
   const team = agents ?? []
-  const seated = seating(team, room).seated.some((a) => a.id === draft.id)
+  const seated = seats.seated.some((a) => a.id === draft.id)
   const joined = team.find((a) => a.id === draft.id)
   return (
     <Modal
