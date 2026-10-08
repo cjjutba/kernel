@@ -494,7 +494,7 @@ export interface ActivityEvent {
 }
 
 /** Inbox rows that are not approvals: merge ready, a failed check, a finished workspace, a standup, system news (Inbox.png). */
-export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'finished' | 'idle' | 'standup' | 'system'
+export type NotificationKind = 'approval' | 'merge' | 'blocked' | 'check' | 'finished' | 'idle' | 'standup' | 'system' | 'overlap'
 
 export interface Notification {
   id: string
