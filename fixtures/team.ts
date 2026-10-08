@@ -1,7 +1,6 @@
 import type { ActivityEvent, AgentDef, AgentDraft, Approval, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { agent, at, ids, scene, team, withWorkspace } from './base'
-import { floorFixtures } from './floor'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
@@ -229,7 +228,7 @@ export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
-  QuickAsk: { ...floorFixtures.Main, ui: { ...floorFixtures.Main.ui, menu: 'quickAsk' } },
+  QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
   Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
