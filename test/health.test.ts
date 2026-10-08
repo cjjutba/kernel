@@ -18,7 +18,7 @@ import { tempRepo } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, contextReply: null as unknown, usage: null as unknown }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, contextReply: null as unknown, contextCalls: 0, usage: null as unknown }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
@@ -29,7 +29,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {},
-      getContextUsage: async () => sdk.contextReply ?? { percentage: sdk.context },
+      getContextUsage: async () => { sdk.contextCalls++; return sdk.contextReply ?? { percentage: sdk.context } },
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => { if (!sdk.usage) throw new Error('not supported'); return sdk.usage }
     }
   }
@@ -208,14 +208,26 @@ describe('sessions under failure', () => {
       expect(store.chat(chat.id)?.contextUsage?.rows[0]).not.toHaveProperty('color')
 
       // The same numbers after the next turn leave the chat alone.
+      const asked = sdk.contextCalls
       const { pushes, off } = listen()
       await sessions.send(chat.id, [{ type: 'text', text: 'Again' }])
       call.feed(result('r2'))
       await flush()
       off()
+      expect(sdk.contextCalls).toBe(asked + 1)
       expect(pushes.filter((e) => e.type === 'chat')).toEqual([])
+
+      // A later percentage-only answer drops the old counts, so they never disagree with the percentage.
+      sdk.contextReply = null
+      sdk.context = 30
+      await sessions.send(chat.id, [{ type: 'text', text: 'Once more' }])
+      call.feed(result('r3'))
+      await flush()
+      expect(store.chat(chat.id)?.context).toBe(30)
+      expect(store.chat(chat.id)?.contextUsage).toBeUndefined()
     } finally {
       sdk.contextReply = null
+      sdk.context = 40
     }
   })
 
