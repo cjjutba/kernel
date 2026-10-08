@@ -1,4 +1,3 @@
-import type { DragEvent } from 'react'
 import type { ChatPart } from '@shared/types'
 import { actions } from '../../../store'
 import { isLongPaste, pasteLines } from './autocomplete'
@@ -47,9 +46,3 @@ export const clipboardImages = (data: DataTransfer) => [...data.files].filter((f
 /** A paste long enough to become a chip, or null to leave it in the text box. */
 export const pastedText = (text: string): ChatPart | null =>
   isLongPaste(text) ? { type: 'file', name: `pasted_text_${pasteCount++}.txt`, lines: pasteLines(text), text } : null
-
-/** Lets a box take dropped files. */
-export const dropFiles = (add: (files: File[]) => void) => ({
-  onDragOver: (e: DragEvent) => { if (e.dataTransfer.types.includes('Files')) e.preventDefault() },
-  onDrop: (e: DragEvent) => { if (!e.dataTransfer.files.length) return; e.preventDefault(); add([...e.dataTransfer.files]) }
-})

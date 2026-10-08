@@ -19,15 +19,14 @@ type MenuName = null | 'model' | 'plus'
 
 /**
  * The message box under the transcript. The message is a list of parts: typed text and chips (pasted text, images,
- * files, skills, diff hunks) in the order they were added, then the live text box. Enter sends, Shift+Enter breaks the line,
- * Backspace at the start of the box takes the chip before it back. While the agent works, a sent message waits in the queue above the box.
+ * files, skills, diff hunks) inline, in order. Enter sends, Shift+Enter breaks the line, Backspace takes a chip like a
+ * character. While the agent works, a sent message waits in the queue above the box.
  */
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const forced = useStore((s) => s.ui.workspace.composer)
   const d = useDraft(forced)
-  const { segs, draft, caret, input } = d
   const [menu, setMenu] = useState<MenuName>(null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
@@ -40,9 +39,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const plusAnchor = useRef<HTMLSpanElement>(null)
   const name = agent?.name ?? 'the agent'
 
-  const before = draft.slice(0, caret)
-  const mention = mentionAt(before)
-  const slash = slashAt(before, segs.length > 0)
+  const mention = mentionAt(d.before)
+  const slash = slashAt(d.before, !d.first)
   const acKey = mention ? `@${mention.query}` : slash ? `/${slash.query}` : ''
   const acOpen = !!acKey && dismissed !== acKey && !blocked
   const groups = useMemo(() => (slash ? slashMenu(skills, commands, slash.query) : []), [skills, commands, slash?.query])
@@ -76,7 +74,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     else if (slash) {
       const s = slashRows[i]
       if (!s) return
-      if (run && runsOnEnter(s, slash.query)) void send([{ type: 'text', text: [`/${s.name}`, draft.slice(caret).trim()].filter(Boolean).join(' ') }])
+      if (run && runsOnEnter(s, slash.query)) void send([{ type: 'text', text: [`/${s.name}`, d.after.trim()].filter(Boolean).join(' ') }])
       else d.insert({ type: 'skill', name: s.name }, slash.query.length + 1)
     }
   }
@@ -94,9 +92,9 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     }
   }
 
-  const mentionFile = () => d.setText(`${draft}${draft && !/\s$/.test(draft) ? ' ' : ''}@`)
+  const mentionFile = () => d.insertText(d.before && !/\s$/.test(d.before) ? ' @' : '@')
   const togglePlan = () => void configure({ plan: !chat.plan })
-  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => (i + 1) % rows.length); return }
@@ -113,9 +111,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const editQueued = (q: QueuedMessage) => {
     void attempt('Could not edit the message', async () => {
       actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id }))
-      const last = q.parts[q.parts.length - 1]
-      const text = last?.type === 'text' ? last.text : ''
-      d.reset({ segs: [...segs, ...(draft ? [{ type: 'text' as const, text: draft }] : []), ...(text ? q.parts.slice(0, -1) : q.parts)], draft: text })
+      d.reset([...d.snapshot(), ...q.parts])
     })
   }
 
@@ -129,7 +125,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   useEffect(() => onComposerCommand((c) => {
     if (c === 'model') { setMenu('model'); return }
     if (!d.empty) void send()
-    else input.current?.focus()
+    else d.focus()
   }))
 
   return (
@@ -172,7 +168,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           )}
           <div className="composer cmp" style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
             <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
-              onChange={() => setDismissed('')} onKeyDown={onKey} />
+              onInput={() => setDismissed('')} onKeyDown={onKey} />
             <div className="row" style={{ gap: 6 }}>
               <span className="cmp-agent"><span className="agent-dot" aria-hidden="true">{name[0]?.toUpperCase()}</span><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
               <span className="cmp-sep" />
@@ -191,7 +187,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
                     { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() },
                     { id: 'image', label: 'Add image', onSelect: () => imagePick.current?.click() },
                     { id: 'mention', label: 'Mention a file', shortcut: '@', onSelect: mentionFile },
-                    { id: 'skill', label: 'Run a skill', shortcut: '/', disabled: segs.length > 0 || !!draft, onSelect: () => d.setText('/') }
+                    { id: 'skill', label: 'Run a skill', shortcut: '/', disabled: d.parts.length > 0, onSelect: () => d.setText('/') }
                   ]} />
                 )}
               </span>

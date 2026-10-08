@@ -64,7 +64,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const imagePick = useRef<HTMLInputElement>(null)
 
   // The modal shell focuses its first control. The prompt is where typing starts.
-  useEffect(() => { const t = requestAnimationFrame(() => d.input.current?.focus()); return () => cancelAnimationFrame(t) }, [])
+  useEffect(() => { const t = requestAnimationFrame(() => d.focus()); return () => cancelAnimationFrame(t) }, [])
   useEffect(() => {
     if (!room) return
     let stale = false
@@ -80,17 +80,17 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     setSource(r.source)
     if (r.baseRef) setBaseRef(r.baseRef)
     actions.ui.closeMenu()
-    if (!d.plain() || (!!filled && d.draft === filled)) { d.setText(r.prompt); setFilled(r.prompt) }
-    else requestAnimationFrame(() => d.input.current?.focus())
+    if (!d.plain() || (!!filled && d.text === filled)) { d.setText(r.prompt); setFilled(r.prompt) }
+    else requestAnimationFrame(() => d.focus())
   }
-  const clearSource = () => { setSource(null); setBaseRef(''); if (filled && d.draft === filled) d.setText(''); setFilled('') }
+  const clearSource = () => { setSource(null); setBaseRef(''); if (filled && d.text === filled) d.setText(''); setFilled('') }
 
   const togglePlan = () => { setPlan((p) => !p); actions.ui.closeMenu() }
 
   const create = async () => {
     if (busy) return
     const prompt = d.plain()
-    if (!room || !prompt) { d.input.current?.focus(); return }
+    if (!room || !prompt) { d.focus(); return }
     setBusy(true); setError(null)
     try {
       const ws = await call('workspaces.create', {
@@ -141,8 +141,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
               <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={9} stroke={2} /></button></span>
             </div>
           )}
-          <label htmlFor="nw-prompt" className="sr-only">What do you want to work on?</label>
-          <DraftInput d={d} id="nw-prompt" placeholder="What do you want to work on?" disabled={busy} />
+          <DraftInput d={d} id="nw-prompt" aria-label="What do you want to work on?" placeholder="What do you want to work on?" disabled={busy} />
         </div>
 
         <div className="nw-foot">
