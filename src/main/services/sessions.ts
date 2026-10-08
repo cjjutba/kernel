@@ -463,7 +463,7 @@ export class Sessions {
       case 'rate_limit_event': {
         const info = msg.rate_limit_info
         this.mergeLimits(limitsFromEvent(info))
-        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
+        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
         return
       }
       default: return
