@@ -123,8 +123,10 @@ export class Kernel {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
-      onTurnDone: (ws, chat) => {
+      onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
+        const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+        this.notifications.turnDone(ws, chat, { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 })
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
