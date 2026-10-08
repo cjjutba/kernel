@@ -11,6 +11,7 @@ function leadTools(answer: Decision | null) {
   const deps: KernelToolDeps = {
     roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [],
     createWorkspace: async () => ws, messageWorkspace: async () => {}, askUser: async () => answer, hireAgent: async () => '',
+    archiveWorkspace: async () => {}, isRunning: () => false,
     planApproved, handedOff
   }
   const byName = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))

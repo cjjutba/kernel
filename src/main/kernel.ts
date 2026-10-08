@@ -1084,6 +1084,8 @@ export class Kernel {
         this.sessions.placeApproval(chat.id, approval.id)
         return decision
       },
+      archiveWorkspace: (id) => this.archiveWorkspace(id),
+      isRunning: (id) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id)),
       planApproved: () => this.sessions.handoffs.approved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {
