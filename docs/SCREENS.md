@@ -4,6 +4,8 @@ All 119 canvas screens, the issue that builds each one, and its status. The PNG 
 
 Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src/shared/types.ts` that shows the screen: `floor` is `{ name: 'floor', roomId }`, `modal newRoom` is `{ name: 'newRoom' }`, `+ menu pr` sets `ui.menu` to `'pr'`. Component is the file under `src/renderer/src/` that draws it. The lane that owns the row creates or replaces that file, and nobody else edits it. Files that exist today are placeholders or re-export the prototype in `screens/Pages.tsx`, `Floor.tsx`, `Workspace.tsx` or `Modals.tsx` (KERNEL-8). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
+These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main, FloorSent, FloorPlanning, FloorPlan, FloorQuestion, FloorTalk, FloorOverlap, FloorHired, FloorPaused, FloorLimit, FloorOffline, FloorEmpty, FloorFull and QuickAsk. Their `.dc.html` still draws the old floor. Rerun `npm run shots -- <Screen>` to refresh one.
+
 | Screen | Title on canvas | PNG | Markup | Issue | Lane | Route | Component | Status |
 |---|---|---|---|---|---|---|---|---|
 | Welcome | Welcome | [png](../design/screens/Welcome.png) | [dc.html](../design/canvas/project/Welcome.dc.html) | KERNEL-27 | Platform | onboarding/welcome | `screens/onboarding/Welcome.tsx` | done |
