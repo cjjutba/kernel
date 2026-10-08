@@ -653,7 +653,9 @@ export interface AppSettings {
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
   workspace: { mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean }
   scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean }
-  models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; maxConcurrent: number; agentTeams: boolean
+  models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; agentTeams: boolean
+    /** Agents working at once, the Lead's chats left out (D-094). 0 means no limit. Was `maxConcurrent`, whose saved 4 was only the old default. */
+    agentLimit: number
     /** Kernel tells the Lead when teammates finish a turn or their PRs change (KERNEL-72). */
     leadUpdates: boolean
     /** Workspaces you start from New workspace begin in plan mode. The Lead's hand-offs don't (KERNEL-74). */

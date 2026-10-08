@@ -190,7 +190,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
-  // No PNG draws a tab's state icon (D-094). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
+  // No PNG draws a tab's state icon (D-096). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
   WorkspaceTabStates: scene((f) => ({
     chats: [
       ...f.chats,
