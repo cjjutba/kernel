@@ -9,7 +9,9 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
   { title: 'Agents', rows: [
     ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']]
   ] },
-  { title: 'App', rows: [['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Focus mode', ['⌘', '\\']]] }
+  { title: 'App', rows: [
+    ['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Toggle sidebar', ['⌘', 'B']], ['Toggle right panel', ['⌘', '⌥', 'B']], ['Focus mode', ['⌘', '\\']]
+  ] }
 ]
 
 /** Settings > Shortcuts (SettingsShortcuts.png). */

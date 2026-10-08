@@ -1,5 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import type { DevUiPage, Modal, Route } from '@shared/types'
+import { call } from './api'
+import { toggleFocus, toggleRightPanel, toggleSidebar } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
 import { actions, getState, useStore } from './store'
@@ -29,7 +31,6 @@ import { WhatsNew } from './screens/update/WhatsNew'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
-import { FocusRail } from './screens/workspace/FocusRail'
 import { Workspace } from './screens/workspace/Workspace'
 import { DevUi } from './ui/DevUi'
 
@@ -108,13 +109,17 @@ export function App() {
   const route = useStore((s) => s.ui.route)
   const modal = useStore((s) => s.ui.modal)
   const booted = useStore((s) => s.system.booted)
-  const focus = useStore((s) => s.ui.workspace.focus)
+  const sidebar = useStore((s) => s.ui.sidebar)
+  const hidden = booted && !fullWindow(route) && !sidebar
+  useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.go({ name: 'settings', page: 'general' }) }
-      if (e.key === '\\') { e.preventDefault(); actions.ui.setWorkspaceView({ focus: !getState().ui.workspace.focus }) }
+      if (e.key === '\\') { e.preventDefault(); toggleFocus() }
+      // Option turns B into ∫, so match the physical key.
+      if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
     }
     window.addEventListener('keydown', onKey)
@@ -122,9 +127,9 @@ export function App() {
   }, [])
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
-    <div className="app">
+    <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
       {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} />}
-      {!fullWindow(route) && (focus && route.name === 'workspace' ? <FocusRail roomId={currentRoom()} /> : <Sidebar />)}
+      {!fullWindow(route) && sidebar && <Sidebar />}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />
         {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}

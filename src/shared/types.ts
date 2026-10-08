@@ -729,8 +729,6 @@ export interface Toast {
 export interface WorkspaceView {
   right: 'files' | 'changes' | 'checks'
   bottom: 'setup' | 'run' | 'terminal'
-  /** Sidebar and panels collapsed (WorkspaceFocus.png). */
-  focus: boolean
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean

@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from 'react'
 import type { Room } from '@shared/types'
 import { Icon } from '../../icons'
+import { IconButton } from '../../ui'
 import { actions, go, useStore, type Route } from '../../store'
 import { inboxItems, needsYou } from '../../screens/inbox/model'
 import { roomLetter } from '../../screens/rooms/roomInfo'
@@ -70,7 +71,10 @@ export function Sidebar() {
 
   return (
     <nav aria-label="Sidebar" className="sidebar">
-      <div className="drag" style={{ height: 42, flexShrink: 0 }} />
+      {/* The traffic lights end near x 70. The toggle sits just right of them, where the header's Show sidebar sits when hidden. */}
+      <div className="drag" style={{ height: 42, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 70 }}>
+        <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" onClick={() => actions.ui.setSidebar(false)} />
+      </div>
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <AccountButton />
         <span className="grow" />

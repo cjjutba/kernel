@@ -9,6 +9,7 @@ import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
 import { age, agentOf, inboxItems, inTab, needsYou, type InboxItem, type InboxTab } from './model'
 import './inbox.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const tabs: [InboxTab, string][] = [['all', 'All'], ['needs', 'Needs you'], ['updates', 'Updates']]
 
@@ -122,6 +123,7 @@ export function Inbox() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
+        <SidebarToggle />
         <Icon name="inbox" />
         <h1>Inbox</h1>
         <span className="grow" />
