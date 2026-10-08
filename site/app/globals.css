@@ -1,0 +1,347 @@
+@import 'tailwindcss';
+
+/* Design tokens. Values come from design/site/reference/site.css. This is the only file with hex colors. */
+
+@custom-variant tab-active (&[data-state='active']);
+@custom-variant tab-inactive (&[data-state='inactive']);
+
+@theme {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-canvas: #08090a;
+  --color-surface-1: #0b0c0d;
+  --color-surface-2: #0f1011;
+  --color-surface-3: #141517;
+  --color-surface-4: #1c1d21;
+  --color-track: #0d0e0f;
+  --color-raised: #121315;
+  --color-chip: #18191b;
+
+  --color-line-faint: #141518;
+  --color-line-soft: #18191c;
+  --color-line: #1d1e22;
+  --color-line-track: #1f2024;
+  --color-line-strong: #23252a;
+  --color-edge: #2a2b30;
+  --color-edge-hover: #34363c;
+  --color-rule: #3a3c42;
+
+  --color-ink: #f7f8f8;
+  --color-ink-2: #d0d6e0;
+  --color-ink-3: #a9aeb7;
+  --color-muted: #8a8f98;
+  /* The reference uses #62666d, which fails WCAG AA for small text. */
+  --color-faint: #777b83;
+
+  --color-add: #4cb782;
+  --color-del: #eb5757;
+  /* Purple means merged, nothing else. */
+  --color-merged: #b9a3f5;
+  --color-merged-edge: #4b3d86;
+  --color-merged-fill: #7c5ce0;
+
+  --color-wordmark-top: #1b1c1f;
+
+  --text-*: initial;
+  --text-display: clamp(44px, 5.6vw, 80px);
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.042em;
+  --text-display--font-weight: 600;
+  --text-display-sm: clamp(36px, 4.2vw, 60px);
+  --text-display-sm--line-height: 1.04;
+  --text-display-sm--letter-spacing: -0.04em;
+  --text-display-sm--font-weight: 600;
+  --text-h2: clamp(32px, 3.4vw, 48px);
+  --text-h2--line-height: 1.08;
+  --text-h2--letter-spacing: -0.04em;
+  --text-h2--font-weight: 600;
+  --text-changelog-title: clamp(40px, 4vw, 56px);
+  --text-changelog-title--line-height: 1.04;
+  --text-changelog-title--letter-spacing: -0.04em;
+  --text-changelog-title--font-weight: 600;
+  --text-entry-title: 32px;
+  --text-entry-title--line-height: 1.15;
+  --text-entry-title--letter-spacing: -0.03em;
+  --text-entry-title--font-weight: 600;
+  --text-brand: 18px;
+  --text-brand--line-height: 1;
+  --text-brand--letter-spacing: -0.02em;
+  --text-brand--font-weight: 600;
+  --text-wordmark: clamp(120px, 16vw, 232px);
+  --text-wordmark--line-height: 0.78;
+  --text-wordmark--letter-spacing: -0.043em;
+  --text-wordmark--font-weight: 600;
+  --text-hero-lead: 19px;
+  --text-hero-lead--line-height: 1.55;
+  --text-lead: 17px;
+  --text-lead--line-height: 1.6;
+  --text-step-title: 17px;
+  --text-step-title--line-height: 1.55;
+  --text-step-title--letter-spacing: -0.2px;
+  --text-step-title--font-weight: 600;
+  --text-callout: 16.5px;
+  --text-callout--line-height: 1.55;
+  --text-intro: 16.5px;
+  --text-intro--line-height: 1.7;
+  --text-item: 16px;
+  --text-item--line-height: 1.55;
+  --text-item--letter-spacing: -0.15px;
+  --text-item--font-weight: 600;
+  --text-list: 15.5px;
+  --text-list--line-height: 1.6;
+  --text-body: 15px;
+  --text-body--line-height: 1.55;
+  --text-link: 14.5px;
+  --text-link--line-height: 1.55;
+  --text-ui: 14px;
+  --text-ui--line-height: 1.55;
+  --text-label: 13.5px;
+  --text-label--line-height: 1.55;
+  --text-small: 13px;
+  --text-small--line-height: 1.55;
+  --text-eyebrow: 12.5px;
+  --text-eyebrow--line-height: normal;
+  --text-eyebrow--letter-spacing: 0.2px;
+  --text-count: 12.5px;
+  --text-count--line-height: normal;
+  --text-micro: 12px;
+  --text-micro--line-height: 1.55;
+  --text-tag: 11.5px;
+  --text-tag--line-height: 1.55;
+  --text-badge: 11px;
+  --text-badge--line-height: 1.55;
+
+  /* The reference sets mono text with the font shorthand, which resets line height to normal. */
+  --leading-*: initial;
+  --leading-normal: normal;
+  --leading-snug: 1.5;
+  --leading-relaxed: 1.6;
+
+  --radius-*: initial;
+  --radius-pill: 999px;
+  --radius-frame: 16px;
+  --radius-frame-in: 15px;
+  --radius-track: 12px;
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-mini: 7px;
+  --radius-chip: 6px;
+  --radius-prchip: 5px;
+
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+
+  --blur-*: initial;
+  --blur-nav: 14px;
+
+  /* The reference uses max-width: 880px and 760px. max-* variants are width < X, hence one more pixel. */
+  --breakpoint-*: initial;
+  --breakpoint-nav: 761px;
+  --breakpoint-faq: 881px;
+
+  --default-transition-duration: 150ms;
+  --default-font-feature-settings: 'cv01', 'ss03';
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), -apple-system, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-canvas);
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv01', 'ss03';
+    overflow-x: clip;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--color-ink) 55%, transparent);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  summary {
+    list-style: none;
+  }
+
+  summary::-webkit-details-marker {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+}
+
+/* Layouts that are not a single utility. */
+
+@utility grid-auto-fit {
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+}
+
+@utility grid-plan-rows {
+  grid-template-columns: 52px 1fr auto;
+}
+
+@utility grid-faq {
+  grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+}
+
+@utility grid-entry {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+
+/* Decorative effects, copied from site.css. */
+
+@utility frame-gradient {
+  padding: 1px;
+  border-radius: var(--radius-frame);
+  background: linear-gradient(180deg, var(--color-rule) 0%, var(--color-line) 45%, var(--color-line-faint) 100%);
+}
+
+@utility bg-dots-hero {
+  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 10%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 62% 58% at 50% 22%, #000 15%, transparent 75%);
+}
+
+@utility bg-dots-card {
+  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 5%, transparent) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+@utility bg-dots-final {
+  background-image: radial-gradient(color-mix(in srgb, var(--color-white) 9%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse 48% 75% at 50% 100%, #000 10%, transparent 70%);
+}
+
+@utility glow-hero {
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--color-ink) 8.5%, transparent),
+    color-mix(in srgb, var(--color-ink) 0%, transparent) 62%
+  );
+}
+
+@utility glow-final {
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--color-ink) 8%, transparent),
+    color-mix(in srgb, var(--color-ink) 0%, transparent) 62%
+  );
+}
+
+@utility text-wordmark-fade {
+  background: linear-gradient(180deg, var(--color-wordmark-top) 0%, var(--color-surface-1) 85%);
+  background-clip: text;
+  color: transparent;
+}
+
+@utility stop-wordmark-top {
+  stop-color: var(--color-wordmark-top);
+}
+
+@utility stop-wordmark-bottom {
+  stop-color: var(--color-track);
+}
+
+/* The mark stands in for the K: its top meets the l and its round nodes sit on the baseline. */
+@utility wordmark-k {
+  height: 0.78em;
+  width: auto;
+  margin-right: 0.02em;
+  flex-shrink: 0;
+}
+
+/* The large footer wordmark is cropped by the page edge. */
+@utility wordmark-crop {
+  height: 0.72em;
+  overflow: hidden;
+}
+
+/* The FAQ plus turns into a minus when its row is open. */
+@utility faq-plus {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+
+  &::before,
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6.25px;
+    width: 14px;
+    height: 1.5px;
+    border-radius: 1px;
+    background: var(--color-muted);
+    transition: transform 0.2s;
+  }
+
+  &::after {
+    transform: rotate(90deg);
+  }
+
+  :where(details[open]) &::after {
+    transform: rotate(0deg);
+  }
+}
+
+@utility cl-bullet {
+  position: relative;
+  padding-left: 20px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 10px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--color-rule);
+  }
+}
+
+/* PR chips sit a pixel above the text baseline. */
+@utility align-nudge {
+  vertical-align: 1px;
+}
+
+/* A hairline that spans the content width, not the gutters. */
+@utility rule-inset {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(var(--spacing) * 6);
+    right: calc(var(--spacing) * 6);
+    border-top: 1px solid var(--color-line-faint);
+  }
+}

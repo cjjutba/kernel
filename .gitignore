@@ -4,3 +4,9 @@ dist
 *.log
 .DS_Store
 shots
+site/.next
+site/.next-e2e
+site/next-env.d.ts
+site/test-results
+site/playwright-report
+site/*.tsbuildinfo
