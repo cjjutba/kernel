@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { AgentDef } from '@shared/types'
 import { call } from '../../api'
 import { Icon, IconButton, Menu } from '../../ui'
@@ -26,6 +26,8 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
   }, [agents, workspaces, roomId])
   const target = reachable.find((a) => a.id === to)
   const picked = target?.id ?? ''
+  // An agent that loses its workspace is dropped, so the picker doesn't jump back to it if the workspace returns.
+  useEffect(() => { if (to && !target) setTo('') }, [to, target])
   const placeholder = target ? `Message ${target.name}` : lead ? `Brief ${lead.name} on what to build` : 'Brief the Lead on what to build'
 
   const send = async () => {

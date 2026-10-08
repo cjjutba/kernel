@@ -31,6 +31,10 @@ describe('floor layout', () => {
     expect(needsCount([a('kai'), a('ivy')], { kai: 'needs' }, [{ agentId: 'kai' }, { agentId: 'ivy' }])).toBe(2)
   })
 
+  it('counts each approval with no agent on its own', () => {
+    expect(needsCount([], {}, [{}, {}])).toBe(2)
+  })
+
   it('names models from aliases and ids', () => {
     expect(modelLabel('opus')).toBe('Opus 5.5')
     expect(modelLabel('claude-sonnet-5-5')).toBe('Sonnet 5.5')
