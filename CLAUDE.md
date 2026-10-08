@@ -32,8 +32,30 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
 4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds.
 5. Verify: `npm test`, `npm run typecheck`, then `npm run shots -- <Screen> ...` and `npm run shots:compare -- <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice.
-6. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
-7. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review. Update the status column in `docs/SCREENS.md`.
+6. Write the release-note fragment (see Release notes below).
+7. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
+8. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review. Update the status column in `docs/SCREENS.md`.
+
+## Release notes
+
+Every PR that changes app files (`src/`, `docs/starter-agents/`, `build/`, `electron-builder.yml`, `scripts/`, dependencies in `package.json`) adds a fragment in `.changes/unreleased/`. The agent making the change writes it in the same PR, with or without a Linear issue, and CI fails the PR without one. Format and examples: `.changes/README.md`.
+
+```md
+---
+type: fixed
+issue: KERNEL-41
+---
+Fixed a pull request sometimes showing its old status after a quick refresh.
+```
+
+- `type` is `new` (users can do something they couldn't), `improved` (works better, faster or clearer), `fixed` (something broken now works) or `internal` (users won't notice: refactors, tests, CI, dependencies, docs). Leave `issue` out when there is none. Never write the PR number.
+- Describe what the user notices, not what the code does. Good: "Agents no longer get stuck after the Mac wakes from sleep." Bad: "fix(engine): reconcile sessions on resume."
+- New and improved notes describe the behavior ("Notifications show the chat's title instead of the branch name"). Fixed notes start with "Fixed".
+- One sentence. No file names, function names or internal jargon. If a setting is involved, say where it lives ("Settings, Hooks").
+- No hype, no emojis, no em dashes or en dashes.
+- Unsure between improved and internal? Ask whether a user would notice if the change were reverted.
+
+Releases go through `/release` (`docs/RELEASING.md`).
 
 ## Rules
 
