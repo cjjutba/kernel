@@ -43,3 +43,23 @@
 .plan-title { font-size: 12.5px; color: var(--ink-2); }
 .plan-note { font-size: 11.5px; color: var(--muted); }
 .plan-foot { padding: 6px; border-top: 1px solid var(--line-3); }
+
+/* A row's hover card (HoverCard.tsx): Conductor's workspace card in Kernel's shell, a hairline and no shadow. Its status
+   word is the one colored thing: blue while work runs, amber when it needs you, then the diff and GitHub colors (D-084). */
+.hover-card { position: fixed; z-index: 60; width: 300px; display: flex; flex-direction: column; gap: 4px; padding: 11px 14px 10px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
+.hc-head { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+.hc-title { font-size: 13px; font-weight: 500; color: var(--ink); }
+.hc-line { font-size: 12px; color: var(--ink-3); }
+.hc-foot { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.hc-when { flex-shrink: 0; margin-left: 6px; }
+.hc-merged { color: var(--merged); }
+.hc-status { --tone: var(--muted); --tint: var(--tint-muted); flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent); background: var(--tint); color: var(--tone); font-size: 11.5px; font-weight: 500; }
+.hc-status svg { color: currentColor; }
+.hc-status .spin { width: 9px; height: 9px; border-color: color-mix(in srgb, var(--tone) 30%, transparent); border-top-color: var(--tone); }
+/* Each tint is a solid fill picked so its word reads at 4.5:1 or better (test/theme.test.ts). Mixing the word's color into the
+   card made light amber a grey-brown that didn't read as amber. */
+.hc-status[data-accent='working'] { --tone: var(--working); --tint: var(--tint-working); }
+.hc-status[data-accent='needs'] { --tone: var(--needs); --tint: var(--tint-needs); }
+.hc-status[data-accent='add'] { --tone: var(--add); --tint: var(--tint-add); }
+.hc-status[data-accent='del'] { --tone: var(--del); --tint: var(--tint-del); }
+.hc-status[data-accent='merged'] { --tone: var(--merged); --tint: var(--tint-merged); }

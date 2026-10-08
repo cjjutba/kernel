@@ -69,11 +69,12 @@ export function defaultSelected(agents: AgentDef[], status: Record<string, Agent
   return loud ?? agents.find((a) => a.lead) ?? agents[0]
 }
 
-/** Agents the user has to act on: status needs you, or a pending approval of theirs. Each counts once. */
+/** Agents the user has to act on: status needs you, or a pending approval of theirs. Each agent counts once, and an approval with no agent counts on its own. */
 export function needsCount(agents: AgentDef[], status: Record<string, AgentStatus>, approvals: Pick<Approval, 'agentId'>[]): number {
   const ids = new Set(agents.filter((a) => status[a.id] === 'needs').map((a) => a.id))
-  for (const a of approvals) ids.add(a.agentId ?? '?')
-  return ids.size
+  let loose = 0
+  for (const a of approvals) { if (a.agentId) ids.add(a.agentId); else loose++ }
+  return ids.size + loose
 }
 
 /** The newest event for this agent that explains why it is blocked or offline. Its `data.detail` and `data.output` fill the floor card. */
