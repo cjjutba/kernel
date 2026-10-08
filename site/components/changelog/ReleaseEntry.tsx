@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Shot } from '@/components/ui/Shot'
 import { formatDate } from '@/lib/format'
-import type { Release } from '@/lib/schema'
+import type { ChangelogEntry, Release } from '@/lib/schema'
 import { ChangeList } from './ChangeList'
 
 const versionPill = 'inline-flex h-6 items-center rounded-chip border px-2 font-mono text-micro leading-normal font-medium'
@@ -24,7 +24,25 @@ export function VersionPill({ next, children }: { next?: boolean; children: Reac
   )
 }
 
-export function ReleaseEntry({ release, latest }: { release: Release; latest: boolean }) {
+/** A patch release inside its minor's entry, the way Conductor shows them: "New in 0.1.1", its date, its sections. */
+function PatchNotes({ patch }: { patch: Release }) {
+  return (
+    <section>
+      <h3 className="mt-14 text-body font-semibold">New in {patch.version}</h3>
+      <time dateTime={patch.date} className="mt-1 block text-label text-muted">
+        {formatDate(patch.date)}
+      </time>
+      {patch.sections.map((section) => (
+        <section key={section.title}>
+          <h4 className="mt-6 text-label font-semibold text-ink-2">{section.title}</h4>
+          <ChangeList items={section.items} />
+        </section>
+      ))}
+    </section>
+  )
+}
+
+export function ReleaseEntry({ release, latest }: { release: ChangelogEntry; latest: boolean }) {
   const titleId = `v${release.version.replaceAll('.', '')}`
   return (
     <EntryShell
@@ -56,12 +74,15 @@ export function ReleaseEntry({ release, latest }: { release: Release; latest: bo
           className="mt-8"
         />
       ) : null}
-      <p className="mt-6 text-intro text-ink-2">{release.intro}</p>
+      {release.intro ? <p className="mt-6 text-intro text-ink-2">{release.intro}</p> : null}
       {release.sections.map((section) => (
         <section key={section.title}>
           <h3 className="mt-10 text-body font-semibold">{section.title}</h3>
           <ChangeList items={section.items} />
         </section>
+      ))}
+      {release.patches.map((patch) => (
+        <PatchNotes key={patch.version} patch={patch} />
       ))}
     </EntryShell>
   )
