@@ -362,6 +362,16 @@ export interface Skill {
   enabled: boolean
 }
 
+/** One of Claude Code's own slash commands (/clear, /compact, /context), offered in the composer's / menu next to the skills. */
+export interface BuiltinCommand {
+  name: string
+  description: string
+  /** Claude Code's hint for the arguments: `[name]` is optional, `<model>` is required. Empty when it takes none. */
+  argumentHint: string
+  /** Other names that run it, such as /cost for /usage. */
+  aliases?: string[]
+}
+
 export interface McpServer {
   name: string
   enabled: boolean

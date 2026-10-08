@@ -1,5 +1,5 @@
 import type {
-  ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem,
+  ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
   PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
@@ -99,6 +99,8 @@ export interface KernelApi {
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   'skills.list': { req: { roomId: string }; res: Skill[] }
+  /** Claude Code's own slash commands for the / menu. The same in every room, so it is read once. */
+  'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
 
@@ -190,6 +192,8 @@ export type PushEvent =
   | { type: 'activity'; event: ActivityEvent }
   | { type: 'chat'; chat: Chat }
   | { type: 'chat.item'; chatId: string; item: ChatItem }
+  /** /clear started a fresh conversation, so the transcript starts over. */
+  | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
   | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[] }
   | { type: 'terminal.data'; chatId: string; data: string }
