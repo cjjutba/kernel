@@ -11,6 +11,7 @@ import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAge
 import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
+import { LeadUpdates } from './services/leadUpdates'
 import { Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
@@ -74,6 +75,7 @@ export class Kernel {
   readonly store: Store
   readonly approvals: Approvals
   readonly notifications: Notifications
+  readonly leadUpdates: LeadUpdates
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
@@ -137,7 +139,9 @@ export class Kernel {
       onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
         const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
-        this.notifications.turnDone(ws, chat, { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 })
+        const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
+        this.notifications.turnDone(ws, chat, done)
+        this.leadUpdates.turnDone(ws, chat, done)
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -148,6 +152,20 @@ export class Kernel {
       },
       onLimits: (limits) => this.applyLimits(limits),
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds)
+    })
+    this.leadUpdates = new LeadUpdates({
+      store: this.store,
+      enabled: () => this.settings.models.leadUpdates !== false,
+      leadChat: (roomId) => this.existingLeadChat(roomId),
+      isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
+      agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
+      post: (chatId, text) => this.sessions.post(chatId, [{ type: 'text', text }]),
+      // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
+      // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
+      delivered: (roomId, chat, lines) => {
+        const ws = this.store.workspace(chat.workspaceId)
+        bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object: lines.length === 1 ? 'one teammate update' : `${lines.length} teammate updates`, data: { leadUpdate: true } })
+      }
     })
     this.overlaps = new Overlaps({
       workspaces: (roomId) => this.store.workspaces(roomId),
@@ -181,6 +199,7 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     this.notifications.attach()
+    this.leadUpdates.attach()
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
       this.network.start()
@@ -401,6 +420,7 @@ export class Kernel {
   async stop() {
     this.unlisten()
     this.notifications.detach()
+    this.leadUpdates.detach()
     this.tasks.detach()
     clearInterval(this.prTimer)
     this.network?.stop()
@@ -1237,6 +1257,15 @@ export class Kernel {
 
   private async pollPrs() {
     for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.refreshPr(ws.id).catch(() => undefined)
+    // Updates held for a busy or paused Lead go out once it can take them.
+    this.leadUpdates.flushAll()
+  }
+
+  /** The room's Lead chat if the Lead has been briefed. Unlike `leadChat`, never creates one. */
+  private existingLeadChat(roomId: string): Chat | undefined {
+    const lead = this.agentsSync(roomId).find((a) => a.lead)
+    const ws = lead && this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
+    return ws ? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') : undefined
   }
 
   // ---------- helpers

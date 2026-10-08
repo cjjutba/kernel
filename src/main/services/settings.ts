@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: 'feat/{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, maxConcurrent: 4, agentTeams: true },
+  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, maxConcurrent: 4, agentTeams: true, leadUpdates: true },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
