@@ -9,6 +9,7 @@ import { bus } from '../bus'
 import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
 import { toActivity } from './hookServer'
 import { failureOf, WINDOW_MODEL, type Failure } from './health'
+import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import type { AppSettings } from './settings'
 
 /**
@@ -72,6 +73,8 @@ export interface SessionDeps {
 
 export class Sessions {
   private live = new Map<string, Live>()
+  /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
+  readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
@@ -178,6 +181,8 @@ export class Sessions {
    */
   async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
     const chat = this.mustChat(chatId)
+    // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
+    this.handoffs.done(chatId)
     if (this.live.get(chatId)?.running || this.pausedChat(chat) || this.atCapacity(chatId)) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
       return { queued: true }
@@ -215,6 +220,8 @@ export class Sessions {
 
   private dispatch(chat: Chat, parts: ChatPart[]) {
     const ws = this.mustWorkspace(chat.workspaceId)
+    // A held message going out counts as the user taking over too.
+    this.handoffs.done(chat.id)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.input.push(toUserMessage(parts))
@@ -266,6 +273,7 @@ export class Sessions {
   async interrupt(chatId: string, sendNext = false) {
     const live = this.live.get(chatId)
     if (!live?.running) return
+    this.handoffs.done(chatId)
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
@@ -329,7 +337,8 @@ export class Sessions {
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws) },
       mcpServers: this.d.mcpFor(ws, agent, chat),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false),
+      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false,
+        agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -492,6 +501,7 @@ export class Sessions {
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
       // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
       if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
+      if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers to questions travel back as the denial message, which the model reads as the user's reply.
@@ -609,14 +619,14 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
     ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}. Stay inside it.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
-  return [agent?.prompt, where, port].filter(Boolean).join('\n\n')
+  return [agent?.prompt, agent?.lead && LEAD_RULE, where, port].filter(Boolean).join('\n\n')
 }
 
 /**
  * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
  */
-function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true, handoff?: LeadHandoff): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -642,8 +652,18 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
+  if (handoff) {
+    // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
+    const afterPlan: HookCallback = async () => { const t = handoff.afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }
+    const atStop: HookCallback = async () => { const t = handoff.atStop(); return t ? { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: t } } : {} }
+    hooks.PostToolUse!.push({ matcher: 'ExitPlanMode', hooks: [afterPlan] })
+    hooks.Stop!.push({ hooks: [atStop] })
+  }
   return hooks
 }
+
+/** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
+interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
