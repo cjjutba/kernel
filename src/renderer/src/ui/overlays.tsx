@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
 import { useLayer } from './hooks'
@@ -115,10 +115,12 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
     if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
   }
+  // `top` is where the canvas puts the dialog in a 900px tall window. tokens.css moves it up in a short one (D-080).
+  const place = { width, ...(top !== undefined && { '--modal-y': top }) } as CSSProperties
   return (
     <>
       <div className="scrim" onMouseDown={onClose} />
-      <div ref={ref} role={role} aria-modal="true" aria-labelledby={labelledBy ?? id} aria-describedby={describedBy} tabIndex={-1} className="modal" style={{ width, top }} onKeyDown={trap}>
+      <div ref={ref} role={role} aria-modal="true" aria-labelledby={labelledBy ?? id} aria-describedby={describedBy} tabIndex={-1} className="modal" style={place} onKeyDown={trap}>
         {!bare && (
           <div className="modal-head">
             <h2 id={id}>{title}</h2>

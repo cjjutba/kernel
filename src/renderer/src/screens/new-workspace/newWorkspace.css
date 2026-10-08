@@ -1,5 +1,7 @@
 /* New workspace modal (KERNEL-16). Values from design/canvas/project/NewWorkspace.dc.html. */
 .nw { background: var(--surface-2); }
+/* Its pickers open past the dialog's edges, so it never scrolls (D-080). It is short enough to fit any window Kernel allows. */
+.modal:has(.nw) { overflow: visible; }
 .nw-head { position: relative; display: flex; align-items: center; gap: 4px; height: 52px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--card-line); }
 .nw-head .grow { flex: 1; }
 .nw-room { gap: 8px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 14px; }

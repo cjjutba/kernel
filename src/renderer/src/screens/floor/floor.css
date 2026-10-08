@@ -1,7 +1,7 @@
 /* Floor screen (KERNEL-22). Values from design/canvas/project/Main.dc.html, colors as tokens. */
 @import '../workspace/cards/cards.css';
 
-.floor-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+.floor-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .floor-pause { margin-left: 6px; }
 .floor-pause[aria-pressed='true'] { background: var(--surface-3); }
 .floor-body { flex: 1; min-height: 0; display: flex; }
@@ -38,7 +38,7 @@
 .floor-banner { position: absolute; left: 50%; bottom: 2%; z-index: 85; transform: translateX(-50%); width: max-content; max-width: 92%; display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--card-bg); }
 .floor-banner-btn { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--ink); color: var(--on-ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .floor-banner-btn:hover { background: var(--ink-hover); }
-.floor-empty { position: absolute; left: 50%; top: 50%; z-index: 85; transform: translate(-50%, -50%); width: 380px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: var(--r-lg); border: 1px solid var(--line-3); background: var(--card-bg); }
+.floor-empty { position: absolute; left: 50%; top: 50%; z-index: 85; transform: translate(-50%, -50%); width: min(380px, calc(100% - 24px)); box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: var(--r-lg); border: 1px solid var(--line-3); background: var(--card-bg); }
 .floor-empty h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .floor-empty p { margin: 0; }
 .floor-template { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border: 1px solid var(--card-line); border-radius: var(--r); background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
@@ -62,14 +62,15 @@
 .floor-brief { position: relative; flex-shrink: 0; width: 100%; max-width: 620px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
 .floor-brief:focus-within { border-color: var(--line-4); }
 .floor-brief .cmp-input { min-height: 24px; }
-.brief-to { position: relative; display: inline-flex; align-items: center; }
-.brief-to select { appearance: none; height: 26px; padding: 0 24px 0 9px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 500; cursor: pointer; }
+.brief-to { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.brief-to select { appearance: none; min-width: 0; max-width: 100%; text-overflow: ellipsis; height: 26px; padding: 0 24px 0 9px; border: 1px solid var(--line-2); border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 12px; font-weight: 500; cursor: pointer; }
 .brief-to svg { position: absolute; right: 8px; pointer-events: none; color: var(--muted); }
 .brief-send { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--ink); color: var(--on-ink); }
 .brief-send:disabled { background: var(--surface-3); color: var(--muted); cursor: default; }
 
 /* logs */
-.floor-logs { width: 340px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
+/* 24% of the window between 280 and 340px, so 340px at 1440 as on the canvas. The logs fold below 1024px (D-080). */
+.floor-logs { width: clamp(280px, 24vw, 340px); flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); }
 .floor-logs-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--line); }
 .floor-logs-head h2 { margin: 0; font-size: 13px; font-weight: 600; }
 .floor-logs-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; }
@@ -123,4 +124,12 @@ button.log-quote:hover { background: var(--surface-2); }
 @media (prefers-reduced-motion: reduce) {
   .floor-bob, .floor-stride, .floor-tag-pill[data-status='planning'] { animation: none; }
   .floor-walker, .floor-tag, .floor-bubble, .log-chev { transition: none; }
+}
+
+/* A narrow floor: the office and brief pull in from the edges, and the counts beside Pause room go (D-080). */
+@container panel (max-width: 640px) {
+  .floor-main { padding: 12px; }
+}
+@container panel (max-width: 520px) {
+  .floor-count { display: none; }
 }

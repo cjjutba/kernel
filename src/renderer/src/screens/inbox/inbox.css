@@ -3,7 +3,7 @@
 .ib-tabs .pill { gap: 6px; font-size: 13px; }
 .ib-n { font-size: 12px; color: var(--muted); font-weight: 400; }
 .ib-body-wrap { flex: 1; min-height: 0; display: flex; }
-.ib-list { width: 413px; flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
+.ib-list { width: clamp(260px, 40%, 413px); flex-shrink: 0; overflow-y: auto; padding: 6px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 0; }
 .ib-row { display: flex; align-items: center; gap: 12px; width: 100%; height: 62px; padding: 0 10px 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); text-align: left; flex-shrink: 0; }
 .ib-row:hover { background: var(--nav-hover); }
 .ib-row[aria-current='true'] { background: var(--surface-3); }
@@ -33,3 +33,5 @@
 .ib-empty h2 { margin: 0; font-size: 15px; font-weight: 600; }
 .ib-empty p { margin: 0 0 8px; max-width: 330px; color: var(--muted); line-height: 1.5; }
 .ib-empty .ib-link { text-decoration: underline; color: var(--ink); }
+
+@container panel (max-width: 760px) { .ib-pane { padding: 20px 24px; } }

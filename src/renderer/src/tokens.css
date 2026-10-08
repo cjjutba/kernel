@@ -121,7 +121,12 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nodrag { -webkit-app-region: no-drag; }
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; }
 .panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); overflow: hidden; }
-.header { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); }
+/* Every screen is a size container named panel, so `@container panel (max-width: ...)` lays it out for the space it has, sidebar or not (D-080). */
+.panel { container: panel / inline-size; }
+.header { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+/* A header never wraps. Its mono detail (repo, branch, task count) gives way first. */
+.header > .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.header .menu { white-space: normal; }
 .header h1 { margin: 0; font-size: 13px; font-weight: 500; }
 /* Sidebar hidden: the traffic lights move into the header row (system.trafficLights), so the header clears them and drags the window. */
 .app[data-sidebar='hidden'] .main { padding-left: 8px; }
@@ -169,10 +174,14 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 
 /* modal: one shell for every dialog */
 .scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(8px); }
-.modal { position: fixed; z-index: 50; left: 50%; top: 140px; transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); }
+/* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-080). */
+.modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); }
 .modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
 .modal-head h2 { flex: 1; margin: 0; font-size: 14px; font-weight: 500; }
 .modal-foot { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--card-line); }
+
+/* A short window moves every dialog up in proportion to the canvas's 900px height. */
+@media (max-height: 799px) { .modal { --modal-top: calc(var(--modal-y) * 100vh / 900); } }
 
 /* composer */
 .composer { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }

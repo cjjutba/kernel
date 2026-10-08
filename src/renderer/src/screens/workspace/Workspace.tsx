@@ -106,7 +106,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <button type="button" className="crumb" onClick={() => room && go({ name: 'floor', roomId: room.id })}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
-        <span className="mono muted ellipsis" style={{ fontSize: 12 }}>{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
+        <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
         {!panels && <PrHeader ws={ws} />}
