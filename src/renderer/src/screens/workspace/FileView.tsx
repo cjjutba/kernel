@@ -59,6 +59,21 @@ export function ImageView({ name, src, width, height }: { name: string; src: str
   )
 }
 
+/** Pasted text opened from its chip, in a tab of its own: all of it, read only, with line numbers like a file. */
+export function TextView({ name, text }: { name: string; text: string }) {
+  const lines = useMemo(() => text.replace(/\n$/, '').split('\n'), [text])
+  return (
+    <div className="col grow" style={{ minHeight: 0 }}>
+      <ViewHead path={name} trailing={null}>
+        <span className="muted" style={{ fontSize: 12 }}>Read only · {lines.length} {lines.length === 1 ? 'line' : 'lines'}</span>
+      </ViewHead>
+      <div className="code-view selectable mono" role="region" aria-label={`Contents of ${name}`} tabIndex={0}>
+        {lines.map((l, i) => <div key={i} className="code-line"><span className="ln">{i + 1}</span><span className="src">{l || ' '}</span></div>)}
+      </div>
+    </div>
+  )
+}
+
 // ---------- diff
 
 /** The diff of one file, or of every changed file when `path` is empty. */

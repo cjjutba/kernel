@@ -86,6 +86,7 @@ const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft:
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
+const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
 const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
 /** What @inv finds, in the order the canvas lists it. */
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
@@ -337,7 +338,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePaste: composing({
     parts: [
       { type: 'text', text: 'Staging breaks on the invoices page. Here is the log ' },
-      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: 'log' },
+      { type: 'file', name: 'pasted_text_1.txt', lines: 212, text: pastedLog },
       { type: 'text', text: ' and what I see ' },
       { type: 'image', name: 'image.png', width: 1280, height: 800, dataUrl: screenshot }
     ],
