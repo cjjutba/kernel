@@ -253,6 +253,25 @@ describe('agent states from real events', () => {
     done()
   })
 
+  it('drops a block the agent gave up on when its chat is stopped, as Archive and Close chat do', async () => {
+    const { sessions, chat, statuses, done } = await runner()
+    await sessions.send(chat.id, text('push it'))
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 's1', apiKeySource: 'none' })
+    call.feed(toolUse('t1'))
+    call.feed(hookExit2('PreToolUse', 'no pushes to main'))
+    call.feed(toolResult('t1', true))
+    call.feed(success('r1'))
+    await flush()
+    expect(sessions.isRunning(chat.id)).toBe(false)
+    expect(statuses().at(-1)).toMatchObject({ status: 'blocked' })
+
+    sessions.stop(chat.id)
+    await flush()
+    expect(statuses().at(-1)).toMatchObject({ agentId: 'noor', status: 'idle' })
+    done()
+  })
+
   it('keeps a Stop block while the agent works on what the hook asked, until the turn may end', async () => {
     const { sessions, chat, statuses, done } = await runner()
     await sessions.send(chat.id, text('finish up'))

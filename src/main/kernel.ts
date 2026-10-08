@@ -12,7 +12,7 @@ import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
-import { Sessions, sessionEnv } from './services/sessions'
+import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
@@ -563,7 +563,7 @@ export class Kernel {
     this.sessions.pause(roomId)
     // Someone who needs the user, is blocked or is offline keeps saying so.
     const now = this.statusOf(roomId)
-    for (const a of this.agentsSync(roomId)) if (!['needs', 'blocked', 'offline'].includes(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
+    for (const a of this.agentsSync(roomId)) if (!PAUSE_KEEPS.has(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
     bus.push({ type: 'room', room })
     bus.activity({ kind: 'room.paused', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'paused' : 'paused the room for', object: by === 'you' ? room.name : 'a usage limit' })
     return room

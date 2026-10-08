@@ -47,6 +47,7 @@ interface Live {
    * The hook event that refused a step, while the agent has not moved on. A new message ends it. After PreToolUse, so does a
    * later tool call that succeeds. After the hooks that refuse to let the agent finish (Stop and the task hooks), so does a turn
    * that ends successfully. A turn that ends any other way keeps it, since the agent gave up.
+   * Known limit: with parallel tool calls, another call in the same message that succeeds ends a PreToolUse block at once.
    */
   blocked?: string
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
@@ -415,12 +416,16 @@ export class Sessions {
   stop(chatId: string) {
     const live = this.live.get(chatId)
     if (!live) return
-    // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up.
+    // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
+    // an idle chat that gave up blocked has no turn left to end, so the floor hears it here (Archive, Close chat).
+    const shown = live.blocked && !live.running
     live.blocked = undefined
     live.input.close()
     live.abort.abort()
     this.live.delete(chatId)
     if (this.queued(chatId).length) this.setQueue(chatId, [])
+    const ws = shown ? this.d.store.workspace(this.mustChat(chatId).workspaceId) : undefined
+    if (ws) this.setStatus(ws, this.d.agentFor(ws), 'idle')
   }
 
   /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
@@ -720,7 +725,10 @@ export class Sessions {
     })
   }
 
-  /** Shows the agent as blocked while a hook's refusal stands. False when nothing blocks it. */
+  /**
+   * Shows the agent as blocked while a hook's refusal stands. False when nothing blocks it.
+   * Blocked is kept per chat but shown per agent, so an agent with a blocked chat and a working one shows whichever pushed last.
+   */
   private showBlocked(ws: Workspace, live: Live | undefined): boolean {
     if (!live?.blocked) return false
     this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${live.blocked} hook`)
@@ -838,7 +846,7 @@ interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => strin
 export const RESTART_NUDGE = 'Your session ended unexpectedly. Check the worktree and pick up where you left off.'
 
 /** Statuses a pause leaves showing: the user still has to act on them. */
-const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
+export const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 
 /** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
