@@ -34,6 +34,10 @@
 /* An image chip's hover preview and its modal (Chip.tsx) */
 .img-preview { position: fixed; z-index: 65; display: flex; padding: 4px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none; }
 .img-preview img { display: block; max-width: 470px; max-height: 310px; border-radius: var(--r-sm); }
+.txt-preview { position: fixed; z-index: 65; width: 480px; max-height: 320px; overflow: hidden; padding: 10px 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to bottom, currentColor calc(100% - 36px), transparent); mask-image: linear-gradient(to bottom, currentColor calc(100% - 36px), transparent); }
+.txt-preview pre { margin: 0; font: 12px/18px var(--mono); color: var(--ink-2); white-space: pre; overflow: hidden; }
+.txt-modal { margin: 0 16px 16px; padding: 12px; max-height: calc(100vh - 260px); overflow: auto; border-radius: var(--r-sm); border: 1px solid var(--line); background: var(--surface-3); font-size: 12.5px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .img-modal { display: flex; justify-content: center; padding: 0 16px 16px; }
 .img-modal img { display: block; max-width: 100%; max-height: calc(100vh - 260px); border-radius: var(--r-sm); }
 

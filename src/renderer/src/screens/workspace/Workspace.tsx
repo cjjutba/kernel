@@ -7,9 +7,9 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
-import { OpenImage, type ImagePart } from './composer/Chip'
+import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
-import { DiffView, FileView, ImageView } from './FileView'
+import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
 import { TerminalView } from './terminal/Terminal'
@@ -22,9 +22,13 @@ const EMPTY_CHATS: never[] = []
 /** The workspace the stored tab and diff belong to. */
 let viewOwner: string | undefined
 let imageCount = 0
+let textCount = 0
 
 /** An attached image open in a tab. Its tab id is `image:<n>`. */
 interface OpenedImage { id: string; part: ImagePart }
+
+/** A pasted text open in a tab. Its tab id is `text:<n>`. */
+interface OpenedText { id: string; part: TextPart }
 
 /** Header, tabs, transcript, composer, and the right and bottom panels (Workspace.png). */
 export function Workspace({ workspaceId }: { workspaceId: string }) {
@@ -37,15 +41,18 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const [changes, setChanges] = useState<ChangedFile[]>([])
   const [openFiles, setOpenFiles] = useState<string[]>([])
   const [images, setImages] = useState<OpenedImage[]>([])
+  const [texts, setTexts] = useState<OpenedText[]>([])
   const [lastChat, setLastChat] = useState<string | undefined>()
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
 
   const stored = view.tab ?? lastChat ?? chats[0]?.id
-  // Images live only as long as this screen, so an image tab left in the store after it remounts falls back to the chat.
-  const tab = stored?.startsWith('image:') && !images.some((i) => i.id === stored) ? lastChat ?? chats[0]?.id : stored
+  // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
+  const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
+  const tab = gone ? lastChat ?? chats[0]?.id : stored
   const filePath = tab?.startsWith('file:') ? tab.slice(5) : undefined
   const image = images.find((i) => i.id === tab)?.part
-  const chat = filePath || image ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
+  const text = texts.find((t) => t.id === tab)?.part
+  const chat = filePath || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
@@ -55,7 +62,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // than the one they belong to, clear them. The very first mount keeps what a fixture or a restored view set.
   useEffect(() => {
     if (viewOwner !== undefined && viewOwner !== workspaceId) {
-      setOpenFiles([]); setImages([]); setLastChat(undefined)
+      setOpenFiles([]); setImages([]); setTexts([]); setLastChat(undefined)
       actions.ui.setWorkspaceView({ tab: undefined, diff: undefined })
     }
     viewOwner = workspaceId
@@ -72,7 +79,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const select = (id: string) => {
-    if (!id.startsWith('file:') && !id.startsWith('image:')) setLastChat(id)
+    if (!/^(file|image|text):/.test(id)) setLastChat(id)
     actions.ui.setWorkspaceView({ tab: id, diff: undefined })
   }
   const openFile = (path: string) => {
@@ -94,6 +101,17 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     setImages((list) => list.filter((i) => i.id !== id))
     if (tab === id) select(chat?.id ?? '')
   }
+  /** The same paste again selects its tab. Two pastes with the same name and text are the same paste. */
+  const openText = (part: TextPart) => {
+    const have = texts.find((t) => t.part.name === part.name && t.part.text === part.text)
+    const id = have?.id ?? `text:${++textCount}`
+    if (!have) setTexts((list) => [...list, { id, part }])
+    select(id)
+  }
+  const closeText = (id: string) => {
+    setTexts((list) => list.filter((t) => t.id !== id))
+    if (tab === id) select(chat?.id ?? '')
+  }
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
@@ -113,8 +131,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <RightPanelToggle name="panels" />
       </header>
       <OpenImage.Provider value={openImage}>
+      <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} images={images.map((i) => ({ id: i.id, name: i.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseImage={closeImage} />
+          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {view.diff !== undefined
               ? <DiffView ws={ws} path={view.diff} changes={changes} onClose={() => actions.ui.setWorkspaceView({ diff: undefined })} />
@@ -122,6 +141,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : image
                   ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
+                : text
+                  ? <TextView name={text.name} text={text.text} />
                 : setup
                   ? <TranscriptSkeleton branch={ws.branch} />
                   // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
@@ -136,6 +157,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
           {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
         </section>
+      </OpenText.Provider>
       </OpenImage.Provider>
       {panels && (
         <aside aria-label="Workspace panels" className="ws-aside">

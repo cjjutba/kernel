@@ -7,7 +7,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, copyText, MessageActions } from './MessageActions'
-import { ImageButton } from './composer/Chip'
+import { ImageButton, isPastedText, TextButton } from './composer/Chip'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -22,6 +22,7 @@ function PartChip({ part }: { part: ChatPart }) {
   const icon = part.type === 'image' ? 'image' : part.type === 'file' ? 'doc' : null
   const body = <>{icon ? <Icon name={icon} size={12} /> : <span aria-hidden="true" className="muted">/</span>}{part.name}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
+  if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file">{body}</TextButton>
   return <span className="msg-chip" data-kind={part.type}>{body}</span>
 }
 
