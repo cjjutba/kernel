@@ -4,12 +4,14 @@ import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
+import { linkText } from '@shared/links'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { savePlan } from './plans'
 import type { AppSettings } from './settings'
 
 /**
@@ -339,13 +341,22 @@ export class Sessions {
     this.drainWaiting()
   }
 
-  /** Settings > Models: agents working at once. Read on every call, so a change applies to the next send. */
+  /**
+   * Settings > Models: agents working at once, 0 for no limit. Read on every call, so a change applies to the next send. The Lead's chats
+   * neither wait for a slot nor take one, so the Lead can plan in several chats while its teammates use the slots (D-094).
+   */
   private atCapacity(chatId: string): boolean {
-    const max = this.d.settings().models?.maxConcurrent
-    if (!max || max < 1) return false
+    const max = this.d.settings().models?.agentLimit
+    if (!max || max < 1 || this.isLeadChat(chatId)) return false
     let running = 0
-    for (const [id, l] of this.live) if (l.running && id !== chatId) running++
+    for (const [id, l] of this.live) if (l.running && id !== chatId && !this.isLeadChat(id)) running++
     return running >= max
+  }
+
+  private isLeadChat(chatId: string): boolean {
+    const chat = this.d.store.chat(chatId)
+    const ws = chat && this.d.store.workspace(chat.workspaceId)
+    return !!ws && !!this.d.agentFor(ws)?.lead
   }
 
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
@@ -407,8 +418,9 @@ export class Sessions {
     const live = this.live.get(chatId)
     if (live) {
       if (patch.model) await live.query.setModel(patch.model).catch(() => undefined)
+      // After the model, so a model switch keeps the effort picked with it (D-093).
+      if (patch.effort) await live.query.applyFlagSettings({ effortLevel: patch.effort }).catch(() => undefined)
       if (patch.plan !== undefined) await live.query.setPermissionMode(patch.plan ? 'plan' : this.baseMode()).catch(() => undefined)
-      // Effort applies from the next session start; the SDK fixes it per process.
     }
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
@@ -640,12 +652,17 @@ export class Sessions {
       const options = isQuestion ? ((input as any).questions?.[0]?.options ?? []).map((o: any) => String(o.label ?? o)) : undefined
       this.setStatus(ws, agent, 'needs', d.title)
       const isPlan = toolName === 'ExitPlanMode'
+      const plan = isPlan ? String((input as any).plan ?? '') : ''
+      const reuse = isPlan ? this.lastPlanFile(chat, ws) : undefined
       const { approval, decision } = this.d.approvals.request({
         kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
         toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : isPlan ? `Plan for ${ws.name}` : d.title,
-        detail: isPlan ? String((input as any).plan ?? '') : d.detail, options
+        detail: isPlan ? plan : d.detail, options
       }, { signal })
       this.placeApproval(chat.id, approval.id)
+      if (isPlan && plan.trim() && existsSync(ws.path)) {
+        void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
+      }
       const result = await decision
       if (!this.showBlocked(ws, this.live.get(chat.id))) this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
@@ -748,6 +765,15 @@ export class Sessions {
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
 
+  /**
+   * Where a new plan-mode plan in this chat is saved (D-092). After "Request changes" the revision overwrites the last
+   * plan's file. Once a plan here was approved, the next one gets a file of its own.
+   */
+  private lastPlanFile(chat: Chat, ws: Workspace): string | undefined {
+    const last = this.d.store.approvals({ roomId: ws.roomId }).find((a) => a.chatId === chat.id && a.kind === 'plan')
+    return last && last.status !== 'allowed' ? last.planFile : undefined
+  }
+
   /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
   placeApproval(chatId: string, approvalId: string) {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
@@ -767,6 +793,7 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
     if (p.type === 'text' && p.text.trim()) text(p.text)
     else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
+    else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
     else if (p.type === 'image' && p.dataUrl) {
       const m = /^data:(image\/[a-z+]+);base64,(.*)$/.exec(p.dataUrl)
       if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } })

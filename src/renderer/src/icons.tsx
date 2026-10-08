@@ -67,7 +67,11 @@ const P = {
   key: 'M10 2.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM7.6 8.4 2.5 13.5M4 12l1.5 1.5M5.5 10.5 7 12',
   // Board.dc.html draws this at 10px ("You approve this step"); scaled 1.6x to the 16px grid.
   lock: 'M4.48 7.2h7.04a1.6 1.6 0 0 1 1.6 1.6v3.52a1.6 1.6 0 0 1-1.6 1.6H4.48a1.6 1.6 0 0 1-1.6-1.6V8.8a1.6 1.6 0 0 1 1.6-1.6ZM5.12 7.2V5.28a2.88 2.88 0 0 1 5.76 0V7.2',
-  warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1'
+  warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1',
+  // The composer's + menu and model picker (D-093).
+  clip: 'M10.5 4.6 5.8 9.3a1.3 1.3 0 0 0 1.8 1.8l5-5a2.6 2.6 0 0 0-3.7-3.7l-5 5a3.9 3.9 0 0 0 5.5 5.5l4.1-4.1',
+  book: 'M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.5c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.5',
+  claude: 'M8 2.2v4M8 9.8v4M2.2 8h4M9.8 8h4M3.9 3.9l2.8 2.8M9.3 9.3l2.8 2.8M12.1 3.9 9.3 6.7M6.7 9.3l-2.8 2.8'
 } satisfies Record<string, string>
 
 /** Icons the canvas draws as solid shapes. */

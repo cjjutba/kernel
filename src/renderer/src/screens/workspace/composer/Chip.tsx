@@ -1,14 +1,18 @@
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
-import { Icon, Modal } from '../../../ui'
+import { Icon, Modal, type IconName } from '../../../ui'
 
-/** A short label under a chip: lines of a pasted text, or the size of an image. */
+/** A short label under a chip: lines of a pasted text, the size of an image, or a linked issue's title. */
 function chipMeta(p: ChatPart): string {
   if (p.type === 'file' && p.lines && !p.path) return `${p.lines} lines`
   if (p.type === 'image' && p.width && p.height) return `${p.width}×${p.height}`
+  if (p.type === 'issue') return p.title
   return ''
 }
+
+/** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
+export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'workspace' ? 'branch' : 'doc')
 
 export type ImagePart = Extract<ChatPart, { type: 'image' }> & { dataUrl: string }
 
@@ -64,20 +68,20 @@ export function ImageButton({ image, children, ...rest }: { image: ImagePart } &
   )
 }
 
-/** One attachment in a composer: pasted text, an image, a file or a skill. Every composer draws them the same way, with an icon for the kind. */
+/** One attachment in a composer: pasted text, an image, a file, a skill, or a linked issue or workspace. Every composer draws them the same way, with an icon for the kind. */
 export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () => void }) {
   if (part.type === 'text') return null
   const label = part.type === 'skill' ? `/${part.name}` : part.name
   const meta = chipMeta(part)
   const body = (
     <>
-      <Icon name={part.type === 'image' ? 'image' : 'doc'} size={12} />
+      <Icon name={chipIcon(part)} size={12} />
       <span className="ellipsis" style={{ maxWidth: 220 }}>{label}</span>
-      {meta && <span className="chip-meta">{meta}</span>}
+      {meta && <span className="chip-meta ellipsis" style={{ maxWidth: 220 }}>{meta}</span>}
     </>
   )
   return (
-    <span className="chip cmp-chip" data-kind={part.type === 'skill' ? 'skill' : part.type === 'image' ? 'image' : 'file'}>
+    <span className="chip cmp-chip" data-kind={part.type === 'skill' || part.type === 'image' || part.type === 'issue' || part.type === 'workspace' ? part.type : 'file'}>
       {part.type === 'image' && part.dataUrl ? <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="chip-open">{body}</ImageButton> : body}
       <button type="button" className="chip-x" aria-label={`Remove ${label}`} onClick={onRemove}><Icon name="close" size={10} /></button>
     </span>
