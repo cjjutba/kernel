@@ -15,7 +15,7 @@ describe('IPC contract', () => {
   it('unbuilt channels reject with NotImplemented naming the issue that builds them', async () => {
     const k = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')) })
     const h = k.handlers() as unknown as Record<string, (req: unknown) => Promise<unknown>>
-    for (const [channel, issue] of Object.entries(UNBUILT)) {
+    for (const [channel, issue] of Object.entries(UNBUILT as Record<string, string>)) {
       const err = await h[channel]({}).then(() => null, (e: unknown) => e)
       expect(isNotImplemented(err), channel).toBe(true)
       expect((err as Error).message).toBe(`Not built yet: ${channel} (${issue})`)
@@ -25,7 +25,7 @@ describe('IPC contract', () => {
 
   it('every unbuilt channel names an issue that is still to come', () => {
     const build = new Set(Array.from({ length: 21 }, (_, i) => `KERNEL-${i + 10}`))
-    expect(Object.entries(UNBUILT).filter(([, issue]) => !build.has(issue))).toEqual([])
+    expect(Object.entries(UNBUILT as Record<string, string>).filter(([, issue]) => !build.has(issue))).toEqual([])
   })
 
   it('fixture mode answers the same channels as the kernel', async () => {

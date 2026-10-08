@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, AgentStatus, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
@@ -8,6 +10,17 @@ import { describeTool, matchesRule, needsUser, type Approvals } from './approval
 import { toActivity } from './hookServer'
 import { failureOf, WINDOW_MODEL, type Failure } from './health'
 import type { AppSettings } from './settings'
+
+/**
+ * The SDK's `claude` binary in a packaged app. The SDK finds it with require.resolve, which points inside app.asar,
+ * and a binary there can't be spawned. electron-builder unpacks it to app.asar.unpacked (electron-builder.yml).
+ * Outside a packaged app this is undefined and the SDK finds its own.
+ */
+export function packagedClaude(resources = (process as { resourcesPath?: string }).resourcesPath): string | undefined {
+  if (!resources) return undefined
+  const path = join(resources, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
+  return existsSync(path) ? path : undefined
+}
 
 /** An async queue the SDK reads user turns from. Pushing a message sends it into the running session. */
 export class InputQueue<T> implements AsyncIterable<T> {
@@ -320,7 +333,8 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id })
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }),
+      pathToClaudeCodeExecutable: packagedClaude()
     }
     const q = query({ prompt: input, options })
     const live: Live = { query: q, input, abort, running: false, interrupted: false, toolItems: new Map(), commands }

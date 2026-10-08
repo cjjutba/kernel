@@ -1,0 +1,42 @@
+# Packaging, signing, notarization and publishing (KERNEL-30). See docs/RELEASING.md.
+appId: com.cjjutba.kernel
+productName: Kernel
+copyright: Copyright © 2026 CJ Jutba
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**
+  - docs/starter-agents/**
+  - package.json
+# Spawned or dlopened from disk, so they can't live inside app.asar. electron-builder signs them where they land.
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - node_modules/node-pty/**
+  - node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/**
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch: arm64
+    - target: zip
+      arch: arm64
+  artifactName: ${productName}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarizes when APPLE_KEYCHAIN_PROFILE is set (scripts/release.sh sets kernel-notary) and skips otherwise.
+  notarize: true
+dmg:
+  artifactName: ${productName}-${arch}.${ext}
+# Where installed copies look for updates (written into the app as app-update.yml). scripts/release.sh uploads the
+# release with gh after the build passes its checks, so electron-builder itself never publishes.
+publish:
+  provider: github
+  owner: cjjutba
+  repo: kernel
+# Copied into latest-mac.yml, which is where What's new reads the notes from.
+releaseInfo:
+  releaseNotesFile: build/release-notes.md
