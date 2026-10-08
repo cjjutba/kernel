@@ -1,6 +1,6 @@
 # Kernel
 
-Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virtual office. The user briefs Rowan (the Lead) on the floor, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. Read `docs/PRODUCT.md` once per session if you are new to it.
+Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user briefs Rowan (the Lead) in Rowan's chat, approves a plan, and agents build in their own git worktrees, ask for approvals, open PRs and merge. The floor and the Board are hidden (D-104), so don't build toward them. Read `docs/PRODUCT.md` once per session if you are new to it.
 
 ## Commands
 
@@ -62,7 +62,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 
 - The PNGs are the spec. Do not invent layouts, copy or colors. When the PNG and DESIGN.md disagree, the PNG wins and you note it in the PR.
 - Follow `DESIGN.md`: monochrome, no status dots, purple only for merged, hairlines instead of shadows, one modal shell, tokens only (no hex values in screen code).
-- Statuses on the floor come from real events only, never timers. Fixtures are for screenshots and tests.
+- Statuses come from real events only, never timers. Fixtures are for screenshots and tests.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.
 - UI copy is plain, sentence case, no em dashes.
 - A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).

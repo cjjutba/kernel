@@ -3,6 +3,7 @@ import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/ty
 import { call } from '../../api'
 import { Icon, Skeleton, Spinner } from '../../ui'
 import { actions, loadWorkspace, useStore } from '../../store'
+import { openRoom } from '../../lead'
 import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
@@ -51,11 +52,11 @@ function ReplyMessage({ item, chat, onFork }: { item: Extract<ChatItem, { kind: 
   )
 }
 
-/** `kernel://floor/<roomId>` goes to that room's floor. Anything else is a normal link. */
+/** `kernel://floor/<roomId>` opens that room, its Lead chat now the floor is hidden (D-104). Anything else is a normal link. */
 function NoteLink({ link }: { link: { label: string; href: string } }) {
   const floor = /^kernel:\/\/floor\/(.+)$/.exec(link.href)
   if (!floor) return <a href={link.href}>{link.label}</a>
-  return <a href={link.href} onClick={(e) => { e.preventDefault(); actions.ui.go({ name: 'floor', roomId: floor[1] }) }}>{link.label}</a>
+  return <a href={link.href} onClick={(e) => { e.preventDefault(); void openRoom(floor[1]) }}>{link.label}</a>
 }
 
 function ThinkingRow({ item }: { item: Extract<ChatItem, { kind: 'thinking' }> }) {

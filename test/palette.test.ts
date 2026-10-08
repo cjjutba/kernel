@@ -5,7 +5,7 @@ import type { AgentDef, Room, Workspace } from '../src/shared/types'
 
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined }
+const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined, openRoom: () => undefined }
 const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 
 describe('command palette', () => {
@@ -22,7 +22,7 @@ describe('command palette', () => {
     const workspaces = [ws('invoice-table')]
     const input = { rooms, workspaces, approvals: [], agents: {}, act }
     const home = buildItems({ ...input, route: { name: 'home' } })
-    expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New workspace in Client A', 'Create PR for invoice-table', 'Brief the Lead'])
+    expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New workspace in Client A', 'Create PR for invoice-table'])
     expect(home.items.filter((i) => i.section === 'Rooms').map((i) => i.label)).toEqual(['Client A', 'Client B', 'New room'])
     const inWs = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'invoice-table' } })
     expect(inWs.items.map((i) => i.label)).toContain('Big terminal tab')
@@ -39,9 +39,9 @@ describe('command palette', () => {
     const input = { rooms, workspaces: [], approvals: [], agents: { a: [rowan], b: [{ ...rowan, name: 'Sol' }], o: [{ ...rowan, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
     const home = buildItems({ ...input, route: { name: 'home' } })
     const suggested = home.items.filter((i) => i.section === 'Suggested')
-    expect(suggested.map((i) => i.label)).toEqual(['New workspace in Client A', 'Brief Rowan', "Open Rowan's chat"])
-    expect(suggested[2].keys).toEqual(['⌘', '⇧', 'L'])
-    suggested[2].run()
+    expect(suggested.map((i) => i.label)).toEqual(['New workspace in Client A', "Open Rowan's chat"])
+    expect(suggested[1].keys).toEqual(['⌘', '⇧', 'L'])
+    suggested[1].run()
     // Typing "lead chat" puts the room in view first, and other rooms' Leads are found by name.
     expect(visibleItems(home.items, home.more, 'lead chat')[0].list[0].label).toBe("Open Rowan's chat")
     expect(home.more.map((i) => i.label)).not.toContain("Rowan's chat in Client A")
