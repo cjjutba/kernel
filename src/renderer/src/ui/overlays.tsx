@@ -140,12 +140,12 @@ export function Modal({ title, onClose, children, footer, width, top, bare, role
 }
 
 /** Archive, discard, remove, retire. Red appears only on the final confirm button. */
-export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** Disables the confirm button while the action runs. */ busy?: boolean; onConfirm: () => void; onCancel: () => void }) {
+export function ConfirmDialog({ title, body, children, extra, confirmLabel, cancelLabel = 'Cancel', danger, busy, busyLabel, disabled, onConfirm, onCancel }: { title: string; body: ReactNode; /** Extra content under the body, such as a path box or a checkbox. */ children?: ReactNode; /** A second way out, on the left of the footer, such as "Archive anyway" (ConfirmArchive.png). */ extra?: ReactNode; confirmLabel: string; cancelLabel?: string; danger?: boolean; /** The confirm action is running: its button spins and says `busyLabel`, such as "Archiving". */ busy?: boolean; busyLabel?: string; /** The confirm button can't be pressed yet, such as while the dialog reads the branch. */ disabled?: boolean; onConfirm: () => void; onCancel: () => void }) {
   const id = useId()
   return (
     <Modal
       title={title} onClose={onCancel} width={460} top={220} bare role="alertdialog" labelledBy={`${id}t`} describedBy={`${id}b`}
-      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" disabled={busy} onClick={onConfirm}>{confirmLabel}</Button></>}
+      footer={<>{extra}<span className="grow" /><Button variant="ghost" size="lg" onClick={onCancel}>{cancelLabel}</Button><Button variant={danger ? 'danger' : 'primary'} size="lg" busy={busy} busyLabel={busyLabel} disabled={disabled} onClick={onConfirm}>{confirmLabel}</Button></>}
     >
       <div className="confirm-body">
         <h2 id={`${id}t`}>{title}</h2>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
-import { Button, Modal, Pill, SegmentedControl } from '../../ui'
+import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { seating } from '../../floor/layout'
 import { shirtOf, shortFile } from './model'
 import './team.css'
@@ -30,25 +30,23 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   const [model, setModel] = useState(prefill?.model ?? 'sonnet')
   const [draft, setDraft] = useState<AgentDraft | undefined>(prefill?.draft)
   const [text, setText] = useState(prefill?.draft?.text ?? '')
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy<'draft' | 'create' | 'refine'>()
   const [error, setError] = useState<string | null>(null)
   const close = actions.ui.closeModal
   const lead = agents?.find((a) => a.lead)
   const to = (next: Step, p: NewAgentPrefill = { name, description, model, draft }) => actions.ui.openModal({ name: 'newAgent', roomId, step: next, prefill: p })
 
-  const makeDraft = async () => {
-    setBusy(true); setError(null)
+  const makeDraft = () => run('draft', async () => {
+    setError(null)
     try {
       const d = await call('agents.draft', { roomId, description: description.trim(), name: name.trim() || undefined, model })
       setDraft(d); setText(d.text)
       to('draft', { name, description, model, draft: d })
     } catch (e) { setError(clean(e)) }
-    setBusy(false)
-  }
+  })
 
-  const create = async () => {
-    if (!draft) return
-    setBusy(true); setError(null)
+  const create = () => draft && run('create', async () => {
+    setError(null)
     try {
       const def = await call('agents.create', { roomId, draft: { ...draft, text } })
       actions.agents.set(roomId, [...(getState().agents[roomId] ?? []).filter((a) => a.id !== def.id), def])
@@ -56,28 +54,26 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
       setDraft(done)
       to('done', { name, description, model, draft: done })
     } catch (e) { setError(clean(e)) }
-    setBusy(false)
-  }
+  })
 
   // Hand the draft to Rowan to improve in his own chat. He proposes the final file with hire_agent, and it comes back as an approval card.
-  const refine = async () => {
-    if (!draft) return
-    setBusy(true); setError(null)
+  const refine = () => draft && run('refine', async () => {
+    setError(null)
     try {
       await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
       const home = getState().workspaces.find((w) => w.roomId === roomId && w.name === 'lead' && w.status !== 'archived')
       actions.ui.go(home ? { name: 'workspace', workspaceId: home.id } : { name: 'floor', roomId })
-    } catch (e) { setError(clean(e)); setBusy(false) }
-  }
+    } catch (e) { setError(clean(e)) }
+  })
 
   if (step === 'describe') {
     const ready = description.trim() !== ''
     return (
       <Modal
         title="New agent" onClose={close} width={600} top={122}
-        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={close}>Cancel</Button><Button variant="primary" size="lg" disabled={!ready || busy} onClick={() => void makeDraft()}>{busy ? 'Drafting' : `Draft with ${lead?.name ?? 'Rowan'}`}</Button></>}
+        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={close}>Cancel</Button><Button variant="primary" size="lg" busy={busy === 'draft'} busyLabel="Drafting" disabled={!ready} onClick={() => void makeDraft()}>{`Draft with ${lead?.name ?? 'Rowan'}`}</Button></>}
       >
-        <form className="na-body" onSubmit={(e) => { e.preventDefault(); if (ready && !busy) void makeDraft() }}>
+        <form className="na-body" onSubmit={(e) => { e.preventDefault(); if (ready) void makeDraft() }}>
           <p>Describe the agent. {lead?.name ?? 'Rowan'} writes the file in .claude/agents and you review it before it joins.</p>
           <textarea className="na-text" aria-label="What should this agent do?" placeholder="What should this agent do?" value={description} onChange={(e) => setDescription(e.target.value)} />
           <div className="na-presets" role="group" aria-label="Start from a role">
@@ -99,7 +95,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
     return (
       <Modal
         title={`Review ${draft.id}.md`} onClose={close} width={600} top={122}
-        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={() => to('describe', { name, description, model, draft })}>Back</Button><Button variant="primary" size="lg" disabled={busy || !text.trim()} onClick={() => void create()}>Create agent</Button></>}
+        footer={<><span className="grow">{error && <span role="alert" className="del">{error}</span>}</span><Button variant="ghost" size="lg" onClick={() => to('describe', { name, description, model, draft })}>Back</Button><Button variant="primary" size="lg" busy={busy === 'create'} busyLabel="Creating" disabled={busy !== null || !text.trim()} onClick={() => void create()}>Create agent</Button></>}
       >
         <div className="na-body">
           <div className="na-by">
@@ -110,7 +106,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
             <div className="na-file-head">{draft.file}<span className="na-tag">new file</span></div>
             <textarea className="na-code" aria-label={`Contents of ${draft.file}`} value={text} spellCheck={false} onChange={(e) => setText(e.target.value)} />
           </div>
-          <button type="button" className="na-link" disabled={busy} onClick={() => void refine()}>Refine it in a chat with {rowan?.name ?? 'Rowan'}</button>
+          <button type="button" className="na-link" disabled={busy !== null} aria-busy={busy === 'refine' || undefined} onClick={() => void refine()}>{busy === 'refine' ? <><span className="spin" aria-hidden="true" />Sending to {rowan?.name ?? 'Rowan'}</> : `Refine it in a chat with ${rowan?.name ?? 'Rowan'}`}</button>
         </div>
       </Modal>
     )

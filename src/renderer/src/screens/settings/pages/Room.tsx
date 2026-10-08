@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppSettings, RoomSettings } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
-import { Button, SegmentedControl, Select } from '../../../ui'
+import { Button, SegmentedControl, Select, useBusy } from '../../../ui'
 import { sourceOf } from '../../rooms/roomInfo'
 import { NoRoom, Page, Row, Section, TextField } from '../kit'
 import { patchRoomSettings, useRoomSettings } from '../useSettings'
@@ -16,6 +16,7 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const agents = useStore((x) => (roomId ? x.agents[roomId] : undefined))
   const rs = useRoomSettings(roomId)
   const [branches, setBranches] = useState<string[]>([])
+  const [busy, run] = useBusy()
   useEffect(() => {
     if (roomId) void call('git.branches', { roomId }).then(setBranches).catch(() => setBranches([]))
   }, [roomId])
@@ -32,13 +33,13 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
       actions.rooms.upsert(next)
     } catch (e) { actions.ui.toast({ title: 'Could not remove the rule', sub: (e as Error).message }) }
   }
-  const archive = async () => {
+  const archive = () => run('archive', async () => {
     try {
       await call('rooms.update', { roomId, patch: { archived: true } })
       actions.ui.toast({ title: `Archived ${room.name}`, sub: 'Restore it from Rooms, Archived.' })
       go({ name: 'rooms' })
     } catch (e) { actions.ui.toast({ title: 'Could not archive the room', sub: (e as Error).message }) }
-  }
+  })
   return (
     <Page title={room.name}>
       <Section title="Room">
@@ -66,7 +67,7 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
       </Section>
       <Section title="Danger zone">
         <Row label="Archive room" desc="Stops every agent and archives all workspaces. You can restore it later.">
-          <Button onClick={() => void archive()} disabled={!!room.archived}>Archive</Button>
+          <Button busy={!!busy} busyLabel="Archiving" disabled={!!room.archived} onClick={() => void archive()}>Archive</Button>
         </Row>
       </Section>
     </Page>

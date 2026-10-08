@@ -3,7 +3,7 @@ import type { Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/ty
 import { MODELS } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadWorkspace, useStore } from '../../store'
-import { Button, Icon, Menu, Modal, Spinner } from '../../ui'
+import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { EFFORTS, ModelPicker } from '../workspace/composer/ModelPicker'
@@ -43,7 +43,8 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const d = useDraft()
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
-  const [busy, setBusy] = useState(false)
+  const [creating, run] = useBusy()
+  const busy = creating !== null
   const [error, setError] = useState<{ message: string; open?: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
@@ -87,24 +88,26 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
 
   const togglePlan = () => { setPlan((p) => !p); actions.ui.closeMenu() }
 
-  const create = async () => {
-    if (busy) return
+  const create = () => {
     const prompt = d.plain()
     if (!room || !prompt) { d.input.current?.focus(); return }
-    setBusy(true); setError(null)
+    void run('create', () => start(room, prompt))
+  }
+  const start = async (room: string, prompt: string) => {
+    setError(null)
     try {
       const ws = await call('workspaces.create', {
         roomId: room, prompt, parts: d.message(), mode,
         baseRef: mode === 'worktree' ? target : undefined, source: source ?? undefined, model, effort, plan
       })
       await loadWorkspace(ws.id)
-      if (ws.status === 'failed') { setError({ message: `Setup failed on ${ws.branch}. The workspace is there, with the setup output.`, open: ws.id }); setBusy(false); return }
+      if (ws.status === 'failed') { setError({ message: `Setup failed on ${ws.branch}. The workspace is there, with the setup output.`, open: ws.id }); return }
       go({ name: 'workspace', workspaceId: ws.id })
-    } catch (e) { setError({ message: reason(e) }); setBusy(false) }
+    } catch (e) { setError({ message: reason(e) }) }
   }
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); void create() }
+    if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); create() }
     else if (e.key === 'Tab' && e.shiftKey && e.target === d.input.current) { e.preventDefault(); togglePlan() }
     else if (e.key.toLowerCase() === 'u' && e.metaKey && !e.shiftKey) { e.preventDefault(); filePick.current?.click() }
   }
@@ -152,7 +155,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
           </span>
           {plan && <Button className="nw-plan" aria-label="Turn off plan mode" onClick={() => setPlan(false)}>Plan mode<Icon name="close" size={9} stroke={2} /></Button>}
           <span className="grow">
-            {busy && <span className="nw-status"><Spinner label="Creating" />Creating the workspace and running setup</span>}
+            {busy && <span className="nw-status" role="status">Creating the workspace and running setup</span>}
             {error && !busy && (
               <span role="alert" className="nw-status">{error.message}{error.open && <button type="button" className="link" onClick={() => go({ name: 'workspace', workspaceId: error.open! })}>Open workspace</button>}</span>
             )}
@@ -167,7 +170,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
               ]} />
             )}
           </span>
-          <Button variant="primary" className="nw-create" disabled={busy} onClick={() => void create()}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
+          <Button variant="primary" className="nw-create" busy={busy} busyLabel="Creating" onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
         <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />

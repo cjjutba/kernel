@@ -162,8 +162,9 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* A few pixels between rows, so a hovered row's fill never touches the selected row's (Conductor). */
 .nav-list { display: flex; flex-direction: column; gap: 3px; }
 .section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }
+/* Hover-only buttons show on hover or keyboard focus. A mouse click also focuses the button, and must not keep it up. */
 .hv .more { opacity: 0; transition: opacity 0.12s; }
-.hv:hover .more, .hv:focus-within .more { opacity: 1; }
+.hv:hover .more, .hv:has(:focus-visible) .more { opacity: 1; }
 
 /* controls */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
@@ -175,6 +176,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .btn.merged { background: var(--merged-solid); border-color: var(--merged-solid); color: var(--on-solid); }
 .btn.lg { height: 32px; font-size: 13px; padding: 0 14px; border-radius: var(--r); }
 .btn:disabled { opacity: 0.55; cursor: default; }
+/* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
+.btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
 .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
 .icon-btn:hover { background: var(--surface-3); color: var(--ink-2); }
 .pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; }

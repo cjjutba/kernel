@@ -3,7 +3,7 @@ import type { AgentDef, AppSettings } from '@shared/types'
 import { call } from '../../../api'
 import { SEATS } from '../../../floor/layout'
 import { actions, go, loadRoom, useStore } from '../../../store'
-import { Button, SegmentedControl, Toggle } from '../../../ui'
+import { Button, SegmentedControl, Toggle, useBusy } from '../../../ui'
 import { NoRoom, Page, Row, Section } from '../kit'
 import { patchSettings, useProjectRoom } from '../useSettings'
 
@@ -13,22 +13,23 @@ const NO_AGENTS: AgentDef[] = []
 export function Team({ s }: { s: AppSettings }) {
   const room = useProjectRoom()
   const agents = useStore((x) => (room ? x.agents[room.id] ?? NO_AGENTS : NO_AGENTS))
+  const [busy, run] = useBusy()
   useEffect(() => { if (room) void loadRoom(room.id) }, [room?.id])
   if (!room) return <NoRoom />
   const team = agents.filter((a) => !a.retired)
   const seated = Math.min(team.length, room.desks ? room.desks.length : SEATS.length, SEATS.length)
-  const seed = async () => {
+  const seed = () => run('seed', async () => {
     try {
       const list = await call('agents.seed', { roomId: room.id, template: { kind: s.team.defaultTemplate } })
       actions.agents.set(room.id, list)
     } catch (e) { actions.ui.toast({ title: 'Could not seat the team', sub: (e as Error).message }) }
-  }
+  })
   return (
     <Page title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it takes a desk on the floor.">
       <Section title="In this room">
         {team.length === 0 && (
           <Row label="No agents yet" desc={`Seat the ${s.team.defaultTemplate === 'pair' ? 'pair' : 'starter team'} from Default team below, or add a file to .claude/agents`}>
-            <Button onClick={() => void seed()}>Seat the team</Button>
+            <Button busy={!!busy} busyLabel="Seating" onClick={() => void seed()}>Seat the team</Button>
           </Row>
         )}
         {team.map((a) => (

@@ -64,6 +64,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - Statuses on the floor come from real events only, never timers. Fixtures are for screenshots and tests.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.
 - UI copy is plain, sentence case, no em dashes.
+- A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` before changing a deliberate choice, and add an entry when you make a new one.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.

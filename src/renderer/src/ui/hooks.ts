@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 
 /**
  * Open layers (menus, popovers, modals), oldest first. Escape and outside presses go to the top layer only,
@@ -61,4 +61,21 @@ export function useEscape(onEscape: (() => void) | undefined, active = true) {
 /** A press outside `ref` closes the top layer only. */
 export function useOutside(ref: RefObject<HTMLElement | null>, onOutside: (() => void) | undefined, active = true) {
   useLayer({ onOutside, ref }, active && !!onOutside)
+}
+
+/**
+ * Which button's work is running (DESIGN.md, Busy buttons). `run(key, fn)` marks `key` busy until `fn` settles, and does
+ * nothing while another run is going, so a double click, Enter or a shortcut can't start the work twice. Give the button
+ * that started it `busy={busy === key}` and disable the rest with `busy !== null`. `fn` handles its own errors.
+ */
+export function useBusy<K extends string = string>(): [busy: K | null, run: (key: K, fn: () => Promise<unknown>) => Promise<void>] {
+  const [busy, setBusy] = useState<K | null>(null)
+  const running = useRef(false)
+  const run = useCallback(async (key: K, fn: () => Promise<unknown>) => {
+    if (running.current) return
+    running.current = true
+    setBusy(key)
+    try { await fn() } finally { running.current = false; setBusy(null) }
+  }, [])
+  return [busy, run]
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
-import { ConfirmDialog } from '../../ui'
+import { ConfirmDialog, useBusy } from '../../ui'
 import { refreshChanges } from './changesBus'
 import './confirm.css'
 
@@ -12,27 +12,27 @@ const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remo
 export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const [git, setGit] = useState<WorkspaceGitStatus | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch((e) => setError(clean(e)))
   }, [workspaceId])
   if (!ws) return null
 
-  const discard = async () => {
-    setBusy(true); setError(null)
+  const discard = () => run('discard', async () => {
+    setError(null)
     try {
       await call('workspaces.discard', { workspaceId })
       refreshChanges(workspaceId)
       actions.ui.closeModal()
       actions.ui.toast({ title: 'Discarded. The worktree matches the last commit.' })
-    } catch (e) { setError(clean(e)); setBusy(false) }
-  }
+    } catch (e) { setError(clean(e)) }
+  })
   const d = git?.dirty
 
   return (
     <ConfirmDialog
-      title={`Discard changes in ${ws.name}?`} danger busy={busy || !git} confirmLabel="Discard changes"
+      title={`Discard changes in ${ws.name}?`} danger busy={!!busy} busyLabel="Discarding" disabled={!git} confirmLabel="Discard changes"
       body="This throws away every uncommitted change in the worktree. Checkpoints keep the last 20 turns if you change your mind."
       onConfirm={() => void discard()} onCancel={actions.ui.closeModal}
     >
