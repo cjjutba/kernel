@@ -16,7 +16,7 @@ import { Ptys } from './services/pty'
 import type { forkSession as ForkSession } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
-import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, uninstallHooks } from './services/hooksInstaller'
+import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
@@ -194,7 +194,8 @@ export class Kernel {
   private async restartHooks(port: number): Promise<HookStatus> {
     // A busy new port must not take down the server that works. Check before closing.
     if (port !== this.settings.hookPort && (await portBusy(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
-    const wasInstalled = (await hookStatus(this.claudeSettings).catch(() => [] as string[])).length > 0
+    // Any Kernel entry counts, so an old http install moves to the command form. Hooks are never added where there were none.
+    const wasInstalled = await kernelHooksPresent(this.claudeSettings).catch(() => false)
     await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
     this.hookServer = undefined
     if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
@@ -218,7 +219,7 @@ export class Kernel {
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await hookStatus(this.claudeSettings)).length > 0) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec)
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec)
     return this.settings
   }
 

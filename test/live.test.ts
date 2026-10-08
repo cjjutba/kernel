@@ -147,7 +147,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
         expect(l!.utilization!).toBeLessThanOrEqual(1)
       }
 
-      // AC7: a session outside Kernel reports through the http hooks after "Install hooks"
+      // AC7: a session outside Kernel reports through the installed hooks after "Install hooks"
       const installed = await h['hooks.install']({ port: hookPort })
       expect(installed.path).toBe(claudeSettingsFile)
       // exec merges process.env, and spawn drops undefined values, so this is how the keys stay out.
