@@ -77,6 +77,8 @@ function showing(panel: keyof typeof HIDDEN) {
 function keep(panel: keyof typeof HIDDEN, open: boolean) {
   try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
 }
+/** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
+const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
   rooms: [], roomSetup: {}, overlaps: {},
@@ -161,8 +163,13 @@ export const actions = {
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
-    setSidebar: (open: boolean) => { setUi({ sidebar: open }); keep('sidebar', open) },
-    setRightPanel: (open: boolean) => { setUi({ rightPanel: open }); keep('rightPanel', open) }
+    setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
+    setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
+    /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
+    fold: (panel: keyof typeof HIDDEN, narrow: boolean) => {
+      if (narrow && getState().ui[panel]) { folded.add(panel); setUi(panel === 'sidebar' ? { sidebar: false } : { rightPanel: false }) }
+      else if (!narrow && folded.delete(panel)) setUi(panel === 'sidebar' ? { sidebar: true } : { rightPanel: true })
+    }
   },
   rooms: {
     set: (rooms: Room[]) => setState({ rooms }),
