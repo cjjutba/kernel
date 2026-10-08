@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Room, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
@@ -60,26 +60,33 @@ function useChatLists(workspaceIds: string[]) {
   }, [key])
 }
 
-/** A room in the sidebar. Open rooms list Floor, Board and their live workspaces. */
-function RoomItem({ room, open }: { room: Room; open: boolean }) {
+/**
+ * A room in the sidebar. Expanded, it lists Floor, Board and its live workspaces. Pressing the row folds or unfolds it,
+ * as in Conductor, and hovering it swaps the room's letter for a chevron and shows the menu button.
+ */
+function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: boolean; expanded: boolean; onToggle: () => void }) {
   const live = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id && w.status !== 'archived' && w.name !== 'lead'))
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
-  useChatLists(open ? live.map((w) => w.id) : [])
+  useChatLists(expanded ? live.map((w) => w.id) : [])
   return (
     <div>
-      <div ref={anchor} className="hv" style={{ position: 'relative' }}>
-        <button className="nav-item" style={{ color: open ? 'var(--ink)' : undefined, paddingRight: 60 }} onClick={() => go({ name: 'floor', roomId: room.id })}>
-          <span style={{ width: 18, height: 18, borderRadius: 5, border: '1px solid var(--line-3)', background: open ? 'var(--surface-3)' : 'var(--surface)', fontSize: 10, fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{roomLetter(room.name)}</span>
+      <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
+        <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
+          <span className="room-mark">
+            <span className="room-letter" data-current={current || undefined}>{roomLetter(room.name)}</span>
+            <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
+          </span>
           <span className="grow ellipsis">{room.name}</span>
         </button>
-        <div className="more row" style={{ position: 'absolute', right: 4, top: 3, gap: 2, opacity: menuOpen ? 1 : undefined }}>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
+        {/* New workspace stays visible, as in Conductor. The menu button shows on hover or focus, or while its menu is open. */}
+        <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
+          <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
           <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New workspace in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
-      {open && (
+      {expanded && (
         <>
           <NavItem sub route={{ name: 'floor', roomId: room.id }} icon="floor" label="Floor" />
           <NavItem sub route={{ name: 'board', roomId: room.id }} icon="board" label="Board" />
@@ -90,6 +97,15 @@ function RoomItem({ room, open }: { room: Room; open: boolean }) {
   )
 }
 
+/**
+ * Rooms expanded (true) or collapsed (false) by hand, by id. A room left alone is expanded while it is the current one.
+ * localStorage keeps them across launches, and may be missing or blocked.
+ */
+const EXPANDED = 'kernel.roomsExpanded'
+function readExpanded(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(EXPANDED) ?? '{}') as Record<string, boolean> } catch { return {} }
+}
+
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
@@ -98,7 +114,13 @@ export function Sidebar() {
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const plan = useStore((s) => s.account?.plan)
   const roomsAnchor = useRef<HTMLDivElement>(null)
+  const [chosen, setChosen] = useState(readExpanded)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
+  const toggle = (id: string, expanded: boolean) => {
+    const next = { ...chosen, [id]: !expanded }
+    setChosen(next)
+    try { localStorage.setItem(EXPANDED, JSON.stringify(next)) } catch { /* not remembered */ }
+  }
 
   return (
     <nav aria-label="Sidebar" className="sidebar">
@@ -123,8 +145,12 @@ export function Sidebar() {
         <button className="icon-btn more" style={{ width: 24, height: 24, opacity: roomsMenu ? 1 : undefined }} aria-label="Rooms menu" aria-haspopup="menu" aria-expanded={roomsMenu} onClick={() => actions.ui.toggleMenu('rooms')}><Icon name="more" size={14} /></button>
         {roomsMenu && <RoomsMenu anchorRef={roomsAnchor} />}
       </div>
-      <div className="col" style={{ gap: 1, overflowY: 'auto', minHeight: 0 }}>
-        {rooms.map((r) => <RoomItem key={r.id} room={r} open={r.id === openRoom} />)}
+      {/* A room's menu is placed once, so scrolling the list closes it rather than leave it behind. */}
+      <div className="col" style={{ gap: 1, overflowY: 'auto', minHeight: 0 }} onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}>
+        {rooms.map((r) => {
+          const expanded = chosen[r.id] ?? r.id === openRoom
+          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} onToggle={() => toggle(r.id, expanded)} />
+        })}
       </div>
       <div className="section-label" style={{ marginTop: 20 }}><span>Try</span></div>
       <div className="col" style={{ gap: 1 }}>
