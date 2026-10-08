@@ -175,6 +175,8 @@ export interface KernelApi {
   'system.pickFolder': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
+  /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
+  'system.trafficLights': { req: { at: 'sidebar' | 'header' }; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
   'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
 }

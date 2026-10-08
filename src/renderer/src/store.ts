@@ -69,6 +69,15 @@ export interface State {
 
 const workspaceView: WorkspaceView = { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false }
 
+/** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
+const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const
+function showing(panel: keyof typeof HIDDEN) {
+  try { return localStorage.getItem(HIDDEN[panel]) !== '1' } catch { return true }
+}
+function keep(panel: keyof typeof HIDDEN, open: boolean) {
+  try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
+}
+
 let state: State = {
   rooms: [], roomSetup: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
@@ -78,7 +87,7 @@ let state: State = {
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
 
@@ -151,7 +160,9 @@ export const actions = {
     clearBanner: () => setUi({ banner: null }),
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
-    setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } }))
+    setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    setSidebar: (open: boolean) => { setUi({ sidebar: open }); keep('sidebar', open) },
+    setRightPanel: (open: boolean) => { setUi({ rightPanel: open }); keep('rightPanel', open) }
   },
   rooms: {
     set: (rooms: Room[]) => setState({ rooms }),
