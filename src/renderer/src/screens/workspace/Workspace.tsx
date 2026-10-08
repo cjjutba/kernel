@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import type { ChangedFile } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, loadWorkspace, useStore } from '../../store'
+import { actions, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
+import { openRoom } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
@@ -121,7 +122,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <header className="header">
         <SidebarToggle />
         <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
-        <button type="button" className="crumb" onClick={() => room && go({ name: 'floor', roomId: room.id })}>{room?.name}</button>
+        <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
         <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>

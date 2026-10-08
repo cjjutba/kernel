@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { actions, go, useStore } from '../../store'
+import { actions, useStore } from '../../store'
+import { openRoom } from '../../lead'
 import { Button, Icon, Spinner } from '../../ui'
 import { getDraft } from './draft'
 import '../onboarding/onboarding.css'
@@ -11,16 +12,16 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
   const steps = useStore((s) => (roomId ? s.roomSetup[roomId] : undefined))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
-  const openFloor = () => { if (roomId) go({ name: 'floor', roomId }) }
-  // "Brief Rowan right away" in New room: when setup finishes cleanly, land on the floor.
-  useEffect(() => { if (finished && !failed && getDraft().autostart && roomId) go({ name: 'floor', roomId }) }, [finished, failed, roomId])
+  const open = () => { if (roomId) void openRoom(roomId) }
+  // "Brief Rowan right away" in New room: when setup finishes cleanly, land in Rowan's chat (D-104).
+  useEffect(() => { if (finished && !failed && getDraft().autostart && roomId) void openRoom(roomId) }, [finished, failed, roomId])
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
       <div className="ob-page">
         <div className="ob-col">
           <h1 className="ob-h1">Setting up {room?.name ?? 'your room'}</h1>
-          <p className="ob-sub">This takes a minute. Agents take their desks when it finishes.</p>
+          <p className="ob-sub">This takes a minute. Your team is ready when it finishes.</p>
           <div className="ob-list" aria-busy={!finished}>
             {(steps ?? []).map((s) => (
               <div key={s.id} className="ob-check" data-state={s.state} data-ok={s.state !== 'fail'}>
@@ -41,8 +42,8 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
           </div>
           <div className="ob-bar">
-            <span role="status">{finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the floor.` : 'You can leave this screen. Kernel keeps going.'}</span>
-            <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished} onClick={openFloor}>Open the floor</Button>
+            <span role="status">{finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.` : 'You can leave this screen. Kernel keeps going.'}</span>
+            <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished} onClick={open}>Open the room</Button>
           </div>
           {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}
         </div>

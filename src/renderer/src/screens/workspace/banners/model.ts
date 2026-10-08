@@ -148,7 +148,7 @@ export function bannerFor(i: BannerInput): BannerView | null {
   }
 
   if (i.hooks && !i.hooks.listening) return {
-    id: 'hooks', kind: 'hooks', title: 'Hooks are disconnected', sub: 'The floor and logs stop updating. Agents keep working, approvals fall back to the terminal.',
+    id: 'hooks', kind: 'hooks', title: 'Hooks are disconnected', sub: 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.',
     actions: [{ id: 'checkHooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }], blocks: false
   }
 

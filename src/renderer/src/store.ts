@@ -334,7 +334,7 @@ export async function boot() {
 
 /**
  * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
- * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-102).
+ * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
  */
 function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]): Route {
   const { homeView } = settings.general
@@ -364,7 +364,7 @@ export async function loadRoom(roomId: string) {
   actions.tasks.set(roomId, tasks)
   actions.activity.setLast(roomId, last)
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
-  // The Inbox lists open overlaps (D-102). Pushes keep them current after this; a failed check only leaves them out.
+  // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
 }
 

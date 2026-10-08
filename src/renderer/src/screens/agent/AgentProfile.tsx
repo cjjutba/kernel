@@ -3,6 +3,7 @@ import type { AgentDef, AgentEdit, Effort } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
+import { openRoom } from '../../lead'
 import { Button, SegmentedControl, useBusy } from '../../ui'
 import { STANDARD_TOOLS, STATUS_WORD, currentWorkspace, modelAlias, recentWork, sameModel, shirtOf, shortFile, withExtras } from '../team/model'
 import '../team/team.css'
@@ -89,7 +90,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
     <div className="panel">
       <header className="header">
         <SidebarToggle />
-        <button type="button" className="tm-crumb" onClick={() => go({ name: 'floor', roomId })}>{room.name}</button><span className="tm-sep">/</span>
+        <button type="button" className="tm-crumb" onClick={() => void openRoom(roomId)}>{room.name}</button><span className="tm-sep">/</span>
         <button type="button" className="tm-crumb" onClick={() => go({ name: 'team', roomId })}>Team</button><span className="tm-sep">/</span>
         <h1>{agent.name}</h1>
         <span className="grow" />
