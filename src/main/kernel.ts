@@ -980,6 +980,8 @@ export class Kernel {
         this.sessions.placeApproval(chat.id, approval.id)
         return decision
       },
+      planApproved: () => this.sessions.handoffs.approved(chat.id),
+      handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {
         const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
         const file = await saveAgent(this.mustRoom(roomId).path, a)
