@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Room, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
@@ -41,23 +41,46 @@ function LeadItem({ roomId }: { roomId: string }) {
   )
 }
 
-/** A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. */
+/**
+ * The row's archive button archives in one click, like Conductor, when nothing would be lost. Uncommitted changes, commits
+ * not on GitHub yet, or a status Kernel can't read open ConfirmArchive instead, which says what happens to them.
+ * A current-branch workspace removes no files, so it never needs the dialog.
+ */
+async function archiveFromSidebar(ws: Workspace) {
+  if (ws.mode === 'worktree') {
+    const git = await call('workspaces.gitStatus', { workspaceId: ws.id }).catch(() => null)
+    if (!git || git.ahead || git.dirty.files) return actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: ws.id })
+  }
+  try {
+    await call('workspaces.archive', { workspaceId: ws.id })
+    actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
+  } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: (e as Error).message }) }
+}
+
+/** A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals for Archive. */
 function WorkspaceItem({ ws }: { ws: Workspace }) {
   const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
+  const [busy, setBusy] = useState(false)
   const g = workspaceGlyph(ws, { needsYou, running })
   const glyph = (
     <span className="nav-glyph" data-tone={g.tone} role="img" aria-label={g.label} title={g.label}>
       {g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}
     </span>
   )
+  const archive = () => { setBusy(true); void archiveFromSidebar(ws).finally(() => setBusy(false)) }
   return (
-    <NavItem
-      sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name}
-      right={ws.stat && (ws.stat.added || ws.stat.removed)
-        ? <span className="mono" style={{ fontSize: 11, display: 'inline-flex', gap: 6 }}>{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
-        : ws.prNumber ? <span className="mono muted" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
-    />
+    <div className={`hv ws-row${busy ? ' busy' : ''}`}>
+      <NavItem
+        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={glyph} label={ws.name}
+        right={ws.stat && (ws.stat.added || ws.stat.removed)
+          ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
+          : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
+      />
+      <div className="more ws-archive">
+        <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={busy} onClick={archive} />
+      </div>
+    </div>
   )
 }
 

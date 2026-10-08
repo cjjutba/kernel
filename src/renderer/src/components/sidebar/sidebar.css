@@ -4,3 +4,14 @@
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
+
+/* Hovering a workspace row swaps its diff totals for the archive button, the way Conductor does. The name stops short of it. */
+.ws-row { position: relative; }
+.ws-stat { font-size: 11px; display: inline-flex; gap: 6px; }
+.ws-archive { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center; }
+.ws-row:hover .ws-right, .ws-row:focus-within .ws-right, .ws-row.busy .ws-right { display: none; }
+.ws-row:hover .nav-item, .ws-row:focus-within .nav-item, .ws-row.busy .nav-item { padding-right: 32px; }
+.ws-row:hover .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
+.ws-row.busy .more { opacity: 1; }
+/* The archive icon brightens on hover with no square behind it. */
+.ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
