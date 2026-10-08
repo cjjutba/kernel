@@ -53,6 +53,8 @@ export interface State {
   /** By room id. */
   tasks: Record<string, Task[]>
   activity: ActivityEvent[]
+  /** By room id, then agent id. When each agent's newest event in the room happened, from the whole log rather than the `activity` window. */
+  lastActivity: Record<string, Record<string, number>>
   notifications: Notification[]
   // pull requests
   /** By workspace id. */
@@ -85,7 +87,7 @@ let state: State = {
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, checkpoints: {},
   chats: {}, items: {}, running: {}, queue: {}, terminal: {}, retry: {},
-  approvals: [], tasks: {}, activity: [], notifications: [],
+  approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
@@ -124,6 +126,12 @@ export function useStore<T>(select: (s: State) => T): T {
 
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
 const byRecent = <T extends { createdAt: number }>(list: T[]) => [...list].sort((a, b) => b.createdAt - a.createdAt)
+/** `all` with each of `times` written into the room's entry when it is later than what is there. Unchanged rooms keep their identity. */
+function newer(all: State['lastActivity'], roomId: string, times: Record<string, number>): State['lastActivity'] {
+  const room = all[roomId] ?? {}
+  const later = Object.entries(times).filter(([id, ts]) => ts > (room[id] ?? -Infinity))
+  return later.length ? { ...all, [roomId]: { ...room, ...Object.fromEntries(later) } } : all
+}
 /** Settings > General > Last room: the room whose floor, board, team or workspace was open last. localStorage may be missing or blocked, so every access is guarded. */
 const LAST_ROOM = 'kernel.lastRoom'
 function rememberRoom(route: Route) {
@@ -223,7 +231,13 @@ export const actions = {
   },
   activity: {
     set: (list: ActivityEvent[]) => setState({ activity: list }),
-    add: (e: ActivityEvent) => setState((s) => ({ activity: [e, ...s.activity].slice(0, 200) }))
+    /** Also moves the agent's last activity forward, which outlasts the 200-event window. */
+    add: (e: ActivityEvent) => setState((s) => ({
+      activity: [e, ...s.activity].slice(0, 200),
+      lastActivity: e.roomId && e.agentId ? newer(s.lastActivity, e.roomId, { [e.agentId]: e.ts }) : s.lastActivity
+    })),
+    /** A room's last activity by agent from `rooms.lastActivity`. Keeps any newer time an event already brought in. */
+    setLast: (roomId: string, times: Record<string, number>) => setState((s) => ({ lastActivity: newer(s.lastActivity, roomId, times) }))
   },
   notifications: {
     set: (list: Notification[]) => setState({ notifications: byRecent(list) }),
@@ -338,8 +352,11 @@ function applyFixture(ui: ForcedUi, push: PushEvent[]) {
 }
 
 export async function loadRoom(roomId: string) {
-  const [agents, status, tasks] = await Promise.all([call('agents.list', { roomId }), call('agents.status', { roomId }), call('tasks.list', { roomId })])
+  const [agents, status, tasks, last] = await Promise.all([
+    call('agents.list', { roomId }), call('agents.status', { roomId }), call('tasks.list', { roomId }), call('rooms.lastActivity', { roomId })
+  ])
   actions.tasks.set(roomId, tasks)
+  actions.activity.setLast(roomId, last)
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
 }
 
