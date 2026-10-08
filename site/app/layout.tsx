@@ -1,9 +1,21 @@
+import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 import { Geist_Mono, Inter } from 'next/font/google'
+import { SITE_DESCRIPTION, SITE_URL, THEME_COLOR } from '@/lib/site'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const geistMono = Geist_Mono({ subsets: ['latin'], weight: ['400', '500'], variable: '--font-geist-mono', display: 'swap' })
+
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: 'Kernel',
+  description: SITE_DESCRIPTION,
+  openGraph: { type: 'website', siteName: 'Kernel' },
+  twitter: { card: 'summary_large_image' }
+}
+
+export const viewport: Viewport = { themeColor: THEME_COLOR, colorScheme: 'dark' }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

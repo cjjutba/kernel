@@ -3,7 +3,14 @@ import { ReleaseEntry } from '@/components/changelog/ReleaseEntry'
 import { UpNext } from '@/components/changelog/UpNext'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
+import type { Metadata } from 'next'
 import { changelog } from '@/content/changelog'
+import { pageMetadata } from '@/lib/site'
+
+const title = 'Changelog · Kernel'
+const description = 'New features, improvements and fixes in every Kernel release.'
+
+export const metadata: Metadata = pageMetadata({ title, description, path: '/changelog' })
 
 export default function ChangelogPage() {
   return (
