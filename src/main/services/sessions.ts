@@ -714,8 +714,13 @@ export class Sessions {
       const usage = await withTimeout(ask.call(live.query), 10_000)
       const context = Math.max(0, Math.round(usage.percentage))
       const chat = this.d.store.chat(chatId)
-      if (!chat || chat.context === context) return
-      const next = { ...chat, context }
+      if (!chat) return
+      // Deferred tool schemas sit outside the window, so they are not part of the breakdown.
+      const contextUsage: Chat['contextUsage'] = typeof usage.totalTokens === 'number' && typeof usage.maxTokens === 'number'
+        ? { used: usage.totalTokens, max: usage.maxTokens, rows: (usage.categories ?? []).flatMap(({ name, tokens, kind }) => (kind === 'deferred' ? [] : [{ name, tokens, kind }])) }
+        : undefined
+      if (chat.context === context && JSON.stringify(chat.contextUsage) === JSON.stringify(contextUsage)) return
+      const next = { ...chat, context, contextUsage }
       this.d.store.saveChat(next)
       bus.push({ type: 'chat', chat: next })
     } catch { /* the composer keeps the last number */ }
