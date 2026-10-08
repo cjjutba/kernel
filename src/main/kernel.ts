@@ -165,7 +165,7 @@ export class Kernel {
     this.leadUpdates = new LeadUpdates({
       store: this.store,
       enabled: () => this.settings.models.leadUpdates !== false,
-      leadChat: (roomId) => this.existingLeadChat(roomId),
+      target: (roomId, owner) => this.leadUpdateTarget(roomId, owner),
       isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
       agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
       post: (chatId, text) => this.sessions.post(chatId, [{ type: 'text', text }]),
@@ -210,6 +210,7 @@ export class Kernel {
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
     this.notifications.attach()
+    this.backfillLeadChats()
     this.leadUpdates.attach()
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
@@ -749,7 +750,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -778,7 +779,8 @@ export class Kernel {
       if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
     }
 
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, prState: 'none', createdAt: Date.now() }
+    // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
+    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
@@ -907,8 +909,12 @@ export class Kernel {
     if (!o) throw new Error('That overlap is gone already.')
     const agents = await this.agents(o.roomId)
     const parts = o.parties.map((p) => `${agents.find((a) => a.id === p.agentId)?.name ?? p.agentId} in ${this.store.workspace(p.workspaceId)?.name ?? p.workspaceId} (${p.lines})`)
-    const chat = await this.leadChat(o.roomId)
-    const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.`
+    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other chats are involved.
+    const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
+    const chat = (owners.length ? this.leadUpdateTarget(o.roomId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.roomId)
+    const others = [...new Set(owners.map((w) => w.leadChatId).filter((id): id is string => !!id && id !== chat.id))].map((id) => this.store.chat(id)?.title).filter(Boolean)
+    const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
+    const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.${elsewhere}`
     await this.sessions.send(chat.id, [{ type: 'text', text }])
     this.overlaps.resolve(overlapId)
     // A note, not a brief: a brief to the Lead would restart the briefing sequence on the floor.
@@ -1109,9 +1115,13 @@ export class Kernel {
       roomId, lead,
       agents: () => this.agents(roomId),
       workspaces: () => this.store.workspaces(roomId),
+      chatId: chat.id,
+      chatTitle: (id) => this.store.chat(id)?.title,
       createWorkspace: async (o) => {
-        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, taskFor: (w) => this.tasks.link(roomId, o.agentId, w.id)?.id })
-        this.linkPlanStep(roomId, o.agentId, ws.id)
+        // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
+        const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
+        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, leadChatId: chat.id, taskFor: (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         return ws
       },
       messageWorkspace: async (workspaceId, text) => { const chat = this.chatTabs(workspaceId).find((c) => c.kind !== 'terminal'); if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
@@ -1146,9 +1156,12 @@ export class Kernel {
     })
   }
 
-  /** Point the first unlinked step for this agent in the room's latest approved plan at the new workspace (the card's Open workspace link). */
-  private linkPlanStep(roomId: string, agentId: string, workspaceId: string) {
-    const plan = this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && a.steps?.some((s) => s.agentId === agentId && !s.workspaceId)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  /**
+   * Point the first unlinked step for this agent in the latest plan approved in `chatId` at the new workspace (the card's
+   * Open workspace link). Plans from the room's other Lead chats are left alone (KERNEL-105).
+   */
+  private linkPlanStep(roomId: string, agentId: string, workspaceId: string, chatId: string) {
+    const plan = this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && a.chatId === chatId && a.steps?.some((s) => s.agentId === agentId && !s.workspaceId)).sort((a, b) => b.createdAt - a.createdAt)[0]
     if (!plan?.steps) return
     const at = plan.steps.findIndex((s) => s.agentId === agentId && !s.workspaceId)
     this.approvals.update(plan.id, { steps: plan.steps.map((s, i) => (i === at ? { ...s, workspaceId } : s)) })
@@ -1338,6 +1351,45 @@ export class Kernel {
     const lead = this.agentsSync(roomId).find((a) => a.lead)
     const ws = lead && this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
     return ws ? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') : undefined
+  }
+
+  /** A chat tab still on the strip, in a workspace that isn't archived. */
+  private isOpenChat(chat: Chat) {
+    return !chat.closed && chat.kind !== 'terminal' && this.store.workspace(chat.workspaceId)?.status !== 'archived'
+  }
+
+  /**
+   * Where teammate updates about work handed off in `owner` go (KERNEL-105): that chat while it's open, else its newest
+   * open fork, else the room's first open Lead chat, with `closed` set so the update can say where the work came from.
+   * Work no Lead chat handed off goes to the first open Lead chat. Never creates a chat.
+   */
+  private leadUpdateTarget(roomId: string, owner?: string): { chat: Chat; closed?: Chat } | undefined {
+    const was = owner ? this.store.chat(owner) : undefined
+    if (was && this.isOpenChat(was)) return { chat: was }
+    const fork = was && this.store.chats(was.workspaceId).filter((c) => c.forkOf?.chatId === was.id && this.isOpenChat(c)).sort((a, b) => b.createdAt - a.createdAt)[0]
+    if (fork) return { chat: fork }
+    const first = this.existingLeadChat(roomId)
+    return first && { chat: first, closed: was }
+  }
+
+  /**
+   * Workspaces the Lead created before Kernel saved `leadChatId` (KERNEL-105). Only a Lead chat has the kernel tools, so
+   * each finished `create_workspace` in a chat ("Created <id> on <branch> ...") names a workspace that chat handed off.
+   * Runs once; a workspace it can't place reports to the room's first Lead chat, as before.
+   */
+  private backfillLeadChats() {
+    if (this.store.meta<boolean>('leadChatBackfill')) return
+    for (const lead of this.store.workspaces().filter((w) => w.mode === 'current')) {
+      for (const chat of this.store.chats(lead.id)) {
+        for (const item of this.store.items(chat.id)) {
+          if (item.kind !== 'tool' || item.name !== 'mcp__kernel__create_workspace' || item.status !== 'done') continue
+          const id = /^Created (\S+) on /.exec(item.output ?? '')?.[1]
+          const ws = id ? this.store.workspace(id) : undefined
+          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id })
+        }
+      }
+    }
+    this.store.saveMeta('leadChatBackfill', true)
   }
 
   // ---------- helpers

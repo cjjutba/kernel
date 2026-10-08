@@ -9,6 +9,9 @@ import { firstLine } from './text'
 export interface KernelToolDeps {
   roomId: string
   lead: AgentDef | undefined
+  /** The Lead chat these tools belong to. Workspaces it hands off report back to it (KERNEL-105). */
+  chatId?: string
+  chatTitle?: (chatId: string) => string | undefined
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string }) => Promise<Workspace>
@@ -51,14 +54,21 @@ export function kernelMcpServer(d: KernelToolDeps) {
 
 /** The Lead's tools, apart from the server so tests can call them. */
 export function kernelTools(d: KernelToolDeps) {
+  /** Which Lead chat a workspace reports to, as list_workspaces shows it. Nothing for work no Lead chat handed off. */
+  const owner = (w: Workspace) => {
+    if (!w.leadChatId || !d.chatId) return ''
+    if (w.leadChatId === d.chatId) return ' · yours'
+    const title = d.chatTitle?.(w.leadChatId)
+    return title ? ` · from Lead chat "${title}"` : ' · from another Lead chat'
+  }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
       const agents = await d.agents()
       return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
     }),
-    tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state.', {}, async () => {
+    tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
       const list = d.workspaces().filter((w) => w.status !== 'archived')
-      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}`).join('\n') || 'No open workspaces.')
+      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${owner(w)}`).join('\n') || 'No open workspaces.')
     }),
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
@@ -97,7 +107,9 @@ export function kernelTools(d: KernelToolDeps) {
       const ws = d.workspaces().find((w) => w.id === workspace_id)
       // The speaker walks to the listener's desk and says the first line (KERNEL-24).
       if (ws && d.lead) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
-      return text('Sent.')
+      // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
+      const from = ws?.leadChatId && d.chatId && ws.leadChatId !== d.chatId ? d.chatTitle?.(ws.leadChatId) : undefined
+      return text(from ? `Sent. This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : 'Sent.')
     }),
     tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
       workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
