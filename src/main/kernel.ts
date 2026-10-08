@@ -22,7 +22,7 @@ import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings,
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
-import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
@@ -673,6 +673,7 @@ export class Kernel {
       branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
+      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else {
       if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
         throw new Error('Another workspace is already working on the current branch in this room.')
@@ -773,6 +774,7 @@ export class Kernel {
       await restoreWorktree({ repo: room.path, path, branch: ws.branch })
       const repo = await loadRepoSettings(room.path)
       await copyLocalFiles(room.path, path, repo.files.copy)
+      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
     }
