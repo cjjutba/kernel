@@ -6,7 +6,9 @@ import { actions, go, loadWorkspace, useStore } from '../../store'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
-import { EFFORTS, ModelPicker } from '../workspace/composer/ModelPicker'
+import { ModelPicker } from '../workspace/composer/ModelPicker'
+import { effortLabel as labelOf, rememberEffort } from '../workspace/composer/modelPrefs'
+import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
 import { FromPopover } from './FromPopover'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
@@ -54,7 +56,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const modeInfo = MODES.find((m) => m.id === mode) ?? MODES[0]
   const label = sourceLabel(source)
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
-  const effortLabel = EFFORTS.find((x) => x.id === effort)?.label ?? effort
+  const effortLabel = labelOf(effort)
 
   const modelAnchor = useRef<HTMLSpanElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
@@ -62,7 +64,6 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const branchAnchor = useRef<HTMLSpanElement>(null)
   const fromAnchor = useRef<HTMLSpanElement>(null)
   const filePick = useRef<HTMLInputElement>(null)
-  const imagePick = useRef<HTMLInputElement>(null)
 
   // The modal shell focuses its first control. The prompt is where typing starts.
   useEffect(() => { const t = requestAnimationFrame(() => d.input.current?.focus()); return () => cancelAnimationFrame(t) }, [])
@@ -76,6 +77,9 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
 
   const close = () => actions.ui.closeModal()
   const toggle = (id: 'branch' | 'from' | 'model' | 'plus') => { setRoomMenu(false); actions.ui.toggleMenu(id) }
+  const plusPanel: PlusPanel = menu === 'plus' || menu === 'linkIssue' || menu === 'linkWorkspaces' ? menu : null
+  // Each panel switch goes to a different id, so toggling opens it.
+  const setPlusPanel = (p: PlusPanel) => { setRoomMenu(false); if (p && p !== menu) actions.ui.toggleMenu(p); else if (!p) actions.ui.closeMenu() }
 
   const pick = (r: FromRow) => {
     setSource(r.source)
@@ -110,11 +114,12 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); create() }
     else if (e.key === 'Tab' && e.shiftKey && e.target === d.input.current) { e.preventDefault(); togglePlan() }
     else if (e.key.toLowerCase() === 'u' && e.metaKey && !e.shiftKey) { e.preventDefault(); filePick.current?.click() }
+    else if (e.key.toLowerCase() === 'i' && e.metaKey && !e.shiftKey && room) { e.preventDefault(); setPlusPanel('linkIssue') }
   }
 
   return (
     <Modal title="New workspace" onClose={close} bare width={680} top={170}>
-      <div className="nw" onKeyDown={onKey} {...d.drop}>
+      <div className="nw" data-plan={plan || undefined} onKeyDown={onKey} {...d.drop}>
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
@@ -151,29 +156,21 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={10} /></Button>
-            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} onClose={actions.ui.closeMenu} onModel={(m) => { setModel(m); actions.ui.closeMenu() }} onEffort={setEffort} />}
+            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
-          {plan && <Button className="nw-plan" aria-label="Turn off plan mode" onClick={() => setPlan(false)}>Plan mode<Icon name="close" size={9} stroke={2} /></Button>}
           <span className="grow">
             {busy && <span className="nw-status" role="status">Creating the workspace and running setup</span>}
             {error && !busy && (
               <span role="alert" className="nw-status">{error.message}{error.open && <button type="button" className="link" onClick={() => go({ name: 'workspace', workspaceId: error.open! })}>Open workspace</button>}</span>
             )}
           </span>
-          <span ref={plusAnchor} style={{ position: 'relative' }}>
-            <button type="button" className="icon-btn nw-tool" aria-label="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => toggle('plus')}><Icon name="plus" /></button>
-            {menu === 'plus' && (
-              <Menu label="Add" anchorRef={plusAnchor} onClose={actions.ui.closeMenu} style={{ right: 0, bottom: 'calc(100% + 8px)', width: 240 }} items={[
-                { id: 'plan', label: plan ? 'Plan mode is on' : 'Plan mode', shortcut: '⇧Tab', onSelect: togglePlan },
-                { id: 'attach', label: 'Add attachment', shortcut: '⌘U', onSelect: () => filePick.current?.click() },
-                { id: 'image', label: 'Add image', onSelect: () => imagePick.current?.click() }
-              ]} />
-            )}
+          <span ref={plusAnchor} className="nw-plus" style={{ position: 'relative' }}>
+            <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
+              onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.input.current?.focus() }} />
           </span>
           <Button variant="primary" className="nw-create" busy={busy} busyLabel="Creating" onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
-        <input ref={imagePick} type="file" accept="image/*" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
     </Modal>
   )

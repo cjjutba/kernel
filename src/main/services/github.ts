@@ -1,5 +1,5 @@
 import { exec, run } from './exec'
-import type { PrCheck, PrInfo, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import type { IssueSummary, PrCheck, PrInfo, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 
 // Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
 
@@ -220,4 +220,17 @@ export async function openPrs(cwd: string, query?: string): Promise<PrSummary[]>
   const q = query?.trim()
   const r = await exec('gh', ['pr', 'list', '--state', 'open', '--limit', '50', '--json', 'number,title,headRefName,author', ...(q ? ['--search', q.replace(/^#/, '')] : [])], { cwd, timeoutMs: 20000 })
   return r.code === 0 ? parsePrList(r.stdout) : []
+}
+
+export function parseIssueList(json: string): IssueSummary[] {
+  try {
+    return (JSON.parse(json) as { number: number; title: string; url?: string }[]).map((i) => ({ id: `#${i.number}`, title: i.title, url: i.url, source: 'github' as const }))
+  } catch { return [] }
+}
+
+/** Open issues for + > Link issue, newest first. `query` is a GitHub search. Empty when gh is missing or signed out. */
+export async function openIssues(cwd: string, query?: string): Promise<IssueSummary[]> {
+  const q = query?.trim()
+  const r = await exec('gh', ['issue', 'list', '--state', 'open', '--limit', '50', '--json', 'number,title,url', ...(q ? ['--search', q.replace(/^#/, '')] : [])], { cwd, timeoutMs: 20000 })
+  return r.code === 0 ? parseIssueList(r.stdout) : []
 }

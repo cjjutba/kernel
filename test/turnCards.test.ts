@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatItem } from '../src/shared/types'
-import { outcome, planSteps } from '../src/renderer/src/screens/workspace/cards/steps'
+import { isStepList, noteFromParts, outcome, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
 import { buildThread } from '../src/renderer/src/screens/workspace/thread'
 
 describe('turn cards', () => {
@@ -49,5 +49,36 @@ describe('Lead requests', () => {
 
   it('reads a plan from ExitPlanMode input when there is no detail', () => {
     expect(planSteps({ input: { plan: '1. One\n2. Two' } }).map((s) => s.title)).toEqual(['One', 'Two'])
+  })
+
+  it('shows a plan with sections as a document, titled by its heading, and one list as rows', () => {
+    const doc = { title: 'Plan for lead', detail: '# KERNEL-83 Fix batch\n\n## Context\nWhy.\n\n## Task 1 · **Engine**\n- a\n- b' }
+    expect(isStepList(doc)).toBe(false)
+    expect(planTitle(doc)).toBe('KERNEL-83 Fix batch')
+    // The floor's card lists the sections, without the title or markdown markers.
+    expect(planSteps(doc).map((s) => s.title)).toEqual(['Context', 'Task 1 · Engine'])
+    expect(isStepList({ detail: '1. Build it\n2. Test it' })).toBe(true)
+    expect(isStepList({ detail: '1. Build it\n   - first the table' })).toBe(false)
+    expect(planTitle({ title: 'Plan for lead', detail: '1. Build it' })).toBe('Plan for lead')
+  })
+
+  it("finds the plan waiting in a chat, which puts Copy and Approve on that chat's composer", () => {
+    const plan = (o: object) => ({ id: 'p', kind: 'plan', source: 'sdk', title: 'Plan', status: 'pending', createdAt: 0, workspaceId: 'ws', ...o }) as never
+    const chat = { id: 'c1', workspaceId: 'ws' }
+    expect(waitingPlan([plan({ chatId: 'c1' })], chat)).toBeTruthy()
+    expect(waitingPlan([plan({ chatId: 'c2' })], chat)).toBeUndefined()
+    expect(waitingPlan([plan({ chatId: 'c1', status: 'allowed' })], chat)).toBeUndefined()
+    expect(waitingPlan([plan({ kind: 'tool', toolName: 'ExitPlanMode' })], chat)).toBeTruthy()
+    expect(waitingPlan([plan({ kind: 'tool', toolName: 'Bash' })], chat)).toBeUndefined()
+  })
+
+  it('turns what you type under a plan into the note sent back with it', () => {
+    expect(noteFromParts([
+      { type: 'text', text: 'Split task 2' },
+      { type: 'file', name: 'a.ts', path: 'src/a.ts' },
+      { type: 'file', name: 'Pasted text', text: 'line' },
+      { type: 'text', text: '  ' }
+    ])).toBe('Split task 2 @src/a.ts <pasted name="Pasted text">\nline\n</pasted>')
+    expect(noteFromParts([{ type: 'issue', name: '#41', title: 'Export fails', source: 'github' }])).toBe('Linked issue #41: Export fails')
   })
 })

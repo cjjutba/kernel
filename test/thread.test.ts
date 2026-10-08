@@ -54,6 +54,33 @@ describe('workspace views', () => {
     expect(parseBlocks('Hi **there**\n\n- a\n- b\n\n```ts\nx\n```').map((b) => b.type)).toEqual(['p', 'ul', 'code'])
   })
 
+  it('reads a plan as a document: headings by level, rules, quotes, tables and tilde fences', () => {
+    const blocks = parseBlocks('# Title\n## Context\nWhy.\n---\n> Note\n> more\n\n| A | B |\n|:--|--:|\n| 1 | 2 |\n| 3 |\n~~~\ncode\n~~~')
+    expect(blocks.map((b) => b.type)).toEqual(['h', 'h', 'p', 'hr', 'quote', 'table', 'code'])
+    expect(blocks.slice(0, 2)).toEqual([{ type: 'h', level: 1, text: 'Title' }, { type: 'h', level: 2, text: 'Context' }])
+    expect(blocks[4]).toEqual({ type: 'quote', blocks: [{ type: 'p', text: 'Note\nmore' }] })
+    expect(blocks[5]).toEqual({ type: 'table', align: ['left', 'right'], head: ['A', 'B'], rows: [['1', '2'], ['3', '']] })
+  })
+
+  it('nests indented lists under their item and keeps numbering across a break', () => {
+    const blocks = parseBlocks('1. Noor\n- a\n2. Kai\n   - c\n     - d\n3. Ivy')
+    expect(blocks.map((b) => b.type)).toEqual(['ol', 'ul', 'ol'])
+    const kai = blocks[2]
+    if (kai.type !== 'ol') throw new Error('expected a list')
+    expect(kai.start).toBe(2)
+    expect(kai.items.map((i) => i.text)).toEqual(['Kai', 'Ivy'])
+    expect(kai.items[0].children).toEqual([{ type: 'ul', items: [{ text: 'c', children: [{ type: 'ul', items: [{ text: 'd', children: [] }] }] }] }])
+  })
+
+  it('keeps a list going over blank lines and reads task boxes', () => {
+    const [list, after] = parseBlocks('- [ ] todo\n\n- [x] done\n  more about it\n\nAfter')
+    expect(list).toEqual({ type: 'ul', items: [
+      { text: 'todo', checked: false, children: [] },
+      { text: 'done', checked: true, children: [{ type: 'p', text: 'more about it' }] }
+    ] })
+    expect(after).toEqual({ type: 'p', text: 'After' })
+  })
+
   it('shows a folder\'s children only while it is open', () => {
     const tree = [{ path: 'src', dir: true }, { path: 'src/a.ts', dir: false }, { path: 'README.md', dir: false }]
     expect(visibleRows(tree, new Set()).map((r) => r.entry.path)).toEqual(['src', 'README.md'])
