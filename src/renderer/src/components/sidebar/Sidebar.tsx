@@ -64,6 +64,7 @@ export function Sidebar() {
   const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms).filter(needsYou).length)
   const route = useStore((s) => s.ui.route)
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
+  const plan = useStore((s) => s.account?.plan)
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
 
@@ -97,9 +98,11 @@ export function Sidebar() {
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" /><span className="grow">Check hooks</span></button>
       </div>
       <div style={{ flex: 1 }} />
-      <div className="row" style={{ height: 40, flexShrink: 0, padding: '0 2px' }}>
-        <span style={{ height: 24, padding: '0 9px', borderRadius: 999, border: '1px solid var(--line-2)', fontSize: 12, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>Claude Max</span>
-      </div>
+      {plan && (
+        <div className="row" style={{ height: 40, flexShrink: 0, padding: '0 2px' }}>
+          <span style={{ height: 24, padding: '0 9px', borderRadius: 999, border: '1px solid var(--line-2)', fontSize: 12, color: 'var(--ink-2)', display: 'inline-flex', alignItems: 'center' }}>{plan}</span>
+        </div>
+      )}
     </nav>
   )
 }

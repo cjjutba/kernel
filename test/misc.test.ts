@@ -87,13 +87,13 @@ describe('preflight', () => {
     expect(parseLsof('p4821\ncnode\n')).toEqual({ pid: 4821, name: 'node' })
     expect(parseLsof('')).toBeNull()
     expect(planName('max')).toBe('Claude Max')
-    expect(planName(undefined)).toBe('Claude account')
+    expect(planName(undefined)).toBeUndefined()
   })
 })
 
 describe('settings and permissions', () => {
   it('merges saved settings over defaults', () => {
-    const s = deepMerge(DEFAULT_SETTINGS('/Users/cj'), { workspace: { baseRef: 'origin/dev' } })
+    const s = deepMerge(DEFAULT_SETTINGS('/Users/you'), { workspace: { baseRef: 'origin/dev' } })
     expect(s.workspace.baseRef).toBe('origin/dev')
     expect(s.workspace.mode).toBe('worktree')
   })

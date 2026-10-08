@@ -137,7 +137,7 @@ export function Home() {
   if (!rooms.length) return <Welcome />
   const working = rooms.reduce((n, r) => n + Object.values(status[r.id] ?? {}).filter((x) => x === 'working' || x === 'planning' || x === 'walking').length, 0)
   const hour = new Date().getHours()
-  const first = account?.name?.split(' ')[0] ?? 'CJ'
+  const first = account?.name?.split(' ')[0]
   return (
     <div className="panel">
       <header className="header"><Icon name="home" /><h1>Home</h1></header>
@@ -145,7 +145,7 @@ export function Home() {
         <div className="hm-page">
           <div className="hm-top">
             <div className="col grow">
-              <h2 className="hm-hello">Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}, {first}</h2>
+              <h2 className="hm-hello">Good {hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'}{first ? `, ${first}` : ''}</h2>
               <p className="hm-count">{rooms.length} {rooms.length === 1 ? 'room' : 'rooms'}, {working} {working === 1 ? 'agent' : 'agents'} working. {needs.length ? `${needs.length} ${needs.length === 1 ? 'thing needs' : 'things need'} you.` : 'Nothing needs you.'}</p>
             </div>
             <Button onClick={() => go({ name: 'rooms' })}>All rooms</Button>
