@@ -103,6 +103,6 @@ test('the star count shows from the stub GitHub API', async ({ page }, testInfo)
     await expect(star).toBeHidden()
     return
   }
-  await expect(star).toHaveAccessibleName('Star Kernel on GitHub, 1,234 stars')
+  await expect(star).toHaveAccessibleName('Star Kernel on GitHub, 1.2k stars')
   await expect(star).toContainText('1.2k')
 })

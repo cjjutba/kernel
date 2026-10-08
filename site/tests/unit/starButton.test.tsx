@@ -8,7 +8,7 @@ const STAR_ICON = 'M8 1.8l'
 describe('StarButtonView', () => {
   it('hides a count below the minimum', () => {
     const html = renderToStaticMarkup(<StarButtonView count={3} />)
-    expect(html).toContain('aria-label="Star Kernel on GitHub"')
+    expect(html.replace(/<[^>]+>/g, '')).toBe('Star Kernel on GitHub')
     expect(html).not.toContain(STAR_ICON)
     expect(html).not.toMatch(/>3</)
   })
@@ -20,6 +20,7 @@ describe('StarButtonView', () => {
   it('shows a formatted count from the minimum up', () => {
     const html = renderToStaticMarkup(<StarButtonView count={1234} />)
     expect(html).toContain('1.2k')
-    expect(html).toContain('aria-label="Star Kernel on GitHub, 1,234 stars"')
+    // Cells are separate boxes, so the accessible name gets a space after the comma (checked in e2e).
+    expect(html.replace(/<[^>]+>/g, '')).toBe('Star Kernel on GitHub,1.2k stars')
   })
 })

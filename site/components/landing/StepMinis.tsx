@@ -37,7 +37,8 @@ export function PlanMini() {
       <div className="mt-3 grid grid-plan-rows gap-y-1 text-micro text-ink-2">
         {tasks.map(([id, title, who]) => (
           <span key={id} className="contents">
-            <span className={mono}>{id}</span>
+            {/* Muted, not faint: faint on this card is 4.3:1, under AA. */}
+            <span className="font-mono leading-normal text-muted">{id}</span>
             <span>{title}</span>
             <span className="text-muted">{who}</span>
           </span>

@@ -42,7 +42,7 @@ export function SiteFooter() {
     <footer className="overflow-hidden border-t border-line-faint pt-16">
       <div className="mx-auto flex max-w-312 flex-wrap justify-between gap-12 px-6">
         <div>
-          <Link href="/" aria-label="Kernel home" className="inline-flex">
+          <Link href="/" className="inline-flex">
             <Wordmark />
           </Link>
           <p className="mt-4 max-w-75 text-ui leading-relaxed text-muted">Your coding agents, working as a team.</p>

@@ -17,7 +17,7 @@ export function SiteNav({ current }: { current?: '/changelog' }) {
   return (
     <header className="relative z-5 border-b border-white/6 bg-canvas/72 backdrop-blur-nav">
       <div className="mx-auto flex h-16 max-w-312 items-center gap-2 px-6">
-        <Link href="/" aria-label="Kernel home" className="inline-flex items-center">
+        <Link href="/" className="inline-flex items-center">
           <Wordmark />
         </Link>
         <nav aria-label="Main" className="ml-8 flex gap-1 max-nav:hidden">

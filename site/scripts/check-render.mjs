@@ -20,7 +20,7 @@ await page.evaluate(async () => {
     await img.decode().catch(() => {})
   }
 })
-const star = await page.locator('a[aria-label^="Star Kernel"]').boundingBox()
+const star = await page.getByRole('link', { name: /^Star Kernel/ }).boundingBox()
 const shot = await page.screenshot({ fullPage: true })
 await browser.close()
 
