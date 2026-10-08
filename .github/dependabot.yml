@@ -1,0 +1,36 @@
+# Dependency updates (D-058). Each ecosystem opens one PR a week for its minor and patch bumps. The
+# skip-release-note label lets them pass the Release note check, since a version bump has nothing for users to read.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [skip-release-note]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # Bumped by hand after the live test (CLAUDE.md), because usage relies on undocumented SDK fields.
+      - dependency-name: '@anthropic-ai/claude-agent-sdk'
+      # Major upgrades of Electron, better-sqlite3, node-pty and the rest need a native rebuild and a live test.
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: npm
+    directory: /site
+    schedule:
+      interval: weekly
+    labels: [skip-release-note]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: [skip-release-note]
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
