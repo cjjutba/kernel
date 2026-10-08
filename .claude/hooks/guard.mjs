@@ -50,13 +50,20 @@ function inside(p) {
   return !rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel)
 }
 
+// Plan mode writes its plan to ~/.claude/plans/<slug>.md, so a .md file
+// directly in that folder is the one write allowed outside the repo.
+function plan(p) {
+  const file = real(p)
+  return path.dirname(file) === real(path.join(home, '.claude', 'plans')) && file.endsWith('.md')
+}
+
 const tool = input.tool_name
 const args = input.tool_input ?? {}
 const cwd0 = input.cwd || process.cwd()
 
 if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit'].includes(tool)) {
   const file = args.file_path ?? args.notebook_path
-  if (file && !inside(expand(file, cwd0))) deny(`${file} is outside this repo.`)
+  if (file && !inside(expand(file, cwd0)) && !plan(expand(file, cwd0))) deny(`${file} is outside this repo.`)
   process.exit(0)
 }
 
