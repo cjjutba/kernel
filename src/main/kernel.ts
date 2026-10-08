@@ -20,7 +20,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -664,14 +664,14 @@ export class Kernel {
     if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
     const mode = o.mode ?? repo.workspace.mode ?? s.workspace.mode
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
-    const baseRef = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    const baseRef = await resolveBaseRef(room.path, o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef, { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = await freePort(4300, taken)
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
       branch = await freeBranch(room.path, taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
-      path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef, fetch: baseRef.startsWith('origin/') })
+      path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
     } else {
       if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
