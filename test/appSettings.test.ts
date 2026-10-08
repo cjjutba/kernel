@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Chat, Workspace } from '@shared/types'
+import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
@@ -38,8 +38,8 @@ describe('applySettingsPatch', () => {
     expect(applySettingsPatch(on, { notifications: { quietHours: null } }).notifications.quietHours).toBeNull()
   })
   it('keeps the agent limit and the timeout in range', () => {
-    const next = applySettingsPatch(base, { models: { maxConcurrent: 0 }, permissions: { approvalTimeoutSec: 1 } })
-    expect(next.models.maxConcurrent).toBe(1)
+    const next = applySettingsPatch(base, { models: { agentLimit: -2 }, permissions: { approvalTimeoutSec: 1 } })
+    expect(next.models.agentLimit).toBe(0)
     expect(next.permissions.approvalTimeoutSec).toBe(10)
   })
 })
@@ -80,18 +80,20 @@ describe('network access off', () => {
 })
 
 describe('agents working at once', () => {
-  async function setup(maxConcurrent: number) {
+  /** Chats a, b and c belong to teammates; the ids in `leads` are chats with the Lead. */
+  async function setup(agentLimit: number, leads: string[] = []) {
     const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-limit-')), 'kernel.db'))
-    for (const id of ['a', 'b', 'c']) {
-      const ws: Workspace = { id: `ws-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    for (const id of ['a', 'b', 'c', ...leads]) {
+      const ws: Workspace = { id: `ws-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: leads.includes(id) ? 'rowan' : id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
       const chat: Chat = { id, workspaceId: ws.id, title: id, kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
       store.saveWorkspace(ws)
       store.saveChat(chat)
     }
-    const settings = { ...DEFAULT_SETTINGS('/home/cj'), models: { ...DEFAULT_SETTINGS('/home/cj').models, maxConcurrent } }
-    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
+    const settings = { ...DEFAULT_SETTINGS('/home/cj'), models: { ...DEFAULT_SETTINGS('/home/cj').models, agentLimit } }
+    const sessions = new Sessions({ store, approvals: new Approvals(store), settings: () => settings, agentFor: (ws) => (ws.agentId === 'rowan' ? rowan : undefined), mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => {} })
     return { sessions, settings }
   }
+  const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
   const text = (t: string) => [{ type: 'text' as const, text: t }]
   const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
 
@@ -111,8 +113,16 @@ describe('agents working at once', () => {
     const { sessions, settings } = await setup(1)
     await sessions.send('a', text('one'))
     expect((await sessions.send('b', text('two'))).queued).toBe(true)
-    settings.models.maxConcurrent = 2
+    settings.models.agentLimit = 2
     sessions.applySettings()
     expect(sessions.isRunning('b')).toBe(true)
+  })
+
+  it('leaves the Lead out of the limit', async () => {
+    const { sessions } = await setup(1, ['lead1', 'lead2'])
+    expect((await sessions.send('lead1', text('plan'))).queued).toBe(false)
+    expect((await sessions.send('a', text('one'))).queued).toBe(false)
+    expect((await sessions.send('lead2', text('plan more'))).queued).toBe(false)
+    expect((await sessions.send('b', text('two'))).queued).toBe(true)
   })
 })

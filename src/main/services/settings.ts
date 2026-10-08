@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: 'feat/{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, maxConcurrent: 4, agentTeams: true, leadUpdates: true, workspacePlanMode: false },
+  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -33,7 +33,12 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
   const defaults = DEFAULT_SETTINGS(home)
-  try { return deepMerge(defaults, JSON.parse(await readFile(file, 'utf8'))) } catch { return defaults }
+  try {
+    const s = deepMerge(defaults, JSON.parse(await readFile(file, 'utf8')))
+    // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
+    delete (s.models as { maxConcurrent?: number }).maxConcurrent
+    return s
+  } catch { return defaults }
 }
 
 export async function saveAppSettings(file: string, s: AppSettings) {
@@ -45,7 +50,7 @@ export async function saveAppSettings(file: string, s: AppSettings) {
 export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppSettings>): AppSettings {
   const next = deepMerge(current, patch)
   const whole = (n: unknown, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n as number))) : fallback)
-  next.models.maxConcurrent = whole(next.models.maxConcurrent, 1, 12, current.models.maxConcurrent)
+  next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
   return next
 }
