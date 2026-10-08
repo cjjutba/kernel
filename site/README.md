@@ -64,6 +64,6 @@ The schema in `lib/schema.ts` checks every entry at build time, and `npm test` c
 ## Deploy (Vercel)
 
 - Root Directory `site`, Framework Next.js, Node 22.
-- Ignored Build Step: `git diff --quiet HEAD^ HEAD -- .` Vercel runs it from the Root Directory, so `.` means `site/`.
+- Ignored Build Step: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- .` Vercel runs it from the Root Directory, so `.` means `site/`. It compares with the last successful deployment, so a push whose last commit skips `site/` still builds, and a build runs whenever there is nothing to compare with.
 - Set `NEXT_PUBLIC_SITE_URL` to `https://kernel.cjjutba.dev` for Production, and optionally `GITHUB_TOKEN`.
 - Domain: `kernel.cjjutba.dev`, a CNAME record at Porkbun pointing to the value Vercel shows.
