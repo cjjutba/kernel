@@ -2,13 +2,13 @@ import type { AgentDef, AgentStatus } from '@shared/types'
 import { Icon } from '../../ui'
 import { go, useStore } from '../../store'
 import { openLead } from '../../lead'
-import { ART, LOOKS, WORD, cap, modelLabel } from '../../floor/layout'
+import { ART, WORD, cap, lookFor, modelLabel } from '../../floor/layout'
 
-/** The selected agent: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. `status` is what the floor shows. */
+/** The selected agent's popover: name, role and model, status with its workspace, what they are doing now, and a way into the workspace. `status` is what the floor shows. */
 export function AgentCard({ agent, roomId, agents, status, note }: { agent: AgentDef; roomId: string; agents: AgentDef[]; status: AgentStatus; /** What they are doing, when the floor knows better than their last status line (a chat with the user, a new hire). */ note?: string }) {
   const saying = useStore((s) => s.saying[agent.id])
   const ws = useStore((s) => s.workspaces.find((w) => w.roomId === roomId && w.agentId === agent.id && w.status !== 'archived'))
-  const shirt = (agent.look ?? LOOKS[Math.max(0, agents.indexOf(agent)) % LOOKS.length]).shirt
+  const shirt = lookFor(agent, Math.max(0, agents.indexOf(agent))).shirt
   const model = modelLabel(agent.model)
   const now = note ?? saying ?? (status === 'idle' ? 'No active task' : cap(WORD[status]))
   return (

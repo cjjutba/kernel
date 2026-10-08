@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { AgentStatus, Overlap, Task } from '@shared/types'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import type { AgentDef, AgentStatus, Overlap, Task } from '@shared/types'
 import { call } from '../../api'
-import { Icon } from '../../ui'
+import { Icon, useEscape } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
-import { SEATS, defaultSelected, needsCount, seating } from '../../floor/layout'
+import { SEATS, defaultSelected, deskless, needsCount, seating } from '../../floor/layout'
 import { AgentCard } from './AgentCard'
 import { Brief } from './Brief'
 import { Logs } from './Logs'
@@ -18,6 +18,7 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 
 const NO_TASKS: Task[] = []
 const NO_OVERLAPS: Overlap[] = []
+const BUSY: AgentStatus[] = ['working', 'planning']
 const LOUD: AgentStatus[] = ['needs', 'blocked', 'offline']
 
 /** The floor: the team seated in the office, the selected agent, the room logs and the brief box (Main.png and the Floor* states). */
@@ -38,14 +39,20 @@ export function Floor({ roomId }: { roomId: string }) {
   const settings = useStore((s) => s.settings)
   const logs = useStore((s) => s.ui.rightPanel)
   const reduced = useReducedMotion()
+  // Nobody is selected until someone is clicked or needs you. `closed` is the agent who needs you whose card was closed.
   const [clicked, setClicked] = useState<string | null>(null)
+  const [closed, setClosed] = useState<string | null>(null)
   useEffect(() => { void loadRoom(roomId) }, [roomId])
   // The engine checks the room's workspaces after each turn and pushes changes; this reads what is already there.
   useEffect(() => { void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined) }, [roomId])
 
   const live = useMemo(() => agents.filter((a) => !a.retired), [agents])
-  const desks = room?.desks
-  const { seated } = useMemo(() => seating(live, { desks }), [live, desks])
+  // Desks follow the store's own status, not what the floor shows, so a walk doesn't move anyone's desk.
+  const layout = useMemo(() => seating(live, { desks: room?.desks }, { workspaces, status, activity }), [live, room?.desks, workspaces, status, activity])
+  const { seated } = layout
+  // The order the desks resolve to. Handing it on as `desks` keeps the briefing, the moments and the walks on the same seats.
+  const deskIds = useMemo(() => seated.map((a) => a.id), [seated])
+  const desks = useMemo(() => (room?.desks ? room.desks : deskIds), [room?.desks, deskIds])
   const seq = useMemo(
     () => sequence({ room: { id: roomId, desks }, agents: live, status, approvals: roomApprovals, activity, workspaces, tasks, forced }),
     [roomId, desks, live, status, roomApprovals, activity, workspaces, tasks, forced]
@@ -108,45 +115,65 @@ export function Floor({ roomId }: { roomId: string }) {
     return out
   }, [status, poses])
 
+  // The popover: the clicked person, else the first who needs you, else nobody. A card you closed stays closed until someone else needs you.
+  // Someone can be selected while they sit at a desk or are listed under No desk yet. Anyone else has nowhere to hold the card.
+  const onStage = (a: AgentDef) => layout.seated.includes(a) || deskless(layout.overflow, shown).includes(a)
+  const clickedAgent = clicked ? live.find((a) => a.id === clicked && onStage(a)) : undefined
+  const waiting = defaultSelected(live, shown)
+  const sel = clickedAgent ?? (waiting && waiting.id !== closed ? waiting : undefined)
+  // A click moves focus into the card, so keyboard users don't Tab past every tag. Closing it hands focus back to the person.
+  const [grab, setGrab] = useState(0)
+  useEffect(() => { if (grab) document.querySelector<HTMLElement>('.agent-card button')?.focus() }, [grab])
+  const close = () => {
+    const back = document.activeElement?.closest('.agent-pop') ? document.querySelector<HTMLElement>('.floor-tag[aria-pressed="true"], .overflow-row[aria-pressed="true"]') : null
+    setClicked(null); setClosed(waiting?.id ?? null)
+    back?.focus()
+  }
+  useEffect(() => { if (clicked && !clickedAgent) setClicked(null) }, [clicked, clickedAgent])
+  // A closed card stays closed while that agent needs you, and opens again the next time they do.
+  useEffect(() => { if (closed && !live.some((a) => a.id === closed && LOUD.includes(shown[a.id] ?? 'idle'))) setClosed(null) }, [closed, live, shown])
+  useEscape(close, !!sel)
+
   if (!room) return <div className="panel" />
 
   const approvals = roomApprovals.filter((a) => a.status === 'pending')
-  const loud = live.some((a) => LOUD.includes(shown[a.id] ?? 'idle'))
-  const sel = defaultSelected(live, shown, clicked ?? (loud ? null : seq.focus ?? mo.focus))
   const arriving = !!mo.hire && (poses[mo.hire.agentId]?.at ?? 'seat') !== 'seat'
   const words = arriving ? { [mo.hire!.agentId]: 'new' } : undefined
   const note = sel && arriving && mo.hire!.agentId === sel.id ? 'Joining the room' : sel && mo.chatting === sel.id ? 'Chatting with you' : undefined
   const working = live.filter((a) => shown[a.id] === 'working' || shown[a.id] === 'planning').length
+  // Pause is for a room that has work to stop, so it shows while someone works or plans. A paused room always offers Resume.
+  const busy = live.some((a) => BUSY.includes(status[a.id]))
   const needs = needsCount(live, shown, approvals)
   const togglePause = () => call('rooms.setPaused', { roomId, paused: !room.paused })
     .then((r) => setState((s) => ({ rooms: s.rooms.map((x) => (x.id === r.id ? r : x)) })))
     .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: e.message }))
+  // A click on bare floor closes the popover. Tags, cards, banners and the no-desk list handle their own clicks.
+  const onFloorClick = (e: MouseEvent<HTMLDivElement>) => { if (sel && !(e.target as HTMLElement).closest('button, section, [role="status"]')) close() }
 
   return (
     <div className="panel">
-      <header className="header" style={{ borderBottom: 0 }}>
+      <header className="header">
         <SidebarToggle />
-        <span className="ink2">{room.name}</span><Icon name="right" size={12} /><h1>Floor</h1>
-        <span className="grow" /><span className="mono muted" style={{ fontSize: 12 }}>{room.repo ?? room.path} · {room.defaultBranch}</span>
-        <RightPanelToggle name="logs" />
-      </header>
-      <div className="floor-bar">
+        <h1 className="sr-only">Floor</h1>
         <button className="pill" aria-current="page">Floor</button>
         <button className="pill" onClick={() => go({ name: 'board', roomId })}>Board</button>
         <button className="pill" onClick={() => go({ name: 'team', roomId })}>Team</button>
         <span className="grow" />
-        <span className="muted floor-count" style={{ fontSize: 12 }}>{working} working</span>
-        {needs > 0 && <span className="floor-count" style={{ fontSize: 12, fontWeight: 500 }}>{needs} needs you</span>}
-        <button className="btn floor-pause" aria-pressed={room.paused} onClick={() => void togglePause()}>
-          <Icon name={room.paused ? 'play' : 'pause'} size={11} />{room.paused ? 'Resume room' : 'Pause room'}
-        </button>
-      </div>
+        <span className="mono muted floor-repo">{room.repo ?? room.path} · {room.defaultBranch}</span>
+        {working > 0 && <span className="muted floor-count">{working} working</span>}
+        {needs > 0 && <span className="floor-count" style={{ fontWeight: 500 }}>{needs} needs you</span>}
+        {(busy || room.paused) && (
+          <button className="btn floor-pause" aria-pressed={room.paused} onClick={() => void togglePause()}>
+            <Icon name={room.paused ? 'play' : 'pause'} size={11} />{room.paused ? 'Resume room' : 'Pause room'}
+          </button>
+        )}
+        <RightPanelToggle name="logs" />
+      </header>
       <div className="floor-body">
         <main className="floor-main">
-          {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} note={note} />}
-          <div className="floor-room">
-            <Stage room={room} agents={live} status={shown} words={words} poses={faced} say={mo.say ?? seq.say} instant={instant || jumping}
-              selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
+          <div className="floor-room" onClick={onFloorClick}>
+            <Stage room={room} agents={live} seats={layout} status={shown} words={words} poses={faced} say={mo.say ?? seq.say} instant={instant || jumping}
+              selectedId={sel?.id} popover={sel && { agent: sel, note }} onSelect={(id) => { if (sel?.id === id) close(); else { setClicked(id); setGrab((n) => n + 1) } }} onTogglePause={() => void togglePause()} />
           </div>
           <Brief roomId={roomId} agents={live} />
         </main>
