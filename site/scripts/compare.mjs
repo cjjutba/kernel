@@ -23,7 +23,7 @@ const targets = pairs.length
 
 async function capture(browser, url, selector) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  await page.goto(url, { waitUntil: 'networkidle' })
+  await page.goto(url, { waitUntil: 'load' })
   await page.evaluate(() => document.fonts.ready)
   const buf = selector ? await page.locator(selector).first().screenshot() : await page.screenshot({ fullPage: true })
   await page.close()
