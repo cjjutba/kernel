@@ -71,6 +71,8 @@ export interface PaletteInput {
     whatsNew: () => void
     approve: (a: Approval) => void
     newChat: (workspaceId: string, kind?: 'terminal') => void
+    /** The room's Lead chat, made on first use (`lead.open`). */
+    openLead: (roomId: string) => void
   }
 }
 
@@ -94,7 +96,8 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const forPr = current && current.prState === 'none' ? current : workspaces.filter((w) => live(w) && w.prState === 'none' && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const pending = approvals.find((a) => a.status === 'pending' && a.kind === 'tool')
   const nameOf = (roomId?: string, agentId?: string) => (roomId ? i.agents[roomId]?.find((a) => a.id === agentId)?.name : undefined)
-  const lead = (room && i.agents[room.id]?.find((a) => a.lead)?.name) || 'the Lead'
+  const leadAgent = room ? i.agents[room.id]?.find((a) => a.lead) : undefined
+  const lead = leadAgent?.name || 'the Lead'
   const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
 
   const suggested: PaletteItem[] = [
@@ -102,6 +105,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${forPr.name}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: 'pull request' })] : []),
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
     ...(room ? [item('brief', 'Suggested', '›', `Brief ${lead}`, () => act.go({ name: 'floor', roomId: room.id }), { also: 'lead ask' })] : []),
+    ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace' })] : []),
     ...(current ? [
       item('new-chat', 'Suggested', '+', 'New chat tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
       item('terminal', 'Suggested', '>', 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell' })
@@ -129,11 +133,17 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const more: PaletteItem[] = [
     goto('go-home', 'Home', { name: 'home' }),
     goto('go-rooms', 'All rooms', { name: 'rooms' }),
-    ...visible.flatMap((r) => [
-      goto(`go-floor-${r.id}`, `${r.name} floor`, { name: 'floor', roomId: r.id }),
-      goto(`go-board-${r.id}`, `${r.name} board`, { name: 'board', roomId: r.id }, { also: 'tasks' }),
-      goto(`go-team-${r.id}`, `${r.name} team`, { name: 'team', roomId: r.id }, { also: 'agents' })
-    ]),
+    ...visible.flatMap((r) => {
+      const roomLead = i.agents[r.id]?.find((a) => a.lead)
+      return [
+        goto(`go-floor-${r.id}`, `${r.name} floor`, { name: 'floor', roomId: r.id }),
+        goto(`go-board-${r.id}`, `${r.name} board`, { name: 'board', roomId: r.id }, { also: 'tasks' }),
+        goto(`go-team-${r.id}`, `${r.name} team`, { name: 'team', roomId: r.id }, { also: 'agents' }),
+        // The room in view has "Open Rowan's chat" above, which "lead chat" finds first. These say whose chat, not "lead chat",
+        // so a shorter room name can't outrank it.
+        ...(roomLead && r.id !== room?.id ? [item(`go-lead-${r.id}`, 'Go to', '◇', `${roomLead.name}'s chat in ${r.name}`, () => act.openLead(r.id), { also: 'lead workspace' })] : [])
+      ]
+    }),
     ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${w.name} workspace`, { name: 'workspace', workspaceId: w.id }, { also: w.branch })),
     ...settingsPages.filter(([p]) => p !== 'git').map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' }))
   ]
