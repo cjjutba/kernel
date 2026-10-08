@@ -131,7 +131,7 @@ function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: 
           </span>
           <span className="grow ellipsis">{room.name}</span>
         </button>
-        {/* New workspace stays visible, as in Conductor. The menu button shows on hover or focus, or while its menu is open. */}
+        {/* New workspace stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
         <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
           <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
           <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New workspace in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
