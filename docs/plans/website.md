@@ -256,7 +256,7 @@ The mark **is** the "K", followed by the text "ernel". The reference markup is `
 - `inline-flex`, `align-items: baseline`, weight 600, tracking -0.02em, line height 1.
 - Mark height `0.78em`, `margin-right: 0.02em`, so its top meets the "l" and its round nodes sit on the baseline.
 - Sizes: 18 px in the nav and footer.
-- The whole element has `aria-label="Kernel"` and `role="img"`; the parts are hidden from screen readers.
+- A visually hidden "K" sits between the mark and "ernel", so the text reads "Kernel" for screen readers, search engines, copy and paste and link previews. The mark itself is `aria-hidden`.
 
 ### 7.3 `AppIcon`
 

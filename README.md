@@ -2,7 +2,7 @@
 
 Kernel turns Claude Code into a small software team that works in an office on your Mac. You brief the Lead, approve a plan, and agents build in their own git worktrees, ask before anything risky, open pull requests and wait for you to merge.
 
-**[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)**
+**[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)** · [Website](https://kernel.cjjutba.dev)
 
 ![The floor: a team of agents at their desks, with the Lead's card on the left and the room's logs on the right](docs/images/floor.png)
 

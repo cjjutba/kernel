@@ -20,7 +20,7 @@ for (const path of ['/', '/changelog']) {
   test(`${path}: footer shows the wordmark and the large wordmark`, async ({ page }) => {
     await page.goto(path)
     const footer = page.getByRole('contentinfo')
-    await expect(footer.getByRole('img', { name: 'Kernel' })).toBeVisible()
+    await expect(footer.getByRole('link', { name: 'Kernel', exact: true })).toHaveText('Kernel')
     await expect(footer.locator('[aria-hidden="true"]').filter({ hasText: 'ernel' }).last()).toBeVisible()
   })
 
