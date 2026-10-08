@@ -29,7 +29,7 @@ export function Privacy() {
       />
       <div className="mt-14 grid grid-auto-fit border-y border-line">
         {columns.map((col) => (
-          <div key={col.label} className="p-8 not-first:border-l not-first:border-line first:pl-0 last:pr-0">
+          <div key={col.label} className="p-8 not-first:border-l not-first:border-line first:pl-0 last:pr-0 max-nav:px-0 max-nav:py-6 max-nav:not-first:border-t max-nav:not-first:border-l-0">
             <p className="font-mono text-micro leading-normal font-medium text-faint">{col.label}</p>
             <h3 className="mt-3 text-item">{col.title}</h3>
             <p className="mt-2 text-body leading-relaxed text-muted">{col.text}</p>

@@ -28,7 +28,7 @@ const faqs = [
 
 export function Faq() {
   return (
-    <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq gap-20 px-6 pt-40">
+    <section id="faq" aria-labelledby="faq-title" className="mx-auto grid max-w-312 grid-faq gap-20 px-6 pt-40 max-faq:grid-cols-1 max-faq:gap-10">
       <div>
         <Eyebrow>FAQ</Eyebrow>
         <h2 id="faq-title" className="mt-4 text-h2 text-balance">

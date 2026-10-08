@@ -9,7 +9,7 @@ const versionPill = 'inline-flex h-6 items-center rounded-chip border px-2 font-
 /** The two-column entry shared by releases and Up next: meta on the left, the notes on the right. */
 export function EntryShell({ titleId, meta, children }: { titleId: string; meta: ReactNode; children: ReactNode }) {
   return (
-    <article aria-labelledby={titleId} className="grid grid-entry gap-14 border-b border-line-faint py-16">
+    <article aria-labelledby={titleId} className="grid grid-entry gap-14 border-b border-line-faint py-16 max-nav:grid-cols-1 max-nav:gap-4">
       <div>{meta}</div>
       <div>{children}</div>
     </article>
