@@ -15,6 +15,8 @@ export interface Pose {
   at: Spot
   /** Steps are still queued: stride. */
   moving: boolean
+  /** Which way they look while they talk to someone: 1 right, -1 left. */
+  facing?: 1 | -1
 }
 
 /** After the window has been away this long, coming back jumps every walk to its end instead of finishing it on screen. */

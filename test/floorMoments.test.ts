@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActivityEvent, AgentDef, Approval, Overlap } from '../src/shared/types'
-import { moments, talkLegs, type MomentInput } from '../src/renderer/src/screens/floor/moments/moments'
+import { facingOf, moments, newestJoin, talkLegs, type MomentInput } from '../src/renderer/src/screens/floor/moments/moments'
 
 const agent = (id: string, role = 'Dev', lead = false): AgentDef => ({ id, name: id[0].toUpperCase() + id.slice(1), role, description: '', lead, prompt: '', file: `${id}.md` } as AgentDef)
 const team = [agent('rowan', 'Lead', true), agent('kai', 'Frontend'), agent('noor', 'Backend')]
@@ -55,5 +55,23 @@ describe('floor moments', () => {
     expect(moments(input({ activity: [joined] })).hire).toEqual({ agentId: 'kai', eventId: 'j', fresh: true })
     expect(moments(input({ activity: [joined], now: 1_030_000 })).hire?.fresh).toBe(false)
     expect(moments(input({ activity: [joined], now: 5_000_000 })).hire).toBeUndefined()
+  })
+
+  it('picks the newest join of someone on the floor, for the hire and for the timer', () => {
+    const old = ev('j1', 990_000, { kind: 'agent.joined', agentId: 'kai' })
+    const newer = ev('j2', 995_000, { kind: 'agent.joined', agentId: 'noor' })
+    const gone = ev('j3', 999_000, { kind: 'agent.joined', agentId: 'ghost' })
+    expect(newestJoin([old, newer, gone], team)?.id).toBe('j2')
+    expect(newestJoin([gone], team)).toBeUndefined()
+    expect(moments(input({ activity: [old, newer, gone] })).hire).toEqual({ agentId: 'noor', eventId: 'j2', fresh: true })
+  })
+
+  it('turns a talker toward the one they talk with, only while the talk is live', () => {
+    const talk = { id: 't', from: 'rowan', to: 'kai', line: '', live: true }
+    const where = (id: string) => (id === 'kai' ? ([100, 300] as const) : undefined)
+    expect(facingOf([talk], 'rowan', [400, 300], where)).toBe(-1)
+    expect(facingOf([talk], 'rowan', [40, 300], where)).toBe(1)
+    expect(facingOf([{ ...talk, live: false }], 'rowan', [400, 300], where)).toBeUndefined()
+    expect(facingOf([talk], 'noor', [400, 300], where)).toBeUndefined()
   })
 })

@@ -29,7 +29,7 @@ export function Stage({ room, agents, status, words, poses, say, instant, select
     <div className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
-      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} /> })}
+      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} facing={p.facing} /> })}
       {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
       {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}

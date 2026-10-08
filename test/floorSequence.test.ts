@@ -59,6 +59,64 @@ describe('briefing sequence', () => {
     expect(sequence(input({ status: { rowan: 'planning' }, activity: [ev('read', 102, { kind: 'tool.end', workspaceId: 'lead' }), brief] })).legs[0].key).not.toBe(revising.legs[0].key)
   })
 
+  it('plans again at the wall when a plan expired, like a denied one', () => {
+    const expired = planApproval('expired', 200)
+    expect(sequence(input({ status: { rowan: 'planning' }, approvals: [expired], activity: [brief] })).stage).toBe('sent')
+    const revising = sequence(input({
+      status: { rowan: 'planning' }, approvals: [expired],
+      activity: [ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), brief]
+    }))
+    expect(revising.stage).toBe('planning')
+    expect(revising.legs).toEqual([{ key: 'wall:plan:p', to: 'wall' }])
+  })
+
+  it('ends a reopened planning round when the Lead finishes its turn, so a later busy turn is not sent or planning', () => {
+    for (const status of ['denied', 'expired'] as const) {
+      const activity = [ev('later', 400, { kind: 'tool.end', workspaceId: 'lead' }), ev('done', 300, { kind: 'turn.done', agentId: 'rowan' }), ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), brief]
+      const s = sequence(input({ status: { rowan: 'working' }, approvals: [planApproval(status, 200)], activity }))
+      expect(s.stage).toBe('working')
+      expect(s.legs).toEqual([{ key: 'seat', to: 'seat' }])
+      expect(s.say).toBeUndefined()
+    }
+    // A turn that ended before the plan came back does not close the round.
+    const before = [ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), ev('done', 150, { kind: 'turn.done', agentId: 'rowan' }), brief]
+    expect(sequence(input({ status: { rowan: 'planning' }, approvals: [planApproval('denied', 200)], activity: before })).stage).toBe('planning')
+  })
+
+  it('keeps the hand-off until every step has a workspace and the Lead has moved on, so the last stop is walked and its line shows', () => {
+    const steps = [{ title: 'Renderer', agentId: 'noor', workspaceId: 'a' }, { title: 'Button', agentId: 'kai', workspaceId: 'b' }]
+    const plan_ = { ...planApproval('allowed', 200), steps }
+    const status = { rowan: 'working', noor: 'working', kai: 'planning' } as const
+    const h = [handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor'), brief]
+    // Every step is linked, but the Lead has only just created the last workspace and said its line.
+    const say = ev('say', 320, { kind: 'agent.say', agentId: 'rowan', text: 'Kai, T-15b is yours.' })
+    const last = sequence(input({ status, approvals: [plan_], activity: [say, ...h] }))
+    expect(last.stage).toBe('handoff')
+    expect(last.legs).toEqual([{ key: 'h1', to: 'noor' }, { key: 'h2', to: 'kai' }])
+    expect(last.focus).toBe('kai')
+    expect(last.say?.text).toBe('Kai, T-15b is yours.')
+    // The walk to Kai is queued before the walk home.
+    let t = plan(plan(track('seat'), sequence(input({ status, approvals: [plan_], activity: [handoff('h1', 300, 'noor'), brief] })).legs, 'stand'), last.legs, 'stand')
+    const done = sequence(input({ status, approvals: [plan_], activity: [ev('tool', 330, { kind: 'tool.start', agentId: 'rowan' }), say, ...h] }))
+    expect(done.stage).toBe('working')
+    expect(done.legs).toEqual([{ key: 'seat', to: 'seat' }])
+    t = plan(t, done.legs, 'stand')
+    const visited: string[] = []
+    while (t.queue.length) { t = step(t); visited.push(t.at) }
+    expect(visited).toContain('kai')
+    expect(visited.indexOf('kai')).toBeLessThan(visited.lastIndexOf('seat'))
+  })
+
+  it('keeps the hand-off while a step still has no workspace, and for plans with no steps naming an agent', () => {
+    const status = { rowan: 'working', noor: 'working', kai: 'planning' } as const
+    const h = [ev('tool', 330, { kind: 'tool.start', agentId: 'rowan' }), handoff('h1', 300, 'noor'), brief]
+    const open = { ...planApproval('allowed', 200), steps: [{ title: 'Renderer', agentId: 'noor', workspaceId: 'a' }, { title: 'Button', agentId: 'kai' }] }
+    expect(sequence(input({ status, approvals: [open], activity: h })).stage).toBe('handoff')
+    // A plan-mode plan is markdown in `detail`, with no steps to count.
+    const markdown = { ...planApproval('allowed', 200), detail: '# Plan\n\n1. Renderer\n2. Button\nNoor builds the renderer.' }
+    expect(sequence(input({ status, approvals: [markdown], activity: h })).stage).toBe('handoff')
+  })
+
   it('walks the Lead to each assignee in the order create_workspace ran, and follows the newest one', () => {
     const activity = [ev('say', 320, { kind: 'agent.say', agentId: 'rowan', text: 'Kai, T-15b is yours.' }), handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor'), brief]
     const s = sequence(input({ status: { rowan: 'working', noor: 'working', kai: 'planning' }, approvals: [planApproval('allowed', 200)], activity }))

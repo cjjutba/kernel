@@ -2,12 +2,15 @@ import type { AgentLook } from '@shared/types'
 import { ART, pct } from '../../../floor/layout'
 import { WAYPOINTS, type Waypoint } from './waypoints'
 
-/** Someone up from their desk, standing at a waypoint. Strides while they still have steps to walk (Main.dc.html walkers). */
-export function Walker({ at, moving, look }: { at: Waypoint; moving: boolean; look: AgentLook }) {
+/**
+ * Someone up from their desk, standing at a waypoint. Strides while they still have steps to walk (Main.dc.html walkers).
+ * `facing` turns them to look left (-1) or right (1, as drawn), so two people talking face each other.
+ */
+export function Walker({ at, moving, look, facing = 1 }: { at: Waypoint; moving: boolean; look: AgentLook; facing?: 1 | -1 }) {
   const [x, y] = WAYPOINTS[at]
   return (
     <div aria-hidden="true" className="floor-walker" style={pct(x - 14, y - 60)}>
-      <svg viewBox="-14 -60 28 64" width="100%" height="100%" style={{ display: 'block', overflow: 'visible' }}>
+      <svg viewBox="-14 -60 28 64" width="100%" height="100%" style={{ display: 'block', overflow: 'visible', transform: facing === -1 ? 'scaleX(-1)' : undefined }}>
         <ellipse cx={0} cy={0} rx={9} ry={3.5} fill={ART.shade} fillOpacity={0.3} />
         <g className={moving ? 'floor-stride' : undefined}>
           <rect x={-5} y={-18} width={4} height={18} rx={1.5} fill={ART.legLeft} />
