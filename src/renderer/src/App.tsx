@@ -32,6 +32,7 @@ import { NewAgent } from './screens/team/NewAgent'
 import { Team } from './screens/team/Team'
 import { WhatsNew } from './screens/update/WhatsNew'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
+import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { Workspace } from './screens/workspace/Workspace'
@@ -77,6 +78,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
       if (modal.kind === 'removeRoom') return <ConfirmRemoveRoom roomId={modal.roomId} />
+      if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }
