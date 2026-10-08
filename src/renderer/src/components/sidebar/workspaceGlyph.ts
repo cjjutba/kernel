@@ -56,3 +56,13 @@ export function leadGlyph(status: AgentStatus): WorkspaceGlyph {
     case 'idle': return { icon: 'chat', tone: 'muted', label }
   }
 }
+
+/**
+ * The icon in front of a chat's tab: what waits on the user first, then a running turn, then the plain chat icon.
+ * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree.
+ */
+export function chatGlyph(o: { needsYou: boolean; running: boolean }): WorkspaceGlyph {
+  if (o.needsYou) return { icon: 'question', tone: 'ink', label: 'Needs you' }
+  if (o.running) return spin('Working')
+  return { icon: 'chat', tone: 'muted', label: '' }
+}
