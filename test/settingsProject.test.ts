@@ -28,7 +28,8 @@ describe('repo settings files', () => {
     const after = await saveRepoSettings(repo, { scripts: { setup: null }, workspace: { mode: null } })
     expect(after.scripts.setup).toBe('pnpm install')
     expect(after.workspace.mode).toBe('worktree')
-    expect(await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).not.toContain('setup')
+    // Nothing is left to override, so the personal file is gone (KERNEL-69).
+    await expect(readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).rejects.toThrow()
   })
 
   it('keeps the skills and MCP servers switched off for the room', async () => {

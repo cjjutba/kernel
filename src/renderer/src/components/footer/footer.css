@@ -16,6 +16,8 @@
 .qa-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; }
 .qa-name { font-size: 13px; font-weight: 500; color: var(--ink); }
 .qa-room { font-size: 12.5px; color: var(--muted); }
+.qa-open { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; }
+.qa-open:hover { color: var(--ink); }
 .qa-text { height: 80px; margin: 0 12px; padding: 10px 12px; resize: none; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--input-bg); color: var(--ink); font: inherit; font-size: 13px; outline: none; }
 .qa-text:focus { border-color: var(--line-4); }
 .qa-text::placeholder { color: var(--muted); }

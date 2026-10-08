@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
-import { actions, go, useStore } from '../../store'
+import { actions, useStore } from '../../store'
+import { openLead } from '../../lead'
 import { Avatar, Button, Icon, Spinner } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
@@ -28,9 +29,9 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const failed = items?.some((i) => i.kind === 'result' && i.ts >= (asked?.since ?? 0) && !i.ok)
   const answer = asked ? answerOf(items ?? [], asked.since) : ''
   const done = !!asked && !running && !!answer
-  const leadWs = room && workspaces.find((w) => w.roomId === room.id && w.name === 'lead' && w.agentId === lead?.id)
 
   const name = lead?.name ?? 'the Lead'
+  const openChat = () => { if (!room) return; onClose(); void openLead(room.id) }
   const ask = async () => {
     if (!room || !text.trim()) return
     setError(null)
@@ -51,6 +52,9 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         <Avatar name={name} size={20} solid />
         <span className="qa-name">Ask {name}</span>
         {room && <span className="qa-room">{room.name}</span>}
+        <span className="grow" />
+        {/* Not on QuickAsk.png: the chat without asking first (D-072). After a question, the footer has it. */}
+        {!asked && lead && <button type="button" className="qa-open" onClick={openChat}>Open chat<Icon name="right" size={12} stroke={1.6} /></button>}
       </div>
       {asked ? (
         <div className="qa-thread" aria-live="polite">
@@ -70,7 +74,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         {asked ? (
           <>
             <Button variant="ghost" onClick={() => { setAsked(null); setError(null) }}>Ask another</Button>
-            <Button variant="primary" disabled={!leadWs} onClick={() => leadWs && go({ name: 'workspace', workspaceId: leadWs.id })}>{done ? 'Open full chat' : 'Open chat'}</Button>
+            <Button variant="primary" disabled={!lead} onClick={openChat}>{done ? 'Open full chat' : 'Open chat'}</Button>
           </>
         ) : (
           <Button variant="primary" disabled={!room || !text.trim()} onClick={() => void ask()}>Ask</Button>

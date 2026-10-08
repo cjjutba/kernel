@@ -5,6 +5,7 @@ import { Icon } from '../../icons'
 import { IconButton } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { inboxItems, needsYou } from '../../screens/inbox/model'
+import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
@@ -22,6 +23,20 @@ function NavItem({ route, icon, label, right, sub }: { route: Route; icon: strin
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {right}
+    </button>
+  )
+}
+
+/** The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace. */
+function LeadItem({ roomId }: { roomId: string }) {
+  const lead = useStore((s) => leadOf(s.agents, roomId))
+  const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
+  if (!lead) return null
+  return (
+    <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat`} onClick={() => void openLead(roomId)}>
+      <Icon name="chat" />
+      <span className="grow ellipsis">{lead.name}</span>
+      <span className="muted" style={{ fontSize: 12 }}>Lead</span>
     </button>
   )
 }
@@ -61,7 +76,7 @@ function useChatLists(workspaceIds: string[]) {
 }
 
 /**
- * A room in the sidebar. Expanded, it lists Floor, Board and its live workspaces. Pressing the row folds or unfolds it,
+ * A room in the sidebar. Expanded, it lists Floor, Board, the Lead and its live workspaces. Pressing the row folds or unfolds it,
  * as in Conductor, and hovering it swaps the room's letter for a chevron and shows the menu button.
  */
 function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: boolean; expanded: boolean; onToggle: () => void }) {
@@ -90,6 +105,7 @@ function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: 
         <>
           <NavItem sub route={{ name: 'floor', roomId: room.id }} icon="floor" label="Floor" />
           <NavItem sub route={{ name: 'board', roomId: room.id }} icon="board" label="Board" />
+          <LeadItem roomId={room.id} />
           {live.map((w) => <WorkspaceItem key={w.id} ws={w} />)}
         </>
       )}

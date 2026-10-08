@@ -46,7 +46,16 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(ws.path)).rejects.toThrow()
 
+    // The sidebar row, Cmd+K and Cmd+Shift+L open the Lead before anyone briefs it. lead.open makes the workspace once and sends nothing.
+    const quiet = sent.length
+    const opened = await k.handlers()['lead.open']({ roomId: room.id })
+    expect(opened).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'current', path: repo, status: 'ready' })
+    expect(k.store.chats(opened.id).filter((c) => c.kind !== 'terminal')).toHaveLength(1)
+    expect((await k.handlers()['lead.open']({ roomId: room.id })).id).toBe(opened.id)
+    expect(sent).toHaveLength(quiet)
+
     const lead = await k.leadChat(room.id)
+    expect(lead.workspaceId).toBe(opened.id)
     expect(k.store.workspace(lead.workspaceId)).toMatchObject({ agentId: 'rowan', mode: 'current', path: repo })
     expect(k.statusOf(room.id)).toEqual({ rowan: 'idle', kai: 'idle' })
 

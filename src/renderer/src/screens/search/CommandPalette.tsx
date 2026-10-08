@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Approval } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
+import { openLead } from '../../lead'
 import { Icon, Kbd, Modal } from '../../ui'
 import { buildItems, visibleItems, type PaletteItem } from './model'
 import './search.css'
@@ -34,7 +35,7 @@ export function CommandPalette() {
 
   const { items, more } = useMemo(() => buildItems({
     route, rooms, workspaces, approvals, agents,
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat }
+    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId) }
   }), [route, rooms, workspaces, approvals, agents])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)

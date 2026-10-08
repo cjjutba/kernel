@@ -618,14 +618,18 @@ export class Kernel {
    * Forgets a room: stops its agents and scripts, archives its workspaces and deletes Kernel's record of them.
    * The folder, its git history and .claude/agents are never touched. Worktrees are removed only when asked.
    */
+  /**
+   * Removes a room (ConfirmRemoveRoom.png): every open workspace is archived for real, with its archive script, its setup
+   * stopped and its branch kept when it has unpushed commits, then Kernel forgets the room (D-028). Worktree folders go
+   * only when "Also delete the worktrees" is ticked. If a workspace fails to archive, the error names it and the room stays.
+   */
   async removeRoom(roomId: string, deleteWorktrees: boolean) {
     const room = this.mustRoom(roomId)
-    for (const ws of this.store.workspaces(roomId)) {
-      this.sessions.stopWorkspace(ws.id)
-      this.ptys.killWorkspace(ws.id, this.store.chats(ws.id).map((c) => c.id))
-      stopScript(ws.id, 'run')
-      if (deleteWorktrees && ws.mode === 'worktree' && ws.status !== 'archived') await removeWorktree(room.path, ws.path, { force: true }).catch(() => undefined)
+    const failed: string[] = []
+    for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
+      try { await this.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
     }
+    if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
     this.agentWatchers.get(roomId)?.()
@@ -830,7 +834,7 @@ export class Kernel {
     return false
   }
 
-  async archiveWorkspace(id: string, deleteBranch?: boolean) {
+  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
     // The branch the work is on now: archive deletes it, and restore brings it back.
     const ws = await this.syncBranch(id)
     const room = this.mustRoom(ws.roomId)
@@ -843,10 +847,11 @@ export class Kernel {
     if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
-    const wanted = ws.mode === 'worktree' && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
+    // A kept worktree still has its branch checked out, so the branch stays with it.
+    const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
-    if (ws.mode === 'worktree') await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
+    if (ws.mode === 'worktree' && !o.keepWorktree) await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -1372,9 +1377,11 @@ export class Kernel {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
-      'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, o),
+      // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
+      'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
+      'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {

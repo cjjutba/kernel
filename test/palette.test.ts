@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { buildItems, fuzzyScore, rank, visibleItems } from '../src/renderer/src/screens/search/model'
 import { groupOf, inTab, matches, prLabel } from '../src/renderer/src/screens/history/model'
-import type { Room, Workspace } from '../src/shared/types'
+import type { AgentDef, Room, Workspace } from '../src/shared/types'
 
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined }
+const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined }
+const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 
 describe('command palette', () => {
   it('matches in order, prefers word starts and shorter text, and rejects the rest', () => {
@@ -29,6 +30,27 @@ describe('command palette', () => {
     const found = visibleItems(inWs.items, inWs.more, 'appear')
     expect(found).toHaveLength(1)
     expect(found[0].list.map((i) => i.label)).toEqual(['Settings: Appearance'])
+  })
+
+  it("opens the Lead's chat in the room in view, and finds any room's Lead by typing", () => {
+    const opened: string[] = []
+    // A short room name used to outrank the room in view.
+    const rooms = [room('a', 'Client A'), room('b', 'Client B'), room('o', 'Own')]
+    const input = { rooms, workspaces: [], approvals: [], agents: { a: [rowan], b: [{ ...rowan, name: 'Sol' }], o: [{ ...rowan, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
+    const home = buildItems({ ...input, route: { name: 'home' } })
+    const suggested = home.items.filter((i) => i.section === 'Suggested')
+    expect(suggested.map((i) => i.label)).toEqual(['New workspace in Client A', 'Brief Rowan', "Open Rowan's chat"])
+    expect(suggested[2].keys).toEqual(['⌘', '⇧', 'L'])
+    suggested[2].run()
+    // Typing "lead chat" puts the room in view first, and other rooms' Leads are found by name.
+    expect(visibleItems(home.items, home.more, 'lead chat')[0].list[0].label).toBe("Open Rowan's chat")
+    expect(home.more.map((i) => i.label)).not.toContain("Rowan's chat in Client A")
+    const found = visibleItems(home.items, home.more, 'sol')[0].list
+    expect(found[0].label).toBe("Sol's chat in Client B")
+    found[0].run()
+    expect(opened).toEqual(['a', 'b'])
+    // A room with no Lead has nothing to open.
+    expect(buildItems({ ...input, agents: {}, route: { name: 'home' } }).items.map((i) => i.id)).not.toContain('lead-chat')
   })
 })
 

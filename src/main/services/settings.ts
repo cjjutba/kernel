@@ -1,5 +1,6 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { join, dirname, resolve } from 'node:path'
+import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch } from '@shared/types'
 
@@ -18,7 +19,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: 'feat/{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, maxConcurrent: 4, agentTeams: true, leadUpdates: true },
+  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, maxConcurrent: 4, agentTeams: true, leadUpdates: true, workspacePlanMode: false },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -94,9 +95,32 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   for (const [k, v] of Object.entries(patch.files ?? {})) set('files', snake(k), v)
   for (const [k, v] of Object.entries(patch.workspace ?? {})) set('workspace', snake(k), v)
   for (const [k, v] of Object.entries(patch.disabled ?? {})) set('disabled', k, v)
+  // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).
+  if (!shared && !Object.keys(doc).length) {
+    await rm(file, { force: true })
+    return loadRepoSettings(repo)
+  }
   await mkdir(dirname(file), { recursive: true })
   await writeFile(file, stringifyToml(doc) + '\n')
+  if (!shared) await ignoreLocalSettings(repo)
   return loadRepoSettings(repo)
+}
+
+const LOCAL_SETTINGS = '.kernel/settings.local.toml'
+
+/**
+ * Keeps the personal settings file out of git. When the repo's ignore rules don't cover it, it goes in the repo's
+ * `info/exclude`, which every worktree shares and no commit carries (KERNEL-69, the same way as `linkNodeModules`).
+ * A repo whose `.gitignore` already covers it, or a folder that isn't a git repo, is left alone.
+ */
+export async function ignoreLocalSettings(repo: string): Promise<void> {
+  if ((await exec('git', ['-C', repo, 'check-ignore', '-q', LOCAL_SETTINGS])).code !== 1) return
+  const path = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'info/exclude'])
+  if (path.code !== 0) return
+  const exclude = resolve(repo, path.stdout.trim())
+  await mkdir(dirname(exclude), { recursive: true })
+  const text = await readFile(exclude, 'utf8').catch(() => '')
+  await appendFile(exclude, `${text && !text.endsWith('\n') ? '\n' : ''}/${LOCAL_SETTINGS}\n`)
 }
 
 export function deepMerge<T>(base: T, over: any): T {

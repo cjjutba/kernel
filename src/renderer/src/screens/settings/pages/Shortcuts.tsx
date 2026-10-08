@@ -7,7 +7,7 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
     ['Create PR', ['⌘', '⇧', 'P']], ['Open diff', ['⌘', '⇧', 'D']], ['Run dev script', ['⌘', 'R']]
   ] },
   { title: 'Agents', rows: [
-    ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']]
+    ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']], ['Open Lead chat', ['⌘', '⇧', 'L']]
   ] },
   { title: 'App', rows: [
     ['Command palette', ['⌘', 'K']], ['Settings', ['⌘', ',']], ['Toggle sidebar', ['⌘', 'B']], ['Toggle right panel', ['⌘', '⌥', 'B']], ['Focus mode', ['⌘', '\\']]
