@@ -34,7 +34,7 @@ export function Stage({ room, agents, status, words, poses, say, instant, select
       {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
-      {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} />}
+      {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} selectedId={selectedId} onSelect={onSelect} />}
     </div>
   )
 }
@@ -78,8 +78,8 @@ function Tag({ agent, at, status, word: shown, selected, onSelect }: { agent: Ag
 function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
   const usage = useStore((s) => s.usage)
   const [notified, setNotified] = useState(false)
+  // Done only closes the notification line; the room is still paused, so the banner stays up.
   const [done, setDone] = useState(false)
-  if (done) return null
   if (room.pausedBy !== 'limit') {
     return (
       <div role="status" className="floor-banner">
@@ -92,8 +92,8 @@ function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
   const notify = () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message }))
   return (
     <div role="status" className="floor-banner">
-      <span>{notified ? 'You will get a notification when the limit resets.' : limit.text}</span>
-      <button type="button" className="floor-banner-btn" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</button>
+      <span>{notified && !done ? 'You will get a notification when the limit resets.' : limit.text}</span>
+      {!done && <button type="button" className="floor-banner-btn" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</button>}
     </div>
   )
 }
@@ -137,16 +137,16 @@ function Templates({ room }: { room: Room }) {
 }
 
 /** More agents than desks: the rest, still at work, listed with a way to add desks. */
-function Overflow({ room, agents, status }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus> }) {
+function Overflow({ room, agents, status, selectedId, onSelect }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void }) {
   return (
     <section className="floor-overflow" aria-label="Agents without a desk">
       <span className="muted" style={{ fontSize: 12 }}>No desk yet, still working</span>
       {agents.map((a, i) => (
-        <div key={a.id} className="row" style={{ gap: 8 }}>
+        <button key={a.id} type="button" className="overflow-row" aria-pressed={selectedId === a.id} aria-label={`${a.name}, ${a.role}, ${WORD[status[a.id] ?? 'idle']}`} onClick={() => onSelect(a.id)}>
           <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i), color: ART.onShirt }}>{a.name[0]}</span>
           <span style={{ fontWeight: 500 }}>{a.name}</span><span className="muted">{a.role}</span>
           <span className="grow" /><span className="muted" style={{ fontSize: 12 }}>{WORD[status[a.id] ?? 'idle']}</span>
-        </div>
+        </button>
       ))}
       <button type="button" className="floor-link" onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>Add desks in room settings</button>
     </section>
