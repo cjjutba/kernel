@@ -21,27 +21,29 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
     await k.start()
     const room = await k.addRoom(repo)
     const other = await k.addRoom(await tempRepo())
-    const agents = await k.agents(room.id)
-    const h = k.handlers()
+    try {
+      const agents = await k.agents(room.id)
+      const h = k.handlers()
 
-    // Everyone acted once, a while ago. Then Issue Worker logged 250 events, which push the others out of any 200-event window.
-    const t = Date.now() + 10_000
-    const once: Record<string, number> = { theo: t + 50, noor: t + 40, rowan: t + 60, kai: t + 30, ivy: t + 20 }
-    for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', roomId: room.id, agentId, text: 'did something', ts })
-    bus.activity({ kind: 'note', roomId: other.id, agentId: 'lumi', text: 'worked in another room', ts: t + 5000 })
-    for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'issue-worker', text: 'ran a tool', ts: t + 100 + i })
+      // Everyone acted once, a while ago. Then Issue Worker logged 250 events, which push the others out of any 200-event window.
+      const t = Date.now() + 10_000
+      const once: Record<string, number> = { theo: t + 50, noor: t + 40, rowan: t + 60, kai: t + 30, ivy: t + 20 }
+      for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', roomId: room.id, agentId, text: 'did something', ts })
+      bus.activity({ kind: 'note', roomId: other.id, agentId: 'lumi', text: 'worked in another room', ts: t + 5000 })
+      for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'issue-worker', text: 'ran a tool', ts: t + 100 + i })
+      bus.activity({ kind: 'room.paused', roomId: room.id, actor: 'you', text: 'paused', ts: t + 9000 })
 
-    const last = await h['rooms.lastActivity']({ roomId: room.id })
-    expect(last).toMatchObject({ ...once, 'issue-worker': t + 349 })
-    expect(last.lumi).toBeUndefined()
-    expect(last['issue-worker-opus']).toBeUndefined()
+      const last = await h['rooms.lastActivity']({ roomId: room.id })
+      expect(last).toEqual({ ...once, 'issue-worker': t + 349 })
+      expect(last.lumi).toBeUndefined()
+      expect(last['issue-worker-opus']).toBeUndefined()
 
-    const window = await h['activity.recent']({ roomId: room.id, limit: 200 })
-    expect(new Set(window.map((e) => e.agentId))).toEqual(new Set(['issue-worker']))
+      const window = await h['activity.recent']({ roomId: room.id, limit: 200 })
+      expect(new Set(window.flatMap((e) => (e.agentId ? [e.agentId] : [])))).toEqual(new Set(['issue-worker']))
 
-    const seats = (ctx: Parameters<typeof roomSeating>[2]) => roomSeating(agents, room, ctx).seated.map((a) => a.id)
-    expect(seats({ lastActivity: last })).toEqual(['rowan', 'issue-worker', 'theo', 'noor', 'kai', 'ivy'])
-    await k.stop()
+      const seats = (ctx: Parameters<typeof roomSeating>[2]) => roomSeating(agents, room, ctx).seated.map((a) => a.id)
+      expect(seats({ lastActivity: last })).toEqual(['rowan', 'issue-worker', 'theo', 'noor', 'kai', 'ivy'])
+    } finally { await k.stop() }
   })
 })
 
