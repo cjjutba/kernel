@@ -321,6 +321,8 @@ export interface Chat {
   forkOf?: { chatId: string; itemId: string }
   /** Context window use, 0 to 100 (WorkspaceContext.png). */
   context?: number
+  /** Claude Code's /context numbers behind `context`: tokens used, the window size and its rows, without deferred tools. */
+  contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
   createdAt: number
@@ -754,6 +756,8 @@ export interface WorkspaceView {
   diff?: string
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
+  /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */
+  contextOpen?: boolean
 }
 
 export interface UiState {
