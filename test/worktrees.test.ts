@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchName, changedFiles, createWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, slugify, snapshotBaseline } from '../src/main/services/worktrees'
+import { branchExists, branchName, changedFiles, createWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, slugify, snapshotBaseline } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 describe('naming', () => {
@@ -34,6 +35,33 @@ describe('worktrees', () => {
     expect(await freeBranch(repo, branch)).toBe(branch + '-2')
     await removeWorktree(repo, path, { force: true, deleteBranch: branch })
     expect((await listWorktrees(repo)).some((w) => w.branch === branch)).toBe(false)
+  })
+
+  it('treats a deleted worktree folder as removed, and still deletes its branch when asked (KERNEL-109)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-gone-' + Date.now())
+    const kept = await createWorktree({ repo, root, branch: 'feat/kept', baseRef: 'main' })
+    const dropped = await createWorktree({ repo, root, branch: 'feat/dropped', baseRef: 'main' })
+    await rm(dropped, { recursive: true, force: true })
+    // git still has a record for `dropped` and drops it on `remove`. Once a prune (or gc) has dropped the record too,
+    // `remove` exits 128 "is not a working tree", which is what blocked archive.
+    await git(repo, 'worktree', 'prune')
+    await rm(kept, { recursive: true, force: true })
+    await removeWorktree(repo, kept, { force: true })
+    await removeWorktree(repo, dropped, { force: true, deleteBranch: 'feat/dropped' })
+    const paths = (await git(repo, 'worktree', 'list', '--porcelain'))
+    expect(paths).not.toContain(basename(kept))
+    expect(paths).not.toContain(basename(dropped))
+    expect(await branchExists(repo, 'feat/kept')).toBe(true)
+    expect(await branchExists(repo, 'feat/dropped')).toBe(false)
+  })
+
+  it('still refuses a folder that exists but is not a worktree', async () => {
+    const repo = await tempRepo()
+    const folder = await mkdtemp(join(tmpdir(), 'kernel-not-a-worktree-'))
+    await writeFile(join(folder, 'notes.md'), 'mine\n')
+    await expect(removeWorktree(repo, folder, { force: true })).rejects.toThrow()
+    expect(await readFile(join(folder, 'notes.md'), 'utf8')).toBe('mine\n')
   })
 
   it('hides pre-existing changes for current-branch workspaces', async () => {

@@ -857,7 +857,9 @@ export class Kernel {
     // A setup still running would finish after the archive and report on a workspace that is gone.
     stopScript(id, 'setup')
     const repo = await loadRepoSettings(room.path)
-    if (repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
+    // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
+    const gone = await stat(ws.path).then(() => false, () => true)
+    if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
@@ -1136,12 +1138,15 @@ export class Kernel {
         return decision
       },
       archiveWorkspace: (id) => this.archiveWorkspace(id),
+      refreshPr: (id) => this.refreshPr(id, { settle: true }),
       isRunning: (id) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id)),
-      // The sidebar's check before a one-click archive. A current-branch workspace removes no files.
+      // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
+      // worktree whose folder is already gone (KERNEL-109).
       unsaved: async (id) => {
         try {
           const ws = await this.syncBranch(id)
           if (ws.mode !== 'worktree') return false
+          if (await stat(ws.path).then(() => false, () => true)) return false
           return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
         } catch { return 'unknown' }
       },
@@ -1234,11 +1239,15 @@ export class Kernel {
    * Reads the PR from GitHub and moves the header to its state. `settle` is true once the agent's turn is over:
    * until then Creating and Resolving hold, so the header doesn't flash the old state while the agent works.
    * A workspace with no PR yet only adopts an open one, never an old merged or closed PR on the same branch name.
+   * A worktree folder deleted outside Kernel can't run gh, so the room asks for the PR by number instead (KERNEL-109).
    */
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
-    const info = await this.github.info(asked.path, asked.branch, id)
+    const gone = await stat(asked.path).then(() => false, () => true)
+    const info = gone
+      ? await this.github.info(this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, id, { conflicts: false })
+      : await this.github.info(asked.path, asked.branch, id)
     if (info) bus.push({ type: 'pr.info', info })
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -55,8 +55,9 @@ describe('removing a room', () => {
 
   it('keeps the room and names the workspace when one fails to archive', async () => {
     const { k, room, repo, done } = await setup()
-    // The worktree is already gone from git, so archiving it fails.
+    // The worktree is gone from git, but a folder is back at its path. It may hold the user's files, so archiving fails (D-104).
     await run('git', ['-C', repo, 'worktree', 'remove', '--force', done.path])
+    await mkdir(done.path)
     await expect(k.removeRoom(room.id, true)).rejects.toThrow(`Could not archive a workspace, so ${room.name} stays. ${done.name}:`)
     expect(k.store.room(room.id)).toBeDefined()
     await k.stop()

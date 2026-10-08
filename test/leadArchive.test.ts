@@ -1,8 +1,8 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import type { AgentDef, Workspace } from '@shared/types'
+import { basename, join } from 'node:path'
+import type { AgentDef, PrState, Workspace } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
@@ -17,22 +17,32 @@ vi.mock('../src/main/services/kernelMcp', async (original) => {
 
 const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', name: id, agentId: 'kai', mode: 'worktree', status: 'ready', prState: 'merged', ...o }) as Workspace
 
-/** The Lead's tools over `list`, with `running` workspaces mid-turn, `unsaved` ones git reports on and `failing` ones whose archive throws. */
-function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<string, 'dirty' | 'unknown'>; failing?: Record<string, string> } = {}) {
+/**
+ * The Lead's tools over `list`, with `running` workspaces mid-turn, `unsaved` ones git reports on, `failing` ones whose
+ * archive throws, and `refreshed` ones GitHub reports a new PR state for (an Error when GitHub can't be reached).
+ */
+function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<string, 'dirty' | 'unknown'>; failing?: Record<string, string>; refreshed?: Record<string, PrState | Error> } = {}) {
   const archiveWorkspace = vi.fn(async (id: string) => {
     if (o.failing?.[id]) throw new Error(o.failing[id])
     const w = list.find((x) => x.id === id)!
     w.status = 'archived'
   })
+  const refreshPr = vi.fn(async (id: string) => {
+    const w = list.find((x) => x.id === id)!
+    const r = o.refreshed?.[id]
+    if (r instanceof Error) throw r
+    if (r) w.prState = r
+    return w
+  })
   const handedOff = vi.fn()
   const deps: KernelToolDeps = {
     roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
     createWorkspace: async () => list[0], messageWorkspace: async () => {}, askUser: async () => null, hireAgent: async () => '',
-    archiveWorkspace, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
+    archiveWorkspace, refreshPr, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
   }
   const tool = kernelTools(deps).find((t) => t.name === 'archive_workspace')!
   const archive = async (ids: string[]) => ((await tool.handler({ workspace_ids: ids } as never, {})).content[0] as { text: string }).text
-  return { archive, archiveWorkspace, handedOff }
+  return { archive, archiveWorkspace, refreshPr, handedOff }
 }
 
 describe('archive_workspace (KERNEL-93)', () => {
@@ -88,6 +98,30 @@ describe('archive_workspace (KERNEL-93)', () => {
     const lines = (await t.archive([...states])).split('\n')
     expect(lines).toEqual(states.map((s, i) => `Skipped ${s}: its PR #${i + 1} is open and not merged.`))
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('archives a workspace whose saved PR state is stale once GitHub reports it merged (KERNEL-109)', async () => {
+    const t = leadTools([ws('stale', { prState: 'cifail', prNumber: 7 })], { refreshed: { stale: 'merged' } })
+    expect(await t.archive(['stale'])).toBe('Archived stale.')
+    expect(t.refreshPr).toHaveBeenCalledWith('stale')
+  })
+
+  it('skips a workspace GitHub still reports open', async () => {
+    const t = leadTools([ws('live', { prState: 'cifail', prNumber: 7 })], { refreshed: { live: 'open' } })
+    expect(await t.archive(['live'])).toBe('Skipped live: its PR #7 is open and not merged.')
+    expect(t.archiveWorkspace).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the saved PR state when GitHub cannot be reached', async () => {
+    const t = leadTools([ws('offline', { prState: 'ready', prNumber: 9 })], { refreshed: { offline: new Error('gh failed') } })
+    expect(await t.archive(['offline'])).toBe('Skipped offline: its PR #9 is open and not merged.')
+    expect(t.archiveWorkspace).not.toHaveBeenCalled()
+  })
+
+  it("does not refresh the Lead's own workspace, a running one or a closed PR", async () => {
+    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', prState: 'open' }), ws('busy', { prState: 'open' }), ws('merged')], { running: ['busy'] })
+    expect(await t.archive(['lead', 'busy', 'merged'])).toBe('Skipped lead: it is your own workspace.\nSkipped busy: its agent is still working.\nArchived merged.')
+    expect(t.refreshPr).not.toHaveBeenCalled()
   })
 
   it('handles a mixed list one id at a time, and a failed archive does not stop the rest', async () => {
@@ -151,5 +185,47 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     expect(await readFile(join(dirty.path, 'draft.ts'), 'utf8')).toBe('export {}\n')
     expect(k.store.workspace(lead.workspaceId)?.status).not.toBe('archived')
     expect(k.store.activity(room.id).filter((a) => a.kind === 'workspace.archived').map((a) => a.workspaceId)).toEqual([done.id])
+  })
+
+  it('archives a workspace whose folder was deleted and whose saved PR state is stale (KERNEL-109)', async () => {
+    const repo = await tempRepo({
+      'README.md': '# client\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop())
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.addRoom(repo)
+    const made = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    // The PR merged on GitHub while Kernel still had it failing checks, and the folder was deleted by hand.
+    const gone = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, prState: 'cifail', prNumber: 12 })
+    await rm(gone.path, { recursive: true, force: true })
+    // git's own record of the worktree is gone too, as after a gc, so `worktree remove` would exit 128.
+    await git(repo, 'worktree', 'prune')
+    const asked: [string, string, { conflicts?: boolean } | undefined][] = []
+    k.github = {
+      ...k.github,
+      info: async (cwd, ref, workspaceId, o) => {
+        asked.push([cwd, ref, o])
+        return { workspaceId, number: 12, url: 'https://github.com/o/r/pull/12', title: 'feat: table', state: 'merged', baseRef: 'main', checks: [], comments: [], conflicts: [] }
+      }
+    }
+    const lead = await k.leadChat(room.id)
+    const agents = await k.agents(room.id)
+    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+
+    expect(await wired!.unsaved(gone.id)).toBe(false)
+    const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
+    const result = await tool.handler({ workspace_ids: [gone.id] } as never, {})
+    expect((result.content[0] as { text: string }).text).toBe(`Archived ${gone.name}.`)
+    // gh ran in the room, asked for the PR by number, and left conflicts alone: the room's HEAD is main, not the PR.
+    expect(asked).toEqual([[room.path, '12', { conflicts: false }]])
+    expect(k.store.workspace(gone.id)).toMatchObject({ status: 'archived', prState: 'merged' })
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain(basename(gone.path))
   })
 })

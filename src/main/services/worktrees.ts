@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
@@ -106,8 +106,14 @@ export async function restoreWorktree(o: { repo: string; path: string; branch: s
   await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `origin/${o.branch}`)
 }
 
+/**
+ * A folder that is already gone counts as removed: git only needs its record pruned (KERNEL-109). A folder that exists
+ * but isn't a worktree still throws, since it may hold the user's files.
+ */
 export async function removeWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean } = {}) {
-  await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
+  const gone = await stat(path).then(() => false, () => true)
+  if (gone) await git(repo, 'worktree', 'prune')
+  else await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
 }
 
