@@ -15,7 +15,7 @@ export function Shot({ src, alt, sizes, preload = false, className = '' }: Props
   return (
     <div className={`frame-gradient ${className}`}>
       <div className="overflow-hidden rounded-frame-in bg-surface-2">
-        <Image src={src} alt={alt} sizes={sizes} preload={preload} className="block h-auto w-full" />
+        <Image src={src} alt={alt} sizes={sizes} preload={preload} quality={90} className="block h-auto w-full" />
       </div>
     </div>
   )
