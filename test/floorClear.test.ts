@@ -34,6 +34,13 @@ describe('clearOverlaps', () => {
     }
   })
 
+  it('lifts the walking tag, whichever is lower on screen', () => {
+    const seated = box('noor', 160, 362)
+    // The walker is below the seated tag, then above it: the seated one stays put both times.
+    expect(Object.keys(clearOverlaps([seated, { ...box('rowan', 120, 380), walking: true }]))).toEqual(['rowan'])
+    expect(Object.keys(clearOverlaps([seated, { ...box('rowan', 120, 350), walking: true }]))).toEqual(['rowan'])
+  })
+
   it('does not depend on the order the boxes come in', () => {
     const boxes = [box('a', 100, 300), box('b', 130, 296), box('c', 150, 310)]
     expect(clearOverlaps([...boxes].reverse())).toEqual(clearOverlaps(boxes))
