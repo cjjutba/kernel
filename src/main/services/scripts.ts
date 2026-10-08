@@ -1,9 +1,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { copyFile, mkdir, stat } from 'node:fs/promises'
+import { appendFile, copyFile, lstat, mkdir, stat, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
+import { exec, git } from './exec'
 
 /** Find a free TCP port, starting at `from`. Each workspace gets its own as $KERNEL_PORT. */
 export async function freePort(from = 4300, taken: Set<number> = new Set()): Promise<number> {
@@ -31,6 +32,22 @@ export async function copyLocalFiles(repo: string, worktree: string, files: stri
     } catch { /* missing files are fine */ }
   }
   return copied
+}
+
+/** Link the main checkout's node_modules into a fresh worktree. Skips when either side is missing or the worktree already has one. */
+export async function linkNodeModules(repo: string, worktree: string): Promise<boolean> {
+  const target = join(repo, 'node_modules')
+  const link = join(worktree, 'node_modules')
+  if (!existsSync(target)) return false
+  if (await lstat(link).then(() => true, () => false)) return false
+  await symlink(target, link, 'dir')
+  // Git sees the link as a file, so a `node_modules/` line in .gitignore misses it. Exclude it locally instead.
+  if ((await exec('git', ['-C', worktree, 'check-ignore', '-q', 'node_modules'])).code !== 0) {
+    const exclude = resolve(worktree, (await git(worktree, 'rev-parse', '--git-path', 'info/exclude')).trim())
+    await mkdir(dirname(exclude), { recursive: true })
+    await appendFile(exclude, '/node_modules\n')
+  }
+  return true
 }
 
 /** The user's login shell so nvm, pnpm and PATH tweaks apply. Falls back to sh. */

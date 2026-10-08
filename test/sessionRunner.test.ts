@@ -3,12 +3,13 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { Chat, ChatItem, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { Sessions } from '../src/main/services/sessions'
+import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
@@ -37,7 +38,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -47,7 +48,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 } } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => undefined, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
+    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -277,5 +278,75 @@ describe('session runner (SDK scripted)', () => {
     expect(sessions.queued(chat.id)).toEqual([])
     expect(sessions.isRunning(chat.id)).toBe(false)
     expect(kinds().filter((k) => k === 'user')).toHaveLength(1)
+  })
+})
+
+describe('Approve and hand off (KERNEL-67)', () => {
+  // The kernel repo's own Lead, which only plans and says nothing about create_workspace.
+  const rowan: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans sprint work', lead: true, prompt: "You are Rowan, the lead for building Kernel itself. You plan, you don't write feature code." }
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Backend', description: 'Engine', lead: false, prompt: 'You build the engine.' }
+
+  const hooksFor = (options: Options, event: 'PostToolUse' | 'Stop', matcher?: string) => options.hooks![event]!.filter((m) => m.matcher === matcher).flatMap((m) => m.hooks)
+  /** Runs every hook for one event and returns the context they send the model. */
+  const contexts = async (options: Options, event: 'PostToolUse' | 'Stop', matcher?: string) => {
+    const input = event === 'Stop'
+      ? { hook_event_name: 'Stop', stop_hook_active: false, session_id: 's', transcript_path: '', cwd: '/tmp/ws' }
+      : { hook_event_name: 'PostToolUse', tool_name: 'ExitPlanMode', tool_input: {}, tool_response: {}, tool_use_id: 'p9', session_id: 's', transcript_path: '', cwd: '/tmp/ws' }
+    const outs = await Promise.all(hooksFor(options, event, matcher).map((h) => h(input as never, undefined, { signal: new AbortController().signal } as never)))
+    return outs.map((o: any) => o?.hookSpecificOutput?.additionalContext).filter(Boolean)
+  }
+  async function approvePlan(s: Awaited<ReturnType<typeof setup>>) {
+    const answer = (s.options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Symlink node_modules into worktrees · Noor' }, { signal: new AbortController().signal, toolUseID: 'p9', requestId: 'r9' })
+    await flush()
+    s.approvals.decide(s.store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
+    expect(await answer).toMatchObject({ behavior: 'allow' })
+  }
+
+  it("adds Kernel's hand-off rule to a Lead whose own file only plans, and to no one else", async () => {
+    const lead = (await setup('acceptEdits', { agent: rowan })).options.systemPrompt as { append: string }
+    expect(lead.append).toContain(rowan.prompt)
+    expect(lead.append).toContain(LEAD_RULE)
+    expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
+    const builder = (await setup('acceptEdits', { agent: noor })).options.systemPrompt as { append: string }
+    expect(builder.append).not.toContain(LEAD_RULE)
+  })
+
+  it('tells the Lead to hand off right after the approval, then reminds it once if it tries to stop first', async () => {
+    const s = await setup('acceptEdits', { agent: rowan })
+    expect(await contexts(s.options, 'Stop')).toEqual([])
+    await approvePlan(s)
+    expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([HANDOFF_NOW])
+    expect(await contexts(s.options, 'Stop')).toEqual([HANDOFF_REMINDER])
+    // One reminder per approval: the next Stop ends the turn.
+    expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+
+  it('stops holding the Lead once it has created a workspace', async () => {
+    const s = await setup('acceptEdits', { agent: rowan })
+    await approvePlan(s)
+    s.sessions.handoffs.done('chat') // what create_workspace does
+    expect(await contexts(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([])
+    expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+
+  it('drops the reminder when the user stops the turn', async () => {
+    const s = await setup('acceptEdits', { agent: rowan })
+    await approvePlan(s)
+    await s.sessions.interrupt('chat')
+    expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+
+  it('drops the reminder when the user sends something else, even while it waits in the queue', async () => {
+    const s = await setup('acceptEdits', { agent: rowan })
+    await approvePlan(s)
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Hold off, post it to Linear instead' }])).toEqual({ queued: true })
+    expect(await contexts(s.options, 'Stop')).toEqual([])
+  })
+
+  it('leaves agents that are not the Lead alone', async () => {
+    const s = await setup('acceptEdits', { agent: noor })
+    await approvePlan(s)
+    expect(hooksFor(s.options, 'PostToolUse', 'ExitPlanMode')).toEqual([])
+    expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 })
