@@ -6,7 +6,7 @@ import { fixtureHandlers } from '../src/main/fixtures'
 
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
-const noCanvas = ['WorkspaceTabStates']
+const noCanvas = ['WorkspaceTabStates', 'WorkspaceContextRing', 'WorkspaceContextPopover']
 
 describe('fixtures', () => {
   it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {
