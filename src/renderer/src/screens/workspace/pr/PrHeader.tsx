@@ -22,10 +22,11 @@ async function copyBranch(branch: string) {
 const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 4 5 6.5 7.5 4" /></svg>
 
 /**
- * The pull request end of the workspace header, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed,
- * WorkspaceChangesRequested, WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
+ * The pull request actions, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed, WorkspaceChangesRequested,
+ * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
+ * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-070).
  */
-export function PrHeader({ ws }: { ws: Workspace }) {
+export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const [busy, setBusy] = useState<string | null>(null)
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
   const caret = useRef<HTMLSpanElement>(null)
@@ -66,13 +67,15 @@ export function PrHeader({ ws }: { ws: Workspace }) {
     : null
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
   const spinner = (label: string) => <Button className="pr-busy" disabled><span className="spin" aria-hidden="true" />{label}</Button>
+  const gap = spread ? <span className="grow" /> : null
 
-  if (busy) return <>{link}{spinner(busy)}</>
+  if (busy) return <>{link}{gap}{spinner(busy)}</>
 
   if (view.merged) return (
     <>
       {link}
       <span className="pr-status merged-label">Merged</span>
+      {gap}
       <Button className="continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} />Continue</Button>
       <Button variant="merged" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
     </>
@@ -87,6 +90,7 @@ export function PrHeader({ ws }: { ws: Workspace }) {
     <>
       {link}
       {view.status && <span className="pr-status" data-tone={view.status.tone}>{view.status.text}</span>}
+      {gap}
       {view.caret ? (
         <span className="pr-split">
           {main}

@@ -96,53 +96,54 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   }
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
+  // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
+  // while it is hidden they move into the header, so Create PR and Merge stay one click away.
   return (
-    <div className="panel">
+    <div className="panel ws-panel">
       <header className="header">
         <SidebarToggle />
         <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
         <button type="button" className="crumb" onClick={() => room && go({ name: 'floor', roomId: room.id })}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
-        <h1>{ws.name}</h1>
-        <span className="mono muted" style={{ fontSize: 12 }}>{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
+        <h1 className="ellipsis">{ws.name}</h1>
+        <span className="mono muted ellipsis" style={{ fontSize: 12 }}>{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
-        <PrHeader ws={ws} />
+        {!panels && <PrHeader ws={ws} />}
         <RightPanelToggle name="panels" />
       </header>
-      <div className="ws-body">
-        <OpenImage.Provider value={openImage}>
-          <section aria-label="Agent" className="ws-main">
-            <ChatTabs workspaceId={workspaceId} chats={chats} files={files} images={images.map((i) => ({ id: i.id, name: i.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseImage={closeImage} />
-            <div className="col grow" style={{ minHeight: 0 }}>
-              {view.diff !== undefined
-                ? <DiffView ws={ws} path={view.diff} changes={changes} onClose={() => actions.ui.setWorkspaceView({ diff: undefined })} />
-                : filePath
-                  ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
-                  : image
-                    ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
-                  : setup
-                    ? <TranscriptSkeleton branch={ws.branch} />
-                    // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
-                    : ws.status === 'failed' && empty
-                      ? <div className="grow" />
-                    : chat?.kind === 'terminal'
-                      ? <TerminalView id={chat.id} label="Big terminal" />
-                    : chat
-                      ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
-                      : <div className="grow" />}
-            </div>
-            {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
-            {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
-          </section>
-        </OpenImage.Provider>
-        {panels && (
-          <aside aria-label="Workspace panels" className="ws-aside">
-            <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={(path) => actions.ui.setWorkspaceView({ diff: path })} />
-            <BottomPanel ws={ws} />
-          </aside>
-        )}
-      </div>
+      <OpenImage.Provider value={openImage}>
+        <section aria-label="Agent" className="ws-main">
+          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} images={images.map((i) => ({ id: i.id, name: i.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseImage={closeImage} />
+          <div className="col grow" style={{ minHeight: 0 }}>
+            {view.diff !== undefined
+              ? <DiffView ws={ws} path={view.diff} changes={changes} onClose={() => actions.ui.setWorkspaceView({ diff: undefined })} />
+              : filePath
+                ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
+                : image
+                  ? <ImageView name={image.name} src={image.dataUrl} width={image.width} height={image.height} />
+                : setup
+                  ? <TranscriptSkeleton branch={ws.branch} />
+                  // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
+                  : ws.status === 'failed' && empty
+                    ? <div className="grow" />
+                  : chat?.kind === 'terminal'
+                    ? <TerminalView id={chat.id} label="Big terminal" />
+                  : chat
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
+                    : <div className="grow" />}
+          </div>
+          {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
+          {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
+        </section>
+      </OpenImage.Provider>
+      {panels && (
+        <aside aria-label="Workspace panels" className="ws-aside">
+          <div className="ws-aside-head"><PrHeader ws={ws} spread /></div>
+          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={(path) => actions.ui.setWorkspaceView({ diff: path })} />
+          <BottomPanel ws={ws} />
+        </aside>
+      )}
     </div>
   )
 }

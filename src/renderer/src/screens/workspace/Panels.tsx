@@ -46,11 +46,14 @@ function FilesTree({ workspaceId, changes, onOpenFile }: { workspaceId: string; 
 
 function ChangesList({ ws, changes, onOpenDiff }: { ws: Workspace; changes: ChangedFile[]; onOpenDiff: (path: string) => void }) {
   if (!changes.length) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No file changes yet</span><span>Changes appear here.</span></div>
+  const added = changes.reduce((n, f) => n + f.added, 0)
+  const removed = changes.reduce((n, f) => n + f.removed, 0)
   return (
     <div className="panel-scroll" style={{ padding: '4px 10px' }}>
-      <div className="row muted" style={{ height: 32, padding: '0 6px', fontSize: 12.5 }}>
-        {changes.length} {changes.length === 1 ? 'file' : 'files'}
+      <div className="row" style={{ height: 32, padding: '0 6px', fontSize: 12.5 }}>
+        <span className="ink2" style={{ fontWeight: 500 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
         <span className="grow" />
+        <span className="mono" style={{ fontSize: 11.5, display: 'inline-flex', gap: 6, marginRight: 4 }}>{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
         <Button className="small" onClick={() => onOpenDiff('')}>Review all</Button>
       </div>
       {changes.map((f) => {
