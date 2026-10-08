@@ -756,7 +756,6 @@ export class Sessions {
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
 
-  /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
   /**
    * Where a new plan-mode plan in this chat is saved (D-092). After "Request changes" the revision overwrites the last
    * plan's file. Once a plan here was approved, the next one gets a file of its own.
@@ -766,6 +765,7 @@ export class Sessions {
     return last && last.status !== 'allowed' ? last.planFile : undefined
   }
 
+  /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
   placeApproval(chatId: string, approvalId: string) {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
   }
