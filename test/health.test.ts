@@ -16,8 +16,9 @@ import { discardChanges, gitStatus, pushBranch } from '../src/main/services/arch
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
-// A scripted SDK, as in sessionRunner.test.ts. `context` is what getContextUsage reports, `usage` what the usage call answers (null: unsupported).
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, usage: null as unknown }))
+// A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
+// answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, contextReply: null as unknown, usage: null as unknown }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
@@ -28,7 +29,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {},
-      getContextUsage: async () => ({ percentage: sdk.context }),
+      getContextUsage: async () => sdk.contextReply ?? { percentage: sdk.context },
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => { if (!sdk.usage) throw new Error('not supported'); return sdk.usage }
     }
   }
@@ -170,7 +171,52 @@ describe('sessions under failure', () => {
     sdk.calls[sdk.calls.length - 1].feed(result())
     await flush()
     expect(store.chat(chat.id)?.context).toBe(92)
+    // A percentage-only answer has no token counts to keep.
+    expect(store.chat(chat.id)?.contextUsage).toBeUndefined()
     sdk.context = 40
+  })
+
+  it('saves the token counts and in-window rows behind the context use', async () => {
+    const { sessions, chat, store } = await runner()
+    sdk.contextReply = {
+      percentage: 42.4, totalTokens: 84_800, maxTokens: 200_000, rawMaxTokens: 200_000, gridRows: [],
+      categories: [
+        { name: 'System prompt', tokens: 3_100, color: 'promptBorder', kind: 'used' },
+        { name: 'MCP tools', tokens: 9_000, color: 'cyan', kind: 'deferred', isDeferred: true },
+        { name: 'Messages', tokens: 81_700, color: 'purple', kind: 'used' },
+        { name: 'Free space', tokens: 82_200, color: 'promptBorder', kind: 'free' },
+        { name: 'Autocompact buffer', tokens: 33_000, color: 'inactive', kind: 'buffer' }
+      ]
+    }
+    try {
+      await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+      const call = sdk.calls[sdk.calls.length - 1]
+      call.feed(result())
+      await flush()
+      expect(store.chat(chat.id)).toMatchObject({
+        context: 42,
+        contextUsage: {
+          used: 84_800, max: 200_000,
+          rows: [
+            { name: 'System prompt', tokens: 3_100, kind: 'used' },
+            { name: 'Messages', tokens: 81_700, kind: 'used' },
+            { name: 'Free space', tokens: 82_200, kind: 'free' },
+            { name: 'Autocompact buffer', tokens: 33_000, kind: 'buffer' }
+          ]
+        }
+      })
+      expect(store.chat(chat.id)?.contextUsage?.rows[0]).not.toHaveProperty('color')
+
+      // The same numbers after the next turn leave the chat alone.
+      const { pushes, off } = listen()
+      await sessions.send(chat.id, [{ type: 'text', text: 'Again' }])
+      call.feed(result('r2'))
+      await flush()
+      off()
+      expect(pushes.filter((e) => e.type === 'chat')).toEqual([])
+    } finally {
+      sdk.contextReply = null
+    }
   })
 
   it('compacts by sending /compact', async () => {
