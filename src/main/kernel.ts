@@ -1376,6 +1376,7 @@ export class Kernel {
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
+      'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {

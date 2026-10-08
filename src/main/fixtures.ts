@@ -33,6 +33,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
+  /** The Lead's own workspace on the main checkout, the one `Kernel.leadChat` finds. */
+  const leadWs = (roomId: string) => {
+    const lead = f.agents[roomId]?.find((a) => a.lead)
+    return f.workspaces.find((w) => w.roomId === roomId && w.agentId === lead?.id && w.mode === 'current' && w.status !== 'archived')
+  }
   let settings = f.settings ?? DEFAULT_SETTINGS('/Users/you')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
@@ -133,11 +138,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'notifications.list': async () => f.notifications ?? [],
     'notifications.read': async ({ ids }) => (f.notifications ?? []).map((n) => (ids === 'all' || ids.includes(n.id) ? { ...n, read: true } : n)),
     'lead.ask': async ({ roomId }) => {
-      const lead = f.agents[roomId]?.find((a) => a.lead)
-      const ws = f.workspaces.find((w) => w.roomId === roomId && w.agentId === lead?.id)
+      const ws = leadWs(roomId)
       const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
       if (!c) throw new Error('This fixture has no chat for the Lead.')
       return { chatId: c.id }
+    },
+    'lead.open': async ({ roomId }) => {
+      const ws = leadWs(roomId)
+      if (!ws) throw new Error('This fixture has no workspace for the Lead.')
+      return ws
     },
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
