@@ -39,6 +39,10 @@ const COPY = 'fork:'
 /** How a hook from an outside session moves its agent on the floor. */
 const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
 
+/** A composer message: `parts` in order when they carry text (chips sit inline), else `text` first and the parts after it. */
+const messageOf = (text: string, parts: ChatPart[] = []): ChatPart[] =>
+  parts.some((p) => p.type === 'text') ? parts : [...(text ? [{ type: 'text' as const, text }] : []), ...parts]
+
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
 
@@ -690,7 +694,7 @@ export class Kernel {
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
-    const parts: ChatPart[] = [{ type: 'text', text: o.prompt }, ...(o.parts ?? [])]
+    const parts = messageOf(o.prompt, o.parts)
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
     if (!ready) { this.sessions.hold(chat.id, parts); return this.saveWs({ ...ws, status: 'failed' }) }
@@ -1198,7 +1202,7 @@ export class Kernel {
       'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
       'rooms.overlaps': async ({ roomId }) => this.overlaps.check(roomId),
       'rooms.resolveOverlap': async ({ overlapId }) => { await this.sortOverlap(overlapId); return { ok: true } },
-      'rooms.brief': async ({ roomId, text, agentId }) => {
+      'rooms.brief': async ({ roomId, text, parts, agentId }) => {
         let chat: Chat
         if (agentId) {
           const ws = this.store.workspaces(roomId).find((w) => w.agentId === agentId && w.status !== 'archived')
@@ -1207,11 +1211,13 @@ export class Kernel {
           if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief the Lead instead.')
           chat = first
         } else chat = await this.leadChat(roomId)
-        await this.sessions.send(chat.id, [{ type: 'text', text }])
+        const message = messageOf(text, parts)
+        await this.sessions.send(chat.id, message)
         // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
         const to = this.store.workspace(chat.workspaceId)?.agentId
         const name = (await this.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
-        bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote: text })
+        const quote = parts ? message.map((p) => (p.type === 'text' ? p.text : p.name)).join(' ').replace(/\s+/g, ' ').trim() : text
+        bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'agents.list': async ({ roomId, retired }) => (retired ? loadAgents(this.mustRoom(roomId).path, { retired: true }) : this.agents(roomId)),
