@@ -9,6 +9,10 @@ files:
   - out/**
   - docs/starter-agents/**
   - package.json
+  # Native modules load from build/Release (rebuilt for Electron), so their prebuilds, sources, install scripts and
+  # the Windows-only winpty would only be signed and shipped unused (D-052).
+  - '!node_modules/node-pty/{prebuilds,deps,src,scripts,node-addon-api}/**'
+  - '!node_modules/better-sqlite3/{deps,src}/**'
 # Spawned or dlopened from disk, so they can't live inside app.asar. electron-builder signs them where they land.
 asarUnpack:
   - node_modules/better-sqlite3/**
