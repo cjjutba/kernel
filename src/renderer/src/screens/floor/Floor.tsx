@@ -14,6 +14,7 @@ import { sequence } from './sequence'
 import { HIRE_FRESH_MS, HIRE_KEEP_MS, deskSpot, moments, talkLegs } from './moments/moments'
 import type { Spot } from './motion/walks'
 import './floor.css'
+import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 
 const NO_TASKS: Task[] = []
 const NO_OVERLAPS: Overlap[] = []
@@ -31,6 +32,7 @@ export function Floor({ roomId }: { roomId: string }) {
   const overlaps = useStore((s) => s.overlaps[roomId] ?? NO_OVERLAPS)
   const forced = useStore((s) => s.ui.stage)
   const settings = useStore((s) => s.settings)
+  const logs = useStore((s) => s.ui.rightPanel)
   const reduced = useReducedMotion()
   const [clicked, setClicked] = useState<string | null>(null)
   useEffect(() => { void loadRoom(roomId) }, [roomId])
@@ -104,8 +106,10 @@ export function Floor({ roomId }: { roomId: string }) {
   return (
     <div className="panel">
       <header className="header" style={{ borderBottom: 0 }}>
+        <SidebarToggle />
         <span className="ink2">{room.name}</span><Icon name="right" size={12} /><h1>Floor</h1>
         <span className="grow" /><span className="mono muted" style={{ fontSize: 12 }}>{room.repo ?? room.path} · {room.defaultBranch}</span>
+        <RightPanelToggle name="logs" />
       </header>
       <div className="floor-bar">
         <button className="pill" aria-current="page">Floor</button>
@@ -127,7 +131,7 @@ export function Floor({ roomId }: { roomId: string }) {
           </div>
           <Brief roomId={roomId} agents={live} />
         </main>
-        <Logs roomId={roomId} agents={live} status={shown} approvals={approvals} review={seq.review} />
+        {logs && <Logs roomId={roomId} agents={live} status={shown} approvals={approvals} review={seq.review} />}
       </div>
     </div>
   )

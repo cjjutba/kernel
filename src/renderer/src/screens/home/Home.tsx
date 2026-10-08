@@ -8,6 +8,7 @@ import { inboxItems, needsYou, type InboxItem } from '../inbox/model'
 import { openNewRoom, resetDraft } from '../rooms/draft'
 import { roomLetter, roomState, sourceOf, stateLabel } from '../rooms/roomInfo'
 import './home.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const decide = (a: Approval, decision: Decision) => attempt('Could not send your answer', async () => actions.approvals.upsert(await call('approvals.decide', { id: a.id, decision })))
 const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
@@ -98,7 +99,7 @@ function Welcome() {
   const send = () => start({ source: 'scratch', desc: text.trim() })
   return (
     <div className="panel">
-      <header className="header"><Icon name="home" /><h1>Home</h1></header>
+      <header className="header"><SidebarToggle /><Icon name="home" /><h1>Home</h1></header>
       <div className="hm-welcome">
         <span className="hm-mark" aria-hidden="true"><Icon name="floor" size={120} stroke={0.6} /></span>
         <h2>Welcome to Kernel</h2>
@@ -140,7 +141,7 @@ export function Home() {
   const first = account?.name?.split(' ')[0]
   return (
     <div className="panel">
-      <header className="header"><Icon name="home" /><h1>Home</h1></header>
+      <header className="header"><SidebarToggle /><Icon name="home" /><h1>Home</h1></header>
       <div className="hm-scroll">
         <div className="hm-page">
           <div className="hm-top">

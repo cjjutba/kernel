@@ -26,7 +26,7 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     workspaces: withWorkspace(f, ids.table, { ...pr, prTitle, prState }),
     items: { [ids.tableChat]: [...tableItems, ...items] },
     ...extra,
-    ui: { ...open, workspace: { right, bottom: 'run', focus: false, checkpoints: false, toolsOpen: false }, ...extra.ui }
+    ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false }, ...extra.ui }
   }))
 
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
@@ -82,7 +82,7 @@ const toolCalls: ChatItem[] = [
 
 /** Composer shots: the same screen, with the composer already holding something. */
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
-  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, composer } } }))
+  scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** What @inv finds, in the order the canvas lists it. */
@@ -146,7 +146,7 @@ const checkpoints: Checkpoint[] = ([
   ref: `refs/kernel/checkpoints/${ids.table}/${id}`, current: id === '4', ...(id === '0' ? { start: true } : {})
 }))
 
-const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, tab } } as const)
+const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
   ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
 
@@ -172,11 +172,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: false, toolsOpen: true } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
   })),
   WorkspaceCheckpoints: scene(() => ({
     checkpoints: { [ids.table]: checkpoints },
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: false, checkpoints: true, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: true, toolsOpen: false } }
   })),
   WorkspaceNewChat: scene((f) => ({
     chats: [...f.chats, extraChat('chat-new', 'New chat')],
@@ -194,10 +194,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: tabsView('chat-term')
   })),
   WorkspaceFile: scene(() => ({
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false, tab: 'file:src/app/invoices/table.tsx' } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'file:src/app/invoices/table.tsx' } }
   })),
+  // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', focus: true, checkpoints: false, toolsOpen: false } }
+    ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspaceRunning: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-tests', branch: 'feat/t-15c-invoice-pdf-tests', agentId: 'ivy' }),
@@ -208,7 +209,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       { path: 'tests/fixtures/invoices.ts', status: 'A', added: 42, removed: 0 }
     ] },
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', focus: false, checkpoints: false, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false } }
   })),
   WorkspacePerm: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
     userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),

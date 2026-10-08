@@ -5,6 +5,7 @@ import { Button, Icon } from '../../ui'
 import { COLUMNS, cardMeta, cardTag } from './model'
 import { TaskDetail } from './TaskDetail'
 import './board.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const NO_TASKS: Task[] = []
 
@@ -46,6 +47,7 @@ export function Board({ roomId, taskId }: { roomId: string; taskId?: string }) {
   return (
     <div className="panel">
       <header className="header" style={{ borderBottom: 0 }}>
+        <SidebarToggle />
         <span className="ink2">{room.name}</span><Icon name="right" size={12} /><h1>Board</h1>
         <span className="grow" />
         <span className="mono muted" style={{ fontSize: 12 }}>{milestone ? `${milestone} · ` : ''}{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</span>

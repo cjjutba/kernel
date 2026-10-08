@@ -6,6 +6,7 @@ import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, SegmentedControl } from '../../ui'
 import { STANDARD_TOOLS, STATUS_WORD, currentWorkspace, modelAlias, recentWork, sameModel, shirtOf, shortFile, withExtras } from '../team/model'
 import '../team/team.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const NO_AGENTS: AgentDef[] = []
 
@@ -48,7 +49,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   if (!agent || !form) {
     return (
       <div className="panel">
-        <header className="header"><button type="button" className="tm-crumb" onClick={() => go({ name: 'team', roomId })}>{room.name}</button><span className="tm-sep">/</span><h1>{agentId}</h1></header>
+        <header className="header"><SidebarToggle /><button type="button" className="tm-crumb" onClick={() => go({ name: 'team', roomId })}>{room.name}</button><span className="tm-sep">/</span><h1>{agentId}</h1></header>
         <div className="tm-body"><p className="tm-intro">{agentId} is not on this team. They may have been retired, or the file was renamed.</p><Button onClick={() => go({ name: 'team', roomId })}>Back to the team</Button></div>
       </div>
     )
@@ -88,6 +89,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   return (
     <div className="panel">
       <header className="header">
+        <SidebarToggle />
         <button type="button" className="tm-crumb" onClick={() => go({ name: 'floor', roomId })}>{room.name}</button><span className="tm-sep">/</span>
         <button type="button" className="tm-crumb" onClick={() => go({ name: 'team', roomId })}>Team</button><span className="tm-sep">/</span>
         <h1>{agent.name}</h1>

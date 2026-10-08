@@ -11,7 +11,7 @@ import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
-import type { Channel } from '@shared/ipc'
+import type { Channel, KernelApi } from '@shared/ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
@@ -24,6 +24,9 @@ const fixtureName = process.env.KERNEL_FIXTURES
 const fixtureTheme = () => (process.env.KERNEL_FIXTURE_THEME === 'light' || process.env.KERNEL_FIXTURE_THEME === 'dark' ? { theme: process.env.KERNEL_FIXTURE_THEME } : {})
 if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
 
+/** Traffic lights over the sidebar's 42px top strip, or centered in the screen header row (y 9 to 53) while the sidebar is hidden. */
+const LIGHTS = { sidebar: { x: 13, y: 15 }, header: { x: 20, y: 25 } }
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -32,7 +35,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#08090a',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 13, y: 15 },
+    trafficLightPosition: LIGHTS.sidebar,
     show: false,
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true }
   })
@@ -106,6 +109,7 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => { await shell.openExternal(url); return { ok: true } })
   ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixture.push } : null))
+  ipcMain.handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
   ipcMain.handle('system.openInEditor' satisfies Channel, async (_e, { path }) => { const r = await exec('code', [path]); if (r.code !== 0) await shell.openPath(path); return { ok: true } })
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
   createWindow()

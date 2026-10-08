@@ -5,6 +5,7 @@ import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, EmptyState, Icon } from '../../ui'
 import { FILTERS, LOUD, STATUS_WORD, currentWorkspace, isNew, modelName, shirtOf, shortFile, workspaceLabel, type FilterId } from './model'
 import './team.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const NO_AGENTS: AgentDef[] = []
 
@@ -42,6 +43,7 @@ export function Team({ roomId }: { roomId: string }) {
   return (
     <div className="panel">
       <header className="header" style={{ borderBottom: 0 }}>
+        <SidebarToggle />
         <span className="ink2">{room.name}</span><Icon name="right" size={12} /><h1>Team</h1>
         <span className="grow" />
         <Button variant="primary" icon="plus" onClick={hire}>New agent</Button>

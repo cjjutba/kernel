@@ -3,6 +3,7 @@ import type { ChangedFile } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
+import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
@@ -27,6 +28,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
   const chats = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   const view = useStore((s) => s.ui.workspace)
+  const panels = useStore((s) => s.ui.rightPanel)
   const [changes, setChanges] = useState<ChangedFile[]>([])
   const [openFiles, setOpenFiles] = useState<string[]>([])
   const [lastChat, setLastChat] = useState<string | undefined>()
@@ -77,7 +79,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   return (
     <div className="panel">
       <header className="header">
-        {view.focus && <IconButton icon="sidebar" size={15} label="Show sidebar" onClick={() => actions.ui.setWorkspaceView({ focus: false })} />}
+        <SidebarToggle />
         <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
         <button type="button" className="crumb" onClick={() => room && go({ name: 'floor', roomId: room.id })}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
@@ -86,6 +88,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
         <PrHeader ws={ws} />
+        <RightPanelToggle name="panels" />
       </header>
       <div className="ws-body">
         <section aria-label="Agent" className="ws-main">
@@ -109,7 +112,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}
           {view.checkpoints && <CheckpointsDrawer workspaceId={workspaceId} />}
         </section>
-        {!view.focus && (
+        {panels && (
           <aside aria-label="Workspace panels" className="ws-aside">
             <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={(path) => actions.ui.setWorkspaceView({ diff: path })} />
             <BottomPanel ws={ws} />

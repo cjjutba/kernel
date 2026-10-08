@@ -6,6 +6,7 @@ import { call } from '../../api'
 import { openNewRoom } from './draft'
 import { ago, initial, roomLetter, roomState, sourceOf, stateLabel } from './roomInfo'
 import './rooms.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 type Tab = 'all' | 'active' | 'archived'
 
@@ -53,6 +54,7 @@ export function Rooms() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
+        <SidebarToggle />
         <Icon name="rooms" />
         <h1>All rooms</h1>
         <span className="grow" />

@@ -5,6 +5,7 @@ import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, Pill } from '../../ui'
 import { archivedList, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import './history.css'
+import { SidebarToggle } from '../../components/PanelToggles'
 
 const tabs: [HistoryTab, string][] = [['all', 'All'], ['merged', 'Merged'], ['notMerged', 'Not merged']]
 const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
@@ -40,6 +41,7 @@ export function History() {
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
+        <SidebarToggle />
         <Icon name="history" />
         <h1>History</h1>
         <span className="grow" />

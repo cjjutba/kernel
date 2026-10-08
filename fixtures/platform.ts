@@ -171,7 +171,7 @@ export const platformFixtures: Record<string, Fixture> = {
       { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'Setup failed with exit code 1', stream: 'stderr' },
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
-    ui: { ...open, workspace: { right: 'files', bottom: 'setup', focus: false, checkpoints: false, toolsOpen: false } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
   })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
   ConfirmArchive: scene((f) => ({

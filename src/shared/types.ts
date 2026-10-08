@@ -729,8 +729,6 @@ export interface Toast {
 export interface WorkspaceView {
   right: 'files' | 'changes' | 'checks'
   bottom: 'setup' | 'run' | 'terminal'
-  /** Sidebar and panels collapsed (WorkspaceFocus.png). */
-  focus: boolean
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
@@ -752,6 +750,10 @@ export interface UiState {
   /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
   stage?: string
   workspace: WorkspaceView
+  /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
+  sidebar: boolean
+  /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */
+  rightPanel: boolean
 }
 
 /** UI state a fixture forces on boot. */
