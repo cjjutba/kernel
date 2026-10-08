@@ -9,15 +9,15 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Kernel } from '../src/main/kernel'
 import { Approvals } from '../src/main/services/approvals'
-import { Sessions } from '../src/main/services/sessions'
+import { LIMIT_LIFTED, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
-// A scripted SDK, as in sessionRunner.test.ts. `context` is what getContextUsage reports.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40 }))
+// A scripted SDK, as in sessionRunner.test.ts. `context` is what getContextUsage reports, `usage` what the usage call answers (null: unsupported).
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, usage: null as unknown }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
@@ -28,7 +28,8 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {},
-      getContextUsage: async () => ({ percentage: sdk.context })
+      getContextUsage: async () => ({ percentage: sdk.context }),
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => { if (!sdk.usage) throw new Error('not supported'); return sdk.usage }
     }
   }
 }))
@@ -59,6 +60,27 @@ async function runner(o: { onFailure?: (f: string) => void } = {}) {
 
 const result = (uuid = 'r1') => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1000, session_id: 's' })
 
+/** What the usage call answers: the 5-hour window at `percent`, resetting at `resetsAt` (epoch seconds). */
+const usageAt = (percent: number, resetsAt: number) => ({
+  session: { total_cost_usd: 0, total_api_duration_ms: 0, total_duration_ms: 0, total_lines_added: 0, total_lines_removed: 0, model_usage: {} },
+  subscription_type: 'max', rate_limits_available: true, behaviors: null,
+  rate_limits: { five_hour: { utilization: percent, resets_at: new Date(resetsAt * 1000).toISOString() } }
+})
+
+/** A Kernel whose Lead chat hit the 5-hour limit and finished its turn, so every room is paused by the limit. */
+async function limited() {
+  const { k, room } = await kernel()
+  const chat = await k.leadChat(room.id)
+  await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+  const call = sdk.calls[sdk.calls.length - 1]
+  const resetsAt = S(Date.now() + 3600_000)
+  call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt, utilization: 1 }, uuid: 'l1', session_id: 's' })
+  call.feed(result())
+  await flush()
+  expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+  return { k, room, chat, call, resetsAt }
+}
+
 describe('failure signals', () => {
   it('maps SDK errors to the banner they call for', () => {
     expect(failureOf('authentication_failed')).toBe('auth')
@@ -80,6 +102,10 @@ describe('failure signals', () => {
     ]
     expect(blockingLimit(limits, now)?.type).toBe('five_hour')
     expect(blockingLimit([{ type: 'five_hour', status: 'rejected', resetsAt: S(now - 1000) }], now)).toBeUndefined()
+    // Claude Code's Fable limit is Fable's own weekly window: the other models keep running.
+    const fable: RateLimit[] = [{ type: 'seven_day_overage_included', status: 'rejected', resetsAt: S(now + 86_400_000) }]
+    expect(blockingLimit(fable, now)).toBeUndefined()
+    expect(limitedModels(fable, now)).toEqual(['claude-fable-5-1'])
     // The sonnet window already reset.
     expect(limitedModels(limits, now)).toEqual(['claude-opus-5-5'])
     expect(fallbackModel('claude-fable-5-1', ['claude-fable-5-1'])).toBe('claude-opus-5-5')
@@ -261,6 +287,110 @@ describe('kernel recovery paths', () => {
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.1 }, uuid: 'l2', session_id: 's' })
     await flush()
     expect(k.store.room(room.id)?.paused).toBe(false)
+    await k.stop()
+  })
+
+  it('lifts a limit pause when Claude Code reports room before the reset time, and sends what queued', async () => {
+    const { k, room, chat, resetsAt } = await limited()
+    expect(await k.sessions.send(chat.id, [{ type: 'text', text: 'hi' }])).toEqual({ queued: true })
+    sdk.usage = usageAt(100, resetsAt)
+    await k.checkLimits()
+    expect(k.store.room(room.id)?.paused).toBe(true)
+    // Reset on claude.ai: the window is empty again an hour before its reset time.
+    sdk.usage = usageAt(0, resetsAt)
+    await k.checkLimits()
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: 'hi' }] })
+    sdk.usage = null
+    await k.stop()
+  })
+
+  it('lifts a limit pause by the clock when its timer runs late, as after the Mac sleeps', async () => {
+    const { k, room, resetsAt } = await limited()
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(resetsAt * 1000 + 1000)
+      await k.checkLimits()
+    } finally { vi.useRealTimers() }
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    await k.stop()
+  })
+
+  it('asks with a short session when a limit pauses the rooms and no session is live', async () => {
+    const { k, room, resetsAt } = await limited()
+    k.sessions.stopAll()
+    const before = sdk.calls.length
+    sdk.usage = usageAt(0, resetsAt)
+    await k.checkLimits()
+    const probe = sdk.calls[before]
+    expect(probe.options).toMatchObject({ settingSources: [], persistSession: false })
+    expect(probe.options.abortController.signal.aborted).toBe(true)
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    sdk.usage = null
+    await k.stop()
+  })
+
+  it('sends a queued message past a limit pause on Send now, and lifts the pause when Claude Code says the limit is gone', async () => {
+    const { k, room, chat, call } = await limited()
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'hi' }])
+    const [q] = k.sessions.queued(chat.id)
+    expect(await k.handlers()['chats.sendNow']({ chatId: chat.id, id: q.id })).toEqual([])
+    expect(k.sessions.isRunning(chat.id)).toBe(true)
+    expect(k.store.room(room.id)?.paused).toBe(true)
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.01 }, uuid: 'l2', session_id: 's' })
+    await flush()
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    await k.stop()
+  })
+
+  it('carries on a chat the limit stopped mid-turn once the limit lifts', async () => {
+    const { k, room, chat, call } = await limited()
+    expect(k.sessions.isRunning(chat.id)).toBe(false)
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', resetsAt: S(Date.now() + 5 * 3600_000), utilization: 0.01 }, uuid: 'l2', session_id: 's' })
+    await flush()
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    expect(k.sessions.isRunning(chat.id)).toBe(true)
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+    await k.stop()
+  })
+
+  it('keeps a limit pause across a restart while the limit holds, and carries the stopped chat on once it resets', async () => {
+    const { k, room, chat, resetsAt } = await limited()
+    const dataDir = (k as unknown as { o: { dataDir: string } }).o.dataDir
+    await k.stop()
+    const again = new Kernel({ dataDir })
+    await again.start()
+    expect(again.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
+    expect(again.sessions.isPaused(room.id)).toBe(true)
+    await again.stop()
+    // Kernel stayed closed through the reset: the next start lifts the pause and the Lead picks up where it left off.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(resetsAt * 1000 + 1000)
+      const later = new Kernel({ dataDir })
+      await later.start()
+      expect(later.store.room(room.id)?.paused).toBe(false)
+      expect(later.sessions.isRunning(chat.id)).toBe(true)
+      expect(later.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+      await later.stop()
+    } finally { vi.useRealTimers() }
+  })
+
+  it("leaves the rooms running on Fable's own limit, and carries the chat on when it switches model", async () => {
+    const { k, room } = await kernel()
+    const chat = await k.leadChat(room.id)
+    await k.handlers()['chats.configure']({ chatId: chat.id, model: 'claude-fable-5-1' })
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'seven_day_overage_included', resetsAt: S(Date.now() + 86_400_000), utilization: 1 }, uuid: 'l1', session_id: 's' })
+    call.feed(result())
+    await flush()
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    expect(k.sessions.isRunning(chat.id)).toBe(false)
+    await k.handlers()['chats.configure']({ chatId: chat.id, model: 'claude-opus-5-5' })
+    expect(k.sessions.isRunning(chat.id)).toBe(true)
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })
     await k.stop()
   })
 

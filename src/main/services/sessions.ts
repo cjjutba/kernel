@@ -8,7 +8,7 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
 import { toActivity } from './hookServer'
-import { failureOf, WINDOW_MODEL, type Failure } from './health'
+import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import type { AppSettings } from './settings'
 
@@ -49,6 +49,8 @@ interface Live {
   sendNext?: boolean
   /** An api_retry is counting down. The next reply or result clears the banner. */
   retrying?: boolean
+  /** Claude Code answered this turn with a usage limit, so the turn ended early. */
+  limited?: boolean
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
@@ -70,6 +72,8 @@ export interface SessionDeps {
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
+  /** The chats a limit stopped changed. Kernel saves them, so they still carry on after a restart. */
+  onCutOff?: (chatIds: string[]) => void
 }
 
 export class Sessions {
@@ -86,7 +90,19 @@ export class Sessions {
   private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
   /** Chats whose first prompt waits for the workspace's setup script to pass. */
   private waiting = new Set<string>()
+  /** Chats a usage limit stopped mid-turn. They carry on by themselves once the limit lifts (`carryOn`). */
+  private cutOff = new Set<string>()
   constructor(private d: SessionDeps) {}
+
+  /**
+   * What Kernel saved before it last quit: the usage windows and the chats a limit stopped. A rejection without a reset time
+   * is dropped, since nothing could tell when it ends, so it no longer holds anything.
+   */
+  restore(limits: RateLimit[], cutOff: string[]) {
+    for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
+    for (const id of cutOff) this.cutOff.add(id)
+    this.pushLimits()
+  }
 
   /** Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. */
   holdAll(reason: string) {
@@ -103,6 +119,7 @@ export class Sessions {
     this.global = undefined
     g.release()
     for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
+    this.carryOn()
   }
 
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
@@ -149,6 +166,7 @@ export class Sessions {
     this.paused.delete(roomId)
     gate.release()
     for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
+    this.carryOn()
   }
 
   private pausedChat(chat: Chat) {
@@ -164,16 +182,33 @@ export class Sessions {
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
   /**
-   * 5-hour and weekly windows, fetched only when asked. A live session answers the experimental usage call;
-   * without one, or when the call fails, the last rate_limit_event numbers stand.
+   * 5-hour and weekly windows, fetched only when asked. A live session answers the experimental usage call.
+   * Without one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last rate_limit_event numbers stand.
    */
-  async usage(): Promise<RateLimit[]> {
+  async usage(o: { probeIn?: string } = {}): Promise<RateLimit[]> {
     const live = [...this.live.values()].find((l) => !l.abort.signal.aborted)
-    const ask = live?.query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
-    if (live && typeof ask === 'function') {
-      try { this.mergeLimits(limitsFromUsage(await withTimeout(ask.call(live.query, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
-    }
+    if (live) await this.readUsage(live.query)
+    else if (o.probeIn) await this.probeUsage(o.probeIn)
     return [...this.limits.values()]
+  }
+
+  private async readUsage(q: Query) {
+    const ask = q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
+    if (typeof ask !== 'function') return
+    try { this.mergeLimits(limitsFromUsage(await withTimeout(ask.call(q, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
+  }
+
+  /** Claude Code started with no prompt, no settings and no transcript, asked for usage and stopped. It sends no message, so it uses none of the plan. */
+  private async probeUsage(cwd: string) {
+    const input = new InputQueue<SDKUserMessage>()
+    const abort = new AbortController()
+    try {
+      const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
+      await this.readUsage(q)
+    } catch { /* keep rate_limit_event data */ } finally {
+      input.close()
+      abort.abort()
+    }
   }
 
   /**
@@ -198,13 +233,18 @@ export class Sessions {
     return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
   }
 
-  /** Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. */
-  async sendNow(chatId: string, id: string): Promise<QueuedMessage[]> {
+  /**
+   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends.
+   * `pastPause` sends it from an idle chat even though its room is paused, which Kernel asks for when a limit paused it.
+   */
+  async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
     if (!pick) return this.queued(chatId)
-    this.setQueue(chatId, [pick, ...this.queued(chatId).filter((q) => q.id !== id)])
+    const rest = this.queued(chatId).filter((q) => q.id !== id)
+    this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
+    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -223,6 +263,8 @@ export class Sessions {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A held message going out counts as the user taking over too.
     this.handoffs.done(chat.id)
+    // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
+    this.setCutOff(chat.id, false)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.input.push(toUserMessage(parts))
@@ -261,6 +303,35 @@ export class Sessions {
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
   drainWaiting() {
     for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
+    this.carryOn()
+  }
+
+  /**
+   * Chats a usage limit stopped go on once nothing holds them: no limit on the account or on their model, no pause, and a
+   * free slot. What the user queued goes first; otherwise Kernel tells the agent to pick up where it left off.
+   */
+  private carryOn() {
+    for (const id of [...this.cutOff]) {
+      const chat = this.d.store.chat(id)
+      const ws = chat && this.d.store.workspace(chat.workspaceId)
+      if (!chat || chat.closed || !ws || ws.status === 'archived') { this.setCutOff(id, false); continue }
+      if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat)) continue
+      if (this.queued(id).length) this.drain(id)
+      else this.dispatch(chat, [{ type: 'text', text: LIMIT_LIFTED }])
+    }
+  }
+
+  /** A known usage limit stops this chat: one on the whole account, or on the chat's model. */
+  private limitHolds(chat: Chat) {
+    const limits = [...this.limits.values()]
+    return !!blockingLimit(limits) || limitedModels(limits).includes(chat.model)
+  }
+
+  private setCutOff(chatId: string, on: boolean) {
+    if (this.cutOff.has(chatId) === on) return
+    if (on) this.cutOff.add(chatId)
+    else this.cutOff.delete(chatId)
+    this.d.onCutOff?.([...this.cutOff])
   }
 
   private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
@@ -291,6 +362,8 @@ export class Sessions {
       if (patch.plan !== undefined) await live.query.setPermissionMode(patch.plan ? 'plan' : this.baseMode()).catch(() => undefined)
       // Effort applies from the next session start; the SDK fixes it per process.
     }
+    // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
+    if (patch.model) this.carryOn()
     return chat
   }
 
@@ -411,6 +484,7 @@ export class Sessions {
         this.clearRetry(chatId, live)
         const failure = failureOf(msg.error)
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
+        if (failure === 'limit') live.limited = true
         if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
         if (live.blocked) { live.blocked = false; this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working') }
         msg.message.content.forEach((block: any, i: number) => {
@@ -449,9 +523,12 @@ export class Sessions {
         void this.refreshContext(chatId, live)
         const stopped = live.interrupted && !live.sendNext
         const interrupted = live.interrupted
+        // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
+        if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, true)
         live.interrupted = false
         live.sendNext = false
         live.blocked = false
+        live.limited = false
         this.setRunning(chat, ws, live, false)
         this.d.onTurnDone?.(ws, chat, { ok, interrupted })
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
@@ -462,6 +539,7 @@ export class Sessions {
       }
       case 'rate_limit_event': {
         const info = msg.rate_limit_info
+        if (info.status === 'rejected' && live.running) live.limited = true
         this.mergeLimits(limitsFromEvent(info))
         if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
         return
@@ -529,6 +607,8 @@ export class Sessions {
     const limits = [...this.limits.values()]
     bus.push({ type: 'usage', limits })
     this.d.onLimits?.(limits)
+    // A model's own limit lifting pauses and resumes no room, so its chats carry on from here.
+    this.carryOn()
   }
 
   private clearRetry(chatId: string, live: Live) {
@@ -667,6 +747,9 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
 /** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
 interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
 
+/** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
+export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
+
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
 
@@ -773,21 +856,31 @@ export function limitsFromEvent(info: SDKRateLimitInfo): LimitPatch[] {
   return out
 }
 
-/** The experimental usage call reports utilization 0 to 100 and ISO reset times. Converted to the rate_limit_event units. */
+/**
+ * The experimental usage call reports utilization 0 to 100 and ISO reset times. Converted to the rate_limit_event units.
+ * Fable's own weekly window comes in `model_scoped` and is the window rate_limit_event calls `seven_day_overage_included`.
+ */
 export function limitsFromUsage(res: SDKControlGetUsageResponse): LimitPatch[] {
   const out: LimitPatch[] = []
-  for (const type of WINDOWS) {
-    const w = res.rate_limits?.[type]
-    if (!w || w.utilization === null) continue
-    out.push({ type, utilization: w.utilization / 100, resetsAt: w.resets_at ? Math.round(Date.parse(w.resets_at) / 1000) : undefined })
+  const add = (type: LimitPatch['type'], w: { utilization: number | null; resets_at: string | null } | null | undefined) => {
+    if (w && w.utilization !== null) out.push({ type, utilization: w.utilization / 100, resetsAt: w.resets_at ? Math.round(Date.parse(w.resets_at) / 1000) : undefined })
   }
+  for (const type of WINDOWS) add(type, res.rate_limits?.[type])
+  add('seven_day_overage_included', res.rate_limits?.model_scoped?.find((m) => /fable/i.test(m.display_name)))
   return out
 }
 
-/** A patch without a status keeps the stored one, unless that window has since reset. */
+/** Below this, a reading of a rejected window means it lifted early (a reset on claude.ai, a bigger plan). Near 100% it may be rounding, so the rejection stands. */
+const LIFTED_UNDER = 0.95
+
+/**
+ * A patch without a status keeps the stored one, unless that window has since reset or the reading shows clear room again.
+ * A new window resets at least a minute later: reset times read back from ISO strings can be a second off.
+ */
 export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: number): RateLimit {
-  const reset = prev?.resetsAt !== undefined && (prev.resetsAt * 1000 <= now || (patch.resetsAt !== undefined && patch.resetsAt > prev.resetsAt))
-  return { ...prev, status: reset || !prev ? 'allowed' : prev.status, ...defined(patch) }
+  const reset = prev?.resetsAt !== undefined && (prev.resetsAt * 1000 <= now || (patch.resetsAt !== undefined && patch.resetsAt > prev.resetsAt + 60))
+  const room = prev?.status === 'rejected' && patch.status === undefined && patch.utilization !== undefined && patch.utilization < Math.min(prev.utilization ?? 1, LIFTED_UNDER)
+  return { ...prev, status: reset || room || !prev ? 'allowed' : prev.status, ...defined(patch) }
 }
 
 const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T

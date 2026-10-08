@@ -23,10 +23,13 @@ export function failureOf(error: string | undefined, status?: number | null): Fa
 }
 
 /** Windows that stop every session on the account. A rejection pauses every room until it resets. */
-export const ACCOUNT_WINDOWS: RateLimit['type'][] = ['five_hour', 'seven_day', 'seven_day_overage_included']
+export const ACCOUNT_WINDOWS: RateLimit['type'][] = ['five_hour', 'seven_day']
 
-/** The model a per-model weekly window belongs to. */
-export const WINDOW_MODEL: Partial<Record<RateLimit['type'], ModelId>> = { seven_day_opus: 'claude-opus-5-5', seven_day_sonnet: 'claude-sonnet-5-5' }
+/**
+ * The model a per-model weekly window belongs to. Claude Code calls `seven_day_overage_included` the Fable limit:
+ * a separate weekly limit for Fable, so hitting it leaves the other models running.
+ */
+export const WINDOW_MODEL: Partial<Record<RateLimit['type'], ModelId>> = { seven_day_opus: 'claude-opus-5-5', seven_day_sonnet: 'claude-sonnet-5-5', seven_day_overage_included: 'claude-fable-5-1' }
 
 /** A rejection whose reset time has passed no longer counts. `now` is in milliseconds, `resetsAt` in seconds. */
 export const isRejected = (l: RateLimit, now = Date.now()) => l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now)

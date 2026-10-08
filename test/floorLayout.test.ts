@@ -40,8 +40,12 @@ describe('floor layout', () => {
   it('words the limit banner from the rejected limit and its reset', () => {
     const now = new Date(2026, 9, 7, 11, 0).getTime()
     const monday = new Date(2026, 9, 12, 9, 0).getTime()
-    expect(limitBanner([{ type: 'seven_day', status: 'rejected', resetsAt: monday }], now).text).toBe('Weekly limit reached. Every agent waits until Monday, 9:00 AM.')
-    expect(limitBanner([{ type: 'five_hour', status: 'rejected', resetsAt: now + 2 * 3600_000 }], now).text).toBe('5-hour limit reached. Every agent waits until 1:00 PM.')
+    // resetsAt is epoch seconds, as rate_limit_event sends it.
+    const S = (ms: number) => ms / 1000
+    expect(limitBanner([{ type: 'seven_day', status: 'rejected', resetsAt: S(monday) }], now).text).toBe('Weekly limit reached. Every agent waits until Monday, 9:00 AM.')
+    expect(limitBanner([{ type: 'five_hour', status: 'rejected', resetsAt: S(now + 2 * 3600_000) }], now).text).toBe('5-hour limit reached. Every agent waits until 1:00 PM.')
+    // Fable's own weekly limit does not pause rooms, so it never words the banner.
+    expect(limitBanner([{ type: 'five_hour', status: 'rejected', resetsAt: S(now + 2 * 3600_000) }, { type: 'seven_day_overage_included', status: 'rejected', resetsAt: S(monday) }], now).text).toBe('5-hour limit reached. Every agent waits until 1:00 PM.')
   })
 
   it('groups log days', () => {

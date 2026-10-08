@@ -249,7 +249,8 @@ export const floorFixtures: Record<string, Fixture> = {
   FloorLimit: scene((f) => floorScene(f, {
     rooms: roomWith(f, { paused: true, pausedBy: 'limit' }),
     status: { [A]: paused },
-    usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: nextMonday() }],
+    // resetsAt is epoch seconds, as rate_limit_event sends it.
+    usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: nextMonday() / 1000 }],
     extra: [{ id: 'ev5', ts: at(11, 2), roomId: A, agentId: 'rowan', kind: 'limit', text: 'paused the room for', object: 'weekly limit' }]
   })),
   FloorBlocked: scene((f) => {
