@@ -24,8 +24,8 @@ describe('floor layout', () => {
     const team = [a('rowan', true), a('worker'), a('worker-opus'), a('kai'), a('ivy'), a('noor'), a('theo')]
     const workspaces = [{ agentId: 'ivy', status: 'ready' as const }, { agentId: 'kai', status: 'archived' as const }]
     const status = { theo: 'working' as const, noor: 'idle' as const }
-    const activity = [{ agentId: 'noor', ts: 30 }, { agentId: 'worker', ts: 10 }, { agentId: 'kai', ts: 20 }]
-    const { seated, overflow } = seating(team, {}, { workspaces, status, activity })
+    const lastActivity = { noor: 30, worker: 10, kai: 20 }
+    const { seated, overflow } = seating(team, {}, { workspaces, status, lastActivity })
     // ivy has an open workspace and theo is working, both in file order. kai's workspace is archived, so he joins the idle agents.
     expect(seated.map((x) => x.id)).toEqual(['rowan', 'ivy', 'theo', 'noor', 'kai', 'worker'])
     expect(overflow.map((x) => x.id)).toEqual(['worker-opus'])
@@ -33,8 +33,8 @@ describe('floor layout', () => {
 
   it('seats Noor and Theo ahead of the Issue Workers when everyone is idle', () => {
     const team = [a('issue-worker'), a('issue-worker-opus'), a('ivy'), a('kai'), a('lumi'), a('noor'), a('rowan', true), a('theo')]
-    const activity = [{ agentId: 'theo', ts: 50 }, { agentId: 'noor', ts: 40 }, { agentId: 'rowan', ts: 60 }, { agentId: 'kai', ts: 30 }, { agentId: 'ivy', ts: 20 }, { agentId: 'issue-worker', ts: 1 }]
-    const { seated, overflow } = seating(team, {}, { activity })
+    const lastActivity = { theo: 50, noor: 40, rowan: 60, kai: 30, ivy: 20, 'issue-worker': 1 }
+    const { seated, overflow } = seating(team, {}, { lastActivity })
     expect(seated.map((x) => x.id)).toEqual(['rowan', 'theo', 'noor', 'kai', 'ivy', 'issue-worker'])
     expect(overflow.map((x) => x.id)).toEqual(['issue-worker-opus', 'lumi'])
   })
@@ -42,12 +42,12 @@ describe('floor layout', () => {
   it('keeps file order for agents with no activity, and for any room that sends none', () => {
     const team = [a('kai'), a('rowan', true), a('noor')]
     expect(seating(team).seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'noor'])
-    expect(seating(team, {}, { activity: [{ agentId: 'noor', ts: 5 }] }).seated.map((x) => x.id)).toEqual(['rowan', 'noor', 'kai'])
+    expect(seating(team, {}, { lastActivity: { noor: 5 } }).seated.map((x) => x.id)).toEqual(['rowan', 'noor', 'kai'])
   })
 
   it('lets room.desks win over workspaces, status and activity', () => {
     const team = [a('rowan', true), a('kai'), a('noor')]
-    const ctx = { workspaces: [{ agentId: 'noor', status: 'ready' as const }], status: { noor: 'working' as const }, activity: [{ agentId: 'noor', ts: 9 }] }
+    const ctx = { workspaces: [{ agentId: 'noor', status: 'ready' as const }], status: { noor: 'working' as const }, lastActivity: { noor: 9 } }
     expect(seating(team, { desks: ['rowan', 'kai', 'noor'] }, ctx).seated.map((x) => x.id)).toEqual(['rowan', 'kai', 'noor'])
   })
 
