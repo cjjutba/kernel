@@ -103,7 +103,7 @@ export function kernelTools(d: KernelToolDeps) {
       workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
     }, async ({ workspace_ids }) => {
       const lines: string[] = []
-      // One id at a time, so a skip or a failed archive doesn't stop the rest (D-088).
+      // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
       for (const id of workspace_ids) {
         const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
         const skip = !ws ? 'not an open workspace in this room'
