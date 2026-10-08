@@ -10,7 +10,7 @@ export interface KernelToolDeps {
   lead: AgentDef | undefined
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string }) => Promise<Workspace>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string }) => Promise<Workspace>
   messageWorkspace: (workspaceId: string, text: string) => Promise<void>
   /** `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. */
   askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
@@ -71,9 +71,10 @@ export function kernelTools(d: KernelToolDeps) {
       title: z.string().describe('Task title, used to name the branch'),
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
       mode: z.enum(['worktree', 'current']).optional(),
-      base_ref: z.string().optional()
-    }, async ({ agent, title, brief, mode, base_ref }) => {
-      const ws = await d.createWorkspace({ prompt: brief, agentId: agent, mode, baseRef: base_ref, title })
+      base_ref: z.string().optional(),
+      branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the title")
+    }, async ({ agent, title, brief, mode, base_ref, branch }) => {
+      const ws = await d.createWorkspace({ prompt: brief, agentId: agent, mode, baseRef: base_ref, title, branch })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: agent, data: { assignee: agent } })
       d.handedOff?.()
       return text(`Created ${ws.id} on ${ws.branch} for ${agent}.`)
