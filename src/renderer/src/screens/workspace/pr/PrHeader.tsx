@@ -3,7 +3,7 @@ import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { busyLabel, failTitle, headerView, type PrAction } from './model'
+import { busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import './pr.css'
 
 const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
@@ -32,8 +32,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
-  // The Changes panel saves its file count on the workspace. No files, nothing to put in a PR.
-  const changed = (ws.stat?.files ?? 0) > 0
+  const changed = hasChanges(ws)
   const view = headerView(ws.prState, changed)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {

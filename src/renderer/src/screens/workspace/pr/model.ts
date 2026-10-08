@@ -17,6 +17,9 @@ export interface PrHeaderView {
 
 export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen'
 
+/** The Changes panel saves its file count on the workspace. No files, or no count yet, means nothing to put in a PR. */
+export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
+
 /** `changed` is false when the workspace has nothing to put in a PR, which hides Create PR and its menu. */
 export function headerView(state: PrState, changed = true): PrHeaderView {
   const base: PrHeaderView = { link: true, caret: false, merged: false, archive: false }

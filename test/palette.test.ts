@@ -19,7 +19,7 @@ describe('command palette', () => {
 
   it('suggests from where you are and lists every room', () => {
     const rooms = [room('a', 'Client A'), room('b', 'Client B')]
-    const workspaces = [ws('invoice-table')]
+    const workspaces = [ws('invoice-table', { stat: { files: 4, added: 412, removed: 38 } })]
     const input = { rooms, workspaces, approvals: [], agents: {}, act }
     const home = buildItems({ ...input, route: { name: 'home' } })
     expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New workspace in Client A', 'Create PR for invoice-table', 'Brief the Lead'])
@@ -30,6 +30,19 @@ describe('command palette', () => {
     const found = visibleItems(inWs.items, inWs.more, 'appear')
     expect(found).toHaveLength(1)
     expect(found[0].list.map((i) => i.label)).toEqual(['Settings: Appearance'])
+  })
+
+  it('suggests Create PR only for a workspace with changes', () => {
+    const rooms = [room('a', 'Client A')]
+    const labels = (workspaces: Workspace[], route: Parameters<typeof buildItems>[0]['route']) =>
+      buildItems({ rooms, workspaces, approvals: [], agents: {}, act, route }).items.map((i) => i.label).filter((l) => l.startsWith('Create PR for'))
+    const stat = (files: number) => ({ files, added: files, removed: 0 })
+    const here = { name: 'workspace', workspaceId: 'a1' } as const
+    expect(labels([ws('a1')], here)).toEqual([])
+    expect(labels([ws('a1', { stat: stat(0) })], { name: 'home' })).toEqual([])
+    expect(labels([ws('a1', { stat: stat(2) })], here)).toEqual(['Create PR for a1'])
+    // The current workspace is empty, so the suggestion falls back to the newest one in the room that has changes.
+    expect(labels([ws('a1', { stat: stat(0) }), ws('a2', { stat: stat(3), createdAt: 2 }), ws('a3', { createdAt: 3 })], here)).toEqual(['Create PR for a2'])
   })
 
   it("opens the Lead's chat in the room in view, and finds any room's Lead by typing", () => {
