@@ -97,9 +97,12 @@ export class Tasks {
     return out
   }
 
-  /** Rowan created a workspace for `agentId`: the first waiting task for that agent in the latest plan is now being built. */
-  link(roomId: string, agentId: string, workspaceId: string): Task | undefined {
-    const waiting = this.list(roomId).filter((t) => t.approvalId && !t.workspaceId && t.agentId === agentId)
+  /**
+   * Rowan created a workspace for `agentId`: the first waiting task for that agent in the latest plan is now being built.
+   * `approvalIds` limits it to those plans, the ones approved in the Lead chat that handed it off (KERNEL-105).
+   */
+  link(roomId: string, agentId: string, workspaceId: string, o: { approvalIds?: Set<string> } = {}): Task | undefined {
+    const waiting = this.list(roomId).filter((t) => t.approvalId && !t.workspaceId && t.agentId === agentId && (!o.approvalIds || o.approvalIds.has(t.approvalId)))
     const latest = Math.max(0, ...waiting.map((t) => t.createdAt))
     const task = waiting.filter((t) => t.createdAt === latest).sort((x, y) => x.id.localeCompare(y.id, undefined, { numeric: true }))[0]
     if (!task) return undefined
