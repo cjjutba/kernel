@@ -3,6 +3,7 @@
   "productName": "Kernel",
   "version": "0.1.0",
   "description": "A Mac app where Claude Code agents work as a team in a virtual office.",
+  "license": "Elastic-2.0",
   "private": true,
   "type": "module",
   "main": "out/main/index.js",
