@@ -23,6 +23,10 @@ const fixtureName = process.env.KERNEL_FIXTURES
 /** `npm run shots -- --theme light` forces a theme on any fixture. */
 const fixtureTheme = () => (process.env.KERNEL_FIXTURE_THEME === 'light' || process.env.KERNEL_FIXTURE_THEME === 'dark' ? { theme: process.env.KERNEL_FIXTURE_THEME } : {})
 if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
+// Scripted runs (the shots harness, Playwright drives) set KERNEL_HEADLESS=1. The window still renders but never
+// shows, and the app gets no Dock icon and never takes focus, so it can run while someone types in another app.
+const headless = process.env.KERNEL_HEADLESS === '1'
+if (headless) app.setActivationPolicy('accessory')
 
 /** Traffic lights over the sidebar's 42px top strip, or centered in the screen header row (y 9 to 53) while the sidebar is hidden. */
 const LIGHTS = { sidebar: { x: 13, y: 15 }, header: { x: 20, y: 25 } }
@@ -38,7 +42,8 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: LIGHTS.sidebar,
     show: false,
-    webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true }
+    // A hidden page counts as in the background, and Chromium would slow its timers and frames.
+    webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless }
   })
   // The default menu would close the window on Cmd+W. Kernel closes the open tab instead, so the page hears about it.
   win.webContents.on('before-input-event', (e, input) => {
@@ -47,7 +52,7 @@ function createWindow() {
       void win?.webContents.executeJavaScript("window.dispatchEvent(new Event('kernel:close-tab'))")
     }
   })
-  win.once('ready-to-show', () => win?.show())
+  if (!headless) win.once('ready-to-show', () => win?.show())
   win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(here, '../renderer/index.html'))
@@ -62,7 +67,7 @@ function bootFailed(err: unknown) {
 
 app.whenReady().then(async () => {
   // A packaged app takes its icon from build/icon.icns. Dev runs would show Electron's, so set the same mark here.
-  if (!app.isPackaged) app.dock?.setIcon(join(app.getAppPath(), 'build/icon.png'))
+  if (!app.isPackaged && !headless) app.dock?.setIcon(join(app.getAppPath(), 'build/icon.png'))
   const known = fixtureName ? (await import('../../fixtures')).fixtures : {}
   const fixture = fixtureName ? known[fixtureName] : undefined
   if (fixtureName && !fixture) {
