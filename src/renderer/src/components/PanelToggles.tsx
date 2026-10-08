@@ -1,5 +1,25 @@
+import { useEffect } from 'react'
 import { actions, getState, useStore } from '../store'
 import { IconButton } from '../ui'
+
+/** Window widths below which a panel folds: the right panel first, then the sidebar (D-080). */
+const FOLD_BELOW = { rightPanel: 1024, sidebar: 900 } as const
+
+/** Folds the sidebar and right panel when the window gets narrow, and brings them back when it widens. Runs once, in App. */
+export function useFoldPanels() {
+  useEffect(() => {
+    const narrow = { rightPanel: false, sidebar: false }
+    const check = () => {
+      for (const panel of ['rightPanel', 'sidebar'] as const) {
+        const now = window.innerWidth < FOLD_BELOW[panel]
+        if (now !== narrow[panel]) { narrow[panel] = now; actions.ui.fold(panel, now) }
+      }
+    }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+}
 
 export const toggleSidebar = () => actions.ui.setSidebar(!getState().ui.sidebar)
 export const toggleRightPanel = () => actions.ui.setRightPanel(!getState().ui.rightPanel)

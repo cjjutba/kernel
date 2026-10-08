@@ -116,8 +116,8 @@ export function Floor({ roomId }: { roomId: string }) {
         <button className="pill" onClick={() => go({ name: 'board', roomId })}>Board</button>
         <button className="pill" onClick={() => go({ name: 'team', roomId })}>Team</button>
         <span className="grow" />
-        <span className="muted" style={{ fontSize: 12 }}>{working} working</span>
-        {needs > 0 && <span style={{ fontSize: 12, fontWeight: 500 }}>{needs} needs you</span>}
+        <span className="muted floor-count" style={{ fontSize: 12 }}>{working} working</span>
+        {needs > 0 && <span className="floor-count" style={{ fontSize: 12, fontWeight: 500 }}>{needs} needs you</span>}
         <button className="btn floor-pause" aria-pressed={room.paused} onClick={() => void togglePause()}>
           <Icon name={room.paused ? 'play' : 'pause'} size={11} />{room.paused ? 'Resume room' : 'Pause room'}
         </button>

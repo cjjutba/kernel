@@ -16,3 +16,14 @@
 .hs-pr { color: var(--muted); }
 .hs-pr[data-merged='true'] { color: var(--merged); }
 .hs-when { color: var(--muted); }
+
+/* Narrow screens drop the branch, then the room and the date (D-080). */
+@container panel (max-width: 1060px) {
+  .hs-row { grid-template-columns: minmax(0, 1fr) 126px 136px 100px auto; }
+  .hs-row > .hs-branch { display: none; }
+}
+@container panel (max-width: 680px) {
+  .hs-body { padding: 8px 12px 24px; }
+  .hs-row { grid-template-columns: minmax(0, 1fr) 110px auto; }
+  .hs-row > .hs-room, .hs-row > .hs-when { display: none; }
+}

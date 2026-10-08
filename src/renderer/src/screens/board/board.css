@@ -1,10 +1,11 @@
 /* Board and task drawer (KERNEL-18). Tokens only. */
 .bd-bar { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; border-bottom: 1px solid var(--line); }
-.bd-filter { display: flex; gap: 2px; padding: 2px; border-radius: var(--r); border: 1px solid var(--pill-line); }
-.bd-filter button { height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
+.bd-filter { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 2px; border-radius: var(--r); border: 1px solid var(--pill-line); }
+.bd-filter button { flex-shrink: 0; white-space: nowrap; height: 24px; padding: 0 10px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; font-weight: 500; }
 .bd-filter button[aria-pressed='true'] { background: var(--surface-3); color: var(--ink); }
 .bd-body { position: relative; flex: 1; min-height: 0; padding: 12px; }
-.bd-cols { height: 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+/* Six columns share the width down to 176px each, then the board scrolls sideways (D-080). */
+.bd-cols { height: 100%; display: grid; grid-template-columns: repeat(6, minmax(176px, 1fr)); gap: 8px; overflow-x: auto; }
 .bd-col { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 4px; border-radius: var(--r-md); background: var(--canvas); overflow-y: auto; }
 .bd-col-head { display: flex; align-items: center; gap: 8px; height: 34px; flex-shrink: 0; padding: 0 8px; }
 .bd-col-head h2 { margin: 0; font-size: 13px; font-weight: 500; }
@@ -28,10 +29,10 @@
 .bd-chip[data-tag='needs'] { border-color: var(--line-4); color: var(--ink); }
 .bd-chip[data-tag='blocked'] { border-color: var(--line-3); }
 .bd-meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bd-empty { position: absolute; left: 50%; top: 42%; z-index: 5; transform: translate(-50%, -50%); width: 360px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.bd-empty { position: absolute; left: 50%; top: 42%; z-index: 5; transform: translate(-50%, -50%); width: min(360px, calc(100% - 24px)); display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
 .bd-empty p { margin: 0; }
 .bd-empty-title { font-size: 15px; font-weight: 600; }
-.bd-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: 460px; display: flex; flex-direction: column; border-left: 1px solid var(--line-3); background: var(--surface-2); }
+.bd-drawer { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: min(460px, 100%); display: flex; flex-direction: column; border-left: 1px solid var(--line-3); background: var(--surface-2); }
 .bd-drawer-head { display: flex; align-items: center; gap: 10px; height: 48px; flex-shrink: 0; padding: 0 10px 0 18px; border-bottom: 1px solid var(--pill-line); }
 .bd-drawer-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 18px; }
 .bd-drawer-title { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }

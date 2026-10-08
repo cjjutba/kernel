@@ -157,14 +157,14 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
             <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
               onChange={() => setDismissed('')} onKeyDown={onKey} />
             <div className="row" style={{ gap: 6 }}>
-              <span className="cmp-agent"><span className="agent-dot" aria-hidden="true">{name[0]?.toUpperCase()}</span>{name}<span className="muted">{agent?.role}</span></span>
+              <span className="cmp-agent"><span className="agent-dot" aria-hidden="true">{name[0]?.toUpperCase()}</span><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
               <span className="cmp-sep" />
               <span ref={modelAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={10} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} onClose={() => setMenu(null)} onModel={(m) => { setMenu(null); void configure({ model: m }) }} onEffort={(x) => void configure({ effort: x })} />}
               </span>
               {chat.plan && <Button className="cmp-plan" aria-label="Turn off plan mode" onClick={() => void configure({ plan: false })}>Plan mode<Icon name="close" size={9} stroke={2} /></Button>}
-              {chat.context ? <span className="ink2" style={{ fontSize: 12 }}>Context {chat.context}%</span> : null}
+              {chat.context ? <span className="ink2 cmp-context">Context {chat.context}%</span> : null}
               <span className="grow" />
               <span ref={plusAnchor} style={{ position: 'relative' }}>
                 <IconButton icon="plus" label="Plan mode and attachments" aria-haspopup="menu" aria-expanded={menu === 'plus'} onClick={() => setMenu(menu === 'plus' ? null : 'plus')} />

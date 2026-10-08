@@ -9,7 +9,7 @@
 .rm-row:hover { background: var(--nav-hover); }
 .rm-name { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .rm-letter { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line-3); background: var(--surface-3); font-size: 12px; font-weight: 600; }
-.rm-link { padding: 0; border: 0; background: transparent; color: var(--ink); font-weight: 500; text-align: left; }
+.rm-link { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; border: 0; background: transparent; color: var(--ink); font-weight: 500; text-align: left; }
 .rm-desc { font-size: 12px; color: var(--muted); }
 .rm-source { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--ink-2); }
 .rm-source svg { color: var(--muted); flex-shrink: 0; }
@@ -94,3 +94,13 @@
 .rm-check { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-2); }
 .rm-check input { width: 14px; height: 14px; margin: 0; accent-color: var(--ink); }
 .nr-name:focus-visible, .nr-desc:focus-visible, .cr-search input:focus-visible { outline: none; }
+
+/* Narrow screens drop Source, then Agents (D-080). */
+@container panel (max-width: 900px) {
+  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 150px 130px 90px; }
+  .rm-head > :nth-child(2), .rm-row > :nth-child(2) { display: none; }
+}
+@container panel (max-width: 600px) {
+  .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 110px 80px; }
+  .rm-head > :nth-child(3), .rm-row > :nth-child(3) { display: none; }
+}

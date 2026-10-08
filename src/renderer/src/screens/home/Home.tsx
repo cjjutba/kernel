@@ -165,7 +165,7 @@ export function Home() {
             </div>
             <section aria-label="Rooms">
               <h3 className="hm-head">Rooms <span>{rooms.length}</span><span className="grow" /><button type="button" className="hm-see" onClick={() => go({ name: 'rooms' })}>See all</button></h3>
-              <div className="col" style={{ gap: 10, marginTop: 10 }}>
+              <div className="col hm-rooms" style={{ gap: 10, marginTop: 10 }}>
                 {rooms.map((r) => {
                   const team = agents[r.id] ?? []
                   const state = roomState(r, approvals, status[r.id])
