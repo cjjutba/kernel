@@ -39,7 +39,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
   const [model, setModel] = useState<ModelId>(settings?.models.engineers ?? 'claude-sonnet-5-5')
   const [effort, setEffort] = useState<Effort>(settings?.models.effort ?? 'high')
-  const [plan, setPlan] = useState(false)
+  const [plan, setPlan] = useState(settings?.models.workspacePlanMode ?? false)
   const d = useDraft()
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
