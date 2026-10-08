@@ -1,6 +1,5 @@
 import type { ActivityEvent, AgentDef, AgentStatus, Approval, Room, Task, Workspace } from '@shared/types'
 import { seating } from '../../floor/layout'
-import { planSteps } from '../workspace/cards/steps'
 import { DESK_SPOTS } from './motion/waypoints'
 import type { Leg } from './motion/walks'
 
@@ -30,7 +29,7 @@ export interface Sequence {
   legs: Leg[]
   /** Who the agent card follows when nobody was clicked and nobody needs the user: the agent being handed work. */
   focus?: string
-  /** A line said out loud on the floor (the Lead's `say` tool), shown as a speech bubble. */
+  /** A line said out loud on the floor (an `agent.say` from anyone, the Lead's `say` tool included), shown as a speech bubble. */
   say?: { id: string; agentId: string; text: string }
   /** PRs ready to merge, for the review card. */
   review?: { title: string; sub: string }
@@ -47,8 +46,9 @@ export const isStage = (s: string | undefined): s is Stage => !!s && (STAGES as 
 /**
  * Which stage the room is in, and what the floor draws for it.
  * - plan: the Lead's plan approval (`request_plan_approval`) is pending
- * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`, until every
- *   planned step has a workspace
+ * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`. It ends once
+ *   every step that names an agent has a workspace and the Lead has logged something since the last `workspace.created` other
+ *   than a line it said, so the last stop is walked and its line shows. Plans without such steps (plan mode) end with the turn
  * - sent, then planning: a brief (`rooms.brief`) the Lead is on; planning once the Lead acts on it in plan mode.
  *   A plan sent back with changes reopens the brief, so the Lead plans at the wall again, until that turn ends
  * - needs: an approval is pending or an agent needs the user
@@ -91,8 +91,11 @@ export function sequence(i: SequenceInput): Sequence {
 
   let stage: Stage
   const onBrief = !!brief && busy(leadStatus) && !roundOver && (planAt < briefAt || revising)
-  const planned = lastPlan ? planSteps(lastPlan).length : 0
-  const handedAll = planned > 0 && handoffs.length >= planned
+  // The engine links each step to its workspace as `create_workspace` runs. Steps with no agent can never be linked.
+  const assigned = (lastPlan?.steps ?? []).filter((s) => s.agentId)
+  const lastCreate = handoffs.length ? handoffs[handoffs.length - 1].ts : -Infinity
+  const handedAll = assigned.length > 0 && assigned.every((s) => s.workspaceId)
+    && events.some((e) => e.ts > lastCreate && byLead(e) && e.kind !== 'workspace.created' && e.kind !== 'agent.say')
   if (plans.some((a) => a.status === 'pending')) stage = 'plan'
   else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt && updatedAt < planAt && !handedAll) stage = 'handoff'
   else if (onBrief) {
