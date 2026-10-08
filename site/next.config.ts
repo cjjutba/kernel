@@ -7,6 +7,8 @@ const config: NextConfig = {
   outputFileTracingRoot: import.meta.dirname,
   turbopack: { root: import.meta.dirname },
   poweredByHeader: false,
+  // Stops `next dev` from writing an AGENTS.md into site/ when it detects a coding agent.
+  agentRules: false,
   // Screenshots are mostly small UI text, which blurs at the default quality of 75.
   images: { formats: ['image/avif', 'image/webp'], qualities: [90] }
 }

@@ -65,4 +65,5 @@ The schema in `lib/schema.ts` checks every entry at build time, and `npm test` c
 
 - Root Directory `site`, Framework Next.js, Node 22.
 - Ignored Build Step: `git diff --quiet HEAD^ HEAD -- .` Vercel runs it from the Root Directory, so `.` means `site/`.
-- Set `NEXT_PUBLIC_SITE_URL` for production, and optionally `GITHUB_TOKEN`.
+- Set `NEXT_PUBLIC_SITE_URL` to `https://kernel.cjjutba.dev` for Production, and optionally `GITHUB_TOKEN`.
+- Domain: `kernel.cjjutba.dev`, a CNAME record at Porkbun pointing to the value Vercel shows.

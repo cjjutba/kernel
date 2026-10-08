@@ -471,7 +471,7 @@ Target WCAG 2.2 AA.
 
 - Lighthouse (desktop and mobile) on both pages: Performance 95 or more, Accessibility 100, Best Practices 100, SEO 100.
 - LCP under 2.0 s on desktop, CLS under 0.02.
-- First load JavaScript on `/` under 120 kB gzipped; `/changelog` should ship no client JavaScript beyond Next's runtime.
+- First load JavaScript, gzipped: the site's own code on `/` under 30 kB and on `/changelog` under 10 kB, on top of Next's shared runtime (about 132 kB in Next 16). The total on `/` stays under 160 kB and the budget test reports it. `/changelog` never loads the tour tabs.
 - Images through `next/image` (AVIF and WebP), explicit dimensions, lazy except the hero.
 - No runtime requests to third party origins except the server side GitHub API call.
 
@@ -537,9 +537,9 @@ Prepare the repo so CJ only clicks through:
 CJ's steps (list them in the PR description):
 
 1. Vercel: Add New Project, import `cjjutba/kernel`, Root Directory `site`, Framework Next.js, Node 22.
-2. Ignored Build Step: `git diff --quiet HEAD^ HEAD -- site/ design/site/` (skips builds when the site did not change).
-3. Environment: `NEXT_PUBLIC_SITE_URL` set to the production URL; optionally `GITHUB_TOKEN` (a fine grained token with no permissions is enough for the public API).
-4. Domain: CJ decides (for example `kernel.cjjutba.com`); add it in Vercel and create the DNS record it shows.
+2. Ignored Build Step: `git diff --quiet HEAD^ HEAD -- .` (skips builds when the site did not change). Vercel runs it from the Root Directory, so `.` means `site/`.
+3. Environment: `NEXT_PUBLIC_SITE_URL` set to `https://kernel.cjjutba.dev` (Production); optionally `GITHUB_TOKEN` (a fine grained token with no permissions is enough for the public API).
+4. Domain: `kernel.cjjutba.dev`. Add it in Vercel and create the CNAME record it shows at Porkbun.
 5. After the first production deploy: add the website link to `README.md` (section 4.7) in a follow up commit.
 
 ## 17. Tasks (one task, one commit)
