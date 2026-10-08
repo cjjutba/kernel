@@ -98,7 +98,7 @@ export function setState(patch: Partial<State> | ((s: State) => Partial<State>))
   state = { ...state, ...(typeof patch === 'function' ? patch(state) : patch) }
   listeners.forEach((l) => l())
 }
-const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
+export const subscribe = (l: () => void) => { listeners.add(l); return () => { listeners.delete(l) } }
 
 /** Same top-level entries. Selectors build new arrays and objects (`?? []`, `.filter`), so identity alone isn't enough. */
 function shallowEqual(a: unknown, b: unknown): boolean {
