@@ -42,7 +42,8 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
           {notes.map((n, i) => (
             <div key={i} className="wn-item">
               <span className="wn-title">{n.title}</span>
-              <span className="wn-body">{n.body}</span>
+              {/* A section's changes come one per line (parseNotes in src/main/updater.ts). */}
+              {n.body.split('\n').map((line, j) => <span key={j} className="wn-body">{line}</span>)}
             </div>
           ))}
         </div>

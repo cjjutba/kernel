@@ -1,0 +1,21 @@
+"$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
+
+[scripts]
+# Same install as .kernel/settings.toml. The postinstall hook rebuilds the native modules for Electron.
+setup = "npm install --no-audit --no-fund"
+# Every dev instance opens the same Electron userData folder and SQLite database, so only one runs at a time.
+run_mode = "nonconcurrent"
+# Gitignored build output only. Nothing outside the workspace is touched.
+archive = "rm -rf out dist site/.next site/.next-e2e"
+
+[scripts.run.dev]
+available_in = [ "local" ]
+command = "npm run dev"
+default = true
+icon = "play"
+
+[scripts.run.site]
+available_in = [ "local" ]
+# The website is a separate package in site/, so its dependencies install on first run instead of in setup.
+command = "npm --prefix site install --no-audit --no-fund && npm --prefix site run dev -- --port $CONDUCTOR_PORT"
+icon = "globe"

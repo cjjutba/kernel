@@ -36,11 +36,10 @@ mac:
 dmg:
   artifactName: ${productName}-${arch}.${ext}
 # Where installed copies look for updates (written into the app as app-update.yml). scripts/release.sh uploads the
-# release with gh after the build passes its checks, so electron-builder itself never publishes.
+# release with gh after the build passes its checks, so electron-builder itself never publishes. It also passes
+# releaseInfo.releaseNotesFile, rendered from site/content/releases/<version>.md, which is copied into latest-mac.yml
+# for What's new (D-058).
 publish:
   provider: github
   owner: cjjutba
   repo: kernel
-# Copied into latest-mac.yml, which is where What's new reads the notes from.
-releaseInfo:
-  releaseNotesFile: build/release-notes.md

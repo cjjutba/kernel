@@ -43,23 +43,26 @@ node scripts/check-render.mjs changelog        # full page against design/site/r
 
 ## Add a changelog entry
 
-Add the release at the top of `releases` in `content/changelog.ts`, so the list stays newest first. The newest release gets the Latest badge and sets the "Kernel 0.1 is here" pill on the landing page.
+Each release is a file in `content/releases/<version>.md`, compiled from the repo's release-note fragments by `npm run release:notes` at the repo root (`../.changes/README.md`, `../docs/RELEASING.md`). Don't write one from scratch; edit the compiled file in the release PR.
 
-```ts
-{
-  version: '0.2.0',             // x.y.z
-  date: '2026-11-02',           // yyyy-mm-dd
-  title: 'Short headline',
-  image: { src: '/images/floor.png', alt: 'What the screenshot shows' },  // optional, 1440x900 in public/images
-  intro: 'One or two sentences.',
-  sections: [
-    { title: 'Highlights', items: [{ lead: 'Bold lead in.', text: 'The rest of the line.' }] },
-    { title: 'Under the hood', items: [{ text: 'A fix.', pr: 41 }] }
-  ]
-}
+```md
+---
+version: 0.2.0
+date: 2026-11-02
+title: Short headline
+image: /images/floor.png
+imageAlt: What the screenshot shows
+intro: One or two sentences.
+---
+
+## New
+
+- **Bold lead in.** The rest of the line. (#41)
 ```
 
-The schema in `lib/schema.ts` checks every entry at build time, and `npm test` checks the order. Update `upNext` when plans change.
+`image` and `imageAlt` (a 1440x900 PNG in `public/images`) and `intro` are optional. Quote a value in double quotes when it contains `: `. Sections are free text: compiled releases use New, Improved and Fixed. An item may end with its PR, `(#41)`.
+
+`content/changelog.ts` reads the files at build time and checks them with the schema in `lib/schema.ts`, so a bad file fails the build. A minor version is its own entry; its patches show inside it as "New in x.y.z". The newest entry gets the Latest badge and the newest version sets the "Kernel 0.1 is here" pill on the landing page. Update `content/upNext.ts` when plans change.
 
 ## Deploy (Vercel)
 

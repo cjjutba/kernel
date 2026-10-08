@@ -24,26 +24,57 @@ You need an active Apple Developer Program membership, Xcode command line tools,
 
 3. **GitHub.** `gh auth login`. The release script publishes with `gh`; there's no token to configure.
 
+## Release notes
+
+Every PR that changes the app adds a fragment in `.changes/unreleased/`: one sentence about what users will notice, with a type (new, improved, fixed or internal) and an optional Linear key. The Release note check in CI fails a PR that changes app files without one. `.changes/README.md` has the format and the writing rules.
+
+A release compiles the fragments into `site/content/releases/<version>.md` and moves them to `.changes/released/<version>/`. That one file feeds three places (D-058):
+
+- **The website.** `site/content/changelog.ts` reads every release file at build time. A minor version is a titled entry; its patches show inside it as "New in x.y.z", oldest first. The newest version sets the hero pill and the Latest badge.
+- **The GitHub release.** `scripts/release.sh` publishes the notes as the release body, then adds GitHub's generated list of merged PRs under "Full list of changes".
+- **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read them from there.
+
 ## Cutting a release
 
-1. Bump `version` in `package.json` and write `build/release-notes.md` for users. Each `### Title` and the paragraph under it becomes one item in What's new; text before the first heading shows only on GitHub.
-2. Merge that to `main` through a PR.
-3. On an up-to-date, clean `main`:
+Run `/release` in Claude Code. It does the steps below, stops for you where a person decides, and checks the result. By hand:
+
+1. On an up-to-date, clean `main` with green CI, run `npm run release:notes -- --preview`. It prints the unreleased notes and suggests the version: minor if anything is new, otherwise patch.
+2. Make the release PR:
 
    ```sh
-   git tag v<version> && git push origin v<version>
+   git checkout -b release/<version>
+   npm run release:notes -- <version>
+   npm version <version> --no-git-tag-version
+   ```
+
+   For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check.
+3. After it merges, tag the merge commit and publish:
+
+   ```sh
+   git checkout main && git pull --ff-only
+   git tag -a v<version> -m "Kernel <version>" && git push origin v<version>
    npm run release
    ```
 
-   The script checks the tag (on HEAD and on origin), the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
+   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
 
-`npm run release -- --dry` does everything except publish, and skips the tag check. `npm run dist:mac` makes an unsigned local build with no certificate needed.
+`npm run release -- --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `npm run dist:mac` makes an unsigned local build with no certificate needed.
+
+When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`.
+
+## When notarization is slow
+
+Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `npm run release` again on the same tag.
+
+## When a release is broken
+
+Never move or delete a published tag or release. Installed copies, the update feed and the download link already point at it. Fix forward: merge the fix with its own fragment, then release the next patch version with the same routine.
 
 ## How updates reach users
 
 `src/main/updater.ts` checks at launch and every 4 hours. A new version downloads in the background, then the footer shows Update ready. The pill opens What's new with the release notes, Later, and Restart to update. After the update installs, What's new opens once on its own. Only packaged builds check; dev runs never do.
 
-While the repo is private an installed copy can't read its releases, so checks fail quietly and Kernel reports no update.
+What's new shows the notes as the installed copy parses them, and it saves them before the restart. Kernel 0.1.0 joins a section's changes into one paragraph; later versions show each change on its own line. `test/fixtures/parseNotes-v0.1.0.ts` keeps 0.1.0's parser so a test proves the notes read cleanly there.
 
 ## Checking a build by hand
 
