@@ -48,7 +48,8 @@ describe('guard: edits outside the repo', () => {
     ['an edit to a plan file', 'Edit', `${plans}/kernel-63-rosy-pixel.md`],
     ['a MultiEdit to a plan file', 'MultiEdit', `${plans}/kernel-63-rosy-pixel.md`],
     ['a plan file written with ~', 'Write', '~/.claude/plans/kernel-63-rosy-pixel.md'],
-    ['a real subfolder and .. back into the plans folder', 'Write', `${plans}/real-sub/../x.md`]
+    ['a real subfolder and .. back into the plans folder', 'Write', `${plans}/real-sub/../x.md`],
+    ['the app\'s data folder', 'Write', join(home, 'Library/Application Support/Kernel/kernel.db')]
   ])('allows %s', (_, tool, file) => {
     expect(guard(tool, { file_path: file })).toBe('allow')
   })
@@ -56,7 +57,6 @@ describe('guard: edits outside the repo', () => {
   it.each([
     ['~/.claude/settings.json', 'Write', join(home, '.claude/settings.json')],
     ['~/.claude/settings.json with ~', 'Edit', '~/.claude/settings.json'],
-    ['Application Support/Kernel', 'Write', join(home, 'Library/Application Support/Kernel/kernel.db')],
     ['a non-.md file in the plans folder', 'Write', `${plans}/notes.txt`],
     ['a prefix trap', 'Write', join(home, '.claude/plans-evil/x.md')],
     ['a literal .. out of the plans folder', 'Write', `${plans}/../x.md`],
@@ -77,6 +77,11 @@ describe('guard: edits outside the repo', () => {
     expect(guard('NotebookEdit', { notebook_path: join(repo, 'a.ipynb') })).toBe('allow')
     expect(guard('NotebookEdit', { notebook_path: join(outside, 'a.ipynb') })).toBe('deny')
     expect(guard('NotebookEdit', { notebook_path: `${plans}/a.ipynb` })).toBe('deny')
+  })
+
+  it('lets Bash read and change the app\'s data folder, but not rm -r it', () => {
+    expect(guard('Bash', { command: 'cat ~/Library/Application\\ Support/Kernel/settings.json' })).toBe('allow')
+    expect(guard('Bash', { command: `rm -rf "${home}/Library/Application Support/Kernel"` })).toBe('deny')
   })
 
   it('does not follow a plans folder that is a symlink to ~/.claude', () => {
