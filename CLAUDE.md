@@ -9,9 +9,10 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virt
 - `npm test` runs vitest on Electron's Node (engine tests use real git repos in temp folders). One file: `npm test -- test/kernel.test.ts`. Plain `npx vitest` fails, see D-013
 - `npm run typecheck` checks main, preload and renderer
 - `npm run build` builds all three bundles
-- `npm run shots -- <Screen> [...]` builds, opens each fixture in Electron at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
+- `npm run shots -- <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
 - `npm run shots:compare -- <Screen> [...]` writes `shots/compare/<Screen>.png`, the shot on the left and `design/screens/<Screen>.png` on the right
 - `KERNEL_FIXTURES=<Screen> npm run dev` runs the app on one fixture (`fixtures/`), with no kernel, database or sessions
+- `KERNEL_HEADLESS=1` keeps the window hidden, with no Dock icon and no focus. Set it whenever a script launches the app (Playwright's `_electron`, `electron .`). Check your work with `npm run shots`, not `npm run dev` or computer use: a visible window steals keyboard focus from whatever CJ is typing in
 
 ## Where things are
 

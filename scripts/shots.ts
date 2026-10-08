@@ -38,6 +38,7 @@ async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
   env.KERNEL_FIXTURES = name
+  env.KERNEL_HEADLESS = '1'
   if (theme) env.KERNEL_FIXTURE_THEME = theme
   // Electron's own cache and storage for this launch. Deleted after close, since Chromium writes to it until exit.
   const data = mkdtempSync(join(tmpdir(), 'kernel-fixture-'))
