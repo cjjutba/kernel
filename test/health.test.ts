@@ -16,8 +16,9 @@ import { discardChanges, gitStatus, pushBranch } from '../src/main/services/arch
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
-// A scripted SDK, as in sessionRunner.test.ts. `context` is what getContextUsage reports, `usage` what the usage call answers (null: unsupported).
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, usage: null as unknown }))
+// A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextUsage` the rest of its
+// answer (null: percentage only), `usage` what the usage call answers (null: unsupported).
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, contextUsage: null as Record<string, unknown> | null, usage: null as unknown }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
@@ -28,7 +29,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     return {
       [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {},
-      getContextUsage: async () => ({ percentage: sdk.context }),
+      getContextUsage: async () => ({ percentage: sdk.context, ...sdk.contextUsage }),
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => { if (!sdk.usage) throw new Error('not supported'); return sdk.usage }
     }
   }
@@ -171,6 +172,68 @@ describe('sessions under failure', () => {
     await flush()
     expect(store.chat(chat.id)?.context).toBe(92)
     sdk.context = 40
+  })
+
+  it('saves the tokens used, the window and the in-window rows, without deferred tools', async () => {
+    const { sessions, chat, store } = await runner()
+    sdk.context = 23.4
+    sdk.contextUsage = {
+      totalTokens: 46_800, maxTokens: 200_000,
+      categories: [
+        { name: 'System prompt', tokens: 3_100, color: 'promptBorder', kind: 'used' },
+        { name: 'Messages', tokens: 43_700, color: 'purple', kind: 'used' },
+        { name: 'MCP tools (deferred)', tokens: 9_000, color: 'inactive', kind: 'deferred', isDeferred: true },
+        { name: 'Autocompact buffer', tokens: 33_000, color: 'inactive', kind: 'buffer' },
+        { name: 'Free space', tokens: 120_200, color: 'promptBorder', kind: 'free' }
+      ]
+    }
+    try {
+      await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+      sdk.calls[sdk.calls.length - 1].feed(result())
+      await flush()
+      expect(store.chat(chat.id)).toMatchObject({
+        context: 23,
+        contextUsage: {
+          used: 46_800, max: 200_000,
+          rows: [
+            { name: 'System prompt', tokens: 3_100, kind: 'used' },
+            { name: 'Messages', tokens: 43_700, kind: 'used' },
+            { name: 'Autocompact buffer', tokens: 33_000, kind: 'buffer' },
+            { name: 'Free space', tokens: 120_200, kind: 'free' }
+          ]
+        }
+      })
+      expect(store.chat(chat.id)?.contextUsage?.rows[0]).not.toHaveProperty('color')
+    } finally { sdk.context = 40; sdk.contextUsage = null }
+  })
+
+  it('saves the percentage alone when Claude Code reports no token counts', async () => {
+    const { sessions, chat, store } = await runner()
+    sdk.context = 61.2
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    sdk.calls[sdk.calls.length - 1].feed(result())
+    await flush()
+    expect(store.chat(chat.id)?.context).toBe(61)
+    expect(store.chat(chat.id)?.contextUsage).toBeUndefined()
+    sdk.context = 40
+  })
+
+  it('pushes no chat update when the context numbers have not changed', async () => {
+    const { sessions, chat } = await runner()
+    sdk.contextUsage = { totalTokens: 80_000, maxTokens: 200_000, categories: [{ name: 'Messages', tokens: 80_000, color: 'purple', kind: 'used' }] }
+    const { pushes, off } = listen()
+    try {
+      await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+      const call = sdk.calls[sdk.calls.length - 1]
+      call.feed(result())
+      await flush()
+      const saved = pushes.filter((e) => e.type === 'chat' && e.chat.id === chat.id).length
+      expect(saved).toBeGreaterThan(0)
+      // Compacting asks again and gets the same answer.
+      call.feed({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'manual', pre_tokens: 80_000 }, uuid: 'c1', session_id: 's' })
+      await flush()
+      expect(pushes.filter((e) => e.type === 'chat' && e.chat.id === chat.id)).toHaveLength(saved)
+    } finally { off(); sdk.contextUsage = null }
   })
 
   it('compacts by sending /compact', async () => {
