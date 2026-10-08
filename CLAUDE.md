@@ -48,10 +48,10 @@ issue: KERNEL-41
 Fixed a pull request sometimes showing its old status after a quick refresh.
 ```
 
-- `type` is `new` (users can do something they couldn't), `improved` (works better, faster or clearer), `fixed` (something broken now works) or `internal` (users won't notice: refactors, tests, CI, dependencies, docs). Leave `issue` out when there is none. Never write the PR number.
+- `type` is `new` (users can do something they couldn't), `improved` (works better, faster or clearer), `fixed` (something broken now works) or `internal` (users won't notice: refactors, tests, CI, dependencies, docs). Leave `issue` out when there is none. Never write the PR number, except as `pr: 44` on a note written after the fact, in a later PR than the change.
 - Describe what the user notices, not what the code does. Good: "Agents no longer get stuck after the Mac wakes from sleep." Bad: "fix(engine): reconcile sessions on resume."
 - New and improved notes describe the behavior ("Notifications show the chat's title instead of the branch name"). Fixed notes start with "Fixed".
-- One sentence. No file names, function names or internal jargon. If a setting is involved, say where it lives ("Settings, Hooks").
+- One sentence. No file names, function names or internal jargon. If a setting is involved, say where it lives ("Settings, Hooks"). In a fixed note, name the location after the problem: "Fixed a rule in Settings, Hooks being forgotten after a restart", not "Fixed Settings, Hooks forgetting a rule".
 - No hype, no emojis, no em dashes or en dashes.
 - Unsure between improved and internal? Ask whether a user would notice if the change were reverted.
 

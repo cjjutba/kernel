@@ -58,7 +58,8 @@ describe('fragments', () => {
     ['a.md', 'type: new\nSomething.', 'must start with a --- line'],
     ['a.md', fragment('feature', 'Something new.'), 'type is new, improved, fixed or internal'],
     ['a.md', fragment('new', 'Something new.', 'issue: 41\n'), 'issue looks like KERNEL-41'],
-    ['a.md', fragment('new', 'Something new.', 'pr: 44\n'), 'Unrecognized key'],
+    ['a.md', fragment('new', 'Something new.', 'author: me\n'), 'Unrecognized key'],
+    ['a.md', fragment('new', 'Something new.', 'pr: #44\n'), 'pr is the number of the PR that made the change'],
     ['a.md', fragment('new', ''), 'the note is empty'],
     ['a.md', fragment('new', 'One sentence.\nAnother one.'), 'one sentence on one line'],
     ['a.md', fragment('new', 'Faster — much faster.'), 'em or en dash'],
@@ -94,6 +95,21 @@ describe('npm run release:notes', () => {
     await writeFile(join(dir, '.changes/unreleased/wip.md'), fragment('fixed', 'Fixed a typo in Settings, Hooks.'))
     return dir
   }
+
+  it('uses pr: from a note written after the fact instead of the commit that added it', async () => {
+    const dir = await kernelRepo()
+    await land(dir, 'docs: catch-up notes (#47)', {
+      '.changes/unreleased/app-icon.md': fragment('fixed', 'Fixed the app icon.', 'pr: 44\n'),
+      '.changes/unreleased/titles.md': fragment('improved', 'Titles are clearer.')
+    })
+    expect(parseFragment('app-icon.md', fragment('fixed', 'Fixed the app icon.', 'pr: 44\n')).pr).toBe(44)
+    expect(collect(dir).byType.fixed.map((n) => n.pr)).toEqual([44])
+    compile({ root: dir, version: '0.1.1', date: '2026-10-20' })
+    expect(readRelease(dir, '0.1.1').sections.map((s) => [s.title, s.items.map((i) => i.pr)])).toEqual([
+      ['Improved', [47]],
+      ['Fixed', [44]]
+    ])
+  })
 
   it('finds the PR from the squash commit that added the fragment', async () => {
     const dir = await withFragments()

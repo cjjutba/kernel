@@ -40,6 +40,8 @@ export const Fragment = z
   .strictObject({
     type: z.enum(['new', 'improved', 'fixed', 'internal'], { error: 'type is new, improved, fixed or internal' }),
     issue: z.string().regex(/^KERNEL-\d+$/, 'issue looks like KERNEL-41. Leave it out when there is no issue').optional(),
+    // Only for a note written after the fact, in a later PR than the change. Otherwise the release finds the PR.
+    pr: z.string().regex(/^[1-9]\d*$/, 'pr is the number of the PR that made the change, like 44').transform(Number).optional(),
     text: Sentence
   })
   .refine((f) => f.type !== 'fixed' || f.text.startsWith('Fixed'), { message: 'a fixed note starts with "Fixed"', path: ['text'] })
@@ -82,7 +84,10 @@ export function readFragments(root: string): { fragments: FragmentFile[]; errors
 
 const git = (root: string, args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' })
 
-/** The PR that added `file`: main's squash commits end their subject in "(#NN)". Undefined before it merges. */
+/**
+ * The PR that added `file`: main's squash commits end their subject in "(#NN)". Undefined before it merges.
+ * A catch-up fragment's `pr:` wins over this (collect).
+ */
 export function prFor(root: string, file: string): number | undefined {
   const subject = git(root, ['log', '--diff-filter=A', '--format=%s', '-1', '--', file]).trim()
   const m = /\(#(\d+)\)$/.exec(subject)
@@ -106,7 +111,7 @@ export function collect(root: string): Collected {
     type: fragment.type,
     text: fragment.text,
     ...(fragment.issue ? { issue: fragment.issue } : {}),
-    ...withPr(prFor(root, file))
+    ...withPr(fragment.pr ?? prFor(root, file))
   }))
   // Merge order, so the notes read roughly in the order the changes landed. Notes without a PR go last.
   notes.sort((a, b) => (a.pr ?? Infinity) - (b.pr ?? Infinity) || a.file.localeCompare(b.file))

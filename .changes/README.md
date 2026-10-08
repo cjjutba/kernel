@@ -27,7 +27,17 @@ Fixed a pull request sometimes showing its old status after a quick refresh.
 
 `issue` is the Linear key. Leave the line out when there is no issue.
 
-The body is one sentence. Don't write the PR number: the release finds it from the squash commit on `main`. A PR that makes more than one change users will notice can add more than one file.
+The body is one sentence. Don't write the PR number: the release finds it from the squash commit on `main` that added the file. A PR that makes more than one change users will notice can add more than one file.
+
+`pr` is only for notes written after the fact, when a later PR adds the note for a change that already merged. Without it the release would credit the later PR. Write the number of the PR that made the change:
+
+```md
+---
+type: fixed
+pr: 44
+---
+Fixed the app icon showing a plain letter K instead of the Kernel mark in the Dock, Finder and the install window.
+```
 
 ## Writing it
 
@@ -36,7 +46,7 @@ The body is one sentence. Don't write the PR number: the release finds it from t
   Bad: "fix(engine): reconcile sessions on resume."
 - New and improved notes describe the behavior: "Notifications show the chat's title instead of the branch name." Fixed notes start with "Fixed".
 - One sentence, ending in a period. No file names, function names or internal jargon.
-- If a setting is involved, say where it lives: "Settings, Hooks".
+- If a setting is involved, say where it lives: "Settings, Hooks". In a fixed note, name the location after the problem: "Fixed a rule in Settings, Hooks being forgotten after a restart", not "Fixed Settings, Hooks forgetting a rule".
 - No hype, no emojis, no em dashes or en dashes.
 - Unsure between improved and internal? Ask whether a user would notice if the change were reverted.
 
