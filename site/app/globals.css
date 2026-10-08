@@ -65,6 +65,10 @@
   --text-entry-title--line-height: 1.15;
   --text-entry-title--letter-spacing: -0.03em;
   --text-entry-title--font-weight: 600;
+  --text-brand: 18px;
+  --text-brand--line-height: 1;
+  --text-brand--letter-spacing: -0.02em;
+  --text-brand--font-weight: 600;
   --text-wordmark: clamp(120px, 16vw, 232px);
   --text-wordmark--line-height: 0.78;
   --text-wordmark--letter-spacing: -0.043em;
@@ -259,6 +263,14 @@
 
 @utility stop-wordmark-bottom {
   stop-color: var(--color-track);
+}
+
+/* The mark stands in for the K: its top meets the l and its round nodes sit on the baseline. */
+@utility wordmark-k {
+  height: 0.78em;
+  width: auto;
+  margin-right: 0.02em;
+  flex-shrink: 0;
 }
 
 /* The large footer wordmark is cropped by the page edge. */
