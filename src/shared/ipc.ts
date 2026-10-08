@@ -37,6 +37,8 @@ export interface KernelApi {
   /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
   'rooms.brief': { req: { roomId: string; text: string; parts?: ChatPart[]; agentId?: string }; res: { chatId: string; workspaceId: string } }
   'rooms.overlaps': { req: { roomId: string }; res: Overlap[] }
+  /** By agent id, the time of each agent's newest event in the room, read from the whole log. Floor seating ranks idle agents by it. */
+  'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
   /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
