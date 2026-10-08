@@ -12,7 +12,6 @@
 .nw-trigger svg { color: var(--muted); }
 .nw-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 6px; }
 .nw-body .cmp-input { min-height: 168px; font-size: 15px; line-height: 24px; cursor: text; }
-.nw-body .cmp-input textarea { font-size: 15px; }
 .nw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .nw-chip { gap: 6px; height: 24px; padding: 0 4px 0 8px; font: 12px var(--mono); }
 .nw-chip .ellipsis { max-width: 360px; }

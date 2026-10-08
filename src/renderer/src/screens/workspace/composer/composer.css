@@ -3,8 +3,11 @@
 .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
 .cmp { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
 .cmp:focus-within { border-color: var(--line-4); }
-.cmp-input { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; row-gap: 6px; min-height: 44px; font-size: 14px; line-height: 22px; }
-.cmp-input input { flex: 1 1 160px; min-width: 120px; height: 24px; padding: 0; border: 0; outline: none; background: transparent; font-size: 14px; }
+/* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
+.cmp-input { position: relative; min-height: 44px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+.cmp-input:focus-visible { outline: none; }
+.cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
+.cmp-input[contenteditable='false'] { cursor: default; }
 .cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px 0 4px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .cmp-agent .agent-dot { flex-shrink: 0; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
@@ -20,12 +23,8 @@
 
 .composer-inner { display: flex; flex-direction: column; gap: 10px; }
 .cmp-box { position: relative; }
-.cmp-text { white-space: pre-wrap; word-break: break-word; }
-.cmp-break { flex-basis: 100%; height: 0; margin-top: -6px; }
-.cmp-input > .cmp-chip { margin-right: 4px; }
-.cmp-text + .cmp-chip { margin-left: 4px; }
-.cmp-input textarea { flex: 1 1 160px; min-width: 120px; height: 24px; max-height: 168px; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 24px; }
-.cmp-input textarea::placeholder { color: var(--muted); }
+/* A chip sits in the line like a word (draft.tsx). Its margin gives a line with a chip the 6px between rows the canvas draws. */
+.cmp-input .cmp-chip { margin: 3px 2px; white-space: nowrap; cursor: default; }
 .cmp-chip { gap: 6px; height: 24px; padding: 0 5px 0 8px; font: 11.5px var(--mono); }
 .cmp-chip .chip-meta { color: var(--muted); }
 .chip-open { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; font: inherit; }
