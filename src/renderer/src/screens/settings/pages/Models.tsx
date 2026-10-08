@@ -28,6 +28,7 @@ export function Models({ s }: { s: AppSettings }) {
           <SegmentedControl label="Effort" value={m.effort} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} onChange={(v) => void patchSettings({ models: { effort: v as Effort } })} />
         </Row>
         <Row label="Start the Lead in plan mode"><Toggle label="Start the Lead in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
+        <Row label="Keep the Lead updated" desc="Kernel tells the Lead when a teammate finishes or a pull request changes, so it can hand out the next step. Each update uses a Lead turn."><Toggle label="Keep the Lead updated" checked={m.leadUpdates} onChange={(v) => void patchSettings({ models: { leadUpdates: v } })} /></Row>
         <Row label="Agents working at once" desc="More agents means more usage and more diffs for you to review.">
           <Select label="Agents working at once" value={String(m.maxConcurrent)} options={[...new Set([1, 2, 3, 4, 5, 6, 8, m.maxConcurrent])].sort((a, b) => a - b).map((n) => ({ value: String(n), label: String(n) }))} onChange={(e) => void patchSettings({ models: { maxConcurrent: Number(e.target.value) } })} />
         </Row>

@@ -192,6 +192,18 @@ export class Sessions {
     return { queued: false }
   }
 
+  /**
+   * Kernel's own message into an idle chat, such as the Lead's teammate updates (KERNEL-72). It starts a turn like a user
+   * message, but it isn't the user redirecting, so a pending hand-off reminder stays. It sends nothing and returns false
+   * when the chat is running, has messages queued, is paused or is over the agent limit; the caller keeps it for later.
+   */
+  post(chatId: string, parts: ChatPart[]): boolean {
+    const chat = this.mustChat(chatId)
+    if (this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId)) return false
+    this.dispatch(chat, parts, { fromKernel: true })
+    return true
+  }
+
   queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
 
   unqueue(chatId: string, id: string): QueuedMessage[] {
@@ -219,10 +231,10 @@ export class Sessions {
     await this.send(chatId, user.parts)
   }
 
-  private dispatch(chat: Chat, parts: ChatPart[]) {
+  private dispatch(chat: Chat, parts: ChatPart[], o: { fromKernel?: boolean } = {}) {
     const ws = this.mustWorkspace(chat.workspaceId)
-    // A held message going out counts as the user taking over too.
-    this.handoffs.done(chat.id)
+    // A held message going out counts as the user taking over too. Kernel's own updates don't.
+    if (!o.fromKernel) this.handoffs.done(chat.id)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.input.push(toUserMessage(parts))

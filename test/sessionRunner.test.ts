@@ -343,6 +343,19 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
+  it('takes a Kernel post into an idle chat without cancelling a pending hand-off, and refuses one while running (KERNEL-72)', async () => {
+    const s = await setup('acceptEdits', { agent: rowan })
+    s.sessions.handoffs.approved('chat')
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Update from Kernel (not the user):' }])).toBe(false)
+    s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+    s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
+    await flush()
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Update from Kernel (not the user):' }])).toBe(true)
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    expect(s.sessions.handoffs.due('chat')).toBe(true)
+  })
+
   it('leaves agents that are not the Lead alone', async () => {
     const s = await setup('acceptEdits', { agent: noor })
     await approvePlan(s)
