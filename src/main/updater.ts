@@ -113,25 +113,33 @@ function readSaved(file: string): Saved | null {
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" }
 
+/** Drops markdown emphasis and a trailing PR reference such as "(#44)" or "(#44, #45)". */
+const clean = (s: string) => s.replace(/\*\*/g, '').replace(/\s*\(#\d+(?:,\s*#\d+)*\)$/, '').trim()
+
 /**
  * Release notes to What's new items. Each `###` heading (or `<h3>`, since the GitHub feed sends HTML) is a title,
- * and the text under it until the next heading is the body. Text before the first heading is dropped.
+ * and the text under it until the next heading is the body. Each list item starts a new line of the body, and
+ * paragraph text joins the line it follows. Text before the first heading is dropped. The notes come from
+ * `npm run release:notes -- --app` (scripts/notes.ts, D-058).
  */
 export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
   if (!raw) return []
   const text = Array.isArray(raw) ? raw.map((r) => r.note ?? '').join('\n') : raw
   const md = text
     .replace(/<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi, '\n### $1\n')
+    .replace(/<li[^>]*>/gi, '\n- ')
     .replace(/<br\s*\/?>|<\/(p|li|div|ul|ol)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&(#?\w+);/g, (m, e: string) => ENTITIES[e] ?? m)
   const notes: Note[] = []
   for (const line of md.split('\n').map((l) => l.trim())) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line)
-    if (heading) notes.push({ title: heading[1].trim(), body: '' })
+    if (heading) notes.push({ title: clean(heading[1]), body: '' })
     else if (line && notes.length) {
       const n = notes[notes.length - 1]
-      n.body = n.body ? `${n.body} ${line.replace(/^[-*]\s+/, '')}` : line.replace(/^[-*]\s+/, '')
+      const item = /^[-*]\s+(.*)$/.exec(line)
+      const part = clean(item ? item[1] : line)
+      if (part) n.body = n.body ? `${n.body}${item ? '\n' : ' '}${part}` : part
     }
   }
   return notes.filter((n) => n.title)

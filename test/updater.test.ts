@@ -36,7 +36,15 @@ describe('parseNotes', () => {
     const html = '<p>Intro.</p><h3>Big terminal</h3><p>Open Claude Code with &#39;⌘⇧T&#39; &amp; more.</p><h3>Overlap warnings</h3><ul><li>Rowan flags it.</li><li>Twice.</li></ul>'
     expect(parseNotes(html)).toEqual([
       { title: 'Big terminal', body: "Open Claude Code with '⌘⇧T' & more." },
-      { title: 'Overlap warnings', body: 'Rowan flags it. Twice.' }
+      { title: 'Overlap warnings', body: 'Rowan flags it.\nTwice.' }
+    ])
+  })
+
+  it('puts each list item on its own line and drops PR references and emphasis', () => {
+    const md = '### Fixed\n- Fixed a stale PR status. (#44)\n- Fixed **two** things. (#45, #46)\n\n### Board\nA paragraph\nthat wraps.'
+    expect(parseNotes(md)).toEqual([
+      { title: 'Fixed', body: 'Fixed a stale PR status.\nFixed two things.' },
+      { title: 'Board', body: 'A paragraph that wraps.' }
     ])
   })
 
