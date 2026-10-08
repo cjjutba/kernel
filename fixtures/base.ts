@@ -27,7 +27,7 @@ export const team: AgentDef[] = [
 ]
 
 const ws = (id: string, name: string, branch: string, agentId: string, port: number, extra: Partial<Workspace> = {}): Workspace => ({
-  id, roomId: ids.roomA, name, branch, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/client-a/${name}`, mode: 'worktree',
+  id, roomId: ids.roomA, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree',
   agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), ...extra
 })
 
@@ -95,20 +95,20 @@ const waiting: Approval[] = [
 
 export const base: Fixture = {
   rooms: [
-    room(ids.roomA, 'Client A', '/Users/cj/code/client-a', 'cjjutba/client-a'),
-    room(ids.roomB, 'Client B', '/Users/cj/code/client-b', 'cjjutba/client-b'),
-    room(ids.roomOwn, 'Own app', '/Users/cj/code/own-app', 'cjjutba/own-app'),
-    room(ids.roomPortfolio, 'Portfolio', '/Users/cj/code/portfolio', 'cjjutba/portfolio')
+    room(ids.roomA, 'Client A', '/Users/you/code/client-a', 'samrivera/client-a'),
+    room(ids.roomB, 'Client B', '/Users/you/code/client-b', 'samrivera/client-b'),
+    room(ids.roomOwn, 'Own app', '/Users/you/code/own-app', 'samrivera/own-app'),
+    room(ids.roomPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio')
   ],
   agents: { [ids.roomA]: team, [ids.roomB]: team, [ids.roomOwn]: team, [ids.roomPortfolio]: team },
   status: {
     [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
   },
   workspaces: [
-    ws(ids.lead, 'lead', 'main', 'rowan', 4300, { path: '/Users/cj/code/client-a', mode: 'current', baseRef: 'main', createdAt: at(9, 5) }),
+    ws(ids.lead, 'lead', 'main', 'rowan', 4300, { path: '/Users/you/code/client-a', mode: 'current', baseRef: 'main', createdAt: at(9, 5) }),
     ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312),
     ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
-    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/cjjutba/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
+    ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
   ],
   chats: [
     { id: ids.leadChat, workspaceId: ids.lead, title: 'Lead', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, createdAt: at(9, 5) },
@@ -127,7 +127,7 @@ export const base: Fixture = {
   usage: [],
   preflight: [
     { id: 'claude', ok: true, title: 'Claude Code', detail: 'v2.1.292' },
-    { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as cjjutba' },
+    { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
     { id: 'hooks', ok: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
   ],
   changes: {

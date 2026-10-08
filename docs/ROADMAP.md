@@ -1,6 +1,6 @@
 # Roadmap
 
-Work lives in Linear: team Kernel, project "Kernel v1" (https://linear.app/cj-jutba/project/kernel-v1-8ca33a9e398e). This page is the map; Linear has the status.
+Work is tracked in a private Linear workspace: team Kernel, project "Kernel v1". This page is the map; Linear has the status.
 
 ## 1. Bring-up
 - KERNEL-5 Get Kernel running on macOS (Engine)

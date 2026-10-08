@@ -82,7 +82,7 @@ export class Kernel {
   private limitTimers = new Map<RateLimit['type'], { at: number; timer: NodeJS.Timeout }>()
   /** The last account read, so a sign-out keeps the name on the account menu. */
   private account?: import('@shared/types').ClaudeAccount
-  /** Windows CJ asked to hear about when they reset ("Notify me"). */
+  /** Windows the user asked to hear about when they reset ("Notify me"). */
   private notifyReset = new Set<RateLimit['type']>()
 
   constructor(private o: {
@@ -481,7 +481,7 @@ export class Kernel {
   pauseRoom(roomId: string, by: 'you' | 'limit'): Room {
     const room = this.store.saveRoom({ ...this.mustRoom(roomId), paused: true, pausedBy: by })
     this.sessions.pause(roomId)
-    // Someone who needs CJ, is blocked or is offline keeps saying so.
+    // Someone who needs the user, is blocked or is offline keeps saying so.
     const now = this.statusOf(roomId)
     for (const a of this.agentsSync(roomId)) if (!['needs', 'blocked', 'offline'].includes(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
     bus.push({ type: 'room', room })
@@ -523,7 +523,7 @@ export class Kernel {
     const before = this.mustRoom(roomId)
     // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
     if (patch.archived && !before.archived) {
-      // A workspace that fails to archive keeps the room open, and the error names it, so nothing is half archived without CJ knowing.
+      // A workspace that fails to archive keeps the room open, and the error names it, so nothing is half archived without the user knowing.
       const failed: string[] = []
       for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
         try { await this.archiveWorkspace(ws.id) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }

@@ -13,11 +13,11 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR
 /** Rooms.png: five rooms, one of each source, one archived. Times are relative so "2 min ago" always reads the same. */
 const roomsScene = (f: Fixture): Partial<Fixture> => {
   const rooms: Room[] = [
-    { ...f.rooms[0], desc: 'Invoicing SaaS · MVP Sprint', kind: 'repo', path: '/Users/cj/Projects/client-a', createdAt: ago(2 * MIN) },
+    { ...f.rooms[0], desc: 'Invoicing SaaS · MVP Sprint', kind: 'repo', path: '/Users/you/Projects/client-a', createdAt: ago(2 * MIN) },
     { ...f.rooms[1], desc: 'Discovery Sprint', kind: 'repo', createdAt: ago(14 * MIN) },
-    { ...f.rooms[2], desc: 'Nights and weekends', kind: 'folder', repo: undefined, path: '/Users/cj/Projects/own-app', createdAt: ago(HOUR) },
+    { ...f.rooms[2], desc: 'Nights and weekends', kind: 'folder', repo: undefined, path: '/Users/you/Projects/own-app', createdAt: ago(HOUR) },
     { ...f.rooms[3], desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
-    { id: 'room-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'cjjutba/starter-kit', path: '/Users/cj/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
+    { id: 'room-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'samrivera/starter-kit', path: '/Users/you/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
   ]
   const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)
   return {
@@ -41,7 +41,7 @@ const roomsScene = (f: Fixture): Partial<Fixture> => {
 const withMenu = (menu: 'rooms' | `room:${string}`, route: Fixture['ui']['route']) => scene((f) => ({ ...roomsScene(f), ui: { route, menu } }))
 
 const setupSteps: RoomSetupStep[] = [
-  { id: 'clone', title: 'Clone cjjutba/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
+  { id: 'clone', title: 'Clone samrivera/client-c', detail: '~/Projects/client-c', state: 'ok', meta: '4s' },
   { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/client-c', state: 'ok' },
   { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'run', meta: 'running' },
   { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'wait' },
@@ -49,15 +49,15 @@ const setupSteps: RoomSetupStep[] = [
   { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
 ]
 
-const clientC: Room = { id: 'room-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'cjjutba/client-c', path: '/Users/cj/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
+const clientC: Room = { id: 'room-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
-  ['client-c', true, 2 * HOUR], ['cjjutba.dev', false, DAY], ['upnext', true, 3 * DAY], ['kalinga', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
-].map(([name, priv, age]) => ({ fullName: `cjjutba/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
+  ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
+].map(([name, priv, age]) => ({ fullName: `samrivera/${name}`, name: name as string, private: priv as boolean, updatedAt: ago(age as number) }))
 
 /** Local time today or yesterday, so Home groups rows under Today and Yesterday whatever day the shots run. */
 const clock = (daysAgo: number, h: number, m: number) => { const d = new Date(); d.setDate(d.getDate() - daysAgo); d.setHours(h, m, 0, 0); return d.getTime() }
 
-/** The three things waiting on CJ in Client A (Inbox.png, Home.png): two approvals and a PR ready to merge. */
+/** The three things waiting on the user in Client A (Inbox.png, Home.png): two approvals and a PR ready to merge. */
 const homeApprovals: Approval[] = [
   { id: 'ap-push', kind: 'tool', source: 'sdk', roomId: ids.roomA, workspaceId: ids.schema, agentId: 'noor', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'T-12 adds the invoices table. Kai is waiting on it to finish T-14.', status: 'pending', createdAt: ago(2 * MIN) },
   { id: 'ap-plan15', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', title: 'Plan for T-15', detail: '1. T-15a PDF renderer · Noor\n2. T-15b Export button · Kai', status: 'pending', createdAt: ago(6 * MIN) }
@@ -76,7 +76,7 @@ const homeNotifications: Notification[] = [
 /** Home.png: four rooms (A needs you), five merged PRs, three things waiting. */
 const homeScene = (f: Fixture): Partial<Fixture> => {
   const merged = (id: string, roomId: string, agentId: string, title: string, added: number, removed: number, at: number) =>
-    ({ id, roomId, name: id, title, prTitle: title, branch: `feat/${id}`, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/${id}`, mode: 'worktree' as const, agentId, port: 4400, status: 'archived' as const, prState: 'merged' as const, prNumber: 30, stat: { files: 3, added, removed }, createdAt: at - HOUR, mergedAt: at })
+    ({ id, roomId, name: id, title, prTitle: title, branch: `feat/${id}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/${id}`, mode: 'worktree' as const, agentId, port: 4400, status: 'archived' as const, prState: 'merged' as const, prNumber: 30, stat: { files: 3, added, removed }, createdAt: at - HOUR, mergedAt: at })
   const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)
   return {
     ...roomsScene(f),
@@ -105,7 +105,7 @@ const homeScene = (f: Fixture): Partial<Fixture> => {
 /** History.png: six archived workspaces, four merged. Times are relative so Today and This week group the same on any day. */
 const historyScene = (f: Fixture): Partial<Fixture> => {
   const archived = (id: string, name: string, branch: string, roomId: string, agentId: string, pr: { n: number; state: Workspace['prState'] } | null, when: number): Workspace => ({
-    id, roomId, name, branch, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
+    id, roomId, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
     prState: pr?.state ?? 'none', ...(pr ? { prNumber: pr.n } : {}), createdAt: when - 3 * HOUR, archivedAt: when, ...(pr?.state === 'merged' ? { mergedAt: when - 5 * MIN } : {})
   })
   return {
@@ -129,7 +129,7 @@ const boardScene = (f: Fixture): Partial<Fixture> => {
   const task = (id: string, title: string, column: Task['column'], state: Task['state'], agentId: string, extra: Partial<Task> = {}): Task =>
     ({ id, roomId: A, title, column, state, agentId, steps: [], milestone: 'Invoices v1', createdAt: at(10, 5), updatedAt: at(10, 31), ...extra })
   const merged = (id: string, name: string, branch: string, agentId: string, n: number, prTitle: string): Workspace => ({
-    id, roomId: A, name, branch, baseRef: 'origin/main', path: `/Users/cj/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
+    id, roomId: A, name, branch, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4400, status: 'archived',
     prState: 'merged', prNumber: n, prTitle, createdAt: at(9, 10), mergedAt: at(9, 50), archivedAt: at(9, 52)
   })
   const branchOf = (id: string, branch: string) => (w: Workspace) => (w.id === id ? { ...w, branch, stat: id === ids.table ? { files: 4, added: 412, removed: 38 } : w.stat } : w)
@@ -247,16 +247,16 @@ export const teamFixtures: Record<string, Fixture> = {
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
     ...roomsScene(f),
-    ui: { route: { name: 'rooms' }, modal: { name: 'newRoom', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'cjjutba/client-c', baseBranch: 'main' } } }
+    ui: { route: { name: 'rooms' }, modal: { name: 'newRoom', prefill: { source: 'repo', name: 'Client C', desc: 'Booking dashboard for a dental clinic', from: 'samrivera/client-c', baseBranch: 'main' } } }
   })),
   ConnectRepo: scene((f) => ({ ...roomsScene(f), repos, ui: { route: { name: 'home' }, modal: { name: 'connectRepo' } } })),
   OpenFolder: scene((f) => ({
     ...roomsScene(f),
     folders: [
-      { path: '/Users/cj/Projects/upnext', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/cj/Projects/kalinga', git: true, branch: 'dev', dirty: 3 },
-      { path: '/Users/cj/Projects/cjjutba.dev', git: true, branch: 'main', dirty: 0 },
-      { path: '/Users/cj/Desktop/sandbox', git: false }
+      { path: '/Users/you/Projects/habit-tracker', git: true, branch: 'main', dirty: 0 },
+      { path: '/Users/you/Projects/recipe-box', git: true, branch: 'dev', dirty: 3 },
+      { path: '/Users/you/Projects/personal-site', git: true, branch: 'main', dirty: 0 },
+      { path: '/Users/you/Desktop/sandbox', git: false }
     ],
     ui: { route: { name: 'home' }, modal: { name: 'openFolder' } }
   })),

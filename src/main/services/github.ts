@@ -1,7 +1,7 @@
 import { exec, run } from './exec'
 import type { PrCheck, PrInfo, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 
-// Pull requests go through the GitHub CLI, which already holds CJ's auth (D-006).
+// Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
 
 /** One entry of `statusCheckRollup`: a CheckRun (name, status, conclusion) or a StatusContext (context, state). */
 export interface RollupItem {

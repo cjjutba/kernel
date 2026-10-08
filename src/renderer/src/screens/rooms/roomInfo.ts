@@ -2,7 +2,7 @@ import type { AgentDef, AgentStatus, Approval, Room } from '@shared/types'
 
 export type RoomState = 'you' | 'working' | 'idle' | 'archived'
 
-/** "Needs you" when something waits on CJ, "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
+/** "Needs you" when something waits on the user, "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
 export function roomState(room: Room, approvals: Approval[], status: Record<string, AgentStatus> | undefined): RoomState {
   if (room.archived) return 'archived'
   if (approvals.some((a) => a.roomId === room.id && a.status === 'pending')) return 'you'

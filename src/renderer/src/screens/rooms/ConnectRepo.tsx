@@ -7,7 +7,7 @@ import { agoShort } from './roomInfo'
 import { cloneFolder, getDraft, patchDraft, titleOf } from './draft'
 import './rooms.css'
 
-/** The login from the first-run GitHub check ("Signed in as cjjutba"). */
+/** The login from the first-run GitHub check ("Signed in as samrivera"). */
 function useLogin() {
   return useStore((s) => /as (\S+)/.exec(s.system.preflight?.find((c) => c.id === 'gh')?.detail ?? '')?.[1])
 }

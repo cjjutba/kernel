@@ -110,7 +110,7 @@ describe('checkpoints', () => {
 
   it('never reverts the baseline of a current-branch workspace', async () => {
     const dir = await tempRepo({ 'checkout.ts': 'line1\n', 'other.ts': 'o\n' })
-    // CJ's own work in progress, there before the workspace started.
+    // The user's own work in progress, there before the workspace started.
     await writeFile(join(dir, 'checkout.ts'), 'line1\nmine\n')
     await writeFile(join(dir, 'notes.md'), 'my notes\n')
     await snapshotBaseline(dir)
@@ -118,7 +118,7 @@ describe('checkpoints', () => {
     const start = await snapshot(ws, { chatId: 'c', title: 'Fix checkout', start: true })
     expect(start.start).toBe(true)
 
-    // The agent edits a baseline file, CJ's untracked notes and another file.
+    // The agent edits a baseline file, the user's untracked notes and another file.
     await writeFile(join(dir, 'checkout.ts'), 'line1\nmine\nagent\n')
     await writeFile(join(dir, 'other.ts'), 'agent\n')
     await writeFile(join(dir, 'agent.ts'), 'new\n')

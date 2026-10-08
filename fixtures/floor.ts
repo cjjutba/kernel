@@ -33,8 +33,8 @@ const floorScene = (f: Fixture, patch: Partial<Fixture> & { extra?: ActivityEven
     agents: { ...f.agents, [A]: seatTeam },
     status: { [A]: status },
     activity: [...extra, ...f.activity].map(retime),
-    // The renderer learns the account from a push; CJ's name and initials show in the sidebar and on his log lines.
-    push: [{ type: 'account', account: { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' } }, ...saying(status, { ...says, ...sayMore })],
+    // The renderer learns the account from a push; the user's name and initials show in the sidebar and on their log lines.
+    push: [{ type: 'account', account: { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' } }, ...saying(status, { ...says, ...sayMore })],
     ui: floor,
     ...rest
   }
@@ -69,7 +69,7 @@ const assigned = (i: number) => ev(`b-assign-${i}`, 11, 5, 10 + i * 10, {
 /** The workspaces the hand-off created, listed first so each agent's card shows the new one. */
 const t15Workspaces = (f: Fixture, extra: (i: number) => Partial<Workspace> = () => ({})): Workspace[] => T15.map((t, i) => ({
   ...f.workspaces[1], id: `ws-${t.ws}`, name: t.ws, branch: `feat/${t.task.toLowerCase()}-${t.ws}`, agentId: t.agent, port: 4316 + i,
-  path: `/Users/cj/kernel/worktrees/client-a/${t.ws}`, createdAt: clock(11, 5, 10 + i * 10), ...extra(i)
+  path: `/Users/you/kernel/worktrees/client-a/${t.ws}`, createdAt: clock(11, 5, 10 + i * 10), ...extra(i)
 }))
 const t15Plan = (status: Approval['status']): Approval => ({
   id: 'ap-t15-plan', kind: 'plan', source: 'sdk', roomId: A, workspaceId: ids.lead, agentId: 'rowan', title: 'T-15 · Export invoices as PDF',
@@ -145,7 +145,7 @@ const briefing: Record<string, Fixture> = {
     const base = floorScene(f, {
       status: { [A]: status },
       says: { rowan: 'Posting the standup', theo: 'Approved 4 PRs', noor: 'Done with T-15a', kai: 'Done with T-15b', ivy: 'Done with T-15c' },
-      workspaces: [...t15Workspaces(f, (i) => ({ prState: 'ready', prNumber: 43 + i, prUrl: `https://github.com/cjjutba/client-a/pull/${43 + i}` })), ...f.workspaces],
+      workspaces: [...t15Workspaces(f, (i) => ({ prState: 'ready', prNumber: 43 + i, prUrl: `https://github.com/samrivera/client-a/pull/${43 + i}` })), ...f.workspaces],
       tasks: { [A]: t15Tasks },
       ui: staged('review')
     })
@@ -170,7 +170,7 @@ const briefing: Record<string, Fixture> = {
 /** Rowan's own workspace on the moment screens (the canvas card reads "plan-invoice-pdf"). Listed first so the agent card finds it. */
 const planWs = (f: Fixture): Workspace => ({
   ...f.workspaces[1], id: 'ws-plan-invoice-pdf', name: 'plan-invoice-pdf', branch: 'feat/t-15-plan-invoice-pdf', agentId: 'rowan', port: 4320,
-  path: '/Users/cj/kernel/worktrees/client-a/plan-invoice-pdf', createdAt: clock(11, 1, 50)
+  path: '/Users/you/kernel/worktrees/client-a/plan-invoice-pdf', createdAt: clock(11, 1, 50)
 })
 const question: Approval = {
   id: 'ap-scope', kind: 'question', source: 'sdk', roomId: A, workspaceId: 'ws-plan-invoice-pdf', agentId: 'rowan',
@@ -253,7 +253,7 @@ export const floorFixtures: Record<string, Fixture> = {
     extra: [{ id: 'ev5', ts: at(11, 2), roomId: A, agentId: 'rowan', kind: 'limit', text: 'paused the room for', object: 'weekly limit' }]
   })),
   FloorBlocked: scene((f) => {
-    const orgSettings: Workspace = { ...f.workspaces[1], id: 'ws-org-settings', name: 'org-settings', branch: 'feat/t-11-org-settings', agentId: 'ivy', port: 4315, path: '/Users/cj/kernel/worktrees/client-a/org-settings' }
+    const orgSettings: Workspace = { ...f.workspaces[1], id: 'ws-org-settings', name: 'org-settings', branch: 'feat/t-11-org-settings', agentId: 'ivy', port: 4315, path: '/Users/you/kernel/worktrees/client-a/org-settings' }
     return floorScene(f, {
       status: { [A]: { ...calm, ivy: 'blocked' } },
       workspaces: [...f.workspaces, orgSettings],

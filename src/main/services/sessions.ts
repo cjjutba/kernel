@@ -60,7 +60,7 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
-  /** Bash rules CJ allowed for the whole room. */
+  /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
   allowInRoom: (roomId: string, rule: string) => void
   onTurnDone?: (ws: Workspace, chat: Chat) => void
@@ -76,7 +76,7 @@ export class Sessions {
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
-  /** Rooms CJ (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
+  /** Rooms the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
   private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
@@ -461,7 +461,7 @@ export class Sessions {
 
   /**
    * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
-   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then CJ decides.
+   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then the user decides.
    */
   private canUseTool(chat: Chat, ws: Workspace, agent: AgentDef | undefined, commands: Map<string, string>): CanUseTool {
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
@@ -540,7 +540,7 @@ export class Sessions {
     } catch { /* the composer keeps the last number */ }
   }
 
-  /** A paused room shows everyone as paused, except an agent waiting on CJ. */
+  /** A paused room shows everyone as paused, except an agent waiting on the user. */
   private setStatus(ws: Workspace, agent: AgentDef | undefined, status: AgentStatus, activity?: string) {
     const shown = this.paused.has(ws.roomId) && status !== 'needs' ? 'paused' : status
     if (agent) bus.push({ type: 'agent.status', roomId: ws.roomId, agentId: agent.id, status: shown, activity })
@@ -614,7 +614,7 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
 
 /**
  * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
- * A Bash guard applies Kernel's Never allow and Always ask lists on top of CJ's own Claude Code settings.
+ * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
  */
 function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
   const report: HookCallback = async (input) => {
@@ -655,7 +655,7 @@ export type BashVerdict = 'deny' | 'allow' | 'ask' | undefined
 
 /**
  * Kernel's say on one Bash command: Never allow, then the room's Always allow rules, then Always ask.
- * Undefined leaves it to Claude Code's own settings, so CJ's allow list still covers everyday commands.
+ * Undefined leaves it to Claude Code's own settings, so the user's allow list still covers everyday commands.
  */
 export function bashVerdict(command: string, p: { neverAllow: string[]; alwaysAsk: string[]; protectedBranches?: string[]; network?: boolean }, roomAllow: string[]): BashVerdict {
   if (matchesRule(command, p.neverAllow) || pushesTo(command, p.protectedBranches ?? []) || (p.network === false && usesNetwork(command))) return 'deny'

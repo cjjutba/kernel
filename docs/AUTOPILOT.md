@@ -1,5 +1,7 @@
 # Autopilot
 
+> This is a record of how Kernel was built, kept as written. "CJ" is the maintainer.
+
 Autopilot works the remaining Kernel v1 issues one at a time, from Linear to a merged PR, without CJ in the loop. It stops the moment something needs him. It ends after KERNEL-29. KERNEL-30 (signing and notarization) and KERNEL-31 (the end-to-end journey) need CJ and are not in the queue.
 
 To start or restart it, open a fresh Claude Code session in this repo on `main` and say "Run the autopilot in docs/AUTOPILOT.md". That session is the coordinator. A restart picks up where the last run stopped, because the coordinator skips issues that are already Done.

@@ -5,7 +5,7 @@ import { at, ids, scene, tableItems, withWorkspace } from './base'
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
 
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
-const pr = { prNumber: 42, prUrl: 'https://github.com/cjjutba/client-a/pull/42' }
+const pr = { prNumber: 42, prUrl: 'https://github.com/samrivera/client-a/pull/42' }
 /** The transcript up to the last tool call, before Kai's summary. */
 const midTurn = tableItems.filter((i) => i.kind !== 'text' && i.kind !== 'result')
 
@@ -125,10 +125,10 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
 const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
   branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
   openPrs: [
-    { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'cjjutba' },
-    { number: 43, title: 'fix(auth): invite links expire after 7 days', branch: 'fix/invite-expiry', author: 'abdel' },
-    { number: 41, title: 'feat(org): invite members by email', branch: 'feat/org-invites', author: 'cjjutba' },
-    { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'abdel' }
+    { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'samrivera' },
+    { number: 43, title: 'fix(auth): invite links expire after 7 days', branch: 'fix/invite-expiry', author: 'jordan' },
+    { number: 41, title: 'feat(org): invite members by email', branch: 'feat/org-invites', author: 'samrivera' },
+    { number: 39, title: 'chore(db): seed realistic invoices', branch: 'chore/seed-invoices', author: 'jordan' }
   ],
   issues: [{ id: 'T-16', title: 'Client portal login' }, { id: 'T-17', title: 'Bulk export for accountants' }, { id: 'T-18', title: 'Dark mode for invoice PDFs' }],
   ui: { route: { name: 'floor', roomId: ids.roomA }, modal: { name: 'newWorkspace', roomId: ids.roomA }, menu: menu ?? null }
@@ -152,7 +152,7 @@ const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'
 
 /** What Claude Code's own screen prints when it starts in the worktree (WorkspaceTerminal.png). */
 const termScreen = '\r\n'.repeat(24) + [
-  'cjjutba@mac t-14-invoice-table % claude --dangerously-skip-permissions', '',
+  'you@mac t-14-invoice-table % claude --dangerously-skip-permissions', '',
   '\x1b[1mClaude Code v2.1\x1b[0m', 'Opus 5.5 with high effort · Claude Max', '~/kernel/worktrees/client-a/t-14-invoice-table', '',
   'Hooks connected. This session shows up on the floor as Kai.', '', '> Try "fix lint errors"', '',
   'bypass permissions on · worktree only                    Opus 5.5 · high'

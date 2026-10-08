@@ -29,7 +29,7 @@ export function inboxItems(notifications: Notification[], approvals: Approval[],
     .map((n) => ({ n, approval: n.approvalId ? byApproval.get(n.approvalId) : undefined }))
 }
 
-/** Waiting on CJ. An approval row follows its approval, in case the notification event has not caught up. */
+/** Waiting on the user. An approval row follows its approval, in case the notification event has not caught up. */
 export const needsYou = (i: InboxItem) => (i.approval ? i.approval.status === 'pending' : i.n.needsYou)
 
 export const inTab = (i: InboxItem, tab: InboxTab) => tab === 'all' || (tab === 'needs') === needsYou(i)

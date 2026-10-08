@@ -3,7 +3,7 @@ import { seating } from '../../floor/layout'
 import { DESK_SPOTS } from './motion/waypoints'
 import type { Leg } from './motion/walks'
 
-// The briefing sequence (KERNEL-23): CJ briefs the Lead, the Lead plans at the task wall, CJ approves, the Lead walks
+// The briefing sequence (KERNEL-23): the user briefs the Lead, the Lead plans at the task wall, the user approves, the Lead walks
 // to each desk as it hands out work, the team works, and review comes back. Every stage is read from the store.
 
 /** The stages, named like the `%%STAGE%%` values of the canvas floor templates. */
@@ -27,7 +27,7 @@ export interface Sequence {
   stage: Stage
   /** The Lead's walk, in order. The last leg is where the Lead ends up. */
   legs: Leg[]
-  /** Who the agent card follows when nobody was clicked and nobody needs CJ: the agent being handed work. */
+  /** Who the agent card follows when nobody was clicked and nobody needs the user: the agent being handed work. */
   focus?: string
   /** A line said out loud on the floor (the Lead's `say` tool), shown as a speech bubble. */
   say?: { id: string; agentId: string; text: string }
@@ -49,7 +49,7 @@ export const isStage = (s: string | undefined): s is Stage => !!s && (STAGES as 
  * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`
  * - sent, then planning: a brief (`rooms.brief`) the Lead is on; planning once the Lead acts on it in plan mode.
  *   A plan sent back with changes reopens the brief, so the Lead plans at the wall again
- * - needs: an approval is pending or an agent needs CJ
+ * - needs: an approval is pending or an agent needs the user
  * - review: a PR in the room is ready to merge
  * - working: anyone is busy
  * A fixture's `ui.stage` replaces the stage; the legs, focus and bubble still come from its events.

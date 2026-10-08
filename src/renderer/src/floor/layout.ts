@@ -59,7 +59,7 @@ export function modelLabel(model?: string): string {
 }
 
 /**
- * The agent the card shows when nobody has been clicked: the first one that needs CJ (needs you, blocked, offline), then the lead.
+ * The agent the card shows when nobody has been clicked: the first one that needs the user (needs you, blocked, offline), then the lead.
  * A click wins while that agent is still in the room.
  */
 export function defaultSelected(agents: AgentDef[], status: Record<string, AgentStatus>, clicked?: string | null): AgentDef | undefined {
@@ -69,7 +69,7 @@ export function defaultSelected(agents: AgentDef[], status: Record<string, Agent
   return loud ?? agents.find((a) => a.lead) ?? agents[0]
 }
 
-/** Agents CJ has to act on: status needs you, or a pending approval of theirs. Each counts once. */
+/** Agents the user has to act on: status needs you, or a pending approval of theirs. Each counts once. */
 export function needsCount(agents: AgentDef[], status: Record<string, AgentStatus>, approvals: Pick<Approval, 'agentId'>[]): number {
   const ids = new Set(agents.filter((a) => status[a.id] === 'needs').map((a) => a.id))
   for (const a of approvals) ids.add(a.agentId ?? '?')

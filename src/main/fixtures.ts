@@ -6,7 +6,7 @@ import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 
 const ok = { ok: true } as const
-const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'CJ Jutba', login: 'cjjutba', plan: 'Claude Max' }
+const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
 
 /**
  * Fixture mode (KERNEL_FIXTURES): every IPC channel answered from one fixture, with no database, hook server or sessions.
@@ -33,7 +33,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
-  let settings = f.settings ?? DEFAULT_SETTINGS('/Users/cj')
+  let settings = f.settings ?? DEFAULT_SETTINGS('/Users/you')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount

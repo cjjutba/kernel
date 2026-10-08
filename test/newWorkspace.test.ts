@@ -35,9 +35,9 @@ describe('listBranches', () => {
 
 describe('parsePrList', () => {
   it('maps gh pr list json', () => {
-    const json = JSON.stringify([{ number: 44, title: 'feat(invoices): PDF renderer', headRefName: 'feat/pdf', author: { login: 'cjjutba' } }, { number: 43, title: 'fix(auth)', headRefName: 'fix/auth' }])
+    const json = JSON.stringify([{ number: 44, title: 'feat(invoices): PDF renderer', headRefName: 'feat/pdf', author: { login: 'samrivera' } }, { number: 43, title: 'fix(auth)', headRefName: 'fix/auth' }])
     expect(parsePrList(json)).toEqual([
-      { number: 44, title: 'feat(invoices): PDF renderer', branch: 'feat/pdf', author: 'cjjutba' },
+      { number: 44, title: 'feat(invoices): PDF renderer', branch: 'feat/pdf', author: 'samrivera' },
       { number: 43, title: 'fix(auth)', branch: 'fix/auth', author: undefined }
     ])
   })

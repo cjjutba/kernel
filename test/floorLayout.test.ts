@@ -20,7 +20,7 @@ describe('floor layout', () => {
     expect(overflow.map((x) => x.id)).toEqual(['sol'])
   })
 
-  it('shows the agent that needs CJ before the lead, and a click beats both', () => {
+  it('shows the agent that needs the user before the lead, and a click beats both', () => {
     const team = [a('rowan', true), a('ivy')]
     expect(defaultSelected(team, { ivy: 'blocked' })?.id).toBe('ivy')
     expect(defaultSelected(team, { ivy: 'idle' })?.id).toBe('rowan')

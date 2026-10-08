@@ -20,7 +20,7 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
 /**
  * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces on the floor:
- * Rowan proposes a plan, waits for CJ to approve it, then creates one workspace per task.
+ * Rowan proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
@@ -36,7 +36,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
         const list = d.workspaces().filter((w) => w.status !== 'archived')
         return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}`).join('\n') || 'No open workspaces.')
       }),
-      tool('request_plan_approval', 'Show a plan to CJ and wait for approval. Returns "approved" or the requested changes.', {
+      tool('request_plan_approval', 'Show a plan to the user and wait for approval. Returns "approved" or the requested changes.', {
         title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
         steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
       }, async ({ title, steps }) => {
@@ -46,7 +46,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
         if (decision.behavior === 'allow') return text('approved')
         return text(`changes requested: ${decision.behavior === 'deny' ? decision.message ?? 'no details' : decision.text}`)
       }),
-      tool('ask_user', 'Ask CJ a short question, optionally with options. Waits for the answer.', {
+      tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {
         question: z.string(), options: z.array(z.string()).optional()
       }, async ({ question, options }) => {
         const decision = await d.askUser({ kind: 'question', title: question, options })
@@ -78,13 +78,13 @@ export function kernelMcpServer(d: KernelToolDeps) {
         bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
         return text('ok')
       }),
-      tool('hire_agent', 'Propose a new agent file for .claude/agents. CJ approves before it is saved.', {
+      tool('hire_agent', 'Propose a new agent file for .claude/agents. The user approves before it is saved.', {
         id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
         model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
       }, async (a) => {
         const agentFile = { path: `.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }) }
         const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
-        if (!decision || decision.behavior !== 'allow') return text('CJ did not approve this agent.')
+        if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
         const file = await d.hireAgent(a)
         return text(`Saved ${file}. ${a.id} joins the floor.`)
       })

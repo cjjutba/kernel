@@ -73,7 +73,7 @@ function Detail({ item }: { item: InboxItem }) {
   )
 }
 
-/** Inbox.png and InboxEmpty.png: everything that needs CJ, and what happened while he was away. */
+/** Inbox.png and InboxEmpty.png: everything that needs the user, and what happened while they were away. */
 export function Inbox() {
   const notifications = useStore((s) => s.notifications)
   const approvals = useStore((s) => s.approvals)

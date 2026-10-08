@@ -44,7 +44,7 @@ describe('briefing sequence', () => {
     expect(s.say).toBeUndefined()
   })
 
-  it('goes back to planning at the wall when CJ requests changes on the plan', () => {
+  it('goes back to planning at the wall when the user requests changes on the plan', () => {
     const denied = planApproval('denied', 200)
     const waiting = sequence(input({ status: { rowan: 'planning' }, approvals: [denied], activity: [brief] }))
     expect(waiting.stage).toBe('sent')

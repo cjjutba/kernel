@@ -6,7 +6,7 @@ import { bus } from '../bus'
 type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
 
 /**
- * One queue for everything that needs CJ: tool permissions (from canUseTool or the PermissionRequest
+ * One queue for everything that needs the user: tool permissions (from canUseTool or the PermissionRequest
  * hook), plan approvals and questions from Rowan. request() waits until decide() is called, or the timeout
  * passes and it resolves null so the caller can fall back (hooks fall back to Claude Code's own prompt).
  */
@@ -61,7 +61,7 @@ export class Approvals {
   }
 }
 
-/** Tools that are a question to CJ, not a permission. No setting may answer them for him. */
+/** Tools that are a question to the user, not a permission. No setting may answer them for the user. */
 export const needsUser = (toolName: string) => toolName === 'ExitPlanMode' || toolName === 'AskUserQuestion'
 
 /** "T-15a PDF renderer · Noor" becomes a step with the agent's id. Lines without a known name stay as plain text. */

@@ -2,19 +2,19 @@
 
 ## What it is
 
-A personal Mac app that turns Claude Code into a small software team. Agents are Claude Code subagents defined in each repo's `.claude/agents/`. They work in their own git worktrees, and Kernel shows them as people in an isometric office: seated at desks, walking to hand off tasks, raising a hand when they need CJ.
+A Mac app that turns Claude Code into a small software team. Agents are Claude Code subagents defined in each repo's `.claude/agents/`. They work in their own git worktrees, and Kernel shows them as people in an isometric office: seated at desks, walking to hand off tasks, raising a hand when they need you.
 
 ## Who it is for
 
-CJ, a solo full-stack freelancer, running side projects. He is the first and only user for v1. FiscPlus (client work) stays on Conductor.
+Developers who already use Claude Code and want several agents working on one repo at once, each on its own branch, without losing track of who is doing what. Kernel is single-user: you, your Mac and your Claude plan.
 
 ## The core loop
 
-1. CJ briefs Rowan, the Lead, from the floor or the new workspace modal.
+1. You brief Rowan, the Lead, from the floor or the new workspace modal.
 2. Rowan plans (plan mode) and asks for approval.
-3. CJ approves. Rowan creates one workspace per task and hands each to an agent.
-4. Agents build. Anything risky comes to CJ as an approval in the Inbox, on the floor, or inline in the chat.
-5. CJ reviews diffs, the agent opens a PR, checks run, CJ merges.
+3. You approve. Rowan creates one workspace per task and hands each to an agent.
+4. Agents build. Anything risky comes to you as an approval in the Inbox, on the floor, or inline in the chat.
+5. You review diffs, the agent opens a PR, checks run, you merge.
 6. The workspace is archived and lives in History.
 
 ## Glossary
@@ -25,14 +25,14 @@ CJ, a solo full-stack freelancer, running side projects. He is the first and onl
 - **Chat**: a Claude Code session inside a workspace. A workspace can have several chats and a big terminal.
 - **Agent**: a subagent file in `.claude/agents/`. Has a name, role, model, tools and instructions.
 - **Lead**: the agent marked `lead: true` (Rowan). Plans and hands out work through Kernel's MCP tools.
-- **Approval**: anything waiting on CJ: a tool permission, a plan, or a question.
+- **Approval**: anything waiting on you: a tool permission, a plan, or a question.
 - **Task**: one step of an approved plan, shown on the Board.
 - **Checkpoint**: a snapshot of a workspace after each agent turn.
 
 ## Principles
 
 - Real events only. The floor never fakes activity.
-- CJ stays in control: plans need approval, risky commands need approval, nothing merges by itself.
+- You stay in control: plans need approval, risky commands need approval, nothing merges by itself.
 - Everything is plain files where possible (agents, settings, scripts), so the setup works outside Kernel too.
 - Quiet design. Color means something or it isn't there.
 

@@ -11,7 +11,7 @@ import { OverlapCard, OverlapLinks, QuestionCard } from './moments/Cards'
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
 
 /**
- * Things waiting on CJ first, as cards in one pattern, then what the team did, newest first.
+ * Things waiting on the user first, as cards in one pattern, then what the team did, newest first.
  * Lines said out loud (`agent.say`) show as the speech bubble on the floor, not here.
  */
 export function Logs({ roomId, agents, status, approvals, review }: {
