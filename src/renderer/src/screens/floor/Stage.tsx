@@ -37,17 +37,14 @@ export function Stage({ room, agents, seats, status, words, poses, say, instant,
   const waiting = deskless(overflow, status)
   const seatOf = popover ? seated.findIndex((a) => a.id === popover.agent.id) : -1
   const stage = useRef<HTMLDivElement>(null)
-  const lift = useLifts(stage, [
-    ...seated.map((a, i) => ({ id: a.id, at: anchor(pose(a.id).at, SEATS[i]) })),
-    ...(say && speaker >= 0 ? [(([x, y]) => ({ id: BUBBLE, at: [x, y - 30] as [number, number] }))(anchor(pose(say.agentId).at, SEATS[speaker]))] : [])
-  ])
+  const lift = useLifts(stage, seated.map((a, i) => `${a.id}:${pose(a.id).at}:${status[a.id] ?? 'idle'}:${words?.[a.id] ?? ''}`).join() + (say ? `|${say.agentId}:${say.text}:${say.link?.label ?? ''}` : ''))
   const card = popover && <AgentCard agent={popover.agent} roomId={room.id} agents={agents} status={status[popover.agent.id] ?? 'idle'} note={popover.note} />
   return (
     <div ref={stage} className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} look={lookFor(a, order(a))} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
       {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, order(a))} facing={p.facing} /> })}
-      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} lift={lift[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
+      {seated.map((a, i) => <Tag key={a.id} agent={a} seat={i} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} lift={lift[`tag-${a.id}`]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
       {seatOf >= 0 && <div className="agent-pop" data-side={SEATS[seatOf][0] >= 400 ? 'left' : 'right'} style={pct(SEATS[seatOf][0] + (SEATS[seatOf][0] >= 400 ? -26 : 26), SEATS[seatOf][1] + (SEATS[seatOf][1] >= 450 ? -140 : 28))}>{card}</div>}
       {say && speaker >= 0 && <Bubble text={say.text} lift={lift[BUBBLE]} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
@@ -58,30 +55,39 @@ export function Stage({ room, agents, seats, status, words, poses, say, instant,
 }
 
 /**
- * How far each tag and the speech bubble is lifted so none covers another. Reads their sizes from the page and their places from `marks`
- * (where each will stand, not where it is mid-glide), in the stage's own pixels, so it follows the window as it resizes.
+ * How far each tag and the speech bubble is lifted so none covers another, keyed by its `data-clear` value. It measures them where
+ * they are drawn right now, so it also keeps them apart while someone glides across the floor, and again when the stage is resized.
+ * `lifted` names the elements to measure; it changes when a tag or the bubble appears, goes or moves.
  */
-function useLifts(stage: RefObject<HTMLDivElement | null>, marks: { id: string; at: [number, number] }[]): Record<string, number> {
+function useLifts(stage: RefObject<HTMLDivElement | null>, lifted: string): Record<string, number> {
   const [lift, setLift] = useState<Record<string, number>>({})
-  const [width, setWidth] = useState(0)
+  const measure = useRef(() => {})
+  measure.current = () => {
+    const el = stage.current
+    if (!el) return
+    // offsetLeft and offsetTop are the element's own place (a tag's center and its bottom edge), before its lift and in the middle of its glide.
+    const boxes = [...el.querySelectorAll<HTMLElement>('[data-clear]')].map((n) => ({ id: n.dataset.clear!, x: n.offsetLeft, y: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight }))
+    const next = clearOverlaps(boxes, BUBBLE)
+    setLift((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next))
+  }
   useEffect(() => {
     const el = stage.current
     if (!el || typeof ResizeObserver === 'undefined') return
-    const watch = new ResizeObserver(() => setWidth(el.clientWidth))
+    const watch = new ResizeObserver(() => measure.current())
     watch.observe(el)
     return () => watch.disconnect()
   }, [stage])
   useLayoutEffect(() => {
     const el = stage.current
     if (!el) return
-    const boxes = marks.flatMap(({ id, at }) => {
-      const node = el.querySelector<HTMLElement>(`[data-clear="${id}"]`)
-      return node ? [{ id, x: (at[0] / 800) * el.clientWidth, y: (at[1] / 600) * el.clientHeight, w: node.offsetWidth, h: node.offsetHeight }] : []
-    })
-    const next = clearOverlaps(boxes, BUBBLE)
-    setLift((was) => (JSON.stringify(was) === JSON.stringify(next) ? was : next))
-  })
-  void width
+    measure.current()
+    // While a tag or the bubble is still gliding to its place, look again every frame.
+    const gliding = () => el.getAnimations({ subtree: true }).some((a) => a instanceof CSSTransition && a.playState === 'running' && ['left', 'top'].includes(a.transitionProperty))
+    let frame = 0
+    const tick = () => { measure.current(); if (gliding()) frame = requestAnimationFrame(tick) }
+    if (gliding()) frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [stage, lifted])
   return lift
 }
 
@@ -116,7 +122,7 @@ function Tag({ agent, seat, at, status, word: shown, lift, selected, onSelect }:
   const moved = was.current !== seat
   useEffect(() => { was.current = seat })
   return (
-    <button type="button" className="floor-tag" data-clear={agent.id} aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
+    <button type="button" className="floor-tag" data-clear={`tag-${agent.id}`} aria-pressed={selected} aria-label={`${agent.name}, ${agent.role}, ${word}`} onClick={onSelect}
       style={{ ...pct(at[0], at[1]), '--lift': `${lift ?? 0}px`, transition: moved ? 'none' : undefined } as CSSProperties}>
       <span className="floor-tag-pill" data-status={status}>{agent.name}{(shown || status !== 'idle') && <span>{word}</span>}</span>
     </button>
