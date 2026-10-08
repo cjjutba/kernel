@@ -16,8 +16,8 @@ const decide = (a: Approval, decision: Decision) =>
 /** A line someone said out loud, over their head, with an optional link under it (FloorTalk.png). Follows them while they walk. */
 export function Bubble({ text, at, link }: { text: string; at: [number, number]; link?: { label: string; onClick: () => void } }) {
   return (
-    <div role="status" className="floor-bubble" style={pct(at[0], at[1] - 30)}>
-      {text}
+    <div className="floor-bubble" style={pct(at[0], at[1] - 30)}>
+      <span role="status">{text}</span>
       {link && <button type="button" className="floor-bubble-link" onClick={link.onClick}>{link.label}</button>}
     </div>
   )

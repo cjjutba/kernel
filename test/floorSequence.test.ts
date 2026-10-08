@@ -59,6 +59,43 @@ describe('briefing sequence', () => {
     expect(sequence(input({ status: { rowan: 'planning' }, activity: [ev('read', 102, { kind: 'tool.end', workspaceId: 'lead' }), brief] })).legs[0].key).not.toBe(revising.legs[0].key)
   })
 
+  it('plans again at the wall when a plan expired, like a denied one', () => {
+    const expired = planApproval('expired', 200)
+    expect(sequence(input({ status: { rowan: 'planning' }, approvals: [expired], activity: [brief] })).stage).toBe('sent')
+    const revising = sequence(input({
+      status: { rowan: 'planning' }, approvals: [expired],
+      activity: [ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), brief]
+    }))
+    expect(revising.stage).toBe('planning')
+    expect(revising.legs).toEqual([{ key: 'wall:plan:p', to: 'wall' }])
+  })
+
+  it('ends a reopened planning round when the Lead finishes its turn, so a later busy turn is not sent or planning', () => {
+    for (const status of ['denied', 'expired'] as const) {
+      const activity = [ev('later', 400, { kind: 'tool.end', workspaceId: 'lead' }), ev('done', 300, { kind: 'turn.done', agentId: 'rowan' }), ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), brief]
+      const s = sequence(input({ status: { rowan: 'working' }, approvals: [planApproval(status, 200)], activity }))
+      expect(s.stage).toBe('working')
+      expect(s.legs).toEqual([{ key: 'seat', to: 'seat' }])
+      expect(s.say).toBeUndefined()
+    }
+    // A turn that ended before the plan came back does not close the round.
+    const before = [ev('read', 250, { kind: 'tool.end', workspaceId: 'lead' }), ev('done', 150, { kind: 'turn.done', agentId: 'rowan' }), brief]
+    expect(sequence(input({ status: { rowan: 'planning' }, approvals: [planApproval('denied', 200)], activity: before })).stage).toBe('planning')
+  })
+
+  it('ends the hand-off once every planned step has a workspace, while the Lead is still busy', () => {
+    const steps = [{ title: 'Renderer', agentId: 'noor' }, { title: 'Button', agentId: 'kai' }]
+    const plan = { ...planApproval('allowed', 200), steps }
+    const status = { rowan: 'working', noor: 'working', kai: 'planning' } as const
+    const partial = sequence(input({ status, approvals: [plan], activity: [handoff('h1', 300, 'noor'), brief] }))
+    expect(partial.stage).toBe('handoff')
+    expect(partial.legs).toEqual([{ key: 'h1', to: 'noor' }])
+    const all = sequence(input({ status, approvals: [plan], activity: [handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor'), brief] }))
+    expect(all.stage).toBe('working')
+    expect(all.legs).toEqual([{ key: 'seat', to: 'seat' }])
+    expect(all.focus).toBe('noor')
+  })
+
   it('walks the Lead to each assignee in the order create_workspace ran, and follows the newest one', () => {
     const activity = [ev('say', 320, { kind: 'agent.say', agentId: 'rowan', text: 'Kai, T-15b is yours.' }), handoff('h2', 310, 'kai'), handoff('h1', 300, 'noor'), brief]
     const s = sequence(input({ status: { rowan: 'working', noor: 'working', kai: 'planning' }, approvals: [planApproval('allowed', 200)], activity }))

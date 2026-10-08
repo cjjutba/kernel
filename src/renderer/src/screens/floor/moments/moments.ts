@@ -61,6 +61,12 @@ export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 export const names = (list: string[]) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`)
 export const fileName = (path: string) => path.split('/').pop() ?? path
 
+/** The newest `agent.joined` for someone on the floor. The hire timer in Floor and `moments` both read the hire from here. */
+export function newestJoin(activity: ActivityEvent[], agents: AgentDef[]): ActivityEvent | undefined {
+  const onFloor = (v: unknown) => typeof v === 'string' && agents.some((a) => a.id === v || a.name.toLowerCase() === v.toLowerCase())
+  return activity.filter((e) => e.kind === 'agent.joined' && onFloor(e.agentId)).sort((a, b) => b.ts - a.ts)[0]
+}
+
 export function moments(i: MomentInput): Moments {
   const events = [...i.activity].sort((a, b) => b.ts - a.ts)
   const find = (v: unknown) => (typeof v === 'string' ? i.agents.find((a) => a.id === v || a.name.toLowerCase() === v.toLowerCase()) : undefined)
@@ -84,8 +90,10 @@ export function moments(i: MomentInput): Moments {
   }
 
   // A new hire: the newest `agent.joined` for someone on the floor.
-  const joined = events.find((e) => e.kind === 'agent.joined' && find(e.agentId) && (i.forced === 'hired' || i.now - e.ts < HIRE_KEEP_MS))
-  if (joined) out.hire = { agentId: find(joined.agentId)!.id, eventId: joined.id, fresh: i.now - joined.ts < HIRE_FRESH_MS }
+  const joined = newestJoin(events, i.agents)
+  if (joined && (i.forced === 'hired' || i.now - joined.ts < HIRE_KEEP_MS)) {
+    out.hire = { agentId: find(joined.agentId)!.id, eventId: joined.id, fresh: i.now - joined.ts < HIRE_FRESH_MS }
+  }
 
   // The user chatting with an agent in a workspace: their newest message to someone who is working on it and was not briefed since.
   if (!BRIEFING.includes(i.stage)) {
@@ -143,4 +151,15 @@ export function talkLegs(talks: Talk[], agentId: string, spotOf: (id: string) =>
     if (!t.live) legs.push({ key: `talk:${t.id}:end`, to: home })
   }
   return legs
+}
+
+/**
+ * Which way a walker looks while they talk: toward the other one, so two talking agents face each other. 1 looks right, -1 left,
+ * and nothing when they are not in a live talk or stand level with the other.
+ */
+export function facingOf(talks: Talk[], agentId: string, here: readonly [number, number], where: (id: string) => readonly [number, number] | undefined): 1 | -1 | undefined {
+  const talk = talks.find((t) => t.live && (t.from === agentId || t.to === agentId))
+  const other = talk && where(talk.from === agentId ? talk.to : talk.from)
+  if (!other || Math.abs(other[0] - here[0]) < 1) return undefined
+  return other[0] > here[0] ? 1 : -1
 }
