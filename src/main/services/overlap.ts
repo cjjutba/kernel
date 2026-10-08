@@ -1,5 +1,6 @@
 import type { Overlap, Workspace } from '@shared/types'
 import { bus } from '../bus'
+import type { Store } from '../db'
 import { git } from './exec'
 import { changedFiles, overlaps as sharedPaths } from './worktrees'
 
@@ -38,6 +39,8 @@ export interface OverlapDeps {
   since: (ws: Workspace) => Promise<string>
   /** The Lead is who "flags" the overlap in the log. */
   leadId: (roomId: string) => string | undefined
+  /** Where overlaps are kept across restarts. Without it they last only as long as the app runs. */
+  saved?: Pick<Store, 'overlaps' | 'saveOverlap' | 'deleteOverlap'>
 }
 
 const live = (w: Workspace) => w.status === 'ready' && !w.mergedAt && w.prState !== 'merged' && w.prState !== 'closed'
@@ -48,12 +51,15 @@ const base = (p: string) => p.split('/').pop() ?? p
  * `check` runs after each turn and when a workspace merges or is archived: it compares the changed files of the room's open
  * workspaces, raises an Overlap for each shared file, and clears it when the overlap goes away. Dismissing one (`resolve`) keeps it
  * quiet until it clears and comes back.
+ * Overlaps are saved as they change and read back on start, so a restart neither logs them again nor brings back a dismissed one.
  */
 export class Overlaps {
   private known = new Map<string, Overlap>()
   private chain = new Map<string, Promise<unknown>>()
 
-  constructor(private d: OverlapDeps) {}
+  constructor(private d: OverlapDeps) {
+    for (const o of d.saved?.overlaps() ?? []) this.known.set(o.id, o)
+  }
 
   list(roomId: string): Overlap[] {
     return [...this.known.values()].filter((o) => o.roomId === roomId).sort((a, b) => b.ts - a.ts)
@@ -75,13 +81,23 @@ export class Overlaps {
     const o = this.known.get(id)
     if (!o) return undefined
     const next = { ...o, resolved: true }
-    this.known.set(id, next)
+    this.set(next)
     bus.push({ type: 'overlap', overlap: next })
     return next
   }
 
   forget(roomId: string) {
-    for (const [id, o] of this.known) if (o.roomId === roomId) this.known.delete(id)
+    for (const [id, o] of this.known) if (o.roomId === roomId) this.drop(id)
+  }
+
+  private set(o: Overlap) {
+    this.known.set(o.id, o)
+    this.d.saved?.saveOverlap(o)
+  }
+
+  private drop(id: string) {
+    this.known.delete(id)
+    this.d.saved?.deleteOverlap(id)
   }
 
   private async run(roomId: string): Promise<Overlap[]> {
@@ -120,8 +136,8 @@ export class Overlaps {
         })))
       }
       const same = before && JSON.stringify(before.parties) === JSON.stringify(overlap.parties)
-      this.known.set(id, overlap)
       if (same) continue
+      this.set(overlap)
       bus.push({ type: 'overlap', overlap })
       if (!before) {
         bus.activity({
@@ -134,7 +150,7 @@ export class Overlaps {
     // Gone: a workspace merged or was archived, or the agents stopped touching the same file.
     for (const [id, o] of [...this.known]) {
       if (o.roomId !== roomId || now.has(id)) continue
-      this.known.delete(id)
+      this.drop(id)
       bus.push({ type: 'overlap', overlap: { ...o, resolved: true } })
     }
     return this.list(roomId)

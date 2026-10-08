@@ -33,7 +33,7 @@ describe('composer text rules', () => {
     expect(blocks(toUserMessage([{ type: 'skill', name: 'plan' }]))).toEqual(['/plan'])
   })
 
-  it('sends a linked issue and a linked workspace as a line of context each (D-086)', () => {
+  it('sends a linked issue and a linked workspace as a line of context each (D-093)', () => {
     const blocks = (m: ReturnType<typeof toUserMessage>) => (m.message.content as { type: string; text?: string }[]).map((b) => b.text)
     expect(blocks(toUserMessage([
       { type: 'text', text: 'Fix this' },

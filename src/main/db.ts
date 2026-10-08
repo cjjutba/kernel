@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Room, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, Task, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young.
 // Swap for Drizzle with drizzle-kit migrations once the shapes settle (see docs/ARCHITECTURE.md).
@@ -17,6 +17,7 @@ create table if not exists activity (id text primary key, room_id text, ts integ
 create index if not exists activity_by_room on activity (room_id, ts);
 create table if not exists tasks (room_id text not null, id text not null, data text not null, created_at integer not null, primary key (room_id, id));
 create table if not exists meta (key text primary key, data text not null);
+create table if not exists overlaps (id text primary key, room_id text not null, data text not null);
 `
 
 export class Store {
@@ -45,6 +46,7 @@ export class Store {
       this.db.prepare('delete from activity where room_id = ?').run(id)
       this.db.prepare('delete from notifications where room_id = ?').run(id)
       this.db.prepare('delete from tasks where room_id = ?').run(id)
+      this.db.prepare('delete from overlaps where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
@@ -95,6 +97,11 @@ export class Store {
     return roomId ? this.all('select data from activity where room_id = ? order by ts desc limit ?', roomId, limit) : this.all('select data from activity order by ts desc limit ?', limit)
   }
   saveActivity(e: ActivityEvent) { this.db.prepare('insert or ignore into activity (id, room_id, ts, data) values (?, ?, ?, ?)').run(e.id, e.roomId ?? null, e.ts, JSON.stringify(e)); return e }
+
+  // overlaps the floor flagged, so a restart doesn't flag them again
+  overlaps(): Overlap[] { return this.all('select data from overlaps') }
+  saveOverlap(o: Overlap) { this.db.prepare('insert or replace into overlaps (id, room_id, data) values (?, ?, ?)').run(o.id, o.roomId, JSON.stringify(o)); return o }
+  deleteOverlap(id: string) { this.db.prepare('delete from overlaps where id = ?').run(id) }
 
   // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)
   meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }

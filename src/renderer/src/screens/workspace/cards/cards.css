@@ -15,6 +15,8 @@
 .opts { display: flex; flex-direction: column; gap: 6px; }
 .opt { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 11px; border-radius: 7px; border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: 13.5px; text-align: left; }
 .opt:hover { background: var(--surface-3); }
+.opt:disabled { opacity: 0.55; cursor: default; }
+.opt[aria-busy='true'] { opacity: 1; background: var(--surface-3); }
 .opt .n { color: var(--muted); font-size: 12px; }
 .tcard .done-line { color: var(--muted); font-size: 12.5px; }
 .pcard-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

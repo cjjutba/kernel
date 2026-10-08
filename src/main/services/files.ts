@@ -59,7 +59,7 @@ export async function readWorkspaceFile(root: string, path: string): Promise<str
 /**
  * Files for the composer's @ menu, best match first. A match is every query letter in order. Letters that sit together,
  * start a path segment or fall in the file name score higher, and shorter paths win ties. Saved plans are listed too,
- * though git ignores them, so a new chat can build from one (D-085).
+ * though git ignores them, so a new chat can build from one (D-092).
  */
 export async function searchFiles(root: string, query: string, limit = 8): Promise<FileEntry[]> {
   const out = await git(root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')

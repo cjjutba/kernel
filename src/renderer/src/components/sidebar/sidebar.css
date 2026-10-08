@@ -4,25 +4,26 @@
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
-/* A room row keeps its hover fill while the pointer is on its buttons. Hovering or focusing it swaps the room's letter
-   for a chevron, which points down while the room is expanded (Conductor). */
+/* A room row keeps its hover fill while the pointer is on its buttons. Hovering it, or reaching it by keyboard, swaps the
+   room's letter for a chevron, which points down while the room is expanded (Conductor). A click alone does not. */
 .room-row:hover > .nav-item { background: var(--nav-hover); }
 .room-mark { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
 .room-letter { width: 18px; height: 18px; border-radius: 5px; border: 1px solid var(--line-3); background: var(--surface); font-size: 10px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
 .room-letter[data-current] { background: var(--surface-3); }
 .room-chev { display: none; }
 .room-chev[data-open='true'] svg { transform: rotate(90deg); }
-.room-row:hover .room-letter, .room-row:focus-within .room-letter { display: none; }
-.room-row:hover .room-chev, .room-row:focus-within .room-chev { display: inline-flex; }
+.room-row:hover .room-letter, .room-row:has(:focus-visible) .room-letter { display: none; }
+.room-row:hover .room-chev, .room-row:has(:focus-visible) .room-chev { display: inline-flex; }
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }
-/* Hovering a workspace row swaps its diff totals for the archive button, the way Conductor does. The name stops short of it. */
+/* Hovering a workspace row, or reaching it by keyboard, swaps its diff totals for the archive button, the way Conductor does.
+   Selecting a row with the mouse leaves the totals. The name stops short of the button. */
 .ws-row { position: relative; }
 .ws-stat { font-size: 11px; display: inline-flex; gap: 6px; }
 .ws-archive { position: absolute; top: 0; bottom: 0; right: 4px; display: flex; align-items: center; }
-.ws-row:hover .ws-right, .ws-row:focus-within .ws-right, .ws-row.busy .ws-right { display: none; }
-.ws-row:hover .nav-item, .ws-row:focus-within .nav-item, .ws-row.busy .nav-item { padding-right: 32px; }
+.ws-row:hover .ws-right, .ws-row:has(:focus-visible) .ws-right, .ws-row.busy .ws-right { display: none; }
+.ws-row:hover .nav-item, .ws-row:has(:focus-visible) .nav-item, .ws-row.busy .nav-item { padding-right: 32px; }
 .ws-row:hover .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
 .ws-row.busy .more { opacity: 1; }
 /* The archive icon brightens on hover with no square behind it. */

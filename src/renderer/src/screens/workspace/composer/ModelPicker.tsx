@@ -24,7 +24,7 @@ function EffortMenu({ effort, at, onAt, onPick, onClose }: { effort: Effort; at:
 }
 
 /**
- * Model and effort, as in Conductor (D-086). Type to search, arrow keys move, Enter picks. Each model shows the effort
+ * Model and effort, as in Conductor (D-093). Type to search, arrow keys move, Enter picks. Each model shows the effort
  * you last used with it and comes back at that effort. The Effort row opens the levels to its right (Enter or ArrowRight).
  * Ctrl+Cmd+1 to 4 pick a model and Cmd+Shift+/ cycles the effort; the workspace composer also takes them while it is closed.
  */

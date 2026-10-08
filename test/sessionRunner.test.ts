@@ -282,7 +282,7 @@ describe('session runner (SDK scripted)', () => {
   })
 })
 
-describe('model and effort (D-086)', () => {
+describe('model and effort (D-093)', () => {
   it('applies a new effort to the live session, so the next turn runs at it without a restart', async () => {
     const s = await setup()
     const call = sdk.calls[sdk.calls.length - 1]

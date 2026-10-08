@@ -44,7 +44,7 @@
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
-/* Model and effort (D-086), drawn after Conductor's picker. The link pickers share the search field. */
+/* Model and effort (D-093), drawn after Conductor's picker. The link pickers share the search field. */
 .model-pop { width: 360px; padding: 0; background: var(--surface-2); }
 .pick-search { display: flex; align-items: center; gap: 9px; height: 42px; padding: 0 14px; border-bottom: 1px solid var(--card-line); color: var(--muted); cursor: text; }
 .pick-search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font-size: 13.5px; }
@@ -108,8 +108,8 @@
 }
 @container chat (max-width: 420px) { .cmp-name { display: none; } }
 
-/* A plan waiting on you (D-085): Copy and Approve on top of the box, and a hatched box for the changes. */
-/* Plan mode is the hatched box, with no chip (D-086). A waiting plan adds the bar on top. */
+/* A plan waiting on you (D-092): Copy and Approve on top of the box, and a hatched box for the changes. */
+/* Plan mode is the hatched box, with no chip (D-093). A waiting plan adds the bar on top. */
 .cmp[data-plan='true'], .nw[data-plan] { background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--line-2) 55%, transparent) 7px 8px); }
 .cmp:has(> .cmp-planbar) { padding-top: 0; }
 .cmp-planbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 -10px 2px -14px; padding: 7px 8px; border-bottom: 1px solid var(--line-2); border-radius: var(--r-lg) var(--r-lg) 0 0; background: var(--surface); }

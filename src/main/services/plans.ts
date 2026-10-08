@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { excludeFromGit } from './settings'
 
 /**
- * Plan-mode plans as files (D-085). Each plan is written to `.kernel/plans/<name>.md` in its workspace folder, so any chat
+ * Plan-mode plans as files (D-092). Each plan is written to `.kernel/plans/<name>.md` in its workspace folder, so any chat
  * there can build from it (`@.kernel/plans/<name>.md`) after the card is gone: a closed tab, /clear, a restart. The folder
  * goes in `info/exclude` like `.kernel/settings.local.toml`, so a plan never shows in Changes or lands in a PR.
  */

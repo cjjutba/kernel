@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
-import { Icon, IconButton } from '../../../ui'
+import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
@@ -20,6 +20,7 @@ function Result({ a }: { a: Approval }) {
 }
 
 function PermCard({ a, who }: { a: Approval; who: string }) {
+  const [busy, run] = useBusy<'deny' | 'always' | 'once'>()
   const input = (a.input ?? {}) as Record<string, unknown>
   const bash = a.toolName === 'Bash'
   const path = String(input.file_path ?? input.path ?? '')
@@ -32,9 +33,9 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
       {code && <div className="code">{code}</div>}
       {a.status === 'pending' ? (
         <div className="acts">
-          <button type="button" className="btn" onClick={() => void decide(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</button>
-          <button type="button" className="btn" onClick={() => void decide(a, { behavior: 'allow', always: true })}>Always allow here</button>
-          <button type="button" className="btn primary" onClick={() => void decide(a, { behavior: 'allow' })}>Allow once</button>
+          <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
+          <Button busy={busy === 'always'} busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>Always allow here</Button>
+          <Button variant="primary" busy={busy === 'once'} busyLabel="Allowing" disabled={busy !== null} onClick={() => void run('once', () => decide(a, { behavior: 'allow' }))}>Allow once</Button>
         </div>
       ) : <Result a={a} />}
     </section>
@@ -44,7 +45,9 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
 function QuestionCard({ a, who }: { a: Approval; who: string }) {
   const [other, setOther] = useState(false)
   const [text, setText] = useState('')
-  const send = () => text.trim() && void decide(a, { behavior: 'answer', text: text.trim() })
+  const [busy, run] = useBusy()
+  const answer = (key: string, reply: string) => void run(key, () => decide(a, { behavior: 'answer', text: reply }))
+  const send = () => text.trim() && answer('text', text.trim())
   return (
     <section aria-label={`${who} has a question`} className="card tcard">
       <h3>{`${who} has a question`}</h3>
@@ -53,14 +56,14 @@ function QuestionCard({ a, who }: { a: Approval; who: string }) {
         <>
           <div className="opts">
             {(a.options ?? []).map((o, i) => (
-              <button key={o} type="button" className="opt" onClick={() => void decide(a, { behavior: 'answer', text: o })}><span className="n mono">{i + 1}</span>{o}</button>
+              <button key={o} type="button" className="opt" disabled={busy !== null} aria-busy={busy === String(i) || undefined} onClick={() => answer(String(i), o)}>{busy === String(i) ? <span className="spin" aria-hidden="true" /> : <span className="n mono">{i + 1}</span>}{o}</button>
             ))}
-            <button type="button" className="opt" aria-expanded={other} onClick={() => setOther(true)}><span className="n mono">{(a.options?.length ?? 0) + 1}</span>Something else</button>
+            <button type="button" className="opt" aria-expanded={other} disabled={busy !== null} onClick={() => setOther(true)}><span className="n mono">{(a.options?.length ?? 0) + 1}</span>Something else</button>
           </div>
           {other && (
             <div className="acts" style={{ flexWrap: 'nowrap' }}>
               <input className="grow-input" aria-label="Your answer" placeholder="Type your answer" autoFocus value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
-              <button type="button" className="btn primary" disabled={!text.trim()} onClick={send}>Send</button>
+              <Button variant="primary" busy={busy === 'text'} busyLabel="Sending" disabled={!text.trim() || busy !== null} onClick={send}>Send</Button>
             </div>
           )}
         </>
@@ -70,13 +73,15 @@ function QuestionCard({ a, who }: { a: Approval; who: string }) {
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */
-function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => void; onCancel: () => void }) {
+function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => Promise<unknown>; onCancel: () => void }) {
   const [note, setNote] = useState('')
+  const [busy, run] = useBusy()
+  const send = () => void run('send', () => onSend(note.trim()))
   return (
     <div className="acts" style={{ flexWrap: 'nowrap' }}>
-      <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') onSend(note.trim()); if (e.key === 'Escape') onCancel() }} />
-      <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-      <button type="button" className="btn primary" onClick={() => onSend(note.trim())}>Send</button>
+      <input className="grow-input" aria-label="What should change" placeholder="What should change" autoFocus value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') send(); if (e.key === 'Escape') onCancel() }} />
+      <Button disabled={!!busy} onClick={onCancel}>Cancel</Button>
+      <Button variant="primary" busy={!!busy} busyLabel="Sending" onClick={send}>Send</Button>
     </div>
   )
 }
@@ -84,7 +89,7 @@ function ChangesNote({ onSend, onCancel }: { onSend: (note: string) => void; onC
 /** A long plan folds to its first screen once it is decided. One still waiting stays open, since you read it to decide. */
 const LONG_PLAN_LINES = 28
 
-/** Copy and Open in editor on the Inbox's plan card. Open asks main for the file, which it writes again if it was deleted (D-085). */
+/** Copy and Open in editor on the Inbox's plan card. Open asks main for the file, which it writes again if it was deleted (D-092). */
 function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const [copied, copy] = useCopy(planCopyText(a, agents))
   const file = !!a.workspaceId && !!planText(a).trim()
@@ -100,12 +105,13 @@ function PlanTools({ a, agents }: { a: Approval; agents: AgentDef[] }) {
 /** Approve, or say what should change. The words depend on who planned: the Lead hands off, anyone else builds. */
 function PlanDecision({ a, lead }: { a: Approval; lead: boolean }) {
   const [asking, setAsking] = useState(false)
+  const [busy, run] = useBusy()
   if (a.status !== 'pending') return <Result a={a} />
-  if (asking) return <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => void decide(a, { behavior: 'deny', message: note || 'Please revise the plan.' })} />
+  if (asking) return <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please revise the plan.' })} />
   return (
     <div className="acts">
-      <button type="button" className="btn" onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</button>
-      <button type="button" className="btn primary" onClick={() => void decide(a, { behavior: 'allow' })}>{lead ? 'Approve and hand off' : 'Approve and build'}</button>
+      <Button disabled={!!busy} onClick={() => setAsking(true)}>{lead ? 'Request changes' : 'Keep planning'}</Button>
+      <Button variant="primary" busy={!!busy} busyLabel="Approving" onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>{lead ? 'Approve and hand off' : 'Approve and build'}</Button>
     </div>
   )
 }
@@ -141,7 +147,7 @@ function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead:
 
 /**
  * A plan-mode plan as a card, in the Inbox, which has no composer to decide from: its opening heading as the title, the
- * rest as markdown, and the file Kernel saved it to (D-085). A long one that is already decided folds.
+ * rest as markdown, and the file Kernel saved it to (D-092). A long one that is already decided folds.
  */
 function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: boolean }) {
   const text = planText(a)
@@ -178,6 +184,7 @@ function PlanCard({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: 
 
 function HireCard({ a }: { a: Approval }) {
   const [asking, setAsking] = useState(false)
+  const [busy, run] = useBusy()
   const file = a.agentFile
   if (!file) return null
   return (
@@ -185,11 +192,11 @@ function HireCard({ a }: { a: Approval }) {
       <h3>{file.path}</h3>
       <div className="code">{file.text}</div>
       {a.status !== 'pending' ? <Result a={a} /> : asking ? (
-        <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => void decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
+        <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />
       ) : (
         <div className="acts">
-          <button type="button" className="btn" onClick={() => setAsking(true)}>Edit file</button>
-          <button type="button" className="btn primary" onClick={() => void decide(a, { behavior: 'allow' })}>Create agent</button>
+          <Button disabled={!!busy} onClick={() => setAsking(true)}>Edit file</Button>
+          <Button variant="primary" busy={!!busy} busyLabel="Creating" onClick={() => void run('create', () => decide(a, { behavior: 'allow' }))}>Create agent</Button>
         </div>
       )}
     </section>

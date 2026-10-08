@@ -2,14 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
-import { Button, Icon, IconButton } from '../../../ui'
+import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
-// A plan in its chat, the way Conductor shows one (D-085): the transcript shows a "Propose plan" row and the plan as a
+// A plan in its chat, the way Conductor shows one (D-092): the transcript shows a "Propose plan" row and the plan as a
 // document, and while it waits the composer carries Copy and Approve, and whatever you type goes back as changes.
 
 const EMPTY: AgentDef[] = []
@@ -97,7 +97,9 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
 export function PlanBar({ a }: { a: Approval }) {
   const agents = useStore((s) => (a.roomId ? s.agents[a.roomId] : undefined)) ?? EMPTY
   const [copied, copy] = useCopy(planCopyText(a, agents))
-  const approve = () => void attempt('Could not approve the plan', () => call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }))
+  const [busy, run] = useBusy()
+  // useBusy drops a second press (or ⌘⇧↵) while the first is still on its way (D-086).
+  const approve = () => void run('approve', () => attempt('Could not approve the plan', () => call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } })))
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' || !e.shiftKey || !(e.metaKey || e.ctrlKey) || e.isComposing) return
@@ -110,7 +112,7 @@ export function PlanBar({ a }: { a: Approval }) {
   return (
     <div className="cmp-planbar" role="group" aria-label="Plan">
       <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
-      <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
+      <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" busy={!!busy} busyLabel="Approving" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
     </div>
   )
 }

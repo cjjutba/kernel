@@ -9,7 +9,7 @@ export type PlusPanel = 'plus' | 'linkIssue' | 'linkWorkspaces' | null
 const ABOVE = { right: 0, bottom: 'calc(100% + 8px)' } as const
 
 /**
- * The + button and its menu, as in Conductor (D-086): Link issue (⌘I), Link workspaces, plan mode (⇧Tab) and Add attachment
+ * The + button and its menu, as in Conductor (D-093): Link issue (⌘I), Link workspaces, plan mode (⇧Tab) and Add attachment
  * (⌘U). Both composers use it. `anchorRef` is the wrapper around this component, so a press on + toggles instead of reopening.
  */
 export function PlusMenu({ panel, onPanel, anchorRef, roomId, workspaceId, plan, onPlan, onAttach, onInsert }: {

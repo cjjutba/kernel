@@ -122,12 +122,12 @@ function ApprovalRow({ id }: { id: string }) {
   return a ? <ApprovalCard approval={a} inChat /> : null
 }
 
-function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: { block: ThreadBlock; chat: Chat; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => void; onTerminal: () => void }) {
+function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: { block: ThreadBlock; chat: Chat; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => void; onTerminal: () => Promise<unknown> }) {
   if (block.kind === 'error') {
     return (
       <ErrorCard message={block.message} output={block.output} agentName={agentName} onTerminal={onTerminal}
-        onFix={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text: `Fix this: ${block.message}` }] }))}
-        onRetry={() => void attempt('Could not retry', () => call('chats.retry', { chatId: chat.id, itemId: block.id }))} />
+        onFix={() => attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text: `Fix this: ${block.message}` }] }))}
+        onRetry={() => attempt('Could not retry', () => call('chats.retry', { chatId: chat.id, itemId: block.id }))} />
     )
   }
   if (block.kind === 'group') return <ToolGroup block={block} changes={changes} />
@@ -197,7 +197,7 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
     onForked(forked.id)
   })
 
-  const terminal = () => void attempt('Could not open a terminal', async () => {
+  const terminal = () => attempt('Could not open a terminal', async () => {
     const t = await call('chats.create', { workspaceId, kind: 'terminal' })
     await loadWorkspace(workspaceId)
     onForked(t.id)

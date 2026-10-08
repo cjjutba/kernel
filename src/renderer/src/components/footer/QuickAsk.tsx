@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
 import { openLead } from '../../lead'
-import { Avatar, Button, Icon, Spinner } from '../../ui'
+import { Avatar, Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
 
@@ -22,6 +22,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const [text, setText] = useState('')
   const [asked, setAsked] = useState<{ chatId: string; since: number; question: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [busy, run] = useBusy()
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   const items = useStore((s) => (asked ? s.items[asked.chatId] : undefined))
@@ -32,17 +33,19 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
 
   const name = lead?.name ?? 'the Lead'
   const openChat = () => { if (!room) return; onClose(); void openLead(room.id) }
-  const ask = async () => {
+  const ask = () => {
     if (!room || !text.trim()) return
-    setError(null)
     const question = text.trim()
-    const since = Date.now()
-    try {
-      const { chatId } = await call('lead.ask', { roomId: room.id, text: question })
-      actions.chats.setItems(chatId, await call('chats.items', { chatId }))
-      setAsked({ chatId, since, question })
-      setText('')
-    } catch (e) { setError((e as Error).message) }
+    void run('ask', async () => {
+      setError(null)
+      const since = Date.now()
+      try {
+        const { chatId } = await call('lead.ask', { roomId: room.id, text: question })
+        actions.chats.setItems(chatId, await call('chats.items', { chatId }))
+        setAsked({ chatId, since, question })
+        setText('')
+      } catch (e) { setError((e as Error).message) }
+    })
   }
   useEffect(() => { ref.current?.querySelector('textarea')?.focus() }, [asked])
 
@@ -64,7 +67,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
       ) : (
         <textarea
           className="qa-text" aria-label={`Your question for ${name}`} placeholder="What's the status of T-15? Who is blocked?" value={text} disabled={!room}
-          onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask() } }}
+          onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask() } }}
         />
       )}
       {error && <p className="qa-err" role="alert">{error}</p>}
@@ -77,7 +80,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
             <Button variant="primary" disabled={!lead} onClick={openChat}>{done ? 'Open full chat' : 'Open chat'}</Button>
           </>
         ) : (
-          <Button variant="primary" disabled={!room || !text.trim()} onClick={() => void ask()}>Ask</Button>
+          <Button variant="primary" busy={!!busy} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask</Button>
         )}
       </div>
     </div>

@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import type { Approval, Decision } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, Icon, Pill } from '../../ui'
+import { Button, Icon, Pill, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
 import { outcome } from '../workspace/cards/steps'
 import { attempt } from '../workspace/MessageActions'
@@ -26,6 +26,7 @@ function Detail({ item }: { item: InboxItem }) {
   const { n, approval: a } = item
   const agents = useStore((s) => s.agents)
   const ws = useStore((s) => s.workspaces.find((w) => w.id === (a?.workspaceId ?? n.workspaceId)))
+  const [busy, run] = useBusy<'deny' | 'always' | 'approve'>()
   const agent = agentOf(n, agents)
   const input = (a?.input ?? {}) as Record<string, unknown>
   const code = a?.toolName === 'Bash' ? `$ ${String(input.command ?? '')}` : String(input.file_path ?? input.path ?? '') || (a?.input ? JSON.stringify(a.input, null, 2) : '')
@@ -51,10 +52,10 @@ function Detail({ item }: { item: InboxItem }) {
             {ws && <><dt>Workspace</dt><dd className="mono">{ws.branch}</dd></>}
           </dl>
           <div className="ib-acts">
-            <Button onClick={() => void decide(a, { behavior: 'deny', message: 'Denied in Kernel.' })}>Deny</Button>
-            <button type="button" className="ib-link" onClick={() => void decide(a, { behavior: 'allow', always: true })}>Always allow in this room</button>
+            <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
+            <button type="button" className="ib-link" disabled={busy !== null} aria-busy={busy === 'always' || undefined} onClick={() => void run('always', () => decide(a, { behavior: 'allow', always: true }))}>{busy === 'always' ? <><span className="spin" aria-hidden="true" />Allowing</> : 'Always allow in this room'}</button>
             <span className="grow" />
-            <Button variant="primary" onClick={() => void decide(a, { behavior: 'allow' })}>Approve</Button>
+            <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))}>Approve</Button>
           </div>
         </>
       )}

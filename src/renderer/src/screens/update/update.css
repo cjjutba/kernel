@@ -5,4 +5,3 @@
 .wn-title { font-weight: 500; }
 .wn-body { color: var(--muted); line-height: 1.5; }
 .wn-note { flex: 1; font-size: 12.5px; color: var(--muted); }
-.wn-spin { border-color: var(--line-4); border-top-color: var(--on-ink); }

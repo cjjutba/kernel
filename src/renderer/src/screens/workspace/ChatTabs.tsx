@@ -3,13 +3,15 @@ import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton, Menu } from '../../ui'
+import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
 
 export const fileTab = (path: string) => `file:${path}`
 const base = (path: string) => path.split('/').pop() ?? path
 
 /**
- * The row of chat, terminal, file and image tabs, with the new tab menu, the tab menu (rename, fork, close, close others) and the Checkpoints button.
+ * The row of chat, terminal, file and image tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
+ * a close button on hover and the Checkpoints button.
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
 export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, onCloseFile, onCloseImage }: {
@@ -29,23 +31,17 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
     await loadWorkspace(workspaceId)
     onSelect(c.id)
   })
-  const close = (id: string) => attempt('Could not close the tab', async () => {
+  // Closing stops the chat's session, so a chat that is still running asks first (ConfirmCloseChats.tsx).
+  const close = (ids: string[]) => {
     closeMenu()
-    await call('chats.close', { chatId: id })
-    await loadWorkspace(workspaceId)
-    if (active === id) {
-      const left = getState().chats[workspaceId] ?? []
-      const was = chats.findIndex((c) => c.id === id)
-      const next = left[Math.min(Math.max(was - 1, 0), left.length - 1)]
-      if (next) onSelect(next.id)
-    }
-  })
-  const closeOthers = (id: string) => attempt('Could not close the other tabs', async () => {
-    closeMenu()
-    for (const c of chats) if (c.id !== id) await call('chats.close', { chatId: c.id })
-    await loadWorkspace(workspaceId)
-    onSelect(id)
-  })
+    if (ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
+    return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect))
+  }
+  // The menu belongs to the open tab, so right-clicking another chat opens it first.
+  const openTabMenu = (id: string) => {
+    if (id !== active) onSelect(id)
+    if (menu !== 'tab') actions.ui.toggleMenu('tab')
+  }
   const fork = (id: string) => attempt('Could not fork the chat', async () => {
     closeMenu()
     const c = await call('chats.fork', { chatId: id })
@@ -69,7 +65,7 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
       if (!a) return
       if (a.startsWith('file:')) f(a.slice(5))
       else if (a.startsWith('image:')) img(a)
-      else if (cs.some((x) => x.id === a)) void c(a)
+      else if (cs.some((x) => x.id === a)) void c([a])
     }
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey || e.altKey || e.ctrlKey) return
@@ -104,34 +100,37 @@ export function ChatTabs({ workspaceId, chats, files, images, active, onSelect, 
           const on = t.id === active
           const editing = renaming === t.id
           return (
-            <span key={t.id} className="tab-group hv">
+            <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (
                 <input className="tab-rename" aria-label="Tab name" autoFocus defaultValue={t.title} maxLength={60}
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)} onKeyDown={(e) => arrow(e, t.id)}
+                <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)}
+                  aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
+                  onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
+                  onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   <Icon name={t.kind === 'terminal' ? 'term' : t.kind === 'file' ? 'doc' : t.kind === 'image' ? 'image' : 'chat'} size={14} />
                   <span className="ellipsis">{t.title}</span>
                 </button>
               )}
-              {t.kind === 'chat' && on && !editing && (
-                <span ref={tabAnchor} style={{ position: 'relative', alignSelf: 'center', marginLeft: -8 }}>
-                  <IconButton className="tab-caret" icon="chevron" size={11} label="Tab options" aria-haspopup="menu" aria-expanded={menu === 'tab'} onClick={() => actions.ui.toggleMenu('tab')} />
-                  {menu === 'tab' && (
-                    <Menu label="Tab options" anchorRef={tabAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 220 }} items={[
-                      { id: 'rename', label: 'Rename', onSelect: () => { closeMenu(); setRenaming(t.id) } },
-                      { id: 'fork', label: 'Fork into new chat', onSelect: () => void fork(t.id) },
-                      { id: 'close', label: 'Close tab', shortcut: '⌘W', onSelect: () => void close(t.id) },
-                      { id: 'others', label: 'Close other tabs', disabled: chats.length < 2, onSelect: () => void closeOthers(t.id) }
-                    ]} />
-                  )}
+              {/* One slot after the title: the open chat shows a pen at rest, and hover or keyboard focus swaps it for the close button (D-088). */}
+              {!editing && (
+                <span className="tab-end">
+                  {t.kind === 'chat' && on && <span className="tab-pen"><Icon name="pen" size={12} /></span>}
+                  <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
+                    onClick={() => (t.path ? onCloseFile(t.path) : t.kind === 'image' ? onCloseImage(t.id) : void close([t.id]))} />
                 </span>
               )}
-              {t.kind === 'terminal' && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => void close(t.id)} />}
-              {t.path && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => onCloseFile(t.path!)} />}
-              {t.kind === 'image' && <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} style={{ alignSelf: 'center', marginLeft: -8 }} onClick={() => onCloseImage(t.id)} />}
+              {t.kind === 'chat' && on && menu === 'tab' && (
+                <Menu label="Tab options" anchorRef={tabAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 220 }} items={[
+                  { id: 'rename', label: 'Rename', onSelect: () => { closeMenu(); setRenaming(t.id) } },
+                  { id: 'fork', label: 'Fork into new chat', onSelect: () => void fork(t.id) },
+                  { id: 'close', label: 'Close tab', shortcut: '⌘W', onSelect: () => void close([t.id]) },
+                  { id: 'others', label: 'Close other tabs', disabled: chats.length < 2, onSelect: () => void close(chats.filter((c) => c.id !== t.id).map((c) => c.id)) }
+                ]} />
+              )}
             </span>
           )
         })}

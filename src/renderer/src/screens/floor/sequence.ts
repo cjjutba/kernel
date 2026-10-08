@@ -29,7 +29,7 @@ export interface Sequence {
   legs: Leg[]
   /** Who the agent card follows when nobody was clicked and nobody needs the user: the agent being handed work. */
   focus?: string
-  /** A line said out loud on the floor (the Lead's `say` tool), shown as a speech bubble. */
+  /** A line said out loud on the floor (an `agent.say` from anyone, the Lead's `say` tool included), shown as a speech bubble. */
   say?: { id: string; agentId: string; text: string }
   /** PRs ready to merge, for the review card. */
   review?: { title: string; sub: string }
@@ -46,9 +46,11 @@ export const isStage = (s: string | undefined): s is Stage => !!s && (STAGES as 
 /**
  * Which stage the room is in, and what the floor draws for it.
  * - plan: the Lead's plan approval (`request_plan_approval`) is pending
- * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`
+ * - handoff: the newest plan was approved and the Lead is still running, handing out work with `create_workspace`. It ends once
+ *   every step that names an agent has a workspace and the Lead has logged something since the last `workspace.created` other
+ *   than a line it said, so the last stop is walked and its line shows. Plans without such steps (plan mode) end with the turn
  * - sent, then planning: a brief (`rooms.brief`) the Lead is on; planning once the Lead acts on it in plan mode.
- *   A plan sent back with changes reopens the brief, so the Lead plans at the wall again
+ *   A plan sent back with changes reopens the brief, so the Lead plans at the wall again, until that turn ends
  * - needs: an approval is pending or an agent needs the user
  * - review: a PR in the room is ready to merge
  * - working: anyone is busy
@@ -81,14 +83,21 @@ export function sequence(i: SequenceInput): Sequence {
   // A plan sent back (changes requested) or left to expire keeps the brief open: the Lead plans again. The planning
   // round then starts at that plan, so the wall walk, the "started" check and the bubble count from there.
   const revising = !!lastPlan && lastPlan.status !== 'allowed' && lastPlan.status !== 'pending'
-  const reopened = revising && planAt >= briefAt
+  // The reopened round is the Lead's turn that follows the plan. Once that turn ends, a later busy turn is not planning.
+  const roundOver = revising && planAt >= briefAt && events.some((e) => e.kind === 'turn.done' && byLead(e) && e.ts > planAt)
+  const reopened = revising && planAt >= briefAt && !roundOver
   const openAt = reopened ? planAt : briefAt
   const round = reopened ? `plan:${lastPlan!.id}` : brief?.id ?? 'stage'
 
   let stage: Stage
-  const onBrief = !!brief && busy(leadStatus) && (planAt < briefAt || revising)
+  const onBrief = !!brief && busy(leadStatus) && !roundOver && (planAt < briefAt || revising)
+  // The engine links each step to its workspace as `create_workspace` runs. Steps with no agent can never be linked.
+  const assigned = (lastPlan?.steps ?? []).filter((s) => s.agentId)
+  const lastCreate = handoffs.length ? handoffs[handoffs.length - 1].ts : -Infinity
+  const handedAll = assigned.length > 0 && assigned.every((s) => s.workspaceId)
+    && events.some((e) => e.ts > lastCreate && byLead(e) && e.kind !== 'workspace.created' && e.kind !== 'agent.say')
   if (plans.some((a) => a.status === 'pending')) stage = 'plan'
-  else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt && updatedAt < planAt) stage = 'handoff'
+  else if (lastPlan?.status === 'allowed' && busy(leadStatus) && planAt >= briefAt && updatedAt < planAt && !handedAll) stage = 'handoff'
   else if (onBrief) {
     const started = events.some((e) => e !== brief && e.ts >= openAt && byLead(e) && !QUIET.includes(e.kind))
     stage = started && leadStatus === 'planning' ? 'planning' : 'sent'

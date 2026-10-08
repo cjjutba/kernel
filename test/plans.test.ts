@@ -6,7 +6,7 @@ import { run } from '../src/main/services/exec'
 import { searchFiles } from '../src/main/services/files'
 import { planName, savePlan } from '../src/main/services/plans'
 
-// D-085: plan-mode plans are saved as files a later chat can build from, and git never sees them.
+// D-092: plan-mode plans are saved as files a later chat can build from, and git never sees them.
 
 const status = async (repo: string) => (await run('git', ['-C', repo, 'status', '--porcelain', '--untracked-files=all'])).trim()
 const PLAN = '# Export invoices as PDF\n\n## Context\nThe table has row actions.\n\n## Steps\n1. Renderer\n2. Button\n'

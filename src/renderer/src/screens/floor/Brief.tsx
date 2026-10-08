@@ -1,8 +1,8 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { AgentDef } from '@shared/types'
 import { call } from '../../api'
 import { Icon, IconButton, Menu } from '../../ui'
-import { actions } from '../../store'
+import { actions, useStore } from '../../store'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import '../workspace/composer/composer.css'
 
@@ -17,8 +17,17 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
   const filePick = useRef<HTMLInputElement>(null)
   const imagePick = useRef<HTMLInputElement>(null)
   const plusAnchor = useRef<HTMLSpanElement>(null)
+  const workspaces = useStore((s) => s.workspaces)
   const lead = agents.find((a) => a.lead)
-  const target = agents.find((a) => a.id === to)
+  // `rooms.brief` throws for an agent with no open workspace, so only those can be picked.
+  const reachable = useMemo(() => {
+    const open = new Set(workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived').map((w) => w.agentId))
+    return agents.filter((a) => !a.lead && open.has(a.id))
+  }, [agents, workspaces, roomId])
+  const target = reachable.find((a) => a.id === to)
+  const picked = target?.id ?? ''
+  // An agent that loses its workspace is dropped, so the picker doesn't jump back to it if the workspace returns.
+  useEffect(() => { if (to && !target) setTo('') }, [to, target])
   const placeholder = target ? `Message ${target.name}` : lead ? `Brief ${lead.name} on what to build` : 'Brief the Lead on what to build'
 
   const send = async () => {
@@ -27,7 +36,7 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
     const kept = d.snapshot()
     const text = d.plain()
     d.reset()
-    try { await call('rooms.brief', { roomId, text, parts, agentId: to || undefined }) } catch (e) {
+    try { await call('rooms.brief', { roomId, text, parts, agentId: picked || undefined }) } catch (e) {
       d.reset(kept)
       actions.ui.toast({ title: 'Could not send that', sub: (e as Error).message })
     }
@@ -45,9 +54,9 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
       <div className="row" style={{ gap: 8 }}>
         <span className="brief-to">
           <label htmlFor="floor-to" className="sr-only">Send to</label>
-          <select id="floor-to" value={to} onChange={(e) => setTo(e.target.value)}>
+          <select id="floor-to" value={picked} onChange={(e) => setTo(e.target.value)}>
             <option value="">{lead ? `To ${lead.name} · Lead` : 'To the Lead'}</option>
-            {agents.filter((a) => !a.lead).map((a) => <option key={a.id} value={a.id}>To {a.name} · {a.role}</option>)}
+            {reachable.map((a) => <option key={a.id} value={a.id}>To {a.name} · {a.role}</option>)}
           </select>
           <Icon name="chevron" size={10} stroke={1.4} />
         </span>

@@ -1,6 +1,6 @@
 import { EFFORTS, MODELS, type Effort, type ModelId } from '@shared/types'
 
-// Each model remembers the effort you last used with it, the way Conductor's picker shows one per model (D-086).
+// Each model remembers the effort you last used with it, the way Conductor's picker shows one per model (D-093).
 
 const KEY = 'kernel.effortByModel'
 export type EffortMemory = Partial<Record<ModelId, Effort>>

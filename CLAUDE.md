@@ -9,9 +9,10 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team in a virt
 - `npm test` runs vitest on Electron's Node (engine tests use real git repos in temp folders). One file: `npm test -- test/kernel.test.ts`. Plain `npx vitest` fails, see D-013
 - `npm run typecheck` checks main, preload and renderer
 - `npm run build` builds all three bundles
-- `npm run shots -- <Screen> [...]` builds, opens each fixture in Electron at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
+- `npm run shots -- <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
 - `npm run shots:compare -- <Screen> [...]` writes `shots/compare/<Screen>.png`, the shot on the left and `design/screens/<Screen>.png` on the right
 - `KERNEL_FIXTURES=<Screen> npm run dev` runs the app on one fixture (`fixtures/`), with no kernel, database or sessions
+- `KERNEL_HEADLESS=1` keeps the window hidden, with no Dock icon and no focus. Set it whenever a script launches the app (Playwright's `_electron`, `electron .`). Check your work with `npm run shots`, not `npm run dev` or computer use: a visible window steals keyboard focus from whatever CJ is typing in
 
 ## Where things are
 
@@ -64,6 +65,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - Statuses on the floor come from real events only, never timers. Fixtures are for screenshots and tests.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.
 - UI copy is plain, sentence case, no em dashes.
+- A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` before changing a deliberate choice, and add an entry when you make a new one.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.

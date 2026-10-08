@@ -3,15 +3,15 @@ import type { AgentStatus, Overlap, Task } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
-import { defaultSelected, needsCount, seating } from '../../floor/layout'
+import { SEATS, defaultSelected, needsCount, seating } from '../../floor/layout'
 import { AgentCard } from './AgentCard'
 import { Brief } from './Brief'
 import { Logs } from './Logs'
 import { Stage } from './Stage'
-import { DESK_SPOTS } from './motion/waypoints'
-import { useReducedMotion, useWalks, type Walk } from './motion/useWalks'
+import { DESK_SPOTS, WAYPOINTS } from './motion/waypoints'
+import { useReducedMotion, useWalks, type Pose, type Walk } from './motion/useWalks'
 import { sequence } from './sequence'
-import { HIRE_FRESH_MS, HIRE_KEEP_MS, deskSpot, moments, talkLegs } from './moments/moments'
+import { HIRE_FRESH_MS, HIRE_KEEP_MS, deskSpot, facingOf, moments, newestJoin, talkLegs } from './moments/moments'
 import type { Spot } from './motion/walks'
 import './floor.css'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
@@ -25,9 +25,13 @@ export function Floor({ roomId }: { roomId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId] ?? [])
   const status = useStore((s) => s.status[roomId] ?? {})
-  const roomApprovals = useStore((s) => s.approvals.filter((a) => a.roomId === roomId))
-  const activity = useStore((s) => s.activity.filter((e) => e.roomId === roomId))
-  const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId))
+  // Select the store's own lists and filter once per change to them, not on every store change.
+  const allApprovals = useStore((s) => s.approvals)
+  const allActivity = useStore((s) => s.activity)
+  const allWorkspaces = useStore((s) => s.workspaces)
+  const roomApprovals = useMemo(() => allApprovals.filter((a) => a.roomId === roomId), [allApprovals, roomId])
+  const activity = useMemo(() => allActivity.filter((e) => e.roomId === roomId), [allActivity, roomId])
+  const workspaces = useMemo(() => allWorkspaces.filter((w) => w.roomId === roomId), [allWorkspaces, roomId])
   const tasks = useStore((s) => s.tasks[roomId] ?? NO_TASKS)
   const overlaps = useStore((s) => s.overlaps[roomId] ?? NO_OVERLAPS)
   const forced = useStore((s) => s.ui.stage)
@@ -41,6 +45,7 @@ export function Floor({ roomId }: { roomId: string }) {
 
   const live = useMemo(() => agents.filter((a) => !a.retired), [agents])
   const desks = room?.desks
+  const { seated } = useMemo(() => seating(live, { desks }), [live, desks])
   const seq = useMemo(
     () => sequence({ room: { id: roomId, desks }, agents: live, status, approvals: roomApprovals, activity, workspaces, tasks, forced }),
     [roomId, desks, live, status, roomApprovals, activity, workspaces, tasks, forced]
@@ -48,13 +53,13 @@ export function Floor({ roomId }: { roomId: string }) {
   // Time only matters for a new hire: the hello and the walk from the door end on their own, so tick when each window closes.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    const joined = activity.find((e) => e.kind === 'agent.joined')?.ts
+    const joined = newestJoin(activity, live)?.ts
     if (joined === undefined) return
     const waits = [joined + HIRE_FRESH_MS, joined + HIRE_KEEP_MS].map((t) => t - Date.now()).filter((ms) => ms > 0)
     if (!waits.length) return
     const timer = setTimeout(() => setNow(Date.now()), Math.min(...waits) + 50)
     return () => clearTimeout(timer)
-  }, [activity, now])
+  }, [activity, live, now])
   const mo = useMemo(
     () => moments({ agents: live, status, approvals: roomApprovals, activity, overlaps, stage: seq.stage, forced, room: { desks }, now }),
     [live, status, roomApprovals, activity, overlaps, seq.stage, forced, desks, now]
@@ -64,7 +69,6 @@ export function Floor({ roomId }: { roomId: string }) {
   const walks = useMemo<Walk[]>(() => {
     const out: Walk[] = []
     const spotOf = (id: string) => deskSpot(live, { desks }, id)
-    const seated = seating(live, { desks }).seated
     seated.forEach((a, i) => {
       const desk = DESK_SPOTS[i]
       if (!desk) return
@@ -73,16 +77,31 @@ export function Floor({ roomId }: { roomId: string }) {
       let legs = [...base, ...talkLegs(mo.talks, a.id, spotOf, home)]
       let from: Spot | undefined
       if (mo.hire?.agentId === a.id) {
-        // A fixture holds the arrival at the door; a real one walks to the desk.
-        legs = [{ key: `join:${mo.hire.eventId}`, to: forced === 'hired' ? 'door' : 'seat' }]
+        // A fixture holds the arrival at the door; a real one walks to the desk. Talks come after the arrival.
+        legs = [{ key: `join:${mo.hire.eventId}`, to: forced === 'hired' ? 'door' : 'seat' }, ...legs]
         if (mo.hire.fresh && forced !== 'hired') from = 'door'
       }
       if (legs.length) out.push({ id: a.id, desk, legs, from })
     })
     return out
-  }, [live, desks, seq.legs, mo, forced])
+  }, [live, desks, seated, seq.legs, mo, forced])
   const instant = reduced || !!settings?.appearance.reduceMotion || settings?.experimental.walking === false
   const { poses, jumping } = useWalks(walks, instant)
+  // Two people talking face each other: whoever stands up turns toward the other, seated or not.
+  const faced = useMemo(() => {
+    const spot = (id: string): readonly [number, number] | undefined => {
+      const i = seated.findIndex((a) => a.id === id)
+      if (i < 0) return undefined
+      const at = poses[id]?.at ?? 'seat'
+      return at === 'seat' ? SEATS[i] : WAYPOINTS[at]
+    }
+    const out: Record<string, Pose> = {}
+    for (const [id, p] of Object.entries(poses)) {
+      const here = spot(id)
+      out[id] = { ...p, facing: p.at !== 'seat' && here ? facingOf(mo.talks, id, here, spot) : undefined }
+    }
+    return out
+  }, [poses, mo.talks, seated])
   const shown = useMemo(() => {
     const out = { ...status }
     for (const [id, p] of Object.entries(poses)) if (p.at !== 'seat') out[id] = 'walking'
@@ -126,7 +145,7 @@ export function Floor({ roomId }: { roomId: string }) {
         <main className="floor-main">
           {sel && live.length > 0 && <AgentCard agent={sel} roomId={roomId} agents={live} status={shown[sel.id] ?? 'idle'} note={note} />}
           <div className="floor-room">
-            <Stage room={room} agents={live} status={shown} words={words} poses={poses} say={mo.say ?? seq.say} instant={instant || jumping}
+            <Stage room={room} agents={live} status={shown} words={words} poses={faced} say={mo.say ?? seq.say} instant={instant || jumping}
               selectedId={sel?.id} onSelect={setClicked} onTogglePause={() => void togglePause()} />
           </div>
           <Brief roomId={roomId} agents={live} />

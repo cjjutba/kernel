@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AgentDef } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
-import { Button, EmptyState, Icon } from '../../ui'
+import { Button, EmptyState, Icon, useBusy } from '../../ui'
 import { FILTERS, LOUD, STATUS_WORD, currentWorkspace, isNew, modelName, shirtOf, shortFile, workspaceLabel, type FilterId } from './model'
 import './team.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -17,6 +17,7 @@ export function Team({ roomId }: { roomId: string }) {
   const workspaces = useStore((s) => s.workspaces)
   const [filter, setFilter] = useState<FilterId>('all')
   const [retired, setRetired] = useState<AgentDef[]>([])
+  const [busy, run] = useBusy()
   useEffect(() => { void loadRoom(roomId) }, [roomId])
   // Retired agents sit in .claude/retired-agents (D-003). The list is read again when the team changes, so a retire shows here at once.
   useEffect(() => { void call('agents.list', { roomId, retired: true }).then(setRetired).catch(() => setRetired([])) }, [roomId, agents])
@@ -31,14 +32,14 @@ export function Team({ roomId }: { roomId: string }) {
 
   if (!room) return <div className="panel" />
   const hire = () => actions.ui.openModal({ name: 'newAgent', roomId, step: 'describe' })
-  const restore = async (a: AgentDef) => {
+  const restore = (a: AgentDef) => run(a.id, async () => {
     try {
       const def = await call('agents.restore', { roomId, agentId: a.id })
       actions.agents.set(roomId, [...team.filter((x) => x.id !== def.id), def])
       setRetired((r) => r.filter((x) => x.id !== a.id))
       actions.ui.toast({ title: `${def.name} is back on the team` })
     } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }) }
-  }
+  })
 
   return (
     <div className="panel">
@@ -97,7 +98,7 @@ export function Team({ roomId }: { roomId: string }) {
                   <span className="tm-av" aria-hidden="true">{a.name[0]}</span>
                   <span className="grow">{a.name} <span className="tm-role">{a.role}</span></span>
                   <span className="tm-mono">{shortFile(a.file)}</span>
-                  <Button onClick={() => void restore(a)}>Restore</Button>
+                  <Button busy={busy === a.id} busyLabel="Restoring" disabled={busy !== null} onClick={() => void restore(a)}>Restore</Button>
                 </li>
               ))}
             </ul>

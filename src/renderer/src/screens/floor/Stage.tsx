@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentDef, AgentStatus, Room, TeamTemplate } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
+import { Button, useBusy } from '../../ui'
 import { ART, SEATS, WORD, limitBanner, lookFor, overflowShirt, pct, seating } from '../../floor/layout'
 import floorDark from '../../floor/floor.svg'
 import floorLight from '../../floor/floor-light.svg'
@@ -29,12 +30,12 @@ export function Stage({ room, agents, status, words, poses, say, instant, select
     <div className="floor-stage" data-instant={instant ? 'true' : undefined}>
       <img src={theme === 'light' ? floorLight : floorDark} alt="Isometric office with desks, a task wall, a glass planning room, an open desk and a lounge" className="floor-art" />
       {seated.map((a, i) => <Person key={a.id} agent={a} seat={i} status={status[a.id] ?? 'idle'} present={pose(a.id).at === 'seat'} />)}
-      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} /> })}
+      {seated.map((a, i) => { const p = pose(a.id); return p.at === 'seat' ? null : <Walker key={a.id} at={p.at} moving={p.moving} look={lookFor(a, i)} facing={p.facing} /> })}
       {seated.map((a, i) => <Tag key={a.id} agent={a} at={anchor(pose(a.id).at, SEATS[i])} status={status[a.id] ?? 'idle'} word={words?.[a.id]} selected={selectedId === a.id} onSelect={() => onSelect(a.id)} />)}
       {say && speaker >= 0 && <Bubble text={say.text} at={anchor(pose(say.agentId).at, SEATS[speaker])} link={say.link && { label: say.link.label, onClick: () => go({ name: 'workspace', workspaceId: say.link!.workspaceId }) }} />}
       {room.paused && <PauseBanner room={room} onResume={onTogglePause} />}
       {agents.length === 0 && <Templates room={room} />}
-      {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} />}
+      {overflow.length > 0 && <Overflow room={room} agents={overflow} status={status} selectedId={selectedId} onSelect={onSelect} />}
     </div>
   )
 }
@@ -78,8 +79,9 @@ function Tag({ agent, at, status, word: shown, selected, onSelect }: { agent: Ag
 function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
   const usage = useStore((s) => s.usage)
   const [notified, setNotified] = useState(false)
+  // Done only closes the notification line; the room is still paused, so the banner stays up.
   const [done, setDone] = useState(false)
-  if (done) return null
+  const [busy, run] = useBusy()
   if (room.pausedBy !== 'limit') {
     return (
       <div role="status" className="floor-banner">
@@ -89,11 +91,11 @@ function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
     )
   }
   const limit = limitBanner(usage)
-  const notify = () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message }))
+  const notify = () => run('notify', () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message })))
   return (
     <div role="status" className="floor-banner">
-      <span>{notified ? 'You will get a notification when the limit resets.' : limit.text}</span>
-      <button type="button" className="floor-banner-btn" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</button>
+      <span>{notified && !done ? 'You will get a notification when the limit resets.' : limit.text}</span>
+      {!done && <Button variant="primary" className="floor-banner-btn" busy={!!busy} busyLabel="Setting up" onClick={notified ? () => setDone(true) : () => void notify()}>{notified ? 'Done' : 'Notify me'}</Button>}
     </div>
   )
 }
@@ -111,13 +113,12 @@ function Templates({ room }: { room: Room }) {
     return r ? { id: r.id, name: r.name } : null
   })
   const preferred = useStore((x) => x.settings?.team.defaultTemplate ?? 'starter')
-  const [busy, setBusy] = useState(false)
-  const seed = async (template: TeamTemplate) => {
-    setBusy(true)
+  const [busy, run] = useBusy()
+  const seed = (name: string, template: TeamTemplate) => run(name, async () => {
     try { await call('agents.seed', { roomId: room.id, template }); await loadRoom(room.id) } catch (e) {
       actions.ui.toast({ title: 'Could not seat that team', sub: (e as Error).message })
-    } finally { setBusy(false) }
-  }
+    }
+  })
   return (
     <section className="floor-empty" aria-label="No agents in this room yet">
       <h2>No agents in this room yet</h2>
@@ -125,9 +126,11 @@ function Templates({ room }: { room: Room }) {
       {[...TEMPLATES].sort((a, b) => Number(b.template().kind === preferred) - Number(a.template().kind === preferred)).map((t) => {
         const copy = t.name === 'From another room'
         return (
-          <button key={t.name} type="button" className="floor-template" disabled={busy || (copy && !other)} onClick={() => void seed(t.template(other?.id))}>
+          <button key={t.name} type="button" className="floor-template" disabled={busy !== null || (copy && !other)} aria-busy={busy === t.name || undefined} onClick={() => void seed(t.name, t.template(other?.id))}>
             <span style={{ fontWeight: 500 }}>{t.name}</span>
-            <span className="muted" style={{ fontSize: 12 }}>{copy ? (other ? `Copy agents from ${other.name}` : 'No other room has agents yet') : t.sub}</span>
+            {busy === t.name
+              ? <span className="muted floor-template-busy"><span className="spin" aria-hidden="true" />Seating the team</span>
+              : <span className="muted" style={{ fontSize: 12 }}>{copy ? (other ? `Copy agents from ${other.name}` : 'No other room has agents yet') : t.sub}</span>}
           </button>
         )
       })}
@@ -137,16 +140,16 @@ function Templates({ room }: { room: Room }) {
 }
 
 /** More agents than desks: the rest, still at work, listed with a way to add desks. */
-function Overflow({ room, agents, status }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus> }) {
+function Overflow({ room, agents, status, selectedId, onSelect }: { room: Room; agents: AgentDef[]; status: Record<string, AgentStatus>; selectedId?: string; onSelect: (id: string) => void }) {
   return (
     <section className="floor-overflow" aria-label="Agents without a desk">
       <span className="muted" style={{ fontSize: 12 }}>No desk yet, still working</span>
       {agents.map((a, i) => (
-        <div key={a.id} className="row" style={{ gap: 8 }}>
+        <button key={a.id} type="button" className="overflow-row" aria-pressed={selectedId === a.id} aria-label={`${a.name}, ${a.role}, ${WORD[status[a.id] ?? 'idle']}`} onClick={() => onSelect(a.id)}>
           <span aria-hidden="true" className="overflow-dot" style={{ background: a.look?.shirt ?? overflowShirt(i), color: ART.onShirt }}>{a.name[0]}</span>
           <span style={{ fontWeight: 500 }}>{a.name}</span><span className="muted">{a.role}</span>
           <span className="grow" /><span className="muted" style={{ fontSize: 12 }}>{WORD[status[a.id] ?? 'idle']}</span>
-        </div>
+        </button>
       ))}
       <button type="button" className="floor-link" onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>Add desks in room settings</button>
     </section>

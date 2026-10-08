@@ -5,7 +5,7 @@ import { useStore } from '../../../store'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 
-// + > Link issue and Link workspaces (D-086). Each adds chips the agent reads as a line of context.
+// + > Link issue and Link workspaces (D-093). Each adds chips the agent reads as a line of context.
 
 type Source = 'linear' | 'github'
 type Load = { state: 'loading' } | { state: 'ready'; rows: IssueSummary[] } | { state: 'error'; message: string }
