@@ -1,3 +1,4 @@
+import { HowItWorks } from '@/components/landing/HowItWorks'
 import { Hero } from '@/components/landing/Hero'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
@@ -9,6 +10,7 @@ export default function Home() {
       <SiteNav />
       <main id="content">
         <Hero version={latestVersionLabel('0.1.0')} />
+        <HowItWorks />
       </main>
       <SiteFooter />
     </>

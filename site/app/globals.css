@@ -102,10 +102,10 @@
   --text-small: 13px;
   --text-small--line-height: 1.55;
   --text-eyebrow: 12.5px;
-  --text-eyebrow--line-height: 1.55;
+  --text-eyebrow--line-height: normal;
   --text-eyebrow--letter-spacing: 0.2px;
   --text-count: 12.5px;
-  --text-count--line-height: 1.55;
+  --text-count--line-height: normal;
   --text-micro: 12px;
   --text-micro--line-height: 1.55;
   --text-tag: 11.5px;
@@ -113,7 +113,9 @@
   --text-badge: 11px;
   --text-badge--line-height: 1.55;
 
+  /* The reference sets mono text with the font shorthand, which resets line height to normal. */
   --leading-*: initial;
+  --leading-normal: normal;
   --leading-snug: 1.5;
   --leading-relaxed: 1.6;
 
