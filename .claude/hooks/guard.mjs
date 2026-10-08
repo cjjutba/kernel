@@ -2,13 +2,13 @@
 // .claude/settings.json can't express "outside this repo" or catch every
 // spelling of a force push, so this script checks what they miss and denies it.
 import { execFileSync } from 'node:child_process'
-import { readFileSync, realpathSync } from 'node:fs'
+import { lstatSync, readFileSync, readlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
 const input = JSON.parse(readFileSync(0, 'utf8'))
 const home = homedir()
-const root = real(process.env.CLAUDE_PROJECT_DIR || path.resolve(import.meta.dirname, '../..'))
+const root = real(path.resolve(process.env.CLAUDE_PROJECT_DIR || path.join(import.meta.dirname, '../..')))
 
 function deny(reason) {
   process.stdout.write(
@@ -23,26 +23,39 @@ function deny(reason) {
   process.exit(0)
 }
 
-// Resolves symlinks on the longest prefix that exists, so /tmp and
-// /private/tmp compare equal and new files still resolve.
-function real(p) {
-  let cur = path.resolve(p)
-  const rest = []
-  for (;;) {
+// Walks the path one part at a time, following every symlink (dangling ones
+// too) before it applies the next "..", the way the OS does. Parts that don't
+// exist yet are kept as written, so new files still resolve and /tmp and
+// /private/tmp compare equal.
+function real(p, hops = 0) {
+  const parts = p.split('/').filter((s) => s && s !== '.')
+  let cur = '/'
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '..') {
+      cur = path.dirname(cur)
+      continue
+    }
+    const next = path.join(cur, parts[i])
+    let link = null
     try {
-      return path.join(realpathSync(cur), ...rest.reverse())
+      if (lstatSync(next).isSymbolicLink()) link = readlinkSync(next)
     } catch {}
-    const parent = path.dirname(cur)
-    if (parent === cur) return path.resolve(p)
-    rest.push(path.basename(cur))
-    cur = parent
+    if (link === null) {
+      cur = next
+      continue
+    }
+    if (hops >= 40) deny(`${p} has a symlink loop.`)
+    const target = link.startsWith('/') ? link : `${cur}/${link}`
+    return real([target, ...parts.slice(i + 1)].join('/'), hops + 1)
   }
+  return cur
 }
 
+// Joins without collapsing "..", so real() can follow symlinks first.
 function expand(p, cwd) {
   if (p === '~') return home
-  if (p.startsWith('~/')) return path.join(home, p.slice(2))
-  return path.resolve(cwd, p)
+  if (p.startsWith('~/')) return `${home}/${p.slice(2)}`
+  return path.isAbsolute(p) ? p : `${cwd}/${p}`
 }
 
 function inside(p) {
@@ -51,10 +64,12 @@ function inside(p) {
 }
 
 // Plan mode writes its plan to ~/.claude/plans/<slug>.md, so a .md file
-// directly in that folder is the one write allowed outside the repo.
+// directly in that folder is the one write allowed outside the repo. The
+// plans folder itself is not followed: if it were a symlink to ~/.claude,
+// CLAUDE.md would count as a plan.
 function plan(p) {
   const file = real(p)
-  return path.dirname(file) === real(path.join(home, '.claude', 'plans')) && file.endsWith('.md')
+  return path.dirname(file) === path.join(real(`${home}/.claude`), 'plans') && file.endsWith('.md')
 }
 
 const tool = input.tool_name
