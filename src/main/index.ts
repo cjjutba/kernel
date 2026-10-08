@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, shell } from 'electron'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -100,6 +100,8 @@ app.whenReady().then(async () => {
     started = refreshPath().then(() => kernel.start())
     started.catch(bootFailed)
     void started.then(() => updater?.start(), () => undefined)
+    // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake.
+    powerMonitor.on('resume', () => void started.then(() => kernel.checkLimits(), () => undefined))
     handlers = kernel.handlers() as typeof handlers
   }
   for (const [channel, fn] of Object.entries(handlers)) ipcMain.handle(channel, async (_e, req) => { await started; return fn(req) })
