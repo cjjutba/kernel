@@ -9,7 +9,7 @@ import { isLeadWorkspace, leadOf, openLead } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
-import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
+import { LeadCard, WorkspaceCard, useHoverCard, useLeadWaiting } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { RoomsMenu } from './RoomsMenu'
@@ -46,9 +46,7 @@ function LeadItem({ roomId }: { roomId: string }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
-  const approvals = useStore((s) => s.approvals)
-  const leadWorkspaceId = useStore((s) => s.workspaces.find((w) => isLeadWorkspace(w, roomId, lead?.id))?.id)
-  const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === leadWorkspaceId && a.status === 'pending'), [approvals, leadWorkspaceId])
+  const waiting = useLeadWaiting(roomId)
   const card = useHoverCard()
   if (!lead) return null
   const g = leadGlyph(status, waiting)

@@ -1,12 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityEvent, AgentStatus, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Workspace } from '@shared/types'
 import { Icon } from '../../ui'
 import { useStore } from '../../store'
-import { leadOf } from '../../lead'
+import { isLeadWorkspace, leadOf } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
-import { STATUS_WORD } from '../../screens/team/model'
-import { workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
+import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
 const OPEN_MS = 450
 /** Right after a card closes the next one opens at once, so running the pointer down the list doesn't wait on every row. */
@@ -94,10 +93,6 @@ function glyphAccent(g: WorkspaceGlyph): Accent {
   return g.tone === 'ink' ? 'muted' : g.tone
 }
 
-const AGENT_ACCENT: Record<AgentStatus, Accent> = {
-  working: 'working', planning: 'working', walking: 'working', needs: 'needs', blocked: 'del', idle: 'muted', offline: 'muted', paused: 'muted'
-}
-
 /** The newest event that matches, whatever order the list arrived in. */
 function newest(list: ActivityEvent[], match: (e: ActivityEvent) => boolean): ActivityEvent | undefined {
   let best: ActivityEvent | undefined
@@ -154,19 +149,30 @@ export function WorkspaceCard({ ws, at, id }: { ws: Workspace; at: DOMRect; id: 
   )
 }
 
+/** The Lead's pending approvals, found on its own workspace. The row and the card read the same ones, so they show the same icon. */
+export function useLeadWaiting(roomId: string): Approval[] {
+  const leadId = useStore((s) => leadOf(s.agents, roomId)?.id)
+  const workspaceId = useStore((s) => s.workspaces.find((w) => isLeadWorkspace(w, roomId, leadId))?.id)
+  const approvals = useStore((s) => s.approvals)
+  return useMemo(() => approvals.filter((a) => a.workspaceId === workspaceId && a.status === 'pending'), [approvals, workspaceId])
+}
+
 /** The Lead's card: its status on the floor, what it did or said last, and how many workspaces the room has open. */
 export function LeadCard({ roomId, at, id }: { roomId: string; at: DOMRect; id: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
+  const waiting = useLeadWaiting(roomId)
   const last = useStore((s) => (lead ? newest(s.activity, (e) => e.roomId === roomId && e.agentId === lead.id) : undefined))
   const open = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && w.name !== 'lead').length)
   if (!lead || !room) return null
+  const g = leadGlyph(status, waiting)
   return (
     <HoverCard at={at} id={id}>
       <Card
         eyebrow={`${room.name} · Lead`}
-        status={<Status accent={AGENT_ACCENT[status]} spin={AGENT_ACCENT[status] === 'working'} label={STATUS_WORD[status]} />}
+        // The icon shows only for what waits on you, so the other statuses keep the card as designed.
+        status={<Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={waiting.length ? g.icon : undefined} label={g.label} />}
         title={lead.name}
         line={last ? lineOf(last, lead.name) : 'No recent activity'}
         meta={<span className="grow ellipsis">{open ? `${open} open workspace${open === 1 ? '' : 's'}` : 'No open workspaces'}</span>}

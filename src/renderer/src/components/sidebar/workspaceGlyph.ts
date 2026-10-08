@@ -52,14 +52,17 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
 }
 
 /**
- * The icon in front of the Lead in the sidebar. It reads the Lead's floor status, the same one the Lead's hover card shows,
- * so the row and the card never disagree. While Rowan's plan is the only thing waiting, the clipboard replaces the question mark. Idle keeps the chat icon, since the row opens the Lead's chat.
+ * The icon in front of the Lead in the sidebar: what waits on you first, like `workspaceGlyph`, then the Lead's floor status,
+ * the same one the Lead's hover card shows, so the row and the card never disagree. Rowan's team plan arrives through
+ * `askUser`, which never sets the status to `needs`, so a waiting plan has to win over the status. Idle keeps the chat icon,
+ * since the row opens the Lead's chat.
  */
 export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGlyph {
+  if (waiting.length) return waitingGlyph(waiting)
   const label = STATUS_WORD[status]
   switch (status) {
     case 'working': case 'planning': case 'walking': return spin(label)
-    case 'needs': return waiting.length ? waitingGlyph(waiting) : { icon: 'question', tone: 'ink', label }
+    case 'needs': return { icon: 'question', tone: 'ink', label }
     case 'blocked': return { icon: 'warning', tone: 'del', label }
     case 'offline': return { icon: 'warning', tone: 'muted', label }
     case 'paused': return { icon: 'pause', tone: 'muted', label }
