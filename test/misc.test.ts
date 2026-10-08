@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { installHooks, withKernelHooks, withoutKernelHooks, installedEvents, KERNEL_HOOK_EVENTS } from '../src/main/services/hooksInstaller'
+import { installHooks, uninstallHooks, withKernelHooks, withoutKernelHooks, installedEvents, hasKernelHooks, KERNEL_HOOK_EVENTS } from '../src/main/services/hooksInstaller'
+import { hookCommand } from '@shared/hookEntry'
 import { prStateOf } from '../src/main/services/github'
 import { compareVersions, nextFreePort, parseClaudeVersion, parseLsof, planName } from '../src/main/services/preflight'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -17,7 +18,20 @@ describe('hooks installer', () => {
     expect(next.theme).toBe('dark')
     expect(next.hooks!.PreToolUse).toHaveLength(2)
     expect(installedEvents(next).sort()).toEqual([...KERNEL_HOOK_EVENTS].sort())
-    expect(next.hooks!.PermissionRequest[0].hooks[0]).toMatchObject({ type: 'http', url: 'http://localhost:7420/hooks', timeout: 330 })
+    expect(next.hooks!.PermissionRequest[0].hooks[0]).toEqual({ type: 'command', command: hookCommand(7420, 320), timeout: 330 })
+    expect(next.hooks!.Stop[0].hooks[0]).toEqual({ type: 'command', command: hookCommand(7420, 8), timeout: 10 })
+    expect(hookCommand(7420, 8)).toBe("/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7420/hooks || true")
+  })
+  it('replaces the old http entries, which no longer count as installed', () => {
+    const old = { ...mine, Stop: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks', timeout: 10 }] }], PermissionRequest: [{ matcher: '*', hooks: [{ type: 'http', url: 'http://127.0.0.1:7420/hooks', timeout: 330 }] }] }
+    expect(installedEvents({ hooks: old })).toEqual([])
+    expect(hasKernelHooks({ hooks: old })).toBe(true)
+    expect(hasKernelHooks({ hooks: mine })).toBe(false)
+    const next = withKernelHooks({ hooks: old }, 7420, 300)
+    expect(JSON.stringify(next)).not.toContain('"http"')
+    expect(next.hooks!.Stop).toHaveLength(1)
+    expect(next.hooks!.PreToolUse[0]).toEqual(mine.PreToolUse[0])
+    expect(withoutKernelHooks({ hooks: old })).toEqual({ hooks: mine })
   })
   it('is idempotent and removes cleanly', () => {
     const twice = withKernelHooks(withKernelHooks({ hooks: mine }, 7420, 300), 7421, 300)
@@ -48,8 +62,13 @@ describe('installHooks', () => {
     expect(JSON.parse(readFileSync(file + '.kernel-backup', 'utf8'))).toEqual({ theme: 'dark' })
     await installHooks(file, 7421, 300)
     const text = readFileSync(file, 'utf8')
-    expect(text).toContain('localhost:7421/hooks')
-    expect(text).not.toContain('localhost:7420/hooks')
+    expect(text).toContain('127.0.0.1:7421/hooks')
+    expect(text).not.toContain('127.0.0.1:7420/hooks')
+  })
+  it('refuses to write the real Claude settings under vitest', async () => {
+    const real = join(homedir(), '.claude', 'settings.json')
+    await expect(installHooks(real, 7420, 300)).rejects.toThrow('Refusing to write')
+    await expect(uninstallHooks(real)).rejects.toThrow('Refusing to write')
   })
 })
 

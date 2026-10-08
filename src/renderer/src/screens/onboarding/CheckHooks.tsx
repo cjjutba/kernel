@@ -14,7 +14,7 @@ export function ago(ts: number | undefined, now = Date.now()): string {
   return `${Math.round(s / 86400)}d`
 }
 
-/** CheckHooks.png: installs the http hooks (the old settings file is kept as a backup), then confirms events arrive. */
+/** CheckHooks.png: installs the hooks (the old settings file is kept as a backup), then confirms events arrive. */
 export function CheckHooks() {
   const hooks = useStore((s) => s.system.hooks)
   const sessions = useStore((s) => Object.values(s.running).filter(Boolean).length)
@@ -66,7 +66,7 @@ export function CheckHooks() {
         <Button disabled={busy || !hooks?.installed || !hooks.listening} onClick={() => void test()}>Send test event</Button>
         <span className="hk-note" role="status" aria-live="polite">{note}</span>
       </div>
-      <pre className="code hk-snip"><span className="path">~/.claude/settings.json</span>{`\n"hooks": {\n  "PreToolUse": [{\n    "hooks": [{ "type": "http", "url": "http://localhost:${port}/hooks" }]\n  }],\n  ...one entry per event\n}`}</pre>
+      <pre className="code hk-snip"><span className="path">~/.claude/settings.json</span>{`\n"hooks": {\n  "PreToolUse": [{\n    "hooks": [{ "type": "command", "command": "/usr/bin/curl ..." }]\n  }],\n  ...one entry per event\n}`}</pre>
     </Modal>
   )
 }

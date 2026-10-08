@@ -61,6 +61,38 @@ describe('hooks installer without SessionStart', () => {
   })
 })
 
+describe('rewriting the hooks on a settings change', () => {
+  it('never adds hooks, and moves old http entries to the command form', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const port = 18000 + Math.floor(Math.random() * 800)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
+    const claudeSettingsFile = join(await mkdtemp(join(tmpdir(), 'kernel-claude-')), 'settings.json')
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile })
+    await k.start()
+    const h = k.handlers()
+    const read = async () => JSON.stringify(JSON.parse(await readFile(claudeSettingsFile, 'utf8')))
+
+    // Nothing installed: a timeout or port change writes nothing.
+    await h['settings.set']({ patch: { permissions: { approvalTimeoutSec: 600 } } })
+    await h['hooks.restart']({ port: port + 1 })
+    await expect(stat(claudeSettingsFile)).rejects.toThrow()
+
+    // Only old http entries: a timeout change rewrites them as commands.
+    await writeFile(claudeSettingsFile, JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'http', url: `http://localhost:${port}/hooks`, timeout: 10 }] }] } }))
+    expect((await h['hooks.status']()).installed).toBe(false)
+    await h['settings.set']({ patch: { permissions: { approvalTimeoutSec: 300 } } })
+    expect(await read()).not.toContain('"http"')
+    expect(await read()).toContain('-m 320 ')
+    expect((await h['hooks.status']()).installed).toBe(true)
+
+    // Current entries: a port change moves them.
+    await h['hooks.restart']({ port })
+    expect(await read()).toContain(`127.0.0.1:${port}/hooks`)
+    expect(await read()).not.toContain(`127.0.0.1:${port + 1}/hooks`)
+    await k.stop()
+  })
+})
+
 describe('removing an Always allow rule', () => {
   it('stops covering the command on the agent\'s next tool call', async () => {
     const repo = await tempRepo({ 'README.md': '# demo\n' })

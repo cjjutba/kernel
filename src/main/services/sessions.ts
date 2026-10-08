@@ -613,7 +613,7 @@ function agentPrompt(agent: AgentDef | undefined, ws: Workspace): string {
 }
 
 /**
- * In-process hooks. Every event feeds the room log the same way http hooks do for outside sessions.
+ * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of CJ's own Claude Code settings.
  */
 function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true): Partial<Record<HookEvent, HookCallbackMatcher[]>> {

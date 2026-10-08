@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
@@ -7,15 +8,11 @@ import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
 const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 min' }, { value: '600', label: '10 min' }, { value: '1800', label: '30 min' }]
-const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest'])
 
-/** What Kernel writes under "hooks" in Claude Code's user settings, for pasting by hand. Same shape as the installer's. */
+/** What Kernel writes under "hooks" in Claude Code's user settings, for pasting by hand. The installer writes the same matchers. */
 export function hooksSnippet(status: HookStatus, approvalTimeoutSec: number): string {
   const hooks: Record<string, unknown[]> = {}
-  for (const e of status.events) {
-    const entry = { type: 'http', url: `http://localhost:${status.port}/hooks`, timeout: e.name === 'PermissionRequest' ? approvalTimeoutSec + 30 : 10 }
-    hooks[e.name] = [TOOL_EVENTS.has(e.name) ? { matcher: '*', hooks: [entry] } : { hooks: [entry] }]
-  }
+  for (const e of status.events) hooks[e.name] = [kernelHookMatcher(e.name, status.port, approvalTimeoutSec)]
   return JSON.stringify({ hooks }, null, 2)
 }
 

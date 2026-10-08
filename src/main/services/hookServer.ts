@@ -12,14 +12,14 @@ export interface HookServerOptions {
   approvals: Approvals
   /** Map a session's cwd to the room and workspace it belongs to. */
   resolve: (cwd: string, sessionId: string) => HookContext
-  /** Sessions Kernel started itself report through in-process hooks, so their http hooks are ignored. */
+  /** Sessions Kernel started itself report through in-process hooks, so their posts here are ignored. */
   isManaged: (sessionId: string) => boolean
   /** A function so a change in Settings applies to the next request without restarting the server. */
   approvalTimeoutMs: number | (() => number)
 }
 
 /**
- * Receives Claude Code "http" hooks on localhost. Most events are fire and forget.
+ * Receives Claude Code hooks on localhost, posted by the curl command the installer writes (D-050). Most events are fire and forget.
  * PermissionRequest is held open until CJ decides in Kernel, or the timeout passes and the
  * empty response lets Claude Code show its normal prompt in the terminal.
  */
@@ -36,7 +36,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (o.isManaged(e.session_id)) return json(res, 200, {})
     const ctx = o.resolve(e.cwd, e.session_id)
     bus.emit('hook', e, ctx)
-    // Claude Code skips http hooks for SessionStart, so the first event from a new session stands in for it.
+    // Kernel installs no SessionStart hook (D-047), so the first event from a new session stands in for it.
     if (e.hook_event_name === 'SessionEnd') sessions.delete(e.session_id)
     else if (!sessions.has(e.session_id)) {
       sessions.add(e.session_id)
