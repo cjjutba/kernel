@@ -1,4 +1,5 @@
 import { HowItWorks } from '@/components/landing/HowItWorks'
+import { ProductTour } from '@/components/landing/ProductTour'
 import { Hero } from '@/components/landing/Hero'
 import { SiteFooter } from '@/components/layout/SiteFooter'
 import { SiteNav } from '@/components/layout/SiteNav'
@@ -11,6 +12,7 @@ export default function Home() {
       <main id="content">
         <Hero version={latestVersionLabel('0.1.0')} />
         <HowItWorks />
+        <ProductTour />
       </main>
       <SiteFooter />
     </>

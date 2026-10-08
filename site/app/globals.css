@@ -3,6 +3,7 @@
 /* Design tokens. Values come from design/site/reference/site.css. This is the only file with hex colors. */
 
 @custom-variant tab-active (&[data-state='active']);
+@custom-variant tab-inactive (&[data-state='inactive']);
 
 @theme {
   --color-*: initial;
@@ -81,8 +82,8 @@
   --text-step-title--line-height: 1.55;
   --text-step-title--letter-spacing: -0.2px;
   --text-step-title--font-weight: 600;
-  --text-line: 16.5px;
-  --text-line--line-height: 1.55;
+  --text-callout: 16.5px;
+  --text-callout--line-height: 1.55;
   --text-intro: 16.5px;
   --text-intro--line-height: 1.7;
   --text-item: 16px;
