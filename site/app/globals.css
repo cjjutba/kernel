@@ -276,6 +276,12 @@
   flex-shrink: 0;
 }
 
+/* The "K" the mark stands for. It stays in the text, so the wordmark reads and copies as "Kernel", but takes no space.
+   sr-only would not do: an absolute box counts as a block, which puts a space or a line break after the K. */
+@utility wordmark-k-text {
+  font-size: 0;
+}
+
 /* The large footer wordmark is cropped by the page edge. */
 @utility wordmark-crop {
   height: 0.72em;
