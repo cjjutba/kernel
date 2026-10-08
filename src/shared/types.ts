@@ -345,6 +345,10 @@ export type ChatPart =
   | { type: 'file'; name: string; path?: string; lines?: number; text?: string }
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number }
   | { type: 'skill'; name: string }
+  /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
+  | { type: 'issue'; name: string; title: string; url?: string; source: 'linear' | 'github' }
+  /** + > Link workspaces: another workspace the agent can read and diff. */
+  | { type: 'workspace'; name: string; workspaceId: string; branch: string; path: string; prNumber?: number; prUrl?: string }
 
 /** A message typed while the agent is busy (WorkspaceQueued.png). */
 export interface QueuedMessage {
@@ -406,6 +410,8 @@ export interface Approval {
   options?: string[]
   /** Plan approvals. */
   steps?: PlanStep[]
+  /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
+  planFile?: string
   /** Agent approvals: the file the Lead wants to write (WorkspaceHire.png). */
   agentFile?: { path: string; text: string }
   status: 'pending' | 'allowed' | 'denied' | 'answered' | 'expired'
@@ -556,6 +562,7 @@ export interface IssueSummary {
   id: string
   title: string
   url?: string
+  source?: 'linear' | 'github'
 }
 
 // ---------- usage and account
@@ -718,7 +725,7 @@ export type Modal =
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
-  | 'plus' | 'model' | 'mention' | 'slash'
+  | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
