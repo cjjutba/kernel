@@ -13,6 +13,7 @@ import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemo
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
 import { FromPopover } from './FromPopover'
+import { briefParts, leadMessage, pickedLines } from './brief'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
 
@@ -25,30 +26,6 @@ const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
 const letter = (name = '') => { const w = name.trim().split(/\s+/); const l = w[w.length - 1]; return (l.length === 1 ? l : w[0]).charAt(0).toUpperCase() || '?' }
 
 const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
-
-/** What the pickers chose, as plain lines for the Lead. A picked source already wrote its own prompt (pick.ts). */
-export function pickedLines({ mode, target, fallback, picked }: { mode: WorkspaceMode; target: string; fallback: string; picked: string }): string[] {
-  if (mode === 'current') return ['Work on the current branch, not a new worktree.']
-  return target !== fallback && target !== picked ? [`Cut the branch from ${target}.`] : []
-}
-
-/** The message the Lead gets: what was typed or attached, a picked issue as a chip, then the lines the pickers add. */
-export function briefParts(typed: ChatPart[], source: WorkspaceSource | null, lines: string[]): ChatPart[] {
-  const parts = [...typed]
-  if (source?.kind === 'issue' && !parts.some((p) => p.type === 'issue' && p.name === source.id)) {
-    parts.unshift({ type: 'issue', name: source.id, title: source.title, url: source.url, source: source.id.startsWith('#') ? 'github' : 'linear' })
-  }
-  if (lines.length) {
-    const last = parts[parts.length - 1]
-    const text = lines.join('\n')
-    if (last?.type === 'text') parts[parts.length - 1] = { type: 'text', text: `${last.text}\n\n${text}` }
-    else parts.push({ type: 'text', text })
-  }
-  return parts
-}
-
-/** The text a chip-only message sends as its prompt, so Create works with a long paste or a file and nothing typed. */
-const promptOf = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? p.text ?? p.name : p.name)).join('\n').trim()
 
 /**
  * "What do you want to work on?" (NewWorkspace.png and its four popovers). Create opens a new chat with the room's Lead
@@ -135,7 +112,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const start = async (room: string, parts: ChatPart[]) => {
     setError(null)
     let chat
-    try { chat = await call('lead.start', { roomId: room, prompt: promptOf(parts), parts, model, effort, plan }) }
+    try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan }) }
     catch (e) { setError({ message: reason(e) }); return }
     // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
     try {
