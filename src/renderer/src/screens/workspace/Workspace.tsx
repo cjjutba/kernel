@@ -77,6 +77,14 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
+  // Anything can open a diff by setting the store's tab (the hunk card does), so keep the tab in the list once it is active,
+  // or it would vanish when the user moves to another tab.
+  useEffect(() => { if (diffPath !== undefined) setOpenDiffs((d) => (d.includes(diffPath) ? d : [...d, diffPath])) }, [diffPath])
+  // Likewise remember the open chat however it was reached, so a diff, file, image or text tab opened from there closes back to it
+  // and the composer stays on it.
+  useEffect(() => { if (tab && chats.some((c) => c.id === tab)) setLastChat(tab) }, [tab, chats])
+  // These run before the clear below on purpose, so on a workspace switch the clear has the last word.
+
   // The open tab lives in the store, so it outlasts this screen. Whenever the screen shows a different workspace
   // than the one it belongs to, clear it. The very first mount keeps what a fixture or a restored view set.
   useEffect(() => {
