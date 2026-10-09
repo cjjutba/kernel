@@ -51,6 +51,8 @@
 .msg-chip[data-kind='image'] svg { color: var(--add); }
 button.msg-chip:hover { border-color: var(--line-4); }
 .msg-reply { gap: 6px; }
+.msg-kernel { gap: 4px; }
+.msg-kernel .msg-acts { margin-left: 6px; }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
 .msg-reply .msg-acts { margin-left: -6px; }
 .msg:hover .msg-acts, .msg:focus-within .msg-acts { opacity: 1; }
