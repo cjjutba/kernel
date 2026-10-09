@@ -15,7 +15,11 @@ export interface KernelToolDeps {
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string }) => Promise<Workspace>
-  messageWorkspace: (workspaceId: string, text: string) => Promise<void>
+  /**
+   * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
+   * now rather than waiting in a queue; `note` says what happened.
+   */
+  messageWorkspace: (workspaceId: string, text: string) => Promise<{ ok: boolean; sent?: boolean; note: string }>
   /** `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. */
   askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
@@ -113,13 +117,15 @@ export function kernelTools(d: KernelToolDeps) {
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
       workspace_id: z.string(), text: z.string()
     }, async ({ workspace_id, text: t }) => {
-      await d.messageWorkspace(workspace_id, t)
+      const r = await d.messageWorkspace(workspace_id, t)
+      // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
+      if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
-      // The speaker walks to the listener's desk and says the first line (KERNEL-24).
-      if (ws && d.lead) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
+      // The speaker walks to the listener's desk and says the first line (KERNEL-24), once the message has gone out.
+      if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
       const from = ws?.leadChatId && d.chatId && ws.leadChatId !== d.chatId ? d.chatTitle?.(ws.leadChatId) : undefined
-      return text(from ? `Sent. This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : 'Sent.')
+      return text(from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note)
     }),
     tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
       workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')

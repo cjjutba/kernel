@@ -60,7 +60,7 @@ describe('the Lead names the branch', () => {
     const deps: KernelToolDeps = {
       roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: o.branch ?? 'feat/x', agentId: o.agentId } as never },
-      messageWorkspace: async () => {}, askUser: async () => null, hireAgent: async () => '',
+      messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!

@@ -1,10 +1,12 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatPart } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import type { QueueReason } from '../src/main/services/sessions'
 import { Kernel } from '../src/main/kernel'
+import { bus } from '../src/main/bus'
 import { tempRepo } from './helpers'
 
 // KERNEL-105: with several chats open with the Lead, each workspace reports to the chat that handed it off.
@@ -30,25 +32,29 @@ async function dirs() {
 }
 
 /** A started Kernel on a temp repo with two Lead chats, `first` and `icons`. Sends are recorded, not run. */
-async function setup() {
-  const repo = await tempRepo(REPO)
+async function setup(files: Record<string, string> = {}) {
+  const repo = await tempRepo({ ...REPO, ...files })
   const k = new Kernel(await dirs())
   await k.start()
   onTestFinished(() => k.stop())
   const sent: { chatId: string; text: string; from?: string }[] = []
-  k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { queued: false } }
+  // What the next send answers, for the queue cases.
+  const answer: { queued: boolean; why?: QueueReason } = { queued: false }
+  k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
   const room = await k.addRoom(repo)
   const first = await k.leadChat(room.id)
   const icons = k.newChat(first.workspaceId, 'Chat icons sizing', { model: first.model, effort: first.effort, plan: false })
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
-  const call = async (chat: Chat, name: string, args: Record<string, unknown>) => {
+  const run = async (chat: Chat, name: string, args: Record<string, unknown>) => {
     k['leadTools'](room.id, rowan, chat)
     const tool = kernelTools(wired!).find((t) => t.name === name)!
-    return ((await tool.handler(args as never, {})).content[0] as { text: string }).text
+    const r = await tool.handler(args as never, {})
+    return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
+  const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
   const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
   const target = (owner?: string) => k['leadUpdateTarget'](room.id, owner) as { chat: Chat; closed?: Chat } | undefined
-  return { k, room, first, icons, call, byTitle, target, sent }
+  return { k, room, first, icons, call, run, byTitle, target, sent, answer }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -168,5 +174,75 @@ describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
     expect(sent.at(-1)).toMatchObject({ text: 'Keep one draft per chat.', from: 'lead' })
     await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase on main first.' })
     expect(sent.at(-1)).toMatchObject({ text: 'Rebase on main first.', from: 'lead' })
+  })
+})
+
+describe('message_agent says what really happened (KERNEL-118)', () => {
+  it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
+    const { k, first, run, byTitle, sent } = await setup()
+    const talks: unknown[] = []
+    const onActivity = (e: { kind: string }) => { if (e.kind === 'agent.talk') talks.push(e) }
+    bus.on('activity', onActivity)
+    onTestFinished(() => { bus.off('activity', onActivity) })
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Chat tab icons', brief: 'Go' })
+    const drafts = byTitle('Drafts per chat')
+    const icons = byTitle('Chat tab icons')
+    sent.length = 0
+    k.store.saveWorkspace({ ...drafts, status: 'archived' })
+    expect(await run(first, 'message_agent', { workspace_id: drafts.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: ${drafts.name} is archived. Ask the user to restore it from History, or hand the work out again with create_workspace.` })
+    expect(await run(first, 'message_agent', { workspace_id: 'nope', text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: there is no workspace nope in this room. Call list_workspaces for the ids.' })
+    await rm(icons.path, { recursive: true, force: true })
+    expect(await run(first, 'message_agent', { workspace_id: icons.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: ${icons.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.` })
+    expect(await run(first, 'message_agent', { workspace_id: first.workspaceId, text: 'Rebase' })).toEqual({ isError: true, text: 'Not sent: that is your own workspace.' })
+    // A real workspace, but in another room.
+    const other = await k.addRoom(await tempRepo(REPO))
+    const elsewhere = await k.createWorkspace(other.id, { prompt: 'Go', agentId: 'kai', title: 'Elsewhere' })
+    expect(await run(first, 'message_agent', { workspace_id: elsewhere.id, text: 'Rebase' })).toEqual({ isError: true, text: `Not sent: there is no workspace ${elsewhere.id} in this room. Call list_workspaces for the ids.` })
+    expect(sent.filter((x) => x.text === 'Rebase')).toEqual([])
+    expect(talks).toEqual([])
+  })
+
+  it('says when the message waits, and why', async () => {
+    const { first, call, byTitle, answer } = await setup()
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const id = byTitle('Drafts per chat').id
+    const said: [QueueReason, string][] = [
+      ['running', 'Kai is mid-turn, so the message goes out when that turn ends.'],
+      ['setup', "Setup failed in Kai's workspace, so the message waits until the user clicks Run again."],
+      ['paused', 'The room is paused, so the message goes out when the user resumes it.'],
+      ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
+      ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.']
+    ]
+    for (const [why, note] of said) {
+      Object.assign(answer, { queued: true, why })
+      expect(await call(first, 'message_agent', { workspace_id: id, text: 'Rebase' })).toBe(note)
+    }
+  })
+
+  it('opens a chat in a workspace whose chats are all closed, and sends there', async () => {
+    const { k, first, call, byTitle, sent } = await setup()
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const ws = byTitle('Drafts per chat')
+    for (const c of k.store.chats(ws.id)) k.store.saveChat({ ...c, closed: true })
+    expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase' })).toBe("Opened a new chat in Kai's workspace and sent it.")
+    const open = k.chatTabs(ws.id)
+    expect(open).toHaveLength(1)
+    expect(open[0]).toMatchObject({ model: k.settings.models.engineers, effort: k.settings.models.effort, plan: false })
+    expect(sent.at(-1)).toMatchObject({ chatId: open[0].id, text: 'Rebase', from: 'lead' })
+  })
+
+  it('sends a message the Lead wrote while setup ran after the brief, and holds both when setup fails', async () => {
+    for (const [script, fails] of [['sleep 0.4', false], ['sleep 0.4 && false', true]] as const) {
+      const { k, room, first, call, sent } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
+      const made = k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: first.id })
+      const ws = await vi.waitFor(() => { const w = k.store.workspaces(room.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
+      expect(ws.status).toBe('setup')
+      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Kai's workspace is still setting up, so the message waits behind the brief.")
+      await made
+      const chat = k.store.chats(ws.id)[0]
+      if (fails) expect(k.sessions.queued(chat.id).map((q) => [(q.parts[0] as { text: string }).text, q.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+      else expect(sent.filter((x) => x.chatId === chat.id).map((x) => [x.text, x.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+    }
   })
 })

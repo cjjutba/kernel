@@ -10,7 +10,7 @@ function leadTools(answer: Decision | null) {
   const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'noor' } as Workspace
   const deps: KernelToolDeps = {
     roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [],
-    createWorkspace: async () => ws, messageWorkspace: async () => {}, askUser: async () => answer, hireAgent: async () => '',
+    createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => answer, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
     planApproved, handedOff
   }
