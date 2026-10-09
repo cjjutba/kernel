@@ -85,6 +85,8 @@ describe('what Kernel tells the agent and the chat', () => {
 describe('PR header and toasts', () => {
   it('has a layout for every state', () => {
     expect(headerView('none')).toMatchObject({ link: false, caret: true, button: { label: 'Create PR', action: 'create' } })
+    expect(headerView('none', false).button).toBeUndefined()
+    expect(headerView('none', false)).toMatchObject({ link: false, caret: false })
     expect(headerView('checks').button).toMatchObject({ label: 'Checks running', kind: 'busy' })
     expect(headerView('conflict').button).toMatchObject({ label: 'Resolve conflicts', action: 'resolve' })
     expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })

@@ -3,7 +3,7 @@ import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { busyLabel, failTitle, headerView, type PrAction } from './model'
+import { busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import './pr.css'
 
 const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
@@ -32,7 +32,8 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
-  const view = headerView(ws.prState)
+  const changed = hasChanges(ws)
+  const view = headerView(ws.prState, changed)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
@@ -52,7 +53,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   useEffect(() => { if (ws.status === 'archived') go({ name: 'history' }) }, [ws.status])
 
   // ⌘⇧P creates the PR, as the menu says.
-  const canCreate = ws.prState === 'none' && !busy
+  const canCreate = ws.prState === 'none' && changed && !busy
   useEffect(() => {
     if (!canCreate) return
     const onKey = (e: KeyboardEvent) => {
