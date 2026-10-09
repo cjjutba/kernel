@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Decision, Workspace } from '@shared/types'
+import type { AgentDef, Decision, Workspace } from '@shared/types'
 import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs } from '../src/main/services/handoff'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
@@ -9,7 +9,7 @@ function leadTools(answer: Decision | null) {
   const handedOff = vi.fn()
   const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'noor' } as Workspace
   const deps: KernelToolDeps = {
-    roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [],
+    roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
     createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => answer, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
     planApproved, handedOff
@@ -59,5 +59,58 @@ describe('Handoffs', () => {
     expect(h.due('lead-b')).toBe(false)
     expect(h.reminder('lead-b')).toBeUndefined()
     expect(h.reminder('lead-a')).toBe(HANDOFF_REMINDER)
+  })
+})
+
+describe('create_workspace picks a real teammate (KERNEL-119)', () => {
+  const team = [
+    { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true },
+    { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
+    { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false },
+    { id: 'theo-2', name: 'Theo', role: 'Reviewer', lead: false },
+    { id: 'ivy-qa', name: 'Ivy', role: 'QA', lead: false }
+  ] as AgentDef[]
+  function tools() {
+    const asked: string[] = []
+    const deps: KernelToolDeps = {
+      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => [],
+      createWorkspace: async (o) => { asked.push(o.agentId); return { id: 'ws-1', branch: 'feat/x', agentId: o.agentId } as Workspace },
+      messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    }
+    const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
+    const create = async (agent: string) => {
+      const r = await tool.handler({ agent, title: 'Inbox actions', brief: 'Go' } as never, {})
+      return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+    }
+    return { create, asked }
+  }
+
+  it('takes an exact id, and an id or name in any case, with spaces around it', async () => {
+    const t = tools()
+    expect(await t.create('kai')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
+    expect(await t.create('KAI')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
+    expect(await t.create(' kai ')).toEqual({ text: 'Created ws-1 on feat/x for kai.', isError: false })
+    expect(await t.create('theo-2')).toEqual({ text: 'Created ws-1 on feat/x for theo-2.', isError: false })
+    // A name that isn't the id.
+    expect(await t.create('ivy')).toEqual({ text: 'Created ws-1 on feat/x for ivy-qa.', isError: false })
+    expect(t.asked).toEqual(['kai', 'kai', 'kai', 'theo-2', 'ivy-qa'])
+  })
+
+  it('refuses an agent the team does not have, listing the teammates, and creates nothing', async () => {
+    const t = tools()
+    expect(await t.create('Noor')).toEqual({ isError: true, text: 'Not created: no agent "Noor" on this team. Use an id from list_agents: kai (Kai, Frontend), theo (Theo, Reviewer), theo-2 (Theo, Reviewer), ivy-qa (Ivy, QA).' })
+    expect(t.asked).toEqual([])
+  })
+
+  it('refuses a name two agents share', async () => {
+    const t = tools()
+    expect(await t.create('Theo')).toEqual({ isError: true, text: 'Not created: "Theo" matches more than one agent (theo, theo-2). Use the id from list_agents.' })
+  })
+
+  it('refuses to hand a task to the Lead', async () => {
+    const t = tools()
+    expect(await t.create('Rowan')).toEqual({ isError: true, text: 'Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.' })
+    expect(t.asked).toEqual([])
   })
 })
