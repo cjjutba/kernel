@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatPart } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import type { QueueReason } from '../src/main/services/sessions'
+import { Nudges } from '../src/main/services/nudges'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { tempRepo } from './helpers'
@@ -34,7 +35,8 @@ async function dirs() {
 /** A started Kernel on a temp repo with two Lead chats, `first` and `icons`. Sends are recorded, not run. */
 async function setup(files: Record<string, string> = {}) {
   const repo = await tempRepo({ ...REPO, ...files })
-  const k = new Kernel(await dirs())
+  const where = await dirs()
+  const k = new Kernel(where)
   await k.start()
   onTestFinished(() => k.stop())
   const sent: { chatId: string; text: string; from?: string }[] = []
@@ -54,7 +56,7 @@ async function setup(files: Record<string, string> = {}) {
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
   const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
   const target = (owner?: string) => k['leadUpdateTarget'](room.id, owner) as { chat: Chat; closed?: Chat } | undefined
-  return { k, room, first, icons, call, run, byTitle, target, sent, answer }
+  return { k, room, first, icons, call, run, byTitle, target, sent, answer, where, rowan }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -254,5 +256,107 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
       if (fails) expect(k.sessions.queued(chat.id).map((q) => [(q.parts[0] as { text: string }).text, q.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
       else expect(sent.filter((x) => x.chatId === chat.id).map((x) => [x.text, x.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     }
+  })
+})
+
+describe('the loop guard on automatic requests (KERNEL-125)', () => {
+  const ASK = { text: 'Fix the failing check' }
+  const SPENT = 'Not sent: Kernel has passed 3 automatic requests to Kai on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.'
+
+  async function guarded() {
+    const t = await setup()
+    await t.call(t.first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const ws = t.byTitle('Drafts per chat')
+    const ask = () => t.run(t.first, 'message_agent', { workspace_id: ws.id, ...ASK })
+    const spend = async () => { for (let i = 0; i < 3; i++) expect((await ask()).isError).toBe(false) }
+    return { ...t, ws, ask, spend }
+  }
+
+  it('lets three requests from Kernel-started turns through, refuses the fourth, and starts over when the user writes to Rowan', async () => {
+    const { k, first, ask, spend, sent } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    await spend()
+    sent.length = 0
+    expect(await ask()).toEqual({ isError: true, text: SPENT })
+    expect(sent).toEqual([])
+    await k.handlers()['chats.send']({ chatId: first.id, parts: [{ type: 'text', text: 'Try once more' }] })
+    expect((await ask()).isError).toBe(false)
+  })
+
+  it('starts over when the PR becomes ready, or when the user writes to the teammate', async () => {
+    const { k, first, ws, ask, spend } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    await spend()
+    bus.push({ type: 'pr', workspaceId: ws.id, state: 'ready' })
+    await spend()
+    expect((await ask()).isError).toBe(true)
+    await k.handlers()['chats.send']({ chatId: k.chatTabs(ws.id)[0].id, parts: [{ type: 'text', text: 'Use the other approach' }] })
+    expect((await ask()).isError).toBe(false)
+  })
+
+  it('never counts a turn the user started', async () => {
+    const { k, ws, ask } = await guarded()
+    k.sessions.kernelTurn = () => false
+    for (let i = 0; i < 5; i++) expect((await ask()).isError).toBe(false)
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
+  })
+
+  it('keeps the counts across a restart', async () => {
+    const { k, first, ws, spend, where, rowan, room } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    await spend()
+    await k.stop()
+    const k2 = new Kernel(where)
+    await k2.start()
+    onTestFinished(() => k2.stop())
+    k2.sessions.send = async () => ({ queued: false })
+    k2.sessions.kernelTurn = (id) => id === first.id
+    k2['leadTools'](room.id, rowan, first)
+    const tool = kernelTools(wired!).find((t) => t.name === 'message_agent')!
+    const r = await tool.handler({ workspace_id: ws.id, ...ASK } as never, {})
+    expect((r as { isError?: boolean }).isError).toBe(true)
+  })
+
+  it('counts several messages in one Kernel turn as one try', async () => {
+    const { k, first, ws, ask } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    const turn = (n: number) => k.store.saveItem(first.id, { kind: 'user', id: `turn-${n}`, ts: n, from: 'kernel', parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }] })
+    for (const n of [1, 2, 3]) { turn(n); expect((await ask()).isError).toBe(false); expect((await ask()).isError).toBe(false) }
+    expect(new Nudges(k.store).count(ws.id)).toBe(3)
+    // A fourth turn is refused, but the turn that made the third try can still say more.
+    expect((await ask()).isError).toBe(false)
+    turn(4)
+    expect(await ask()).toEqual({ isError: true, text: SPENT })
+  })
+
+  it('starts over when the user answers the Lead\'s question, writes through Ask Rowan, or the PR merges', async () => {
+    const { k, room, first, ws, ask, spend, call } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    await spend()
+    const asking = call(first, 'ask_user', { question: 'Checks keep failing on the snapshot test. Skip it?' })
+    const pending = await vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
+    k.approvals.decide(pending.id, { behavior: 'answer', text: 'Update the snapshot' })
+    await asking
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
+    await spend()
+    await k.askLead(room.id, 'How is Kai doing?')
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
+    await spend()
+    bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
+    expect((await ask()).isError).toBe(false)
+  })
+
+  it("starts over from the Lead chat that gets a closed chat's work, and not from another Lead chat", async () => {
+    const { k, first, icons, ws, ask, spend } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    await spend()
+    // Another open Lead chat writing changes nothing for work the first chat handed off.
+    await k.handlers()['chats.send']({ chatId: icons.id, parts: [{ type: 'text', text: 'Unrelated' }] })
+    expect((await ask()).isError).toBe(true)
+    // Once the first chat is closed, its work reports to the other chat, and writing there starts over.
+    k.store.saveChat({ ...k.store.chat(first.id)!, closed: true })
+    await k.handlers()['chats.send']({ chatId: icons.id, parts: [{ type: 'text', text: 'Take over' }] })
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
   })
 })

@@ -10,6 +10,7 @@ export const LEAD_RULE = [
   "Don't end the turn with only the plan, and don't ask whether to hand it off. Handing off is not writing code, so it fits a plan-only role. If no task needs a workspace, say why in one line.",
   "When the repo names branches after its issues (for example Linear's gitBranchName), pass that name as branch to create_workspace, so the teammate doesn't have to switch branches.",
   'Messages that start with "Team update from Kernel" (older ones start with "Update from Kernel") report what the teammates you handed work to in this chat did; they are not from the user. Each workspace comes with its id, what happened and the teammate\'s last reply. Work listed under "From <chat>, a Lead chat that is now closed" is yours now. Act only when there is something to do: when a PR passed checks and has no conflicts, ask the reviewer on the team to review it; when checks fail, changes are requested or a PR has conflicts, tell that workspace\'s agent with mcp__kernel__message_agent; when every task in your plan has a merged PR, tell the user in one line. Otherwise reply in one short line and stop.',
+  'If message_agent says it did not send, tell the user what is stuck instead of trying again.',
   'The user may have several chats with you at once. mcp__kernel__list_workspaces marks the workspaces you handed off in this chat as yours. Leave the others to the chat that handed them off unless the user asks you to step in.'
 ].join('\n')
 
