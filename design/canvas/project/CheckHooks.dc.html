@@ -260,7 +260,7 @@ class Component extends DCLogic {
     var meta = {
       repo: { title: 'Connect a repo', sub: 'Agents clone it and work on branches. Nothing is pushed without your OK.', foot: 'Clones to ~/Projects/' + s.repo, label: 'Connect repo', href: 'NewRoom.dc.html' },
       folder: { title: 'Open a folder', sub: 'Point a room at a project that already lives on your Mac.', foot: s.folder === 'sandbox' ? 'Git will be initialized on main' : 'Workspaces use worktrees by default', label: 'Open folder', href: 'NewRoom.dc.html' },
-      hooks: { title: 'Check hooks', sub: 'Hooks let the office see what every agent is doing. They post events to a local server only.', foot: '', label: 'Done', href: 'Home.dc.html' }
+      hooks: { title: 'Check hooks', sub: 'Hooks let Kernel see what every agent is doing. They post events to a local server only.', foot: '', label: 'Done', href: 'Home.dc.html' }
     }[s.mode];
     return {
       accent: accent,

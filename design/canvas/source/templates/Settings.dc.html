@@ -189,7 +189,7 @@ class Component extends DCLogic {
       hooks: { title: 'Hooks', sections: [
         { title: 'Status', rows: [val('Hook server', 'Live on localhost:7420'), btn('Test', 'Send test event')] },
         { title: 'Gates', rows: [tog('g1', 'Block TaskCompleted without test output', true), tog('g2', 'Keep idle teammates working', false), sel('timeout', 'Approval timeout', ['5 min', '2 min', '10 min'], 'After this, the request falls back to the normal prompt in Claude Code')] },
-        { title: 'Maintenance', rows: [btn('Reinstall hooks', 'Reinstall', 'Rewrites the office entries in ~/.claude/settings.json'), btn('Settings file', 'Open settings.json')] }
+        { title: 'Maintenance', rows: [btn('Reinstall hooks', 'Reinstall', 'Rewrites Kernel\u2019s entries in ~/.claude/settings.json'), btn('Settings file', 'Open settings.json')] }
       ] },
       integrations: { title: 'Integrations', sections: [
         { title: 'Connected', rows: [btn('GitHub', 'Manage', 'Through the GitHub CLI as cjjutba'), btn('Linear', 'Connect', 'Create workspaces from issues'), btn('Vercel', 'Connect', 'Preview deployments show up in Checks'), btn('Remote Control', 'Set up', 'Approvals and briefs from your phone')] }
