@@ -362,6 +362,8 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   it('starts over when the user answers the Lead\'s question or the PR merges, and not on an Ask Rowan question', async () => {
     const { k, room, first, ws, ask, spend, call } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
+    // The first tab is the Lead's ongoing chat, so Ask Rowan does not take it as an empty tab.
+    k.sessions.isRunning = (id) => id === first.id
     await spend()
     const asking = call(first, 'ask_user', { question: 'Checks keep failing on the snapshot test. Skip it?' })
     const pending = await vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
@@ -369,7 +371,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     await asking
     expect(new Nudges(k.store).count(ws.id)).toBe(0)
     await spend()
-    // The question gets its own Lead chat (KERNEL-145), which hears none of this workspace's updates.
+    // The question gets a Lead chat of its own (KERNEL-145), which hears none of this workspace's updates.
     await k.askLead(room.id, 'How is Kai doing?')
     expect(new Nudges(k.store).count(ws.id)).toBe(3)
     bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
@@ -392,27 +394,25 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
 })
 
 describe('Ask Rowan (KERNEL-145)', () => {
-  it('opens a new Lead chat tab for each question, so a busy first tab never holds one, and gives it the Lead tools', async () => {
-    const { k, room, first, sent, rowan } = await setup()
+  it('starts a Lead chat of its own for each question, so a busy first tab never holds one, and gives it the Lead tools', async () => {
+    const { k, room, first, icons, sent, rowan } = await setup()
+    // The first tab is mid-turn, and a tab that got a question is in use from then on.
+    k.sessions.isRunning = (id: string) => id === first.id || sent.some((s) => s.chatId === id)
     const a = await k.askLead(room.id, 'What is kai working on?')
-    const b = await k.askLead(room.id, '  Is   the release   branch ready to merge, and who still has open review comments?  ')
-    expect(a.chatId).not.toBe(first.id)
-    expect(b.chatId).not.toBe(first.id)
-    expect(a.chatId).not.toBe(b.chatId)
+    const b = await k.askLead(room.id, 'Is the release branch ready to merge?')
     expect(sent).toEqual([
       { chatId: a.chatId, text: 'What is kai working on?', from: undefined },
-      { chatId: b.chatId, text: '  Is   the release   branch ready to merge, and who still has open review comments?  ', from: undefined }
+      { chatId: b.chatId, text: 'Is the release branch ready to merge?', from: undefined }
     ])
-    const tabs = k.chatTabs(first.workspaceId)
-    expect(tabs[0].id).toBe(first.id)
-    expect(tabs.map((c) => c.id)).toEqual(expect.arrayContaining([a.chatId, b.chatId]))
-    expect(k.store.chat(a.chatId)!.title).toBe('What is kai working on?')
-    expect(k.store.chat(b.chatId)!.title).toBe('Is the release branch ready to merge, a…')
+    // Like the New chat modal, an empty Lead tab is taken before another is added (D-131).
+    expect(a.chatId).toBe(icons.id)
+    expect([first.id, icons.id]).not.toContain(b.chatId)
+    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id, icons.id, b.chatId])
+    expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.plan)).toEqual([false, false])
     expect(await k.leadChat(room.id)).toEqual(first)
-    // Each new tab gets the Lead's kernel server, bound to that tab.
+    // Each tab gets the Lead's kernel server, bound to that tab.
     const ws = k.store.workspace(first.workspaceId)!
-    const servers = k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.chatId)!)
-    expect(servers).toHaveProperty('kernel')
+    expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.chatId)!)).toHaveProperty('kernel')
     expect(wired!.chatId).toBe(b.chatId)
   })
 })

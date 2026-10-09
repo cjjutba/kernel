@@ -850,5 +850,15 @@ export interface UiState {
   rightPanel: boolean
 }
 
-/** UI state a fixture forces on boot. */
-export type ForcedUi = Partial<UiState>
+/** One room's Ask Rowan popover (QuickAsk.png). It outlasts the popover, which unmounts when it closes. */
+export interface QuickAskState {
+  /** What you typed and haven't sent. */
+  draft: string
+  /** A question is on its way to the Lead. Ask stays busy while the popover is closed and reopened. */
+  sending?: boolean
+  /** The question just sent, with the chat it went to and when, so the answer is the Lead's text after `since`. */
+  asked?: { chatId: string; since: number; question: string }
+}
+
+/** UI state a fixture forces on boot. `quickAsk` is by room id, a slice of its own that a fixture can set. */
+export type ForcedUi = Partial<UiState> & { quickAsk?: Record<string, QuickAskState> }

@@ -1006,17 +1006,11 @@ export class Kernel {
   }
 
   /**
-   * A quick question to the room's Lead. Each one gets its own Lead chat tab, so it never queues behind whatever the first tab
-   * is doing (KERNEL-145). The answer arrives there like any turn; the popover reads it from there.
+   * A quick question to the room's Lead. It starts a Lead chat of its own like the New chat modal, so it never queues behind
+   * whatever the first tab is doing (KERNEL-145, D-132). The answer arrives there like any turn; the popover reads it from there.
    */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const { lead, ws } = await this.leadWorkspace(roomId)
-    const flat = text.trim().replace(/\s+/g, ' ')
-    const title = flat.length > 40 ? `${flat.slice(0, 39).trimEnd()}…` : flat || NEW_CHAT
-    const chat = this.saveChat(this.newChat(ws.id, title, { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: false }))
-    // Resets nothing unless every other Lead chat is closed and this one now gets their updates (D-131).
-    this.userSpoke(chat.id)
-    await this.sessions.send(chat.id, [{ type: 'text', text }])
+    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
     return { chatId: chat.id }
   }
 

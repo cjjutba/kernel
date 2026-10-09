@@ -43,7 +43,7 @@ export function CommandPalette() {
 
   useEffect(() => { document.getElementById(`cp-${flat[cur]?.id}`)?.scrollIntoView({ block: 'nearest' }) }, [cur, flat])
 
-  /** Run closes the palette first, so a modal an item opens (New workspace) is the one left standing. */
+  /** Run closes the palette first, so a modal an item opens (New chat) is the one left standing. */
   const run = (it?: PaletteItem) => { if (!it) return; close(); it.run() }
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setAt((cur + (e.key === 'ArrowDown' ? 1 : -1) + flat.length) % Math.max(1, flat.length)) }
