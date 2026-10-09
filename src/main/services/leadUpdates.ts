@@ -1,4 +1,4 @@
-import type { Chat, PrState, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrState, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -16,6 +16,9 @@ import { capText } from './text'
  *
  * Events are typed (KERNEL-117). At send time each workspace's events collapse into one block, a PR state the PR has
  * already left is dropped, and the message carries the Team update card's data next to the text the Lead reads.
+ *
+ * Only events that need the Lead start a turn (KERNEL-121): a failure, a question, a PR to review or to merge, the last
+ * merge of a plan. The rest wait and go out with the next update that does, so the Lead isn't woken to say "I'll wait".
  */
 export interface LeadUpdateDeps {
   store: Store
@@ -33,6 +36,10 @@ export interface LeadUpdateDeps {
   post: (chatId: string, text: string, update: TeamUpdate) => boolean
   /** Called after a delivered update, for the room log. */
   delivered?: (roomId: string, chat: Chat, update: TeamUpdate) => void
+  /** What Kernel knows about reviews of the workspace's PR. Unknown until reviews are linked (KERNEL-130). */
+  reviewState?: (ws: Workspace) => ReviewState | undefined
+  /** The team's reviewer, the first agent with a review role that isn't the Lead. */
+  reviewer?: (roomId: string) => AgentDef | undefined
   /** How long to wait for more events before sending. Five seconds; tests shorten it. */
   delayMs?: number
 }
@@ -69,9 +76,6 @@ const TURN_ENDS = new Set<TeamEventKind>(['turn', 'error', 'crash'])
 
 /** Events that say something only once. */
 const ONCE = new Set<TeamEventKind>(['pr.opened', 'pr.merged', 'pr.closed'])
-
-/** Events that ask the Lead to do something. The card shows them stronger than the rest. */
-const NEEDS_LEAD = new Set<TeamEventKind>(['turn', 'error', 'crash', 'setup.failed', 'pr.ready', 'pr.cifail', 'pr.changes', 'pr.conflict', 'pr.closed', 'review'])
 
 /** The most workspaces one update carries. Older ones are counted, so a long absence can't flood the Lead. */
 const MAX_BLOCKS = 8
@@ -131,7 +135,7 @@ function cardText(e: TeamEvent): string {
  * state event only while the PR is still in that state. A checks failure fixed since, or a ready PR whose checks run
  * again, says nothing.
  */
-export function collapse(events: TeamEvent[], ws: Workspace): TeamEvent[] {
+export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEvent[] {
   const sorted = [...events].sort((a, b) => a.n - b.n)
   const last = (test: (e: TeamEvent) => boolean) => sorted.filter(test).at(-1)
   const turn = last((e) => TURN_ENDS.has(e.kind))
@@ -142,7 +146,8 @@ export function collapse(events: TeamEvent[], ws: Workspace): TeamEvent[] {
   const seen = new Set<string>()
   return sorted.filter((e) => {
     if (TURN_ENDS.has(e.kind)) return e === turn
-    if (STATE_OF[e.kind]) return e === state && ws.prState === STATE_OF[e.kind]
+    // Without the workspace, as while events wait, the last state event is kept whatever the PR does next.
+    if (STATE_OF[e.kind]) return e === state && (!ws || ws.prState === STATE_OF[e.kind])
     if (e.kind === 'setup.failed' || e.kind === 'setup.passed') return e === setup
     if (e.kind === 'review') return e === review
     if (ONCE.has(e.kind)) { const key = `${e.kind}:${e.pr ?? ''}`; if (seen.has(key)) return false; seen.add(key); return true }
@@ -150,11 +155,24 @@ export function collapse(events: TeamEvent[], ws: Workspace): TeamEvent[] {
   })
 }
 
-/** One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own. */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; reply?: string; latest: number; from?: Chat }
+/** One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it off. */
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; reply?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
-/** Events from one source chat: the target's own, or a closed chat's that now go to the target. */
-interface Source { events: TeamEvent[]; from?: Chat }
+/** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
+interface Source { events: TeamEvent[]; from?: Chat; owner?: string }
+
+/** Reviews of a workspace's PR as Kernel knows them (KERNEL-130). */
+export interface ReviewState {
+  /** Reviewers whose verdict on the PR's latest commit approved it. */
+  approvedBy: string[]
+  /** A verdict on the latest commit found blockers. */
+  blockers: boolean
+  /** A linked review workspace is setting up or working. */
+  inProgress: boolean
+}
+
+/** PR states that mean the PR is still being created or checked, so a turn that just ended isn't news on its own. */
+const SETTLING: PrState[] = ['creating', 'checks', 'resolving', 'merging']
 
 export class LeadUpdates {
   /** Keyed by the owning Lead chat's id, or `room:<id>` for workspaces no Lead chat handed off. */
@@ -209,6 +227,11 @@ export class LeadUpdates {
     const key = this.keyOf(ws)
     const p = this.pending.get(key) ?? { roomId: ws.roomId, owner: ws.leadChatId, events: [] }
     p.events.push({ ...e, n: this.seq++, workspaceId: ws.id, ...(ws.prNumber ? { pr: ws.prNumber } : {}), ...(ws.prTitle ? { prTitle: ws.prTitle } : {}) })
+    // Events that wait for something to wake the Lead can wait a long time. Only what could still be sent is kept, so a
+    // workspace holds a handful of events however long it waits (KERNEL-121).
+    const mine = p.events.filter((x) => x.workspaceId === ws.id)
+    const kept = new Set(collapse(mine, undefined))
+    p.events = p.events.filter((x) => x.workspaceId !== ws.id || kept.has(x))
     this.pending.set(key, p)
     this.arm(key, ws.roomId)
   }
@@ -239,7 +262,7 @@ export class LeadUpdates {
       const t = this.d.target(roomId, p.owner)
       if (!t) { if (!this.timers.has(key)) this.pending.delete(key); continue }
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
-      group.sources.push({ events: p.events, from: t.closed })
+      group.sources.push({ events: p.events, from: t.closed, owner: p.owner })
       group.keys.push(key)
       group.quiet &&= !this.timers.has(key)
       byChat.set(t.chat.id, group)
@@ -249,6 +272,8 @@ export class LeadUpdates {
       const message = this.compose(roomId, g.sources)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
       if (!message) { for (const key of g.keys) this.pending.delete(key); continue }
+      // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
+      if (!message.wakes) continue
       if (!this.d.post(g.chat.id, message.text, message.update)) continue
       for (const key of g.keys) this.pending.delete(key)
       this.d.delivered?.(roomId, g.chat, message.update)
@@ -257,8 +282,11 @@ export class LeadUpdates {
 
   flushAll() { for (const roomId of new Set([...this.pending.values()].map((p) => p.roomId))) this.flush(roomId) }
 
-  /** The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. */
-  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate } | undefined {
+  /**
+   * The text the Lead reads and the card's data, or nothing when no workspace has anything left to say. `wakes` is
+   * whether any of it needs the Lead now.
+   */
+  private compose(roomId: string, sources: Source[]): { text: string; update: TeamUpdate; wakes: boolean } | undefined {
     const blocks: Block[] = []
     for (const source of sources) {
       const byWs = new Map<string, TeamEvent[]>()
@@ -269,11 +297,22 @@ export class LeadUpdates {
         const kept = collapse(events, ws)
         if (!kept.length) continue
         const turn = kept.find((e) => e.kind === 'turn')
-        blocks.push({ ws, name: this.d.agentName(roomId, ws.agentId) ?? ws.agentId, events: kept, reply: turn?.reply, latest: Math.max(...events.map((e) => e.n)), from: source.from })
+        const name = this.d.agentName(roomId, ws.agentId) ?? ws.agentId
+        const block: Block = { ws, name, events: kept, reply: turn?.reply, latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: [] }
+        if (source.owner) {
+          const decided = decide({ ws, name, events: kept, fromChat: source.from?.title }, {
+            review: this.d.reviewState?.(ws), reviewer: this.d.reviewer?.(ws.roomId), allMerged: () => this.allMerged(ws.roomId, source.owner!)
+          })
+          block.wake = decided.wake
+          block.todo = decided.todo
+        }
+        blocks.push(block)
       }
     }
     if (!blocks.length) return undefined
-    const kept = [...blocks].sort((a, b) => b.latest - a.latest).slice(0, MAX_BLOCKS).sort((a, b) => a.latest - b.latest)
+    // Blocks that need the Lead come first, then the newest of the rest.
+    const rank = (b: Block) => (b.wake.size ? 1 : 0)
+    const kept = [...blocks].sort((a, b) => rank(b) - rank(a) || b.latest - a.latest).slice(0, MAX_BLOCKS).sort((a, b) => a.latest - b.latest)
     const omitted = blocks.length - kept.length
     const replies = kept.filter((b) => b.reply).length
     const max = Math.min(REPLY_MAX, Math.floor(REPLY_BUDGET / Math.max(1, replies)))
@@ -287,21 +326,85 @@ export class LeadUpdates {
       lines.push('', `From "${from.title}", a Lead chat that is now closed. This work is yours now.`)
       for (const b of shown.filter((x) => x.from === from)) { lines.push('', ...blockLines(b)); order.push(b) }
     }
-    if (omitted) lines.push('', `Kernel left out older updates on ${omitted} more ${omitted === 1 ? 'workspace' : 'workspaces'}. Call list_workspaces to see where they stand.`)
+    if (omitted) lines.push('', `Kernel left out updates on ${omitted} more ${omitted === 1 ? 'workspace' : 'workspaces'}. Call list_workspaces to see where they stand.`)
+    const todo = [...new Set(order.flatMap((b) => b.todo))]
+    if (todo.length) lines.push('', 'To do:', ...todo.map((t) => `- ${t}`))
 
     const rows = order.map((b): TeamUpdateRow => {
       const prNumber = b.ws.prNumber ?? b.events.find((e) => e.pr)?.pr
       return {
         workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
         ...(prNumber ? { prNumber } : {}),
-        events: b.events.map((e) => ({ kind: e.kind, text: cardText(e), actionable: NEEDS_LEAD.has(e.kind) })),
+        events: b.events.map((e) => ({ kind: e.kind, text: cardText(e), actionable: b.wake.has(e) })),
         ...(b.reply ? { reply: b.reply } : {}),
         ...(b.from ? { fromChat: b.from.title } : {})
       }
     })
-    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}) } }
+    const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
+    return { text: lines.join('\n'), update: { rows, ...(omitted ? { omitted } : {}), ...(allMerged ? { allMerged } : {}) }, wakes: order.some((b) => b.wake.size > 0) }
+  }
+
+  /**
+   * Every workspace the Lead chat `owner` handed off has merged. Left out: review workspaces, the Lead's own, work archived
+   * without merging, and the reviewer's own workspaces that never opened a PR, which before the review link (KERNEL-130)
+   * are reviews nothing marks as such.
+   */
+  private allMerged(roomId: string, owner: string): boolean {
+    const reviewer = this.d.reviewer?.(roomId)?.id
+    const handed = this.d.store.workspaces(roomId).filter((w) => w.leadChatId === owner && !w.reviewOf && !this.d.isLead(w)
+      && (w.status !== 'archived' || !!w.mergedAt) && !(w.agentId === reviewer && !w.prNumber))
+    return handed.length > 0 && handed.every((w) => w.prState === 'merged' || !!w.mergedAt)
   }
 }
+
+/** What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer, and whether this merge was the last. */
+export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; allMerged: () => boolean }
+
+/**
+ * Which of one workspace's events need the Lead, and what to do about each (KERNEL-121). Called only for work a Lead chat
+ * handed off. A turn the user started in the teammate's own chat, and an error in one, are between them and never wake it.
+ * `fromChat` is the closed Lead chat the work came from, for the merge line.
+ */
+export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fromChat?: string }, c: WakeContext): { wake: Set<TeamEvent>; todo: string[] } {
+  const { ws, name } = b
+  const out = { wake: new Set<TeamEvent>(), todo: [] as string[] }
+  const at = `(workspace ${ws.id})`
+  for (const e of b.events) {
+    const pr = e.pr ? `PR #${e.pr}` : 'the PR'
+    const wake = (todo: string) => { out.wake.add(e); out.todo.push(todo) }
+    switch (e.kind) {
+      case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
+      case 'crash': wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
+      case 'setup.failed': wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
+      case 'review': wake(`Read ${name}'s review and pass on what it found.`); break
+      case 'pr.cifail': wake(`Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break
+      case 'pr.changes': wake(`Tell ${name} about the changes requested on ${pr} with message_agent ${at}.`); break
+      case 'pr.conflict': wake(`Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
+      case 'pr.closed': if (ws.prState === 'closed') wake(`${upper(pr)} was closed without merging. Ask the user whether ${name}'s work is still wanted.`); break
+      case 'pr.merged':
+        if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED)
+        break
+      case 'pr.ready': {
+        const review = c.review
+        if (review?.blockers || review?.inProgress) break
+        if (review?.approvedBy.length) { wake(`${upper(pr)} passed checks, has no conflicts and ${review.approvedBy.join(' and ')} approved it. Tell the user it is ready to merge.`); break }
+        if (!c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
+        wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: hand it over with create_workspace (agent "${c.reviewer.id}"), unless a review of it is already running.`)
+        break
+      }
+      case 'turn':
+        // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
+        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && x.kind.startsWith('pr.'))) break
+        wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
+        break
+      default: break
+    }
+  }
+  return out
+}
+
+/** The To do line once the last task a chat handed off has merged. */
+const ALL_MERGED = 'Every task you handed off in this chat has merged. Tell the user in one line.'
 
 /** One workspace's block in the Lead's text: who and what, each event, then the reply quoted. A reply says the turn ended. */
 function blockLines(b: Block): string[] {

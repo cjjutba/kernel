@@ -170,6 +170,8 @@ export class Kernel {
       isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
       agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
       post: (chatId, text, update) => this.sessions.post(chatId, [{ type: 'text', text }], { update }),
+      // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121). Retired agents are off the team.
+      reviewer: (roomId) => this.agentsSync(roomId).find((a) => !a.lead && !a.retired && /\breview/i.test(a.role)),
       // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
       // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
       delivered: (roomId, chat, update) => {
