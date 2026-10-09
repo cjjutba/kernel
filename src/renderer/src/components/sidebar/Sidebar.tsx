@@ -7,7 +7,6 @@ import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, useLeadWaiting } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
-import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
 import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
@@ -212,12 +211,6 @@ export function Sidebar() {
           const expanded = chosen[r.id] ?? r.id === openRoom
           return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} onToggle={() => toggle(r.id, expanded)} />
         })}
-      </div>
-      <div className="section-label" style={{ marginTop: 20 }}><span>Try</span></div>
-      <div className="nav-list">
-        <button className="nav-item" onClick={() => { resetDraft({ source: 'repo' }); actions.ui.openModal({ name: 'connectRepo' }) }}><Icon name="branch" /><span className="grow">Connect a repo</span></button>
-        <button className="nav-item" onClick={() => { resetDraft({ source: 'folder', baseBranch: '' }); actions.ui.openModal({ name: 'openFolder' }) }}><Icon name="folder" /><span className="grow">Open a folder</span></button>
-        <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'checkHooks' })}><Icon name="plug" /><span className="grow">Check hooks</span></button>
       </div>
       <div style={{ flex: 1 }} />
       {/* The plan on the left, What's new and Settings on the right, as in Conductor. */}
