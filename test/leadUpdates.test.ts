@@ -33,7 +33,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
   store.saveItem('nc', { kind: 'text', id: 't1', ts: 1, text: REPLY })
   const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined }
-  const u = new LeadUpdates({
+  const deps: ConstructorParameters<typeof LeadUpdates>[0] = {
     store, enabled: () => s.enabled,
     // Kernel's rule in small: the owner while it's open, else the first Lead chat ("lc"), flagged as closed.
     target: (_r, owner) => {
@@ -48,16 +48,18 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
     reviewer: () => s.reviewer,
     reviewState: () => s.review,
     delayMs: o.delayMs ?? 20
-  })
-  u.attach()
-  open.push(u)
+  }
+  const make = () => { const x = new LeadUpdates(deps); x.attach(); open.push(x); return x }
+  const u = make()
+  /** Kernel quits and opens again on the same database. */
+  const restart = () => { u.detach(); return make() }
   const pr = (id: string, state: PrState, number = 54) => {
     store.saveWorkspace({ ...store.workspace(id)!, prState: state, prNumber: number, prTitle: 'feat(workspace): symlink node_modules' })
     bus.push({ type: 'pr', workspaceId: id, state })
   }
   /** Who handed the workspace off. */
   const own = (id: string, leadChatId: string) => store.saveWorkspace({ ...store.workspace(id)!, leadChatId })
-  return { store, u, s, pr, own, ws, chat, w1: store.workspace('w1')!, nc: store.chat('nc')!, kc: store.chat('kc')!, lead: store.workspace('lead')!, lc: store.chat('lc')! }
+  return { store, u, s, pr, own, ws, chat, restart, w1: store.workspace('w1')!, nc: store.chat('nc')!, kc: store.chat('kc')!, lead: store.workspace('lead')!, lc: store.chat('lc')! }
 }
 
 const NOOR = 'Noor (noor) · Symlink node_modules · workspace w1'
@@ -466,6 +468,69 @@ describe('Stop on the Lead (KERNEL-122)', () => {
     pr('w2', 'cifail', 60)
     await wait()
     expect(s.to).toEqual(['lc2'])
+  })
+})
+
+describe('waiting updates across a restart (KERNEL-123)', () => {
+  it('delivers what waited before Kernel quit, and opening Kernel sends nothing by itself', async () => {
+    const { u, s, pr, w1, nc, lead, lc, restart } = await setup()
+    s.accept = false
+    pr('w1', 'cifail')
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toEqual([])
+    const again = restart()
+    s.accept = true
+    await wait()
+    expect(s.posts).toEqual([])
+    again.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Tell Noor about the failed checks on PR #54 with message_agent (workspace w1).', READ('Noor', 'w1')])
+  })
+
+  it("drops what waited for a workspace that is gone, and keeps a stopped chat's mark", async () => {
+    const { store, u, s, w1, nc, lead, lc, restart } = await setup()
+    s.accept = false
+    u.turnDone(w1, nc, done)
+    u.turnDone(lead, lc, { ...done, lead: true, interrupted: true })
+    await wait()
+    // An event for a workspace that no longer exists, as after its room was removed.
+    const saved = store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')!
+    saved.pending[0][1].events.push({ n: 999, workspaceId: 'ghost', kind: 'error', by: 'lead' })
+    store.saveMeta('leadUpdates', saved)
+    const again = restart()
+    // Loading drops the event for the missing workspace and saves what is left.
+    expect(store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')!.pending[0][1].events.map((e) => e.workspaceId)).toEqual(['w1'])
+    s.accept = true
+    again.flushAll()
+    // Still stopped: the user hasn't sent anything since.
+    expect(s.posts).toEqual([])
+    again.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, ...QUOTED])
+    expect(store.meta<{ pending: unknown[] }>('leadUpdates')!.pending).toEqual([])
+  })
+
+  it("keeps counting after a restart, and drops the Lead's own work and a closed chat's stop mark", async () => {
+    const { store, u, s, w1, nc, lead, restart } = await setup()
+    s.accept = false
+    u.turnDone(w1, nc, done)
+    u.turnDone(lead, store.chat('lc2')!, { ...done, lead: true, interrupted: true })
+    await wait()
+    const saved = store.meta<{ seq: number; pending: [string, { events: TeamEvent[] }][]; stopped: string[] }>('leadUpdates')!
+    expect(saved.stopped).toEqual(['lc2'])
+    saved.pending[0][1].events.push({ n: 998, workspaceId: 'lead', kind: 'turn', by: 'lead' })
+    store.saveMeta('leadUpdates', saved)
+    store.saveChat({ ...store.chat('lc2')!, closed: true })
+    restart()
+    const loaded = store.meta<typeof saved>('leadUpdates')!
+    expect(loaded.pending[0][1].events.map((e) => e.workspaceId)).toEqual(['w1'])
+    expect(loaded.stopped).toEqual([])
+    expect(loaded.seq).toBeGreaterThanOrEqual(saved.seq)
+  })
+
+  it('starts empty when the saved value is unreadable', async () => {
+    const { store, restart } = await setup()
+    store.saveMeta('leadUpdates', { v: 1, seq: 3, pending: [['lc', { roomId: 'r', events: null }]], stopped: null })
+    expect(() => restart()).not.toThrow()
   })
 })
 
