@@ -1,5 +1,5 @@
 # Settings for pnpm. This file also makes site/ its own workspace, so pnpm here never installs the app at the
-# repo root (D-056, D-109).
+# repo root (D-056, D-110).
 
 # Dependencies that may run install scripts. Anything not listed fails the install (strictDepBuilds).
 allowBuilds:

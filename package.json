@@ -2,7 +2,7 @@
   "name": "kernel",
   "productName": "Kernel",
   "version": "0.1.0",
-  "description": "A Mac app where Claude Code agents work as a team in a virtual office.",
+  "description": "A Mac app where Claude Code agents work as a team, each in its own git worktree.",
   "license": "Elastic-2.0",
   "private": true,
   "type": "module",

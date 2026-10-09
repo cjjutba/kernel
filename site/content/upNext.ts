@@ -10,7 +10,10 @@ export const upNext = UpNext.parse({
       lead: 'A smoother first launch.',
       text: "An offer to move Kernel into Applications when it's opened from somewhere else."
     },
-    { lead: 'Outside sessions on the floor.', text: 'Agents you start in a terminal show up the moment they begin.' },
+    {
+      lead: 'Outside sessions in Kernel.',
+      text: 'Claude Code sessions you start in a terminal show up the moment they begin.'
+    },
     { lead: 'A much smaller download.', text: 'Exploring using the agent you already have installed.' }
   ]
 })

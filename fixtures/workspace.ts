@@ -143,11 +143,10 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
 const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
   ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
     userMsg('l1', 'Add PDF export to invoices. Spec first.'),
-    { kind: 'note', id: 'l-note', ts: at(10, 28), text: 'Rowan is at the task wall on the floor.', link: { label: 'View floor', href: `kernel://floor/${ids.roomA}` } },
     { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
     tool('l-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
     tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
-    { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' }
+    { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' }
   ], {
     approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: [
       { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
@@ -157,7 +156,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
 
-/** The new workspace modal over Client A's floor (NewWorkspace.png and its four popovers). */
+/** The new workspace modal over Client A's Team (NewWorkspace.png and its four popovers). */
 const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
   branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
   openPrs: [
@@ -190,7 +189,7 @@ const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'
 const termScreen = '\r\n'.repeat(24) + [
   'you@mac t-14-invoice-table % claude --dangerously-skip-permissions', '',
   '\x1b[1mClaude Code v2.1\x1b[0m', 'Opus 5.5 with high effort · Claude Max', '~/kernel/worktrees/client-a/t-14-invoice-table', '',
-  'Hooks connected. This session shows up on the floor as Kai.', '', '> Try "fix lint errors"', '',
+  'Hooks connected. This session reports to Kernel as Kai.', '', '> Try "fix lint errors"', '',
   'bypass permissions on · worktree only                    Opus 5.5 · high'
 ].join('\r\n')
 
@@ -310,7 +309,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
       userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
       { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
       tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
-      { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi will take the open desk on the floor.' }
+      { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
     ], {
       approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', text: [
         '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'

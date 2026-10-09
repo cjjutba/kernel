@@ -2,8 +2,8 @@ import { SectionHead } from '@/components/ui/SectionHead'
 
 const items = [
   {
-    title: 'The floor',
-    text: 'See who is working, planning or waiting on you. Everything on it comes from real agent events, never a timer.'
+    title: 'Statuses from real events',
+    text: 'See who is working, planning or waiting on you, right in the sidebar. Nothing changes on a timer.'
   },
   {
     title: 'Pull requests, end to end',
@@ -11,7 +11,7 @@ const items = [
   },
   {
     title: "Your agent's own terminal",
-    text: 'Prefer the command line? Open it in a tab. The session still shows up on the floor.'
+    text: 'Prefer the command line? Open Claude Code in a tab, in the same worktree as your chats.'
   },
   {
     title: 'A team made of plain files',

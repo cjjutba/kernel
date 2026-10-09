@@ -1,4 +1,4 @@
-# Settings for pnpm (D-014, D-109). site/ has its own pnpm-workspace.yaml and isn't part of this one (D-056).
+# Settings for pnpm (D-014, D-110). site/ has its own pnpm-workspace.yaml and isn't part of this one (D-056).
 
 # Dependencies that may run install scripts. Anything not listed fails the install (strictDepBuilds).
 # The allowed ones are pinned, so a bump has to be approved again here.

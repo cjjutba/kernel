@@ -85,7 +85,7 @@ const light = (src: Fixture): Fixture => ({ ...src, ui: { ...src.ui, theme: 'lig
 const whatsNewNotes = [
   { title: 'Checkpoints', body: 'Every turn saves the worktree. Revert any workspace to an earlier turn without losing the chat.' },
   { title: 'Pause room', body: 'Freeze every agent in a room with one click. They finish the current step, then wait.' },
-  { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T. It shows up on the floor like any other session.' },
+  { title: 'Big terminal', body: 'Open Claude Code itself in a tab with ⌘⇧T, in the same worktree as your chats.' },
   { title: 'Overlap warnings', body: 'Rowan flags it when two agents edit the same file in different worktrees.' }
 ]
 const whatsNew: Fixture = {
