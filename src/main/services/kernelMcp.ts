@@ -15,7 +15,7 @@ export interface KernelToolDeps {
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
   /** `setupFailed` says how setup failed, when it did ("exit code 1"), so the result can tell the Lead the teammate hasn't started. */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string }) => Promise<Workspace & { setupFailed?: string }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string }) => Promise<Workspace & { setupFailed?: string }>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
@@ -125,14 +125,28 @@ export function kernelTools(d: KernelToolDeps) {
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
-      branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the title")
-    }, async ({ agent, title, brief, mode, base_ref, branch }) => {
+      branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the title"),
+      review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review")
+    }, async ({ agent, title, brief, mode, base_ref, branch, review_of }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch })
+      // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
+      if (review_of) {
+        const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+        const target = d.workspaces().find((w) => w.id === review_of)
+        if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
+        if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
+        if (team.find((a) => a.id === target.agentId)?.lead) return refuse('that is your own workspace.')
+        if (target.reviewOf) return refuse(`${target.name} is itself a review. Review the work it reviews instead (workspace ${target.reviewOf}).`)
+        if (target.mode === 'current') return refuse(`${target.name} works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.`)
+        const open = d.workspaces().find((w) => w.reviewOf === target.id && w.agentId === pick.id && w.status !== 'archived')
+        if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+        if (open) return refuse(`${pick.name} already has a review of this open (workspace ${open.id}). Ask for another pass with message_agent.`)
+      }
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(review_of ? { reviewOf: review_of } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.

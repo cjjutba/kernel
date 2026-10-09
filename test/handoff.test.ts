@@ -119,3 +119,44 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     expect(t.asked).toEqual([])
   })
 })
+
+describe('create_workspace with review_of (KERNEL-130)', () => {
+  const team = [
+    { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true },
+    { id: 'kai', name: 'Kai', role: 'Frontend', lead: false },
+    { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false }
+  ] as AgentDef[]
+  const ws = (id: string, extra: Partial<Workspace> = {}) => ({ id, name: id, agentId: 'kai', status: 'ready', mode: 'worktree', ...extra }) as Workspace
+  function tools(list: Workspace[]) {
+    const made: { reviewOf?: string }[] = []
+    const deps: KernelToolDeps = {
+      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => list,
+      createWorkspace: async (o) => { made.push(o); return { id: 'rv', branch: 'feat/x-review', agentId: o.agentId } as Workspace },
+      messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    }
+    const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
+    const review = async (of: string) => {
+      const r = await tool.handler({ agent: 'theo', title: 'Review PR #108', brief: 'Review it', review_of: of } as never, {})
+      return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+    }
+    return { review, made }
+  }
+
+  it('passes the link through for open work', async () => {
+    const t = tools([ws('w1')])
+    expect(await t.review('w1')).toEqual({ isError: false, text: 'Created rv on feat/x-review for theo.' })
+    expect(t.made).toEqual([expect.objectContaining({ agentId: 'theo', reviewOf: 'w1' })])
+  })
+
+  it('refuses unknown or archived work, the Lead\'s own, a review of a review, and a second open review by the same reviewer', async () => {
+    const t = tools([ws('gone', { status: 'archived' }), ws('lead', { agentId: 'rowan', mode: 'current' }), ws('w1'), ws('rv1', { agentId: 'theo', reviewOf: 'w1' }), ws('main', { mode: 'current' })])
+    expect(await t.review('nope')).toEqual({ isError: true, text: 'Not created: there is no workspace nope in this room to review. Call list_workspaces for the ids.' })
+    expect(await t.review('gone')).toEqual({ isError: true, text: 'Not created: gone is archived. Ask the user to restore it from History first.' })
+    expect(await t.review('lead')).toEqual({ isError: true, text: 'Not created: that is your own workspace.' })
+    expect(await t.review('rv1')).toEqual({ isError: true, text: 'Not created: rv1 is itself a review. Review the work it reviews instead (workspace w1).' })
+    expect(await t.review('w1')).toEqual({ isError: true, text: 'Not created: Theo already has a review of this open (workspace rv1). Ask for another pass with message_agent.' })
+    expect(await t.review('main')).toEqual({ isError: true, text: 'Not created: main works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.' })
+    expect(t.made).toEqual([])
+  })
+})

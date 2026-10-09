@@ -27,9 +27,11 @@ export interface PrView {
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN'
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | '' | null
   statusCheckRollup: RollupItem[]
+  /** The PR's head commit. A reviewer's verdict on another commit is stale (KERNEL-130). */
+  headRefOid?: string
 }
 
-const FIELDS = 'number,url,title,baseRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup'
+const FIELDS = 'number,url,title,baseRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid'
 const FAILED = ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
 const SKIPPED = ['SKIPPED', 'NEUTRAL', 'STALE']
 const QUEUED = ['QUEUED', 'PENDING', 'WAITING', 'REQUESTED', 'EXPECTED']
@@ -122,7 +124,8 @@ export function infoOf(workspaceId: string, view: PrView, comments: ReviewCommen
   const decision = reviewDecision(view.reviewDecision)
   return {
     workspaceId, number: view.number, url: view.url, title: view.title ?? '', state: prStateOf(view), baseRef: view.baseRefName ?? '',
-    checks: (view.statusCheckRollup ?? []).map(checkOf), comments, conflicts, ...(decision ? { reviewDecision: decision } : {})
+    checks: (view.statusCheckRollup ?? []).map(checkOf), comments, conflicts, ...(decision ? { reviewDecision: decision } : {}),
+    ...(view.headRefOid ? { head: view.headRefOid } : {})
   }
 }
 

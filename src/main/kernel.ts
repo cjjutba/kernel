@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { QueuedMessage, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
@@ -15,6 +15,9 @@ import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
+import { reviewMcpServer, type ReviewInput } from './services/reviewMcp'
+import { reviewRule } from './services/handoff'
+import type { ReviewState } from './services/leadUpdates'
 import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
@@ -150,7 +153,9 @@ export class Kernel {
       approvals: this.approvals,
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
-      mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) } : undefined),
+      mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
+        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) } : undefined),
+      rulesFor: (ws) => (ws.reviewOf ? this.reviewRuleFor(ws) : undefined),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
@@ -187,6 +192,7 @@ export class Kernel {
       isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
       agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
       post: (chatId, text, update) => this.sessions.post(chatId, [{ type: 'text', text }], { update }),
+      reviewState: (ws) => this.reviewState(ws),
       // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121). Retired agents are off the team.
       reviewer: (roomId) => this.agentsSync(roomId).find((a) => !a.lead && !a.retired && /\breview/i.test(a.role)),
       // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
@@ -775,24 +781,28 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
     const agents = await this.agents(roomId)
     const agent = agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
     if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
-    const mode = o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    // A review gets its own worktree started from the work it reviews (KERNEL-130).
+    const reviewed = o.reviewOf ? this.store.workspace(o.reviewOf) : undefined
+    if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
+    const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
-    const baseRef = await resolveBaseRef(room.path, o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef, { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
+    const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch)
+      : await resolveBaseRef(room.path, o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef, { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = await freePort(4300, taken)
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
       // The Lead can name the branch, for a repo that names branches after its issues (KERNEL-68). A taken name gets a suffix.
-      if (o.branch && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
-      branch = await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
+      if (o.branch && !reviewed && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
+      branch = reviewed ? await freeBranch(room.path, `${reviewed.branch}-review`) : await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -805,7 +815,7 @@ export class Kernel {
     }
 
     // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, prState: 'none', createdAt: Date.now() }
+    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
     this.setSetup(ws.id, { later: [] })
@@ -1181,8 +1191,9 @@ export class Kernel {
       createWorkspace: async (o) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
-        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, leadChatId: chat.id, taskFor: (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
-        this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
+        // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
+        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         if (ws.status !== 'failed') return ws
         const code = this.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
@@ -1285,6 +1296,66 @@ export class Kernel {
   private prChat(id: string): Chat | undefined {
     const chats = this.chatTabs(id)
     return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
+  }
+
+  // ---------- reviews (KERNEL-130)
+
+  /** Where a review worktree starts: the reviewed workspace's branch, or its copy on origin when the local one is gone. */
+  private async reviewBase(repo: string, branch: string): Promise<string> {
+    try { return await resolveBaseRef(repo, branch, { strict: true }) } catch { return resolveBaseRef(repo, `origin/${branch}`, { fetch: true, strict: true }) }
+  }
+
+  /** The rule appended to a review workspace's prompt, naming the work it reviews. */
+  private reviewRuleFor(ws: Workspace): string | undefined {
+    const of = ws.reviewOf ? this.store.workspace(ws.reviewOf) : undefined
+    if (!of) return undefined
+    const author = this.agentsSync(ws.roomId).find((a) => a.id === of.agentId)?.name ?? of.agentId
+    // The worktree started from the local branch, or from origin's copy when the local one was gone (reviewBase).
+    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo: ws.baseRef, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}) })
+  }
+
+  /**
+   * A reviewer's submit_review. The verdict is saved on the reviewed workspace with the review worktree's HEAD, so a later
+   * push makes it stale, and replaces that review workspace's earlier verdict. The Lead hears about it.
+   */
+  async submitReview(reviewWorkspaceId: string, review: ReviewInput): Promise<string> {
+    const rws = this.mustWs(reviewWorkspaceId)
+    const of = rws.reviewOf ? this.store.workspace(rws.reviewOf) : undefined
+    if (!of || of.status === 'archived') throw new Error('the work under review is no longer open.')
+    const sha = (await exec('git', ['-C', rws.path, 'rev-parse', 'HEAD'])).stdout.trim()
+    // Read again after the await, so a verdict another reviewer saved meanwhile isn't lost.
+    const fresh = this.mustWs(of.id)
+    const verdict: ReviewVerdict = {
+      workspaceId: rws.id, agentId: rws.agentId, verdict: review.verdict, summary: review.summary.trim(),
+      ...(review.verdict === 'blockers' && review.blockers?.length ? { blockers: review.blockers } : {}),
+      ...(/^[0-9a-f]{40}$/.test(sha) ? { sha } : {}), ...(fresh.prNumber ? { prNumber: fresh.prNumber } : {}), ts: Date.now()
+    }
+    const saved = this.updateWs(of.id, { reviews: [...(fresh.reviews ?? []).filter((v) => v.workspaceId !== rws.id), verdict] })
+    this.leadUpdates.reviewed(rws, saved, verdict)
+    const what = saved.prNumber ? `PR #${saved.prNumber}` : saved.name
+    bus.activity({ kind: 'note', roomId: rws.roomId, workspaceId: saved.id, agentId: rws.agentId, text: review.verdict === 'approved' ? 'approved' : 'found blockers in', object: what })
+    return review.verdict === 'approved' ? `Saved: you approved ${what}. The Lead hears about it.` : `Saved: ${verdict.blockers?.length ?? 0} blocker(s) in ${what}. The Lead passes them on.`
+  }
+
+  /** What Kernel knows about reviews of a workspace's PR, for the Lead's updates. */
+  private reviewState(ws: Workspace): ReviewState {
+    const name = (id: string) => this.agentsSync(ws.roomId).find((a) => a.id === id)?.name ?? id
+    // Verdicts on this PR, and those of them on its head commit, as far as either is known.
+    const verdicts = (ws.reviews ?? []).filter((v) => !v.prNumber || !ws.prNumber || v.prNumber === ws.prNumber)
+    const current = verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead)
+    const blockers = current.some((v) => v.verdict === 'blockers')
+    const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
+    // A review runs while its setup runs, or while its reviewer works on it and hasn't sent a verdict on the head commit.
+    // A review whose setup failed isn't running: it waits for the user.
+    const busy = (r: Workspace) => r.status === 'setup' || (r.status === 'ready' && this.chatTabs(r.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
+    const open = reviews[0]
+    return {
+      approvedBy: blockers ? [] : current.filter((v) => v.verdict === 'approved').map((v) => name(v.agentId)),
+      blockers,
+      inProgress: reviews.some((r) => busy(r) && !current.some((v) => v.workspaceId === r.id)),
+      stale: verdicts.length > 0 && current.length === 0,
+      ...(open ? { open: { workspaceId: open.id, agentId: open.agentId, name: name(open.agentId), ...(open.status === 'failed' ? { failed: true } : {}) } } : {})
+    }
   }
 
   /**
@@ -1403,7 +1474,7 @@ export class Kernel {
     const adopt = info && state !== 'none'
     const next = this.updateWs(id, {
       prState: state,
-      ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle } : {}),
+      ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
     if (next.prState !== ws.prState) {

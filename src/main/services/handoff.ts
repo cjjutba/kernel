@@ -12,11 +12,31 @@ export const LEAD_RULE = [
   'Messages that start with "Team update from Kernel" (older ones start with "Update from Kernel") come from Kernel, not the user. Kernel sends one only when something needs you: it lists each workspace you handed off in this chat that changed, with its id, what happened and the teammate\'s last reply, then what to do under "To do". Work listed under "From <chat>, a Lead chat that is now closed" is yours now.',
   "When a teammate's reply asks a question or says it is blocked, answer from the approved plan if it covers the question. Otherwise ask the user with mcp__kernel__ask_user, then send the answer with mcp__kernel__message_agent. Never leave a teammate waiting.",
   "When checks fail, changes are requested, a PR has conflicts or a review found blockers, tell that workspace's teammate with message_agent and pass on the details.",
+  'When a PR passed checks and nobody has reviewed it, hand it to the team\'s reviewer with create_workspace and review_of set to that PR\'s workspace id. To have it reviewed again after fixes, message the reviewer\'s existing review workspace with message_agent instead of creating another.',
   'When a PR passed checks and was approved, tell the user it is ready to merge. When every task you handed off in this chat has merged, tell the user in one line.',
   "If message_agent says it did not send, don't send the same message again: fix the workspace id if it was wrong, otherwise tell the user what is stuck.",
   'Write for the user, who reads this chat. Call teammates by name, not he or she. Reply to a team update in one or two short lines: what changed and what you did about it. Leave workspace ids out unless the user asks.',
   'The user may have several chats with you at once. mcp__kernel__list_workspaces marks the workspaces you handed off in this chat as yours. Leave the others to the chat that handed them off unless the user asks you to step in.'
 ].join('\n')
+
+/**
+ * Appended to a review workspace's prompt (KERNEL-130). The reviewer works in a worktree started from the author's branch,
+ * reports its verdict with submit_review, and leaves GitHub's approve and request-changes alone, since the PR is the
+ * user's own and GitHub won't let its author do either.
+ */
+export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string } }): string {
+  const to = r.resetTo ?? r.branch
+  const pickUp = to.startsWith('origin/') ? `git fetch origin ${r.branch} && git reset --hard ${to}` : `git reset --hard ${to}`
+  return [
+    `You are reviewing ${r.author}'s work on "${r.task}" (workspace ${r.workspaceId}) for the Lead.`,
+    `Your worktree started at ${r.author}'s branch ${r.branch}. Before each review, run \`${pickUp}\` to pick up ${r.author}'s latest commits, then read the change with \`git diff ${r.base}...HEAD\`.`,
+    r.pr ? `It is PR #${r.pr.number}${r.pr.url ? `: ${r.pr.url}` : ''}.` : `It had no PR when this review started; \`gh pr view ${r.branch}\` shows one if it opened since.`,
+    `Don't edit, commit or push. ${r.author} fixes what you find.`,
+    'When you are done, call mcp__kernel__submit_review once: "approved" when the acceptance criteria are met and nothing blocks a merge, or "blockers" with each blocker and its file and line when you know them. The Lead passes blockers on.',
+    "Don't approve or request changes on GitHub: the PR was opened from the user's account, and GitHub doesn't let its author do either. If the repo wants a review on GitHub, post it as a comment with `gh pr comment`.",
+    `When you are asked to review again, run \`${pickUp}\` again and call submit_review again.`
+  ].join('\n')
+}
 
 /**
  * First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105, KERNEL-117).
