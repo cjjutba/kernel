@@ -31,6 +31,7 @@ import { ConfirmRetire } from './screens/team/ConfirmRetire'
 import { NewAgent } from './screens/team/NewAgent'
 import { Team } from './screens/team/Team'
 import { WhatsNew } from './screens/update/WhatsNew'
+import { openSlot } from './components/sidebar/slots'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
@@ -121,6 +122,13 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return
+      // ⌘1 to ⌘9 open the room in view's Team, Lead and workspaces. Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
+      const digit = /^Digit([1-9])$/.exec(e.code)
+      if (digit && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const s = getState()
+        if (!s.ui.modal && s.ui.route.name !== 'onboarding') { e.preventDefault(); openSlot(Number(digit[1])) }
+        return
+      }
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.go({ name: 'settings', page: 'general' }) }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
