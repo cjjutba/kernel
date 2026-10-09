@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions } from '../../store'
-import { Button } from '../../ui'
 import { addToComposer } from './composer/bus'
 import { parseDiff } from './diff'
 
@@ -76,7 +75,6 @@ export function TextView({ name, text }: { name: string; text: string }) {
 
 // ---------- diff
 
-/** The diff of one file, or of every changed file when `path` is empty. */
 /** Adds one hunk to the composer as a chip named `file:first-last`, with the hunk's lines as its text. */
 function sendHunk(path: string, lines: { mark: string; code: string; hunk?: boolean }[], at: number) {
   const head = /\+(\d+)(?:,(\d+))?/.exec(lines[at].code)
@@ -86,10 +84,10 @@ function sendHunk(path: string, lines: { mark: string; code: string; hunk?: bool
   while (end < lines.length && !lines[end].hunk) end++
   const text = [lines[at].code, ...lines.slice(at + 1, end).map((l) => `${l.mark === ' ' ? ' ' : l.mark}${l.code}`)].join('\n')
   addToComposer({ type: 'file', name: `${path.slice(path.lastIndexOf('/') + 1)}:${start}-${start + Math.max(len, 1) - 1}`, path, lines: end - at - 1, text: `${path}\n${text}` })
-  actions.ui.setWorkspaceView({ diff: undefined })
 }
 
-export function DiffView({ ws, path, changes, onClose }: { ws: Workspace; path: string; changes: ChangedFile[]; onClose: () => void }) {
+/** The diff of one file, or of every changed file when `path` is empty. It is a tab, so the tab's close button and Cmd+W close it. */
+export function DiffView({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -100,12 +98,11 @@ export function DiffView({ ws, path, changes, onClose }: { ws: Workspace; path: 
   }, [ws.id, path])
   const files = useMemo(() => parseDiff(text ?? ''), [text])
   const stat = path ? changes.find((c) => c.path === path) : undefined
-  const back = <Button variant="ghost" onClick={onClose}>Back to chat</Button>
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       {path
-        ? <ViewHead path={path} trailing={back}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
-        : <div className="view-head"><span style={{ fontWeight: 500 }}>All changes</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span><span className="grow" />{back}</div>}
+        ? <ViewHead path={path} trailing={null}>{stat && <span className="mono" style={{ fontSize: 12 }}><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}</ViewHead>
+        : <div className="view-head"><span style={{ fontWeight: 500 }}>All changes</span><span className="muted" style={{ fontSize: 12 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'}</span></div>}
       <div className="code-view selectable mono" role="region" aria-label="Diff" tabIndex={0} style={{ padding: '8px 0' }}>
         {error && <div className="panel-empty"><span>{error}</span></div>}
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}

@@ -826,10 +826,8 @@ export interface WorkspaceView {
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
-  /** Active tab: a chat id, or `file:<path>` for a file preview tab. */
+  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
   tab?: string
-  /** File whose diff is open in the main column. */
-  diff?: string
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
   /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */
@@ -852,5 +850,15 @@ export interface UiState {
   rightPanel: boolean
 }
 
-/** UI state a fixture forces on boot. */
-export type ForcedUi = Partial<UiState>
+/** One room's Ask Rowan popover (QuickAsk.png). It outlasts the popover, which unmounts when it closes. */
+export interface QuickAskState {
+  /** What you typed and haven't sent. */
+  draft: string
+  /** A question is on its way to the Lead. Ask stays busy while the popover is closed and reopened. */
+  sending?: boolean
+  /** The question just sent, with the chat it went to and when, so the answer is the Lead's text after `since`. */
+  asked?: { chatId: string; since: number; question: string }
+}
+
+/** UI state a fixture forces on boot. `quickAsk` is by room id, a slice of its own that a fixture can set. */
+export type ForcedUi = Partial<UiState> & { quickAsk?: Record<string, QuickAskState> }
