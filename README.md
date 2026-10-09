@@ -77,7 +77,7 @@ pnpm dev
 
 ## How Kernel was built
 
-Claude Code agents built Kernel one Linear issue at a time, working from a canvas of 119 screen designs. [docs/AUTOPILOT.md](docs/AUTOPILOT.md) is the loop that ran them, and [docs/DECISIONS.md](docs/DECISIONS.md) records every choice someone might later want to undo, with the reason. Both are kept as they were written.
+Claude Code agents built Kernel one Linear issue at a time, working from a canvas of 119 screen designs. [docs/DECISIONS.md](docs/DECISIONS.md) records every choice someone might later want to undo, with the reason. It is kept as it was written.
 
 ## License
 

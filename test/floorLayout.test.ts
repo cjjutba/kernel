@@ -31,12 +31,12 @@ describe('floor layout', () => {
     expect(overflow.map((x) => x.id)).toEqual(['worker-opus'])
   })
 
-  it('seats Noor and Theo ahead of the Issue Workers when everyone is idle', () => {
-    const team = [a('issue-worker'), a('issue-worker-opus'), a('ivy'), a('kai'), a('lumi'), a('noor'), a('rowan', true), a('theo')]
-    const lastActivity = { theo: 50, noor: 40, rowan: 60, kai: 30, ivy: 20, 'issue-worker': 1 }
+  it('seats Noor and Theo ahead of Eli and Eli Opus when everyone is idle', () => {
+    const team = [a('eli'), a('eli-opus'), a('ivy'), a('kai'), a('lumi'), a('noor'), a('rowan', true), a('theo')]
+    const lastActivity = { theo: 50, noor: 40, rowan: 60, kai: 30, ivy: 20, eli: 1 }
     const { seated, overflow } = seating(team, {}, { lastActivity })
-    expect(seated.map((x) => x.id)).toEqual(['rowan', 'theo', 'noor', 'kai', 'ivy', 'issue-worker'])
-    expect(overflow.map((x) => x.id)).toEqual(['issue-worker-opus', 'lumi'])
+    expect(seated.map((x) => x.id)).toEqual(['rowan', 'theo', 'noor', 'kai', 'ivy', 'eli'])
+    expect(overflow.map((x) => x.id)).toEqual(['eli-opus', 'lumi'])
   })
 
   it('keeps file order for agents with no activity, and for any room that sends none', () => {
