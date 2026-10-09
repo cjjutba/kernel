@@ -43,7 +43,7 @@
 </sc-for>
 </div>
 
-<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center"><p style="margin: 0; font-size: 15px; font-weight: 600">You're all caught up</p><p style="margin: 0; max-width: 340px; color: #8a8f98">Approvals, plans to review and finished work land here. Nothing needs you right now.</p><a href="Main.dc.html" style="margin-top: 6px; color: #d0d6e0">Go to the floor</a></div></sc-if>
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center"><p style="margin: 0; font-size: 15px; font-weight: 600">You're all caught up</p><p style="margin: 0; max-width: 340px; color: #8a8f98">Approvals, plans to review and finished work land here. Nothing needs you right now.</p><a href="WorkspaceLead.dc.html" style="margin-top: 6px; color: #d0d6e0">Open Rowan's chat</a></div></sc-if>
 <sc-if value="{{ notEmpty }}" hint-placeholder-val="{{ true }}"><article style="flex: 1; min-width: 0; overflow: hidden; padding: 28px 40px">
 <div style="max-width: 640px; display: flex; flex-direction: column; gap: 18px">
 <div style="display: flex; align-items: center; gap: 10px">
@@ -183,7 +183,7 @@ class Component extends DCLogic {
     var isDone = !!s.done[cur.id];
     var A = {
       perm: { primary: 'Approve', secondary: 'Deny', tertiary: 'Always allow in this room', done: 'Approved. Noor is running the migration.' },
-      plan: { primary: 'Approve plan', secondary: 'Request changes', done: 'Plan approved. Rowan is walking the floor to hand out T-15.' },
+      plan: { primary: 'Approve plan', secondary: 'Request changes', done: 'Plan approved. Rowan is handing out T-15.' },
       merge: { primary: 'Merge PR', link: ['Open workspace', 'Workspace.dc.html'], done: 'PR #41 merged into main.' },
       fail: { primary: 'Send back to Ivy', link: ['Open workspace', 'Workspace.dc.html'], done: 'Sent back to Ivy with the hook output.' },
       done: { link: ['Review diff', 'Workspace.dc.html'] },

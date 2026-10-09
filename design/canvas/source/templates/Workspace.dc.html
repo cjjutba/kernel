@@ -16,7 +16,7 @@
 <header style="position: relative; height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid #1a1b1e">
 <sc-if value="{{ focus }}" hint-placeholder-val="{{ false }}"><a href="Workspace.dc.html" aria-label="Show sidebar" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="1.5"></rect><path d="M6.5 3v10"></path></svg></a></sc-if>
 <span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
-<a href="Main.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<a href="WorkspaceLead.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
 <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
 <h1 style="margin: 0; font-size: 13px; font-weight: 500">{{ ws.name }}</h1>
 <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ ws.badge }}</span>
@@ -384,23 +384,22 @@ class Component extends DCLogic {
     if (sc === 'offline') { B('offline', "You're offline", 'Messages send when you reconnect. Agents finish their step, then wait.', [{ id: 'retrynet', label: 'Try again' }], { queued: 1 }); s.msgs = s.msgs.concat([U('Also add a loading skeleton.'), { kind: 'note', text: 'Queued. Sends when you are back online.' }]); }
     if (sc === 'signedout') B('auth', 'Claude Code is signed out', 'Agents cannot run until you sign in. Workspaces and chats are safe.', [{ id: 'term', label: 'Open terminal' }, { id: 'signin', label: 'Sign in', primary: true }], { block: true });
     if (sc === 'setupfail') B('setup', 'Setup script failed', 'pnpm install exited with code 1. Kai waits until setup passes.', [{ id: 'editscript', label: 'Edit script' }, { id: 'rerun', label: 'Run again', primary: true }], { bottom: 'setup', block: true, msgs: [], setupFailed: true, right: 'files' });
-    if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'The floor and logs stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
+    if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
     if (sc === 'newchat') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 'c2', kind: 'chat', title: 'New chat', empty: true }], tab: 'c2', newMenu: true });
     if (sc === 'terminal') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 't1', kind: 'term', title: 'Terminal (claude)' }], tab: 't1' });
     if (sc === 'lead') Object.assign(s, { agent: 'rowan', model: 'opus', plan: true, wsName: 'export-invoices-as-pdf', badge: 'feat/export-invoices-as-pdf', filesKey: 'rowan', tabs: [{ id: 'c1', kind: 'chat', title: 'Export invoices as PDF' }], msgs: [
       U('Add PDF export to invoices. Spec first.'),
-      { kind: 'note', text: 'Rowan is at the task wall on the floor.', link: 'FloorTalk.dc.html', linkLabel: 'View floor' },
       { kind: 'thinking', text: 'Renderer, button, tests and review can run in parallel.' },
       { kind: 'tool', text: 'Read the invoices module', cmd: 'cat src/app/invoices/page.tsx' },
       { kind: 'tool', text: 'Write the plan', cmd: 'cat > plans/t-15-invoice-pdf.md' },
-      { kind: 'ai', text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' },
+      { kind: 'ai', text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' },
       card({ title: 'Plan for T-15', steps: ['T-15a PDF renderer with embedded fonts · Noor', 'T-15b Download PDF in the row actions · Kai', 'T-15c Snapshot tests for three invoice types · Ivy', 'T-15d Review each PR as it lands · Theo'], actions: [{ id: 'keep', label: 'Request changes' }, { id: 'handoff', label: 'Approve and hand off', primary: true }] })
     ] });
     if (sc === 'hire') Object.assign(s, { agent: 'rowan', model: 'opus', wsName: 'hire-a-designer', badge: 'current branch · main', filesKey: 'hire', baseline: true, tabs: [{ id: 'c1', kind: 'chat', title: 'Hire a designer' }], msgs: [
       U('We need a designer on the team who checks every screen against DESIGN.md before review.'),
       { kind: 'thinking', text: 'This fits as a subagent with read access and the screenshot skill.' },
       { kind: 'tool', text: 'Read DESIGN.md', cmd: 'cat DESIGN.md' },
-      { kind: 'ai', text: 'Here is the agent file. Once you approve, I will save it and Lumi will take the open desk on the floor.' },
+      { kind: 'ai', text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' },
       card({ title: '.claude/agents/lumi.md', code: ['---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'], actions: [{ id: 'edit', label: 'Edit file' }, { id: 'create', label: 'Create agent', primary: true }] })
     ] });
     if (sc === 'paste') Object.assign(s, { msgs: base.concat([
@@ -470,8 +469,8 @@ class Component extends DCLogic {
     if (id === 'term') this.setState({ bottom: 'term' });
     if (id === 'compact') { this.setState({ ctx: 31, banner: null }); this.push([{ kind: 'note', text: 'Compacted. Kept a summary of 38 turns, context is at 31%.' }]); }
     if (id === 'newchat') this.newChat();
-    if (id === 'handoff') { drop(); this.setState({ plan: false }); this.push([U('Approved. Hand it off.'), { kind: 'note', text: 'Rowan is walking the floor to hand out four tasks.', link: 'FloorHandoff.dc.html', linkLabel: 'Watch' }]); }
-    if (id === 'create') { drop(); this.push([{ kind: 'note', text: 'Saved .claude/agents/lumi.md. Lumi joined Client A.', link: 'FloorHired.dc.html', linkLabel: 'See her on the floor' }]); }
+    if (id === 'handoff') { drop(); this.setState({ plan: false }); this.push([U('Approved. Hand it off.'), { kind: 'note', text: 'Rowan is handing out four tasks.' }]); }
+    if (id === 'create') { drop(); this.push([{ kind: 'note', text: 'Saved .claude/agents/lumi.md. Lumi joined Client A.', link: 'Team.dc.html', linkLabel: 'Open Team' }]); }
     if (id === 'edit') this.push([{ kind: 'note', text: 'Opened lumi.md in your editor.' }]);
     if (id === 'sendall') { drop(); this.setState({ pr: 'checks' }); this.push([U('Address Theo\u2019s two review comments on #42.')]); this.work('Switched to the shared EmptyState and held the skeleton for 200ms. Pushed, checks are running.'); }
     if (id === 'github') this.push([{ kind: 'note', text: 'Opened #42 on GitHub.' }]);
@@ -488,7 +487,7 @@ class Component extends DCLogic {
     if (id === 'wait') this.setState({ banner: Object.assign({}, this.state.banner, { actions: [] }) });
     if (id === 'retrynow') { clear(); this.work('Shortened it to "No invoices yet. Create your first one."'); }
     if (id === 'switchmodel') this.setState({ menu: 'model' });
-    if (id === 'retrynet' || id === 'reconnect') { clear(); this.push([{ kind: 'note', text: id === 'reconnect' ? 'Hooks reconnected. The floor is live again.' : 'Back online. Sent 1 queued message.' }]); this.setState({ queued: 0 }); }
+    if (id === 'retrynet' || id === 'reconnect') { clear(); this.push([{ kind: 'note', text: id === 'reconnect' ? 'Hooks reconnected. Statuses are live again.' : 'Back online. Sent 1 queued message.' }]); this.setState({ queued: 0 }); }
     if (id === 'signin' || id === 'rerun') { clear(); if (id === 'rerun') this.setState({ setupFailed: false }); this.push([{ kind: 'note', text: id === 'rerun' ? 'Setup finished. Kai is starting.' : 'Signed in with Claude Max.' }]); }
     if (id === 'term') this.setState({ bottom: 'term' });
     if (id === 'compact' || id === 'newchat') this.cardAction(id);
@@ -591,7 +590,7 @@ class Component extends DCLogic {
       { text: 'Opus 5.5 with high effort · Claude Max', color: '#b7bcc4', weight: 400 },
       { text: '~/kernel/worktrees/client-a/t-14-invoice-table', color: '#b7bcc4', weight: 400 },
       { text: ' ', color: '#8a8f98', weight: 400 },
-      { text: 'Hooks connected. This session shows up on the floor as Kai.', color: '#8a8f98', weight: 400 }
+      { text: 'Hooks connected. This session reports to Kernel as Kai.', color: '#8a8f98', weight: 400 }
     ];
   }
 

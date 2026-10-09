@@ -1182,7 +1182,7 @@
     "row4": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "5 \u00b7 Room \u00b7 board and team",
+      "text": "5 \u00b7 Room \u00b7 team (the Board is hidden, D-104)",
       "w": 600,
       "x": 0,
       "y": 4900
@@ -1190,7 +1190,7 @@
     "row5": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "6 \u00b7 Floor \u00b7 briefing Rowan, step by step",
+      "text": "6 \u00b7 Floor \u00b7 briefing Rowan, step by step (hidden, D-104)",
       "w": 600,
       "x": 0,
       "y": 6200
@@ -1198,7 +1198,7 @@
     "row6": {
       "kind": "title1",
       "maxW": 6000,
-      "text": "7 \u00b7 Floor \u00b7 other moments",
+      "text": "7 \u00b7 Floor \u00b7 other moments (hidden, D-104)",
       "w": 600,
       "x": 0,
       "y": 7500
@@ -1206,7 +1206,7 @@
     "row7": {
       "kind": "title1",
       "maxW": 8000,
-      "text": "8 \u00b7 Floor \u00b7 when things stop",
+      "text": "8 \u00b7 Floor \u00b7 when things stop (hidden, D-104)",
       "w": 600,
       "x": 0,
       "y": 8800
