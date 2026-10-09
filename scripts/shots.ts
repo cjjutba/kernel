@@ -1,10 +1,10 @@
 // Screenshot harness (KERNEL-7). Runs on plain Node with built-in type stripping, so only erasable TypeScript here.
 //
-//   npm run shots -- Workspace Main       build, then capture shots/<Screen>.png for each fixture
-//   npm run shots -- --all                every fixture with a PNG in design/screens
-//   npm run shots -- --no-build Main      reuse the last build
-//   npm run shots -- --theme light Main   capture in the light theme, saved as shots/<Screen>.light.png
-//   npm run shots:compare -- Workspace    shot left, design right, in shots/compare/<Screen>.png
+//   pnpm shots Workspace Main          build, then capture shots/<Screen>.png for each fixture
+//   pnpm shots --all                   every fixture with a PNG in design/screens
+//   pnpm shots --no-build Main         reuse the last build
+//   pnpm shots --theme light Main      capture in the light theme, saved as shots/<Screen>.light.png
+//   pnpm shots:compare Workspace       shot left, design right, in shots/compare/<Screen>.png
 
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -22,7 +22,8 @@ const WIDTH = 1440
 const HEIGHT = 900
 const GAP = 16
 
-const args = process.argv.slice(2)
+// pnpm passes a `--` through (`pnpm shots -- Main`), so drop it.
+const args = process.argv.slice(2).filter((a) => a !== '--')
 const flags = new Set(args.filter((a) => a.startsWith('--')))
 const themeAt = args.indexOf('--theme')
 const theme = themeAt >= 0 ? args[themeAt + 1] : undefined
@@ -68,9 +69,9 @@ async function capture(name: string): Promise<boolean> {
 
 async function shots() {
   const list = flags.has('--all') ? withFixture() : names
-  if (!list.length) throw new Error('Name at least one screen, for example: npm run shots -- Workspace Main')
+  if (!list.length) throw new Error('Name at least one screen, for example: pnpm shots Workspace Main')
   if (!flags.has('--no-build')) {
-    const build = spawnSync('npx', ['electron-vite', 'build'], { cwd: root, stdio: 'inherit' })
+    const build = spawnSync('pnpm', ['exec', 'electron-vite', 'build'], { cwd: root, stdio: 'inherit' })
     if (build.status !== 0) process.exit(build.status ?? 1)
   }
   mkdirSync(shotsDir, { recursive: true })
@@ -89,13 +90,13 @@ function blit(src: InstanceType<typeof PNG>, dst: InstanceType<typeof PNG>, x: n
 
 function compare() {
   const list = flags.has('--all') ? allDesigns().filter((n) => existsSync(join(shotsDir, `${n}.png`))) : names
-  if (!list.length) throw new Error('Name at least one screen, for example: npm run shots:compare -- Workspace')
+  if (!list.length) throw new Error('Name at least one screen, for example: pnpm shots:compare Workspace')
   mkdirSync(join(shotsDir, 'compare'), { recursive: true })
   let failed = 0
   for (const name of list) {
     const shotFile = join(shotsDir, `${name}.png`)
     const designFile = join(designDir, `${name}.png`)
-    if (!existsSync(shotFile)) { console.error(`${name}: no shot yet. Run npm run shots -- ${name}`); failed++; continue }
+    if (!existsSync(shotFile)) { console.error(`${name}: no shot yet. Run pnpm shots ${name}`); failed++; continue }
     if (!existsSync(designFile)) { console.error(`${name}: no design/screens/${name}.png`); failed++; continue }
     const shot = PNG.sync.read(readFileSync(shotFile))
     const design = PNG.sync.read(readFileSync(designFile))

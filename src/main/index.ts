@@ -20,7 +20,7 @@ let win: BrowserWindow | null = null
 // cache and storage out of the real profile, so a fixture run can't collide with a running Kernel.
 // The shots harness passes a folder per launch and deletes it; manual runs reuse one temp folder.
 const fixtureName = process.env.KERNEL_FIXTURES
-/** `npm run shots -- --theme light` forces a theme on any fixture. */
+/** `pnpm shots --theme light` forces a theme on any fixture. */
 const fixtureTheme = () => (process.env.KERNEL_FIXTURE_THEME === 'light' || process.env.KERNEL_FIXTURE_THEME === 'dark' ? { theme: process.env.KERNEL_FIXTURE_THEME } : {})
 if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join(tmpdir(), 'kernel-fixtures'))
 // Scripted runs (the shots harness, Playwright drives) set KERNEL_HEADLESS=1. The window still renders but never

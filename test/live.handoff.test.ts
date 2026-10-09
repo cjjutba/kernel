@@ -9,7 +9,7 @@ import { tempRepo } from './helpers'
 
 // KERNEL-67 against real Claude Code: a Lead whose own file only plans, briefed in plan mode, then "Approve and hand off".
 // It spends a short Sonnet planning turn and one Haiku turn on the Claude plan, so it only runs when asked:
-//   KERNEL_LIVE=1 npm test -- test/live.handoff.test.ts
+//   KERNEL_LIVE=1 pnpm test test/live.handoff.test.ts
 // The repo is a temp one, and it never writes to ~/.claude/settings.json.
 
 // The kernel repo's own Lead, which says nothing about create_workspace, moved to Sonnet.

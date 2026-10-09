@@ -1,24 +1,24 @@
 "$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
 
 [scripts]
-# Runs in every new workspace. npm ci installs exactly what the lockfile says.
+# Runs in every new workspace. --frozen-lockfile installs exactly what the lockfile says, and fails if it is out of date.
 # The postinstall hook inside the root install rebuilds better-sqlite3 and node-pty for Electron.
 # site/ is its own package with its own lockfile, so it gets its own install.
 setup = '''
 node -e 'process.exit(Number(process.versions.node.split(".")[0]) < 22 ? 1 : 0)' || { echo "Kernel needs Node 22 or later"; exit 1; }
-npm ci --no-audit --no-fund
-npm --prefix site ci --no-audit --no-fund
+pnpm install --frozen-lockfile
+pnpm --dir site install --frozen-lockfile
 '''
 # Every dev instance opens the same Electron userData folder and SQLite database, so only one runs at a time.
 run_mode = "nonconcurrent"
 
 [scripts.run.dev]
 available_in = [ "local" ]
-command = "npm run dev"
+command = "pnpm dev"
 default = true
 icon = "play"
 
 [scripts.run.site]
 available_in = [ "local" ]
-command = 'npm --prefix site run dev -- --port "${CONDUCTOR_PORT:-3000}"'
+command = 'pnpm --dir site dev --port "${CONDUCTOR_PORT:-3000}"'
 icon = "globe"

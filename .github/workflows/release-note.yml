@@ -23,14 +23,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           # The scripts are .ts files run by Node itself. 22.18 is the first 22.x with type stripping on by default.
           node-version: '22.18'
-          cache: npm
+          cache: pnpm
 
       # zod is a runtime dependency, so this installs it without Electron's build tooling, and no install scripts run.
-      - run: npm ci --omit=dev --ignore-scripts
+      - run: pnpm install --frozen-lockfile --prod --ignore-scripts
 
       # The schema lives in site/ and imports zod. site/ isn't installed here, so zod has to resolve from the root.
       - name: Load the shared schema

@@ -1,8 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm *)",
-      "Bash(npx *)",
+      "Bash(pnpm *)",
       "Bash(node *)",
       "Bash(git *)",
       "Bash(gh pr *)",

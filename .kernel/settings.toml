@@ -1,7 +1,7 @@
 # Kernel settings for this repo (Kernel builds itself).
 [scripts]
-setup = "npm install"
-run = "npm run dev"
+setup = "pnpm install"
+run = "pnpm dev"
 run_mode = "single"
 
 [files]
