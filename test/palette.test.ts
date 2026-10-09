@@ -22,7 +22,7 @@ describe('command palette', () => {
     const workspaces = [ws('invoice-table', { stat: { files: 4, added: 412, removed: 38 } })]
     const input = { rooms, workspaces, approvals: [], agents: {}, act }
     const home = buildItems({ ...input, route: { name: 'home' } })
-    expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New workspace in Client A', 'Create PR for invoice-table'])
+    expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New chat in Client A', 'Create PR for invoice-table'])
     expect(home.items.filter((i) => i.section === 'Rooms').map((i) => i.label)).toEqual(['Client A', 'Client B', 'New room'])
     const inWs = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'invoice-table' } })
     expect(inWs.items.map((i) => i.label)).toContain('Big terminal tab')
@@ -52,7 +52,7 @@ describe('command palette', () => {
     const input = { rooms, workspaces: [], approvals: [], agents: { a: [rowan], b: [{ ...rowan, name: 'Sol' }], o: [{ ...rowan, name: 'Oz' }] }, act: { ...act, openLead: (id: string) => { opened.push(id) } } }
     const home = buildItems({ ...input, route: { name: 'home' } })
     const suggested = home.items.filter((i) => i.section === 'Suggested')
-    expect(suggested.map((i) => i.label)).toEqual(['New workspace in Client A', "Open Rowan's chat"])
+    expect(suggested.map((i) => i.label)).toEqual(['New chat in Client A', "Open Rowan's chat"])
     expect(suggested[1].keys).toEqual(['⌘', '⇧', 'L'])
     suggested[1].run()
     // Typing "lead chat" puts the room in view first, and other rooms' Leads are found by name.

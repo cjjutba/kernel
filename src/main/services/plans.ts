@@ -42,7 +42,7 @@ export async function savePlan(root: string, text: string, o: { fallback: string
 export const planExists = (root: string, file: string) => exists(join(root, file))
 
 /**
- * Images sent with a plan's change request (D-131). A denial carries text only, so each image is saved to
+ * Images sent with a plan's change request (D-133). A denial carries text only, so each image is saved to
  * `.kernel/attachments/` in the workspace, out of git like the plans, and the message names its path for the agent to Read.
  */
 export const ATTACHMENTS_DIR = '.kernel/attachments'

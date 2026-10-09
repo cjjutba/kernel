@@ -105,7 +105,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     d.reset()
     try {
       if (plan && !picked) {
-        // Images go as files the agent reads, since a denial carries text only (D-131).
+        // Images go as files the agent reads, since a denial carries text only (D-133).
         const images = parts.flatMap((p) => p.type === 'image' && p.dataUrl ? [{ name: p.name, dataUrl: p.dataUrl }] : [])
         await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) } })
       }

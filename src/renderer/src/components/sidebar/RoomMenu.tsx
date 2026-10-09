@@ -37,8 +37,8 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
       <Menu
         label={`${room.name} options`} anchorRef={anchorRef} onClose={actions.ui.closeMenu}
         items={[
-          { id: 'ws', label: 'New workspace', icon: 'plus', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
-          { id: 'from', label: 'New workspace from...', icon: 'link', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
+          { id: 'ws', label: 'New chat', icon: 'plus', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
+          { id: 'from', label: 'New chat from...', icon: 'link', onSelect: () => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id }) },
           { id: 'pause', label: room.paused ? 'Resume room' : 'Pause room', icon: room.paused ? 'play' : 'pause', onSelect: () => void togglePause() },
           { id: 'settings', label: 'Room settings', icon: 'sliders', onSelect: () => go({ name: 'settings', page: 'git', roomId: room.id }) },
           { id: 'hide', label: 'Hide room', icon: 'eyeoff', onSelect: () => void hide() },
