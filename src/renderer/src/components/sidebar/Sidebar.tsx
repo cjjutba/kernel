@@ -7,6 +7,7 @@ import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, useLeadWaiting } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
+import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
 import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
@@ -73,7 +74,7 @@ async function archiveFromSidebar(ws: Workspace) {
     if (!git || git.ahead || git.dirty.files) return actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: ws.id })
   }
   try {
-    await call('workspaces.archive', { workspaceId: ws.id })
+    await archiveByHand({ workspaceId: ws.id })
     actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
   } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: (e as Error).message }) }
 }

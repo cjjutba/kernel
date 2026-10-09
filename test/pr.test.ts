@@ -6,7 +6,7 @@ import type { ChatItem, ChatPart, PrInfo, Workspace } from '@shared/types'
 import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
-import { headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
+import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { Kernel } from '../src/main/kernel'
 
 describe('checks from statusCheckRollup', () => {
@@ -223,5 +223,29 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(k.store.chats(ws.id)).toHaveLength(1)
     expect(notes().at(-1)).toBe('Continuing on feat/invoice-table-2 from main. The chat stays.')
     await k.stop()
+  })
+})
+
+describe('after the open workspace is archived (KERNEL-132)', () => {
+  const ws = (extra: Partial<Workspace>) => ({ id: 'w', roomId: 'r', name: 'w', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'theo', port: 1, status: 'archived', prState: 'none', createdAt: 1, ...extra }) as Workspace
+  const kernel = { seen: true, byHand: false }
+
+  it("opens the Lead's chat with a toast for a review Kernel archived on screen after its work merged or closed", () => {
+    expect(afterArchive(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'merged', prNumber: 108 }), 'Theo', kernel)).toEqual({ to: 'room', toast: { title: "Archived Theo's review after PR #108 merged", sub: 'Restore it from History.' } })
+    expect(afterArchive(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'closed', prNumber: 108 }), 'Theo', kernel)).toMatchObject({ toast: { title: "Archived Theo's review after PR #108 was closed" } })
+  })
+
+  it('names what it can: no PR number, or a reviewer no longer on the team', () => {
+    expect(afterArchive(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'merged' }), 'Theo', kernel)).toMatchObject({ toast: { title: "Archived Theo's review" } })
+    expect(afterArchive(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'merged', prNumber: 108 }), undefined, kernel)).toMatchObject({ toast: { title: 'Archived the review after PR #108 merged' } })
+  })
+
+  it('goes to History for any other archive: not a review, work still open, archived by hand, or already archived when opened', () => {
+    expect(afterArchive(ws({}), undefined, 'Kai', kernel)).toEqual({ to: 'history' })
+    expect(afterArchive(ws({ reviewOf: 'k' }), ws({ id: 'k', prState: 'ready', prNumber: 108 }), 'Theo', kernel)).toEqual({ to: 'history' })
+    expect(afterArchive(ws({ reviewOf: 'k' }), undefined, 'Theo', kernel)).toEqual({ to: 'history' })
+    const merged = ws({ id: 'k', prState: 'merged', prNumber: 108 })
+    expect(afterArchive(ws({ reviewOf: 'k' }), merged, 'Theo', { seen: true, byHand: true })).toEqual({ to: 'history' })
+    expect(afterArchive(ws({ reviewOf: 'k' }), merged, 'Theo', { seen: false, byHand: false })).toEqual({ to: 'history' })
   })
 })

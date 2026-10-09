@@ -84,3 +84,17 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
   if (ws.prState === 'merged') return { title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }
   return undefined
 }
+
+/**
+ * Where the workspace view goes once the open workspace is archived (KERNEL-132). Archive lands in History, except a
+ * review workspace Kernel archived while it was on screen because the work it reviewed merged or closed: that one opens
+ * the room's Lead chat, where the review was asked for, with a toast saying what happened. `seen` is false when the view
+ * opened on a workspace that was already archived, and `byHand` is true when the user archived it.
+ */
+export function afterArchive(ws: Workspace, reviewed: Workspace | undefined, reviewer: string | undefined, how: { seen: boolean; byHand: boolean }): { to: 'history' } | { to: 'room'; toast: { title: string; sub: string } } {
+  const done = reviewed && (reviewed.prState === 'merged' || reviewed.prState === 'closed')
+  if (!ws.reviewOf || !done || !how.seen || how.byHand) return { to: 'history' }
+  const whose = reviewer ? `${reviewer}'s` : 'the'
+  const after = reviewed.prNumber ? ` after PR #${reviewed.prNumber} ${reviewed.prState === 'merged' ? 'merged' : 'was closed'}` : ''
+  return { to: 'room', toast: { title: `Archived ${whose} review${after}`, sub: 'Restore it from History.' } }
+}
