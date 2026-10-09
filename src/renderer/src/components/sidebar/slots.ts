@@ -13,6 +13,9 @@ export type Slot = { kind: 'team' } | { kind: 'lead' } | { kind: 'workspace'; wo
 export const liveWorkspaces = (workspaces: Workspace[], roomId: string): Workspace[] =>
   workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && w.name !== 'lead')
 
+/** A stable key for a row, so the sidebar can look up its number without holding slot objects (a store selector needs shallow-equal results). */
+export const slotKey = (slot: Slot): string => (slot.kind === 'workspace' ? `workspace:${slot.workspaceId}` : slot.kind)
+
 /** The room's numbered rows, top to bottom: Team, the Lead when the room has one, then live workspaces. A room without a Lead shifts them up one. */
 export function slotsFor(room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[]): Slot[] {
   return [
