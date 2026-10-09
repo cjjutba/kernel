@@ -319,6 +319,85 @@ async function kernel(files: Record<string, string> = {}) {
 }
 
 describe('kernel recovery paths', () => {
+  /** A Kernel on a temp repo that can quit and start again on the same data, as the app does (KERNEL-128). */
+  async function restartable(files: Record<string, string>) {
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.', ...files })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    const room = await k.addRoom(repo)
+    const again = async () => { const next = new Kernel({ dataDir, home }); await next.start(); return next }
+    return { k, room, again }
+  }
+  const texts = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => [(q.parts[0] as { text: string }).text, q.from])
+
+  it('keeps a held brief, and the Lead\'s message behind it, across a restart, and Run again sends them in order (KERNEL-128)', async () => {
+    const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const lead = await k.leadChat(room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    expect(ws.status).toBe('failed')
+    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    const chat = k.store.chats(ws.id)[0]
+    expect(texts(k, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+    await k.stop()
+    const k2 = await again()
+    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
+    expect((await k2.retrySetup(ws.id)).status).toBe('ready')
+    // Nothing is held any more, so nothing comes back after another restart.
+    expect(k2.store.meta('held')).toEqual({})
+    sdk.calls[sdk.calls.length - 1].feed(result('r1'))
+    await flush()
+    const users = k2.store.items(chat.id).filter((i) => i.kind === 'user').map((i) => [((i as { parts: { text: string }[] }).parts[0]).text, (i as { from?: string }).from])
+    expect(users).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+    await k2.stop()
+  })
+
+  it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
+    const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const lead = await k.leadChat(room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const other = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
+    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    const chat = k.store.chats(ws.id)[0]
+    k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
+    await k.archiveWorkspace(other.id)
+    await k.stop()
+    const k2 = await again()
+    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead']])
+    expect(Object.keys(k2.store.meta<Record<string, unknown>>('held') ?? {})).toEqual([chat.id])
+    await k2.stop()
+  })
+
+  it('saves the brief before setup runs, so a quit during setup keeps it (KERNEL-128)', async () => {
+    const { k, room } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' })
+    const made = k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table' })
+    const ws = await vi.waitFor(() => { const w = k.store.workspaces(room.id).find((x) => x.title === 'Invoice table' && x.status === 'setup'); if (!w || !k.store.meta<Record<string, { brief?: unknown }>>('setups')?.[w.id]?.brief) throw new Error('not yet'); return w })
+    expect(k.store.meta<Record<string, { brief: unknown }>>('setups')![ws.id].brief).toEqual([{ type: 'text', text: 'Build T-14' }])
+    await k.archiveWorkspace(ws.id)
+    await made
+    expect(k.store.meta('setups')).toEqual({})
+    await k.stop()
+  })
+
+  it('turns a workspace Kernel quit during setup into a failed one, with its brief held and a note (KERNEL-128)', async () => {
+    const { k, room, again } = await restartable({})
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table' })
+    const chat = k.store.chats(ws.id)[0]
+    // As if Kernel quit while setup ran: the workspace says setup, and the brief and a message wait in the saved hold.
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, status: 'setup' })
+    k.store.saveMeta('setups', { [ws.id]: { chatId: chat.id, brief: [{ type: 'text', text: 'Build T-14' }], from: 'lead', later: [[{ type: 'text', text: 'Use EmptyState' }]] } })
+    await k.stop()
+    const k2 = await again()
+    expect(k2.store.workspace(ws.id)?.status).toBe('failed')
+    expect(texts(k2, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+    expect(k2.store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toContain('Setup stopped when Kernel quit. Click Run again.')
+    expect(k2.store.meta('setups')).toEqual({})
+    await k2.stop()
+  })
+
   it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
