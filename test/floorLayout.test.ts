@@ -33,7 +33,7 @@ describe('floor layout', () => {
 
   it('seats Noor and Theo ahead of Eli and Eli Opus when everyone is idle', () => {
     const team = [a('eli'), a('eli-opus'), a('ivy'), a('kai'), a('lumi'), a('noor'), a('rowan', true), a('theo')]
-    const lastActivity = { theo: 50, noor: 40, rowan: 60, kai: 30, ivy: 20, 'eli': 1 }
+    const lastActivity = { theo: 50, noor: 40, rowan: 60, kai: 30, ivy: 20, eli: 1 }
     const { seated, overflow } = seating(team, {}, { lastActivity })
     expect(seated.map((x) => x.id)).toEqual(['rowan', 'theo', 'noor', 'kai', 'ivy', 'eli'])
     expect(overflow.map((x) => x.id)).toEqual(['eli-opus', 'lumi'])

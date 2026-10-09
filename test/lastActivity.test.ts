@@ -34,7 +34,7 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
       bus.activity({ kind: 'room.paused', roomId: room.id, actor: 'you', text: 'paused', ts: t + 9000 })
 
       const last = await h['rooms.lastActivity']({ roomId: room.id })
-      expect(last).toEqual({ ...once, 'eli': t + 349 })
+      expect(last).toEqual({ ...once, eli: t + 349 })
       expect(last.lumi).toBeUndefined()
       expect(last['eli-opus']).toBeUndefined()
 
@@ -52,10 +52,10 @@ describe('store lastActivity', () => {
   const ev = (agentId: string, ts: number, roomId = 'r-last'): ActivityEvent => ({ id: `${agentId}-${ts}-${roomId}`, kind: 'note', roomId, agentId, text: 'did something', ts })
 
   it('keeps an agent ranked after its events leave the window, and new events move it forward', () => {
-    actions.activity.setLast('r-last', { noor: 40, theo: 50, 'eli': 10 })
+    actions.activity.setLast('r-last', { noor: 40, theo: 50, eli: 10 })
     for (let i = 0; i < 250; i++) apply({ type: 'activity', event: ev('kai', 100 + i) })
     expect(getState().activity.some((e) => e.agentId === 'noor')).toBe(false)
-    expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, 'eli': 10, kai: 349 })
+    expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, eli: 10, kai: 349 })
 
     const team = [a('eli'), a('eli-opus'), a('kai'), a('noor'), a('rowan', true), a('theo')]
     const seats = () => roomSeating(team, undefined, { lastActivity: getState().lastActivity['r-last'] }).seated.map((x) => x.id)
