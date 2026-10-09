@@ -2,4 +2,4 @@
 type: fixed
 issue: KERNEL-146
 ---
-Fixed Ask Rowan forgetting what you typed, your question and Rowan's answer when you closed it, and Open chat now opens the chat your question went to.
+Fixed your draft, your question and the answer in Ask Rowan disappearing when you closed it, and Open chat there opening the wrong chat.

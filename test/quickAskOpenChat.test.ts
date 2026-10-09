@@ -5,9 +5,11 @@ import { join } from 'node:path'
 import { _electron as electron, type ElectronApplication, type Page } from 'playwright-core'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
-// KERNEL-146: a click-through of Ask Rowan's Open chat in the real app, on a fixture, with the window hidden. It builds the app and
-// launches Electron, so it only runs on a Mac, where Kernel runs.
-describe.skipIf(process.platform !== 'darwin')('Ask Rowan, Open chat', () => {
+// KERNEL-146: a click-through of Ask Rowan's Open chat in the real app, on a fixture, with the window hidden. It builds the app into
+// out/ and launches Electron, so it is off by default, where it could collide with a `pnpm shots --no-build` run or another build.
+// It runs on a Mac only, where Kernel runs:
+//   KERNEL_E2E=1 pnpm test test/quickAskOpenChat.test.ts
+describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('Ask Rowan, Open chat', () => {
   let app: ElectronApplication | undefined
   let data: string | undefined
 
