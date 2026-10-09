@@ -74,7 +74,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 
 ## Patterns
 
-- No status dots, anywhere. Status is a word ("working", "needs you"), sometimes with a ring on floor tags.
+- No status dots, anywhere. Status is a word ("working", "needs you"), sometimes with a ring on floor tags (the floor is hidden, D-104).
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 14px radius, 1px border.
 - Hover actions: message actions (copy, retry, edit, fork) and sidebar `...` menus appear on hover and on keyboard focus.
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
@@ -97,7 +97,7 @@ A button that waits on the main process shows it is working until the call retur
 
 ## Motion
 
-- Floor characters bob while working and stride while walking (see `.bob` and `.stride` in `design/canvas/source/templates/_helmet.html`).
+- Floor characters (hidden, D-104) bob while working and stride while walking (see `.bob` and `.stride` in `design/canvas/source/templates/_helmet.html`).
 - Respect reduced motion: jump instead of walk, no spinners rotating.
 
 ## Accessibility
