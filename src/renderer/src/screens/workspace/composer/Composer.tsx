@@ -13,7 +13,8 @@ import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
 import { ModelPicker } from './ModelPicker'
-import { effortFor, effortLabel, nextEffort, readEffortMemory, rememberEffort } from './modelPrefs'
+import { effortFor } from '@shared/effort'
+import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
 import './composer.css'
@@ -121,6 +122,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const togglePlan = () => void configure({ plan: !chat.plan })
   const pickModel = (m: ModelId, effort: Effort) => void configure({ model: m, effort })
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
+  const memory = useEffortMemory()
+  const fallback = useDefaultEffort(agent?.effort)
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.nativeEvent.isComposing) return
     if (acOpen && rows.length) {
@@ -159,7 +162,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         const m = MODELS[Number(e.key) - 1]
         if (!m) return
         e.preventDefault()
-        pickModel(m.id, m.id === chat.model ? chat.effort : effortFor(m.id, readEffortMemory(), chat.effort))
+        pickModel(m.id, m.id === chat.model ? chat.effort : effortFor(m.id, memory, fallback))
       } else if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) {
         e.preventDefault()
         setEffort(nextEffort(chat.effort))
@@ -224,7 +227,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               <span className="cmp-sep" />
               <span ref={modelAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={10} /></Button>
-                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
+                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}

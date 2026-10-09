@@ -726,7 +726,9 @@ export interface AppSettings {
     /** Kernel tells the Lead when teammates finish a turn or their PRs change (KERNEL-72). */
     leadUpdates: boolean
     /** Workspaces you start from New workspace begin in plan mode. The Lead's hand-offs don't (KERNEL-74). */
-    workspacePlanMode: boolean }
+    workspacePlanMode: boolean
+    /** The effort you last picked for each model. Chats you open start at it, the Lead's hand-offs don't (D-130). */
+    effortByModel: Partial<Record<ModelId, Effort>> }
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }

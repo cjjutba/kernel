@@ -115,4 +115,54 @@ describe('chat tabs', () => {
     await k.stop()
     expect(k.ptys.has(`shell:${ws.id}`)).toBe(false)
   }, 60_000)
+
+  it('starts a chat you open at the effort you last picked for its model, and hand-offs at the agent effort (KERNEL-141)', async () => {
+    const repo = await tempRepo({
+      'README.md': '# x\n',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\neffort: low\n---\nYou are Noor.'
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    const hookPort = 18000 + Math.floor(Math.random() * 900)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort, worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, models: { effort: 'medium' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.addRoom(repo)
+    const kai = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Kai' })
+    const noor = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'noor', title: 'Noor' })
+    const h = k.handlers()
+    const sonnet = 'claude-sonnet-5-5'
+    expect(k.store.chats(kai.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
+
+    // Nothing remembered: the agent's effort, else Settings, Models. Never the first chat's effort.
+    k.store.saveChat({ ...k.store.chats(kai.id)[0], effort: 'low' })
+    expect(await h['chats.create']({ workspaceId: kai.id })).toMatchObject({ model: sonnet, effort: 'medium' })
+    expect(await h['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'low' })
+
+    // Remembered for the model: every chat you open on it starts there.
+    await h['settings.set']({ patch: { models: { effortByModel: { [sonnet]: 'xhigh' } } } })
+    expect(await h['chats.create']({ workspaceId: kai.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
+    expect(await h['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'xhigh' })
+
+    // Closing the last chat tab opens a replacement by the same rule.
+    for (const c of await h['chats.list']({ workspaceId: kai.id })) await h['chats.close']({ chatId: c.id })
+    const left = await h['chats.list']({ workspaceId: kai.id })
+    expect(left).toHaveLength(1)
+    expect(left[0]).toMatchObject({ model: sonnet, effort: 'xhigh' })
+
+    // The Lead's hand-offs follow the agent file, not the last effort picked by hand.
+    const handoff = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Kai again' })
+    expect(k.store.chats(handoff.id)[0]).toMatchObject({ model: sonnet, effort: 'medium' })
+    await k.stop()
+
+    // The memory survives a restart, before anything has read the team.
+    const again = new Kernel({ dataDir, home })
+    await again.start()
+    expect(again.settings.models.effortByModel).toEqual({ [sonnet]: 'xhigh' })
+    await again.handlers()['settings.set']({ patch: { models: { effortByModel: { [sonnet]: undefined } } } })
+    expect(await again.handlers()['chats.create']({ workspaceId: noor.id })).toMatchObject({ model: sonnet, effort: 'low' })
+    await again.stop()
+  }, 60_000)
 })
