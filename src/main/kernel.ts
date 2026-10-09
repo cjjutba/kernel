@@ -160,6 +160,8 @@ export class Kernel {
         if (failure === 'auth') this.signedOut()
         else if (failure === 'network') void this.network?.check()
       },
+      // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
+      onExit: (ws, _chat, reason, midTurn) => { if (midTurn) this.leadUpdates.crashed(ws, reason) },
       onLimits: (limits) => this.applyLimits(limits),
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds)
     })

@@ -18,16 +18,22 @@ import { tempRepo } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], context: 40, contextReply: null as unknown, contextCalls: 0, usage: null as unknown }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; end: () => void }[], context: 40, contextReply: null as unknown, contextCalls: 0, usage: null as unknown }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
     const waiters: ((r: IteratorResult<unknown>) => void)[] = []
-    const call = { options, feed: (m: unknown) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) } }
+    // end() is the process exiting on its own: the stream finishes once what was fed is read.
+    let ended = false
+    const call = {
+      options,
+      feed: (m: unknown) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) },
+      end: () => { ended = true; for (const w of waiters.splice(0)) w({ value: undefined, done: true }) }
+    }
     sdk.calls.push(call)
     return {
-      [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
+      [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : ended ? Promise.resolve({ value: undefined, done: true }) : new Promise((resolve) => waiters.push(resolve))) }),
       interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {},
       getContextUsage: async () => { sdk.contextCalls++; return sdk.contextReply ?? { percentage: sdk.context } },
       usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => { if (!sdk.usage) throw new Error('not supported'); return sdk.usage }
@@ -313,6 +319,19 @@ async function kernel(files: Record<string, string> = {}) {
 }
 
 describe('kernel recovery paths', () => {
+  it("tells the Lead when a teammate's session dies partway through a turn (KERNEL-124)", async () => {
+    const { k, room } = await kernel()
+    const lead = await k.leadChat(room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const call = sdk.calls[sdk.calls.length - 1]
+    await flush()
+    call.end()
+    await flush()
+    const waiting = [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; workspaceId: string }[] }> }).pending.values()].flatMap((p) => p.events)
+    expect(waiting).toEqual([expect.objectContaining({ kind: 'crash', workspaceId: ws.id })])
+    await k.stop()
+  })
+
   it("Retry now sends a Kernel update first, as Kernel's, and leaves a pending hand-off alone (KERNEL-116)", async () => {
     const { k, room } = await kernel()
     const chat = await k.leadChat(room.id)

@@ -441,6 +441,22 @@ describe('waiting updates (KERNEL-121)', () => {
   })
 })
 
+describe("a teammate's session that dies (KERNEL-124)", () => {
+  it('tells the Lead, with what Claude Code said, and leaves out the Lead\'s own sessions', async () => {
+    const { u, s, w1, lead } = await setup()
+    u.crashed(lead, 'gone')
+    u.crashed(w1, 'Claude Code process exited with code 1. stderr: stack trace here')
+    await wait()
+    expect(parts(s.posts.pop()!)).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, "- Noor's session ended unexpectedly (Claude Code process exited with code 1), partway through a turn. The worktree and chat are saved; the user can restart it from the workspace."],
+      todo: ["- Noor's session ended. Tell the user they can restart it from the workspace."]
+    })
+    expect(s.updates.at(-1)?.rows[0].events).toEqual([{ kind: 'crash', text: 'Session ended unexpectedly', actionable: true }])
+    expect(s.posts).toEqual([])
+  })
+})
+
 describe('Stop on the Lead (KERNEL-122)', () => {
   it("holds a stopped Lead chat's updates through the wait and the poll, until its next turn ends normally", async () => {
     const { u, s, pr, lead, lc } = await setup()

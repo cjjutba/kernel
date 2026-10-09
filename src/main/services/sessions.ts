@@ -82,8 +82,12 @@ export interface SessionDeps {
   onReply?: (ws: Workspace, chat: Chat) => void
   /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy }) => void
-  /** The session's process ended without being stopped, mid-turn or idle. Stop, archive and quit don't call this. */
-  onExit?: (ws: Workspace, chat: Chat, reason: string) => void
+  /**
+   * The session's process ended without being stopped. `midTurn` is true when a turn was running, so the agent's work
+   * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
+   * archive and quit don't call this.
+   */
+  onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
@@ -123,6 +127,8 @@ export class Sessions {
   private waiting = new Set<string>()
   /** Chats a usage limit stopped mid-turn. They carry on by themselves once the limit lifts (`carryOn`). */
   private cutOff = new Set<string>()
+  /** Chats whose session died mid-turn. `post` leaves them alone until the user sends or restarts (KERNEL-124). */
+  private crashed = new Set<string>()
   /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
   private builtins?: Promise<BuiltinCommand[]>
   constructor(private d: SessionDeps) {}
@@ -302,7 +308,7 @@ export class Sessions {
    */
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
-    if (this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId)) return false
+    if (this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
@@ -355,7 +361,7 @@ export class Sessions {
   private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}) {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if (o.from !== 'kernel') this.handoffs.done(chat.id)
+    if (o.from !== 'kernel') { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) })
@@ -493,6 +499,7 @@ export class Sessions {
   /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
   async restart(chatId: string): Promise<void> {
     this.mustChat(chatId)
+    this.crashed.delete(chatId)
     // Messages held while the session was down or the room was paused still go out, first, and the nudge follows them.
     const held = this.queued(chatId)
     this.stop(chatId)
@@ -555,11 +562,17 @@ export class Sessions {
       }
     } finally {
       const replaced = this.replaced(chatId, live)
+      const midTurn = live.running
       if (this.live.get(chatId) === live) this.live.delete(chatId)
       const chat = this.d.store.chat(chatId)
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
       if (chat && !replaced) this.drainWaiting()
-      if (chat && !replaced && ended !== null) { this.offline(ws, ended); this.d.onExit?.(ws, chat, ended) }
+      if (chat && !replaced && ended !== null) {
+        // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
+        if (midTurn) this.crashed.add(chatId)
+        this.offline(ws, ended)
+        this.d.onExit?.(ws, chat, ended, midTurn)
+      }
     }
   }
 
@@ -657,6 +670,8 @@ export class Sessions {
         live.sendNext = false
         // The hook that refused to let the agent finish has now let it finish.
         if (ok && live.blocked !== 'PreToolUse') live.blocked = undefined
+        // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
+        if (ok) this.crashed.delete(chatId)
         live.limited = false
         live.cleared = false
         this.setRunning(chat, ws, live, false)
