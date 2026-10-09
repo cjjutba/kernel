@@ -169,12 +169,14 @@ export class Kernel {
       target: (roomId, owner) => this.leadUpdateTarget(roomId, owner),
       isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
       agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
-      post: (chatId, text) => this.sessions.post(chatId, [{ type: 'text', text }]),
+      post: (chatId, text, update) => this.sessions.post(chatId, [{ type: 'text', text }], { update }),
       // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
       // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
-      delivered: (roomId, chat, lines) => {
+      delivered: (roomId, chat, update) => {
         const ws = this.store.workspace(chat.workspaceId)
-        bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object: lines.length === 1 ? 'one teammate update' : `${lines.length} teammate updates`, data: { leadUpdate: true } })
+        const [one] = update.rows
+        const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
+        bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
       }
     })
     this.overlaps = new Overlaps({
