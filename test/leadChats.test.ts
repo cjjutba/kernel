@@ -35,8 +35,8 @@ async function setup() {
   const k = new Kernel(await dirs())
   await k.start()
   onTestFinished(() => k.stop())
-  const sent: { chatId: string; text: string }[] = []
-  k.sessions.send = async (chatId: string, parts: ChatPart[]) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join('') }); return { queued: false } }
+  const sent: { chatId: string; text: string; from?: string }[] = []
+  k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { queued: false } }
   const room = await k.addRoom(repo)
   const first = await k.leadChat(room.id)
   const icons = k.newChat(first.workspaceId, 'Chat icons sizing', { model: first.model, effort: first.effort, plan: false })
@@ -157,5 +157,16 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
     expect(k.store.workspace(stamped.id)!.leadChatId).toBe('elsewhere')
     expect(k.store.workspace(failed.id)!.leadChatId).toBeUndefined()
     expect(k.store.meta('leadChatBackfill')).toBe(true)
+  })
+})
+
+describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
+  it("sends the hand-off brief and message_agent as the Lead's, not the user's", async () => {
+    const { first, call, byTitle, sent } = await setup()
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Keep one draft per chat.' })
+    const ws = byTitle('Drafts per chat')
+    expect(sent.at(-1)).toMatchObject({ text: 'Keep one draft per chat.', from: 'lead' })
+    await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase on main first.' })
+    expect(sent.at(-1)).toMatchObject({ text: 'Rebase on main first.', from: 'lead' })
   })
 })

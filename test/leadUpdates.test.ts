@@ -14,7 +14,7 @@ import { UPDATE_HEADER } from '../src/main/services/handoff'
 const open: LeadUpdates[] = []
 afterEach(() => { open.forEach((u) => u.detach()); open.length = 0 })
 const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms))
-const done = { ok: true, interrupted: false, lead: false, queued: false }
+const done = { ok: true, interrupted: false, lead: false, queued: false, by: 'user' as const }
 const NAMES: Record<string, string> = { rowan: 'Rowan', noor: 'Noor', kai: 'Kai' }
 
 async function setup(o: { leadChat?: boolean } = {}) {

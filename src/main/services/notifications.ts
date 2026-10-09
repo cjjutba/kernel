@@ -1,4 +1,5 @@
 import type { AppSettings, Approval, Chat, Notification, PrState, Workspace } from '@shared/types'
+import type { TurnBy } from './sessions'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -17,8 +18,11 @@ type Deps = {
   idleAfterMs?: number
 }
 
-/** A finished turn, as Kernel reports it. `lead` and `queued` come from outside: the team and the chat's queue. */
-export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean }
+/**
+ * A finished turn, as Kernel reports it. `lead` and `queued` come from outside: the team and the chat's queue. `by` sent
+ * the message that started it (KERNEL-116).
+ */
+export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy }
 
 const IDLE_AFTER_MS = 10 * 60_000
 
