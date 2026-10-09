@@ -1,0 +1,7 @@
+/* A resize handle sits on one edge of a panel and is 8px wide (ResizeHandle.tsx). It draws nothing on hover or while dragging:
+   the col-resize cursor is the only sign. The app's 2px ring shows from the keyboard, drawn inside the strip so no parent clips it. */
+.resize-handle { position: absolute; top: 0; bottom: 0; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
+.resize-handle:focus-visible { outline-offset: -2px; }
+/* The sidebar's handle fills its 8px right gutter. A right panel's handle is centred on the panel's 1px left border. */
+.resize-handle[data-edge='right'] { right: 0; }
+.resize-handle[data-edge='left'] { left: -4px; }

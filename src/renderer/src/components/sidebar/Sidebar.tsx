@@ -11,7 +11,7 @@ import { AccountButton } from './AccountMenu'
 import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
-import { ResizeHandle, readWidth, widthLimit } from './ResizeHandle'
+import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
 import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
@@ -167,6 +167,19 @@ function readExpanded(): Record<string, boolean> {
   try { return JSON.parse(localStorage.getItem(EXPANDED) ?? '{}') as Record<string, boolean> } catch { return {} }
 }
 
+const SIDEBAR_DEFAULT = 236
+const SIDEBAR_MIN = 200
+const SIDEBAR_MAX = 480
+const SIDEBAR_KEY = 'kernel.sidebarWidth'
+/** Letting go below this hides the sidebar, the way Conductor does. The saved width stays. */
+const HIDE_BELOW = 160
+/** The panel keeps at least this much of the window, however wide the sidebar was saved. */
+const PANEL_MIN = 520
+
+/** The widest the sidebar can be in this window. It never drops below the minimum, since narrow windows fold the sidebar anyway (D-080). */
+const widthLimit = () => Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - PANEL_MIN))
+const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDEBAR_DEFAULT
+
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
@@ -178,7 +191,7 @@ export function Sidebar() {
   const [chosen, setChosen] = useState(readExpanded)
   // The saved width is read once. The window's room for it is state only so a resize that changes the limit re-renders; one that doesn't bails out.
   const nav = useRef<HTMLElement>(null)
-  const [saved, setSaved] = useState(readWidth)
+  const [saved, setSaved] = useState(readSaved)
   const [limit, setLimit] = useState(widthLimit)
   useEffect(() => {
     const onResize = () => setLimit(widthLimit())
@@ -231,7 +244,10 @@ export function Sidebar() {
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
         <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
       </div>
-      <ResizeHandle navRef={nav} width={width} limit={limit} onCommit={setSaved} />
+      <ResizeHandle
+        targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={widthLimit} defaultWidth={SIDEBAR_DEFAULT}
+        storageKey={SIDEBAR_KEY} hideBelow={HIDE_BELOW} onHide={() => actions.ui.setSidebar(false)} onCommit={(w) => setSaved(w ?? SIDEBAR_DEFAULT)}
+      />
     </nav>
   )
 }
