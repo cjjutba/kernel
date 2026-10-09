@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
-import { actions, useStore } from '../../store'
-import { openLead } from '../../lead'
+import { actions, getState, useStore } from '../../store'
+import { isLeadWorkspace, openLead } from '../../lead'
 import { Avatar, Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
@@ -19,8 +19,10 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const agents = useStore((s) => s.agents)
   const room = roomInView(route, rooms, workspaces)
   const lead = room ? agents[room.id]?.find((a) => a.lead) : undefined
-  const [text, setText] = useState('')
-  const [asked, setAsked] = useState<{ chatId: string; since: number; question: string } | null>(null)
+  // The popover unmounts when it closes, so the draft and the question live in the store, by room.
+  const text = useStore((s) => (room ? s.quickAsk[room.id]?.draft : undefined)) ?? ''
+  const asked = useStore((s) => (room ? s.quickAsk[room.id]?.asked : undefined))
+  const sending = useStore((s) => (room ? !!s.quickAsk[room.id]?.sending : false))
   const [error, setError] = useState<string | null>(null)
   const [busy, run] = useBusy()
   const ref = useRef<HTMLDivElement>(null)
@@ -32,19 +34,31 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const done = !!asked && !running && !!answer
 
   const name = lead?.name ?? 'the Lead'
-  const openChat = () => { if (!room) return; onClose(); void openLead(room.id) }
+  const openChat = async () => {
+    if (!room) return
+    onClose()
+    await openLead(room.id)
+    if (!asked) return
+    // After a question, land on the chat it went to rather than the tab last selected. The tab is set after `openLead`
+    // navigates: the workspace screen clears the tab when the workspace changes, so setting it first would be wiped.
+    // `openLead` swallows its errors, so check the Lead's workspace is on screen before pointing a tab at its chat.
+    const { route } = getState().ui
+    const shown = route.name === 'workspace' ? getState().workspaces.find((w) => w.id === route.workspaceId) : undefined
+    if (shown && isLeadWorkspace(shown, room.id, lead?.id)) actions.ui.setWorkspaceView({ tab: asked.chatId })
+  }
   const ask = () => {
     if (!room || !text.trim()) return
     const question = text.trim()
     void run('ask', async () => {
       setError(null)
+      actions.quickAsk.setSending(room.id, true)
       const since = Date.now()
       try {
         const { chatId } = await call('lead.ask', { roomId: room.id, text: question })
         actions.chats.setItems(chatId, await call('chats.items', { chatId }))
-        setAsked({ chatId, since, question })
-        setText('')
+        actions.quickAsk.setAsked(room.id, { chatId, since, question })
       } catch (e) { setError((e as Error).message) }
+      finally { actions.quickAsk.setSending(room.id, false) }
     })
   }
   useEffect(() => { ref.current?.querySelector('textarea')?.focus() }, [asked])
@@ -57,7 +71,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         {room && <span className="qa-room">{room.name}</span>}
         <span className="grow" />
         {/* Not on QuickAsk.png: the chat without asking first (D-072). After a question, the footer has it. */}
-        {!asked && lead && <button type="button" className="qa-open" onClick={openChat}>Open chat<Icon name="right" size={12} stroke={1.6} /></button>}
+        {!asked && lead && <button type="button" className="qa-open" onClick={() => void openChat()}>Open chat<Icon name="right" size={12} stroke={1.6} /></button>}
       </div>
       {asked ? (
         <div className="qa-thread" aria-live="polite">
@@ -67,7 +81,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
       ) : (
         <textarea
           className="qa-text" aria-label={`Your question for ${name}`} placeholder="What's the status of T-15? Who is blocked?" value={text} disabled={!room}
-          onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask() } }}
+          onChange={(e) => room && actions.quickAsk.setDraft(room.id, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ask() } }}
         />
       )}
       {error && <p className="qa-err" role="alert">{error}</p>}
@@ -76,11 +90,11 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         <span className="grow" />
         {asked ? (
           <>
-            <Button variant="ghost" onClick={() => { setAsked(null); setError(null) }}>Ask another</Button>
-            <Button variant="primary" disabled={!lead} onClick={openChat}>{done ? 'Open full chat' : 'Open chat'}</Button>
+            <Button variant="ghost" onClick={() => { if (room) actions.quickAsk.clearAsked(room.id); setError(null) }}>Ask another</Button>
+            <Button variant="primary" disabled={!lead} onClick={() => void openChat()}>{done ? 'Open full chat' : 'Open chat'}</Button>
           </>
         ) : (
-          <Button variant="primary" busy={!!busy} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask</Button>
+          <Button variant="primary" busy={!!busy || sending} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask</Button>
         )}
       </div>
     </div>

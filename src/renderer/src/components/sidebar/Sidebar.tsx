@@ -177,10 +177,10 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
           </span>
           <span className="grow ellipsis">{room.name}</span>
         </button>
-        {/* New workspace stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
+        {/* New chat stays visible, as in Conductor. The menu button shows on hover or keyboard focus, or while its menu is open. */}
         <div className="row" style={{ position: 'absolute', right: 4, top: 3, gap: 2 }}>
           <button className="icon-btn more" style={{ width: 24, height: 24, opacity: menuOpen ? 1 : undefined }} aria-label={`${room.name} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu(`room:${room.id}`)}><Icon name="more" size={14} /></button>
-          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New workspace in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
+          <button className="icon-btn" style={{ width: 24, height: 24 }} aria-label={`New chat in ${room.name}`} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: room.id })}><Icon name="plus" size={14} /></button>
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
@@ -255,7 +255,7 @@ export function Sidebar() {
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New workspace" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
+        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>

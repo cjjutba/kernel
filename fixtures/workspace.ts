@@ -1,5 +1,6 @@
 import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
+import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
@@ -191,8 +192,12 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
 
-/** The new workspace modal over Client A's Team (NewWorkspace.png and its four popovers). */
+/**
+ * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
+ * reads Opus 5.5, not the PNG's Sonnet 5.5. Plan mode is off here, as the PNG draws it. The app's default (Settings, Models) is on.
+ */
 const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
   branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
   openPrs: [
     { number: 44, title: 'feat(invoices): PDF renderer with embedded fonts', branch: 'feat/invoice-pdf', author: 'samrivera' },

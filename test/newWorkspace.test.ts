@@ -8,6 +8,8 @@ import { defaultBranch, listBranches, resolveBaseRef, taskBranch } from '../src/
 import { parseIssueList, parsePrList } from '../src/main/services/github'
 import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
 import { Kernel } from '../src/main/kernel'
+import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
+import type { ChatPart } from '../src/shared/types'
 
 describe('branch naming', () => {
   it('uses feat/{task}-{slug} when a Linear issue is linked', () => {
@@ -181,6 +183,48 @@ describe('plan mode for new workspaces (KERNEL-74)', () => {
     const { k, room, h, planOf } = await kernel()
     expect(k.settings.models.workspacePlanMode).toBe(false)
     expect(planOf((await h['workspaces.create']({ roomId: room.id, prompt: 'Go', agentId: 'kai' })).id)).toBe(false)
+    await k.stop()
+  })
+})
+
+describe('New chat message (KERNEL-147)', () => {
+  const file: ChatPart = { type: 'file', name: 'pasted_text_0.txt', lines: 12, text: 'Add PDF export.\nKeep the footer.\n' }
+  const issue: ChatPart = { type: 'issue', name: 'KERNEL-12', title: 'PDF export', url: 'https://linear.app/x/KERNEL-12', source: 'linear' }
+
+  it('sends the typed words as the prompt and nothing for chips alone', () => {
+    expect(leadMessage([{ type: 'text', text: 'Add  PDF export ' }, file])).toEqual({ prompt: 'Add PDF export', parts: [{ type: 'text', text: 'Add  PDF export ' }, file] })
+    expect(leadMessage([file]).prompt).toBe('')
+    expect(leadMessage([issue, file]).prompt).toBe('')
+  })
+
+  it('adds the picked issue as a chip and the pickers as plain lines', () => {
+    expect(pickedLines({ mode: 'worktree', target: 'origin/main', fallback: 'origin/main', picked: '' })).toEqual([])
+    expect(pickedLines({ mode: 'worktree', target: 'origin/dev', fallback: 'origin/main', picked: '' })).toEqual(['Cut the branch from origin/dev.'])
+    expect(pickedLines({ mode: 'worktree', target: 'origin/feat/x', fallback: 'origin/main', picked: 'origin/feat/x' })).toEqual([])
+    expect(pickedLines({ mode: 'current', target: 'origin/dev', fallback: 'origin/main', picked: '' })).toEqual(['Work on the current branch, not a new worktree.'])
+    const source = { kind: 'issue', id: 'KERNEL-12', title: 'PDF export', url: 'https://linear.app/x/KERNEL-12' } as const
+    expect(briefParts([{ type: 'text', text: 'KERNEL-12: PDF export' }], source, ['Work on the current branch, not a new worktree.'])).toEqual([
+      issue, { type: 'text', text: 'KERNEL-12: PDF export\n\nWork on the current branch, not a new worktree.' }
+    ])
+  })
+
+  it('lead.start sends a chip-only message as exactly its parts, once', async () => {
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    const sent: ChatPart[][] = []
+    k.sessions.send = async (_chatId, parts) => { sent.push(parts); return { queued: false } }
+    const room = await k.addRoom(repo)
+    const start = k.handlers()['lead.start']
+
+    await start({ roomId: room.id, ...leadMessage([file]) })
+    await start({ roomId: room.id, ...leadMessage([issue]) })
+    const typed: ChatPart[] = [issue, { type: 'text', text: 'Take this one' }]
+    await start({ roomId: room.id, ...leadMessage(typed) })
+    expect(sent).toEqual([[file], [issue], typed])
     await k.stop()
   })
 })
