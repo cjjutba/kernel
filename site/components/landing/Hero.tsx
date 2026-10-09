@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import floor from '@/public/images/floor.png'
+import leadPlan from '@/public/images/lead-plan.png'
 import { Button } from '@/components/ui/Button'
 import { ArrowIcon, DownloadIcon, GitHubIcon } from '@/components/ui/icons'
 import { Shot } from '@/components/ui/Shot'
@@ -29,8 +29,8 @@ export function Hero({ version }: { version: string }) {
           working as a team.
         </h1>
         <p className="mx-auto mt-6 max-w-150 text-hero-lead text-balance text-muted">
-          Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, on an office
-          floor you can actually see.
+          Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull
+          request is ready for you to merge.
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-3">
           <Button href={DOWNLOAD_URL} size="lg" icon={<DownloadIcon />}>
@@ -44,8 +44,8 @@ export function Hero({ version }: { version: string }) {
       </div>
       <div className="relative mt-16 px-6">
         <Shot
-          src={floor}
-          alt="The Kernel floor: the lead's plan waits for review while the team works at their desks"
+          src={leadPlan}
+          alt="Kernel: Rowan's plan for four tasks waits for review, with the room's team and workspaces in the sidebar"
           sizes="(max-width: 1328px) calc(100vw - 48px), 1280px"
           preload
           className="mx-auto max-w-320"

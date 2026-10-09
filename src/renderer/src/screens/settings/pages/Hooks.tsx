@@ -64,7 +64,7 @@ export function Hooks({ s }: { s: AppSettings }) {
         </Row>
       </Section>
       <Section title="Maintenance">
-        <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites the office entries in ~/.claude/settings.json">
+        <Row label={installed ? 'Reinstall hooks' : 'Install hooks'} desc="Rewrites Kernel's entries in ~/.claude/settings.json">
           <span className="set-actions">
             {status && installed && <Button busy={busy === 'remove'} busyLabel="Removing" disabled={busy !== null} onClick={() => void run('remove', () => call('hooks.uninstall', undefined), 'Removed the hooks')}>Remove</Button>}
             <Button busy={busy === 'install'} busyLabel={installed ? 'Reinstalling' : 'Installing'} disabled={!status || busy !== null} onClick={() => status && void run('install', async () => { await call('hooks.install', { port: status.port }); return call('hooks.status', undefined) }, installed ? 'Reinstalled the hooks' : 'Installed the hooks')}>{installed ? 'Reinstall' : 'Install'}</Button>

@@ -1,10 +1,10 @@
 # Kernel
 
-Kernel turns Claude Code into a small software team that works in an office on your Mac. You brief the Lead, approve a plan, and agents build in their own git worktrees, ask before anything risky, open pull requests and wait for you to merge.
+Kernel turns Claude Code into a small software team on your Mac. You brief the Lead, approve a plan, and agents build in their own git worktrees, ask before anything risky, open pull requests and wait for you to merge.
 
 **[Download Kernel for Mac (Apple silicon)](https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg)** · [Website](https://kernel.cjjutba.dev)
 
-![The floor: a team of agents at their desks, with the Lead's card on the left and the room's logs on the right](docs/images/floor.png)
+![Home: what needs you across every room, with each room's team, Lead and workspaces in the sidebar](docs/images/home.png)
 
 ## Requirements
 
@@ -17,17 +17,17 @@ On first launch Kernel checks Claude Code, your sign-in and the GitHub CLI, and 
 
 ## How it works
 
-### The floor
+### Rooms and the team
 
-Each repo you add is a room. Its floor is an isometric office where every agent in the repo's `.claude/agents/` folder has a desk. Agents sit down when they work, walk over when they hand off, and raise a hand when they need you. Everything on the floor comes from real Claude Code events. Nothing animates on a timer, so an idle agent looks idle.
+Each repo you add is a room, and every agent in the repo's `.claude/agents/` folder is on its team. The sidebar lists each room's Team, its Lead and its workspaces, and Home shows what needs you across all of them. Every status comes from real Claude Code events. Nothing changes on a timer, so an idle agent looks idle.
+
+![The team: each agent with its model, status and workspace](docs/images/team.png)
 
 ### Rowan plans and hands off
 
-Rowan is the Lead. Brief Rowan from the floor in a sentence or two, and Rowan works out a plan in plan mode and brings it to you. You approve it or ask for changes. Once you approve, Rowan creates one workspace per task and walks each one over to the right teammate.
+Rowan is the Lead. Open Rowan's chat from the sidebar and brief Rowan in a sentence or two. Rowan works out a plan in plan mode and brings it to you. You approve it or ask for changes. Once you approve, Rowan creates one workspace per task and hands each one to the right teammate.
 
-![Rowan's plan waiting for approval on the floor](docs/images/floor-plan.png)
-
-![Rowan handing a task to Kai after the plan is approved](docs/images/floor-handoff.png)
+![Rowan's plan for four tasks, waiting for approval in Rowan's chat](docs/images/lead-plan.png)
 
 ### Workspaces and pull requests
 
@@ -43,7 +43,7 @@ Anything that needs a decision lands in the Inbox: a command an agent wants to r
 
 ### Checkpoints and the big terminal
 
-Kernel snapshots the worktree after every agent turn. If a turn goes wrong, revert to an earlier checkpoint and the files go back while the chat stays. When you want plain Claude Code, open a terminal tab in the workspace. It runs `claude` in the same worktree, and the session still shows up on the floor.
+Kernel snapshots the worktree after every agent turn. If a turn goes wrong, revert to an earlier checkpoint and the files go back while the chat stays. When you want plain Claude Code, open a terminal tab in the workspace. It runs `claude` in the same worktree, and Kernel still follows the session through its hooks.
 
 ![Checkpoints for a workspace, one per turn](docs/images/checkpoints.png)
 

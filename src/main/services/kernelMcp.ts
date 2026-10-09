@@ -46,7 +46,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
     name: 'kernel',
     version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for short updates people see on the floor. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
+    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
     // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
     // so the hand-off doesn't depend on it.
     alwaysLoad: true,
@@ -151,7 +151,7 @@ export function kernelTools(d: KernelToolDeps) {
       }
       return text(lines.join('\n'))
     }),
-    tool('say', 'Say one short line out loud on the floor, like a speech bubble.', { text: z.string().max(140) }, async ({ text: t }) => {
+    tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working', activity: t })
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
@@ -164,7 +164,7 @@ export function kernelTools(d: KernelToolDeps) {
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
       const file = await d.hireAgent(a)
-      return text(`Saved ${file}. ${a.id} joins the floor.`)
+      return text(`Saved ${file}. ${a.id} joins the team.`)
     })
   ]
 }

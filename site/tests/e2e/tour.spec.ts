@@ -4,10 +4,10 @@ const panel = (page: import('@playwright/test').Page) => page.locator('#features
 
 test('tabs switch on click', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('tab', { name: 'Board' }).click()
-  await expect(page.getByRole('tab', { name: 'Board' })).toHaveAttribute('aria-selected', 'true')
-  await expect(panel(page)).toContainText('Every task from the plan, moving on its own as agents work.')
-  await expect(panel(page).locator('img')).toHaveAttribute('alt', /The Kernel Board/)
+  await page.getByRole('tab', { name: 'Team' }).click()
+  await expect(page.getByRole('tab', { name: 'Team' })).toHaveAttribute('aria-selected', 'true')
+  await expect(panel(page)).toContainText('See who is working, who needs you and which workspace each agent is in.')
+  await expect(panel(page).locator('img')).toHaveAttribute('alt', /The Kernel Team/)
 })
 
 test('arrow keys, Home and End move between tabs and keep focus in the tab list', async ({ page }) => {
@@ -31,7 +31,7 @@ test('switching tabs does not change the page height', async ({ page }) => {
   await page.goto('/')
   const height = () => page.evaluate(() => document.documentElement.scrollHeight)
   const before = await height()
-  for (const name of ['Inbox', 'Board', 'Checkpoints']) {
+  for (const name of ['Inbox', 'Team', 'Checkpoints']) {
     await page.getByRole('tab', { name }).click()
     expect(await height()).toBe(before)
   }

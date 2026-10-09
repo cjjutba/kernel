@@ -47,8 +47,8 @@ details.dd>summary::-webkit-details-marker{display:none}
 <a href="CommandPalette.dc.html" aria-label="Search" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg></a>
 <a href="Home.dc.html" aria-label="Home" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z"></path></svg></a>
 <a href="Inbox.dc.html" aria-label="Inbox" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #8a8f98"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9Z"></path><path d="M2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1"></path></svg></a>
-<a href="Main.dc.html" aria-label="Client A" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #1c1d21; color: #f7f8f8; font-size: 11px; font-weight: 600">A</a>
-<a href="Main.dc.html" aria-label="Client B" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #d0d6e0; font-size: 11px; font-weight: 600">B</a>
+<a href="WorkspaceLead.dc.html" aria-label="Client A" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #1c1d21; color: #f7f8f8; font-size: 11px; font-weight: 600">A</a>
+<a href="WorkspaceLead.dc.html" aria-label="Client B" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #d0d6e0; font-size: 11px; font-weight: 600">B</a>
 </nav>
 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
 <div style="position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px; overflow: hidden">
@@ -56,7 +56,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <header style="position: relative; height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 16px; border-bottom: 1px solid #1a1b1e">
 <sc-if value="{{ focus }}" hint-placeholder-val="{{ false }}"><a href="Workspace.dc.html" aria-label="Show sidebar" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: #8a8f98"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="1.5"></rect><path d="M6.5 3v10"></path></svg></a></sc-if>
 <span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
-<a href="Main.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
+<a href="WorkspaceLead.dc.html" style="color: #d0d6e0; text-decoration: none">Client A</a>
 <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5 10.5 8 6 12.5"></path></svg>
 <h1 style="margin: 0; font-size: 13px; font-weight: 500">{{ ws.name }}</h1>
 <span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ ws.badge }}</span>
@@ -317,14 +317,14 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ hasToasts }}" hint-placeholder-val="{{ false }}"><div role="status" style="position: absolute; right: 16px; bottom: 16px; z-index: 30; display: flex; flex-direction: column; gap: 8px; width: 300px"><sc-for list="{{ toasts }}" as="o" hint-placeholder-count="2"><div style="display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 14px; border-radius: 10px; border: 1px solid #2a2b30; background: #1c1d20"><span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500">{{ o.title }}</span><span style="font-size: 12px; color: #8a8f98">{{ o.sub }}</span></span><sc-if value="{{ o.hasAction }}" hint-placeholder-val="{{ false }}"><a href="{{ o.href }}" style="color: #f7f8f8; font-size: 12.5px; font-weight: 500">{{ o.action }}</a></sc-if><button type="button" onClick="{{ o.close }}" aria-label="Dismiss" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button></div></sc-for></div></sc-if>
 </div>
 <footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
-<span style="display: inline-flex; align-items: center; gap: 8px"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks live<span style="font-family: 'Geist Mono', ui-monospace, monospace">localhost:7420</span></span>
+<span></span>
 <span style="display: inline-flex; align-items: center; gap: 6px">
 <details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
 <div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
 <div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
 <label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
 <textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
-<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="FloorTalk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="QuickAsk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
 </div></details>
 
 </span>
@@ -436,23 +436,22 @@ class Component extends DCLogic {
     if (sc === 'offline') { B('offline', "You're offline", 'Messages send when you reconnect. Agents finish their step, then wait.', [{ id: 'retrynet', label: 'Try again' }], { queued: 1 }); s.msgs = s.msgs.concat([U('Also add a loading skeleton.'), { kind: 'note', text: 'Queued. Sends when you are back online.' }]); }
     if (sc === 'signedout') B('auth', 'Claude Code is signed out', 'Agents cannot run until you sign in. Workspaces and chats are safe.', [{ id: 'term', label: 'Open terminal' }, { id: 'signin', label: 'Sign in', primary: true }], { block: true });
     if (sc === 'setupfail') B('setup', 'Setup script failed', 'pnpm install exited with code 1. Kai waits until setup passes.', [{ id: 'editscript', label: 'Edit script' }, { id: 'rerun', label: 'Run again', primary: true }], { bottom: 'setup', block: true, msgs: [], setupFailed: true, right: 'files' });
-    if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'The floor and logs stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
+    if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
     if (sc === 'newchat') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 'c2', kind: 'chat', title: 'New chat', empty: true }], tab: 'c2', newMenu: true });
     if (sc === 'terminal') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 't1', kind: 'term', title: 'Terminal (claude)' }], tab: 't1' });
     if (sc === 'lead') Object.assign(s, { agent: 'rowan', model: 'opus', plan: true, wsName: 'export-invoices-as-pdf', badge: 'feat/export-invoices-as-pdf', filesKey: 'rowan', tabs: [{ id: 'c1', kind: 'chat', title: 'Export invoices as PDF' }], msgs: [
       U('Add PDF export to invoices. Spec first.'),
-      { kind: 'note', text: 'Rowan is at the task wall on the floor.', link: 'FloorTalk.dc.html', linkLabel: 'View floor' },
       { kind: 'thinking', text: 'Renderer, button, tests and review can run in parallel.' },
       { kind: 'tool', text: 'Read the invoices module', cmd: 'cat src/app/invoices/page.tsx' },
       { kind: 'tool', text: 'Write the plan', cmd: 'cat > plans/t-15-invoice-pdf.md' },
-      { kind: 'ai', text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' },
+      { kind: 'ai', text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' },
       card({ title: 'Plan for T-15', steps: ['T-15a PDF renderer with embedded fonts · Noor', 'T-15b Download PDF in the row actions · Kai', 'T-15c Snapshot tests for three invoice types · Ivy', 'T-15d Review each PR as it lands · Theo'], actions: [{ id: 'keep', label: 'Request changes' }, { id: 'handoff', label: 'Approve and hand off', primary: true }] })
     ] });
     if (sc === 'hire') Object.assign(s, { agent: 'rowan', model: 'opus', wsName: 'hire-a-designer', badge: 'current branch · main', filesKey: 'hire', baseline: true, tabs: [{ id: 'c1', kind: 'chat', title: 'Hire a designer' }], msgs: [
       U('We need a designer on the team who checks every screen against DESIGN.md before review.'),
       { kind: 'thinking', text: 'This fits as a subagent with read access and the screenshot skill.' },
       { kind: 'tool', text: 'Read DESIGN.md', cmd: 'cat DESIGN.md' },
-      { kind: 'ai', text: 'Here is the agent file. Once you approve, I will save it and Lumi will take the open desk on the floor.' },
+      { kind: 'ai', text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' },
       card({ title: '.claude/agents/lumi.md', code: ['---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'], actions: [{ id: 'edit', label: 'Edit file' }, { id: 'create', label: 'Create agent', primary: true }] })
     ] });
     if (sc === 'paste') Object.assign(s, { msgs: base.concat([
@@ -522,8 +521,8 @@ class Component extends DCLogic {
     if (id === 'term') this.setState({ bottom: 'term' });
     if (id === 'compact') { this.setState({ ctx: 31, banner: null }); this.push([{ kind: 'note', text: 'Compacted. Kept a summary of 38 turns, context is at 31%.' }]); }
     if (id === 'newchat') this.newChat();
-    if (id === 'handoff') { drop(); this.setState({ plan: false }); this.push([U('Approved. Hand it off.'), { kind: 'note', text: 'Rowan is walking the floor to hand out four tasks.', link: 'FloorHandoff.dc.html', linkLabel: 'Watch' }]); }
-    if (id === 'create') { drop(); this.push([{ kind: 'note', text: 'Saved .claude/agents/lumi.md. Lumi joined Client A.', link: 'FloorHired.dc.html', linkLabel: 'See her on the floor' }]); }
+    if (id === 'handoff') { drop(); this.setState({ plan: false }); this.push([U('Approved. Hand it off.'), { kind: 'note', text: 'Rowan is handing out four tasks.' }]); }
+    if (id === 'create') { drop(); this.push([{ kind: 'note', text: 'Saved .claude/agents/lumi.md. Lumi joined Client A.', link: 'Team.dc.html', linkLabel: 'Open Team' }]); }
     if (id === 'edit') this.push([{ kind: 'note', text: 'Opened lumi.md in your editor.' }]);
     if (id === 'sendall') { drop(); this.setState({ pr: 'checks' }); this.push([U('Address Theo\u2019s two review comments on #42.')]); this.work('Switched to the shared EmptyState and held the skeleton for 200ms. Pushed, checks are running.'); }
     if (id === 'github') this.push([{ kind: 'note', text: 'Opened #42 on GitHub.' }]);
@@ -540,7 +539,7 @@ class Component extends DCLogic {
     if (id === 'wait') this.setState({ banner: Object.assign({}, this.state.banner, { actions: [] }) });
     if (id === 'retrynow') { clear(); this.work('Shortened it to "No invoices yet. Create your first one."'); }
     if (id === 'switchmodel') this.setState({ menu: 'model' });
-    if (id === 'retrynet' || id === 'reconnect') { clear(); this.push([{ kind: 'note', text: id === 'reconnect' ? 'Hooks reconnected. The floor is live again.' : 'Back online. Sent 1 queued message.' }]); this.setState({ queued: 0 }); }
+    if (id === 'retrynet' || id === 'reconnect') { clear(); this.push([{ kind: 'note', text: id === 'reconnect' ? 'Hooks reconnected. Statuses are live again.' : 'Back online. Sent 1 queued message.' }]); this.setState({ queued: 0 }); }
     if (id === 'signin' || id === 'rerun') { clear(); if (id === 'rerun') this.setState({ setupFailed: false }); this.push([{ kind: 'note', text: id === 'rerun' ? 'Setup finished. Kai is starting.' : 'Signed in with Claude Max.' }]); }
     if (id === 'term') this.setState({ bottom: 'term' });
     if (id === 'compact' || id === 'newchat') this.cardAction(id);
@@ -643,7 +642,7 @@ class Component extends DCLogic {
       { text: 'Opus 5.5 with high effort · Claude Max', color: '#b7bcc4', weight: 400 },
       { text: '~/kernel/worktrees/client-a/t-14-invoice-table', color: '#b7bcc4', weight: 400 },
       { text: ' ', color: '#8a8f98', weight: 400 },
-      { text: 'Hooks connected. This session shows up on the floor as Kai.', color: '#8a8f98', weight: 400 }
+      { text: 'Hooks connected. This session reports to Kernel as Kai.', color: '#8a8f98', weight: 400 }
     ];
   }
 

@@ -4,7 +4,7 @@ import { z } from 'zod'
 // stripping. Keep zod as its only import, with no relative imports, enums or namespaces (D-058).
 
 export const ChangeItem = z.object({
-  /** Bold lead in, such as "The floor." */
+  /** Bold lead in, such as "Checkpoints." */
   lead: z.string().optional(),
   text: z.string(),
   pr: z.number().int().positive().optional()

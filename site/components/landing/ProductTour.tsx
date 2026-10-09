@@ -3,11 +3,11 @@
 import * as Tabs from '@radix-ui/react-tabs'
 import type { StaticImageData } from 'next/image'
 import type { ReactNode } from 'react'
-import board from '@/public/images/board.png'
 import checkpoints from '@/public/images/checkpoints.png'
 import inbox from '@/public/images/inbox.png'
+import team from '@/public/images/team.png'
 import workspace from '@/public/images/workspace.png'
-import { BoardIcon, BranchIcon, CheckpointIcon, InboxIcon } from '@/components/ui/icons'
+import { BranchIcon, CheckpointIcon, InboxIcon, TeamIcon } from '@/components/ui/icons'
 import { SectionHead } from '@/components/ui/SectionHead'
 import { Shot } from '@/components/ui/Shot'
 
@@ -29,12 +29,12 @@ const tabs: { value: string; label: string; icon: ReactNode; line: string; image
     alt: 'The Kernel Inbox: an agent asks to run a database command, with Deny and Approve'
   },
   {
-    value: 'board',
-    label: 'Board',
-    icon: <BoardIcon />,
-    line: 'Every task from the plan, moving on its own as agents work.',
-    image: board,
-    alt: 'The Kernel Board: tasks in Spec, Plan, Building, QA, Review and Done'
+    value: 'team',
+    label: 'Team',
+    icon: <TeamIcon />,
+    line: 'See who is working, who needs you and which workspace each agent is in.',
+    image: team,
+    alt: 'The Kernel Team: each agent with its model, status and workspace'
   },
   {
     value: 'checkpoints',

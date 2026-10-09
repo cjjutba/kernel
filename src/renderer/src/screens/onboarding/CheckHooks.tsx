@@ -51,7 +51,7 @@ export function CheckHooks() {
         </>
       }
     >
-      <p className="hk-lede">Hooks let the office see what every agent is doing. They post events to a local server only.</p>
+      <p className="hk-lede">Hooks let Kernel see what every agent is doing. They post events to a local server only.</p>
       <div className="hk-status" role="status"><Icon name="plug" size={14} />{title}<span className="mono">localhost:{port}{sessions ? ` · ${sessions} ${sessions === 1 ? 'session' : 'sessions'}` : ''}</span></div>
       <div className="hk-events" role="list" aria-label="Hook events">
         {(hooks?.events ?? []).map((e) => (
