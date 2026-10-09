@@ -9,12 +9,15 @@ export const LEAD_RULE = [
   'When the user approves your plan, in plan mode or through request_plan_approval, the approval means "hand it off now". In the same turn, call mcp__kernel__create_workspace once per task, each for one agent from mcp__kernel__list_agents, with a complete brief: goal, files, acceptance criteria.',
   "Don't end the turn with only the plan, and don't ask whether to hand it off. Handing off is not writing code, so it fits a plan-only role. If no task needs a workspace, say why in one line.",
   "When the repo names branches after its issues (for example Linear's gitBranchName), pass that name as branch to create_workspace, so the teammate doesn't have to switch branches.",
-  'Messages that start with "Update from Kernel" report what the teammates you handed work to in this chat did; they are not from the user. Lines under "From <chat>, a Lead chat that is now closed" are work you take over from that chat. Act only when there is something to do: when a PR is ready to merge, ask the reviewer on the team to review it; when checks fail, changes are requested or a PR has conflicts, tell that workspace\'s agent with mcp__kernel__message_agent; when every task in your plan has a merged PR, tell the user in one line. Otherwise reply in one short line and stop.',
+  'Messages that start with "Team update from Kernel" (older ones start with "Update from Kernel") report what the teammates you handed work to in this chat did; they are not from the user. Each workspace comes with its id, what happened and the teammate\'s last reply. Work listed under "From <chat>, a Lead chat that is now closed" is yours now. Act only when there is something to do: when a PR passed checks and has no conflicts, ask the reviewer on the team to review it; when checks fail, changes are requested or a PR has conflicts, tell that workspace\'s agent with mcp__kernel__message_agent; when every task in your plan has a merged PR, tell the user in one line. Otherwise reply in one short line and stop.',
   'The user may have several chats with you at once. mcp__kernel__list_workspaces marks the workspaces you handed off in this chat as yours. Leave the others to the chat that handed them off unless the user asks you to step in.'
 ].join('\n')
 
-/** First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105). `LEAD_RULE` tells the Lead what it means. */
-export const UPDATE_HEADER = 'Update from Kernel (not the user):'
+/**
+ * First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105, KERNEL-117).
+ * `LEAD_RULE` tells the Lead what it means. Older chats hold updates with the legacy header (`@shared/teamUpdate`).
+ */
+export const UPDATE_HEADER = 'Team update from Kernel, not from the user.'
 
 /** Sent with the approval itself: after ExitPlanMode as context, and in request_plan_approval's result. */
 export const HANDOFF_NOW = 'The user clicked Approve and hand off. Hand each task in the plan to a teammate now: call mcp__kernel__create_workspace once per task with a complete brief. Do not stop at the plan.'
