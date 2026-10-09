@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
@@ -20,7 +20,7 @@ import { reviewRule } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
+import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer } from './services/kernelMcp'
@@ -186,7 +186,7 @@ export class Kernel {
         // A review workspace that was still working when its work merged or closed goes now (KERNEL-131).
         if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
         void this.changes(ws.id).catch(() => undefined)
-        if (teammate) void this.refreshPr(ws.id).catch(() => undefined).finally(() => this.leadUpdates.readPr(ws.id))
+        if (teammate) void this.refreshPr(ws.id).catch(() => undefined).then(() => this.leadUpdates.readPr(ws.id)).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
       },
       onFailure: (failure) => {
@@ -194,7 +194,11 @@ export class Kernel {
         else if (failure === 'network') void this.network?.check()
       },
       // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
-      onExit: (ws, _chat, reason, midTurn, resumed) => { if (midTurn) this.leadUpdates.crashed(this.store.workspace(ws.id) ?? ws, reason, { resumed }) },
+      onExit: (ws, _chat, reason, midTurn, resumed) => {
+        if (midTurn) this.leadUpdates.crashed(this.store.workspace(ws.id) ?? ws, reason, { resumed })
+        // A review waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
+      },
       onLimits: (limits) => this.applyLimits(limits),
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
       onHeld: (held) => this.store.saveMeta('held', held)
@@ -969,6 +973,8 @@ export class Kernel {
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     if (ws.mode === 'worktree' && !o.keepWorktree) await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
+    // Only once it is archived: an archive that fails keeps the brief for Run again.
+    this.sessions.dropHeld(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
@@ -1281,7 +1287,8 @@ export class Kernel {
     // A request in a Lead turn Kernel started is automatic. After a few tries at one workspace, the user decides (KERNEL-125).
     // The turn is keyed by the message that started it, so several messages in one turn are one try.
     const auto = !!leadChatId && this.sessions.kernelTurn(leadChatId)
-    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user')?.id : undefined
+    // A limit or restart nudge carries the turn on, so the turn is still the message before it.
+    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
     if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
     if (auto) this.nudges.add(ws.id, turn)
     const parts: ChatPart[] = [{ type: 'text', text }]
@@ -1578,9 +1585,7 @@ export class Kernel {
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
-    // The work moved on, so the loop guard starts over for it and its reviews (KERNEL-125). Ready counts only with checks
-    // that ran: just after a push GitHub has none for the new commit yet, and the PR reads as ready for a moment.
-    if (next.prState === 'ready' && ws.prState !== 'ready' && info?.checks.length) this.nudges.reset(id, ...this.reviewsOf(id))
+    this.guardOnReady(id, ws.prState, next.prState, info)
     if (next.prState !== ws.prState) {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
@@ -1589,6 +1594,23 @@ export class Kernel {
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
     return next
+  }
+
+  /** Workspaces whose PR has shown checks, so a ready read with none is a push GitHub hasn't checked yet, not a repo without CI. */
+  private hasChecks = new Set<string>()
+  /** Ready reads with none of the checks the PR has had: the work moves on once those checks have run and passed. */
+  private readyUnchecked = new Set<string>()
+
+  /**
+   * The work moved on, so the loop guard starts over for it and its reviews (KERNEL-125): when the PR becomes ready. Right
+   * after a push GitHub has no checks for the new commit and reads the PR as ready for a moment, so on a PR that has had
+   * checks, ready counts once they ran, even if the state read ready all along.
+   */
+  private guardOnReady(id: string, before: PrState, after: PrState, info: PrInfo | null | undefined) {
+    if (info?.checks.length) this.hasChecks.add(id)
+    if (after !== 'ready') { this.readyUnchecked.delete(id); return }
+    if (!info?.checks.length && this.hasChecks.has(id)) { this.readyUnchecked.add(id); return }
+    if (before !== 'ready' || this.readyUnchecked.delete(id)) this.nudges.reset(id, ...this.reviewsOf(id))
   }
 
   /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */

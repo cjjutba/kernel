@@ -420,6 +420,12 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     expect(decide({ ws: archived('merged'), name: 'Noor', events: [ev('pr.merged')] }, { allMerged: () => true }).todo).toEqual(['Every task you handed off in this chat has merged. Tell the user in one line.'])
   })
 
+  it("still passes on a verdict from a review workspace the user archived, without asking it to review again", () => {
+    const archived = { ...ws('none'), status: 'archived' as const }
+    const blockers = ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })
+    expect(decide({ ws: archived, name: 'Noor', events: [blockers] }, { allMerged: () => false, workspace: () => ({ ...ws('cifail'), id: 'w2', prNumber: 60 }) }).todo).toEqual(["Send Noor's blockers to Kai with message_agent (workspace w2)."])
+  })
+
   it("names the closed chat whose last task merged", () => {
     const out = decide({ ws: ws('merged'), name: 'Noor', events: [ev('pr.merged')], fromChat: 'Chat icons sizing' }, { allMerged: () => true })
     expect(out.todo).toEqual(['Every task handed off in the closed Lead chat "Chat icons sizing" has merged. Tell the user in one line.'])
@@ -612,6 +618,27 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     await wait()
     // The turn opened a PR whose checks run, so neither wakes Rowan.
     expect(s.posts).toEqual([])
+  })
+
+  it('waits for every read that started, when two turns end close together', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.readingPr('w1')
+    u.turnDone(w1, nc, done)
+    u.readingPr('w1')
+    u.readPr('w1')
+    await wait()
+    expect(s.posts).toEqual([])
+    u.readPr('w1')
+    await wait()
+    expect(s.posts).toHaveLength(1)
+  })
+
+  it('ignores a read that ends after Kernel stopped', async () => {
+    const { u, w1, nc } = await setup()
+    u.readingPr('w1')
+    u.turnDone(w1, nc, done)
+    u.detach()
+    expect(() => u.readPr('w1')).not.toThrow()
   })
 
   it('sends the turn once the read finds no PR news', async () => {

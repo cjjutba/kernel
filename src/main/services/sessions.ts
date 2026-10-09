@@ -550,12 +550,11 @@ export class Sessions {
     this.drain(chatId)
   }
 
-  /** The workspace is going. Chats held for its setup let go too, so a restore doesn't find them still waiting. */
-  stopWorkspace(workspaceId: string) {
-    for (const c of this.d.store.chats(workspaceId)) {
-      this.stop(c.id)
-      if (this.waiting.delete(c.id)) { this.setQueue(c.id, []); this.saveHeld() }
-    }
+  stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
+
+  /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
+  dropHeld(workspaceId: string) {
+    for (const c of this.d.store.chats(workspaceId)) if (this.waiting.delete(c.id)) { this.setQueue(c.id, []); this.saveHeld() }
   }
   stopAll() { for (const id of [...this.live.keys()]) this.stop(id) }
 
@@ -1000,7 +999,7 @@ export const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
 
 /** Kernel's restart and limit nudges, which carry on a turn rather than start one. */
-const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED)
+export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED)
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600

@@ -239,13 +239,15 @@ export class LeadUpdates {
    * Teammate workspaces whose PR Kernel is reading after a turn ended. Their updates wait for the read, so a PR the turn
    * opened or pushed to speaks for the turn however long GitHub takes, instead of the turn waking the Lead on its own.
    */
-  private reading = new Set<string>()
+  private reading = new Map<string, number>()
+  private detached = false
   private seq = 0
   private off: () => void = () => undefined
 
   constructor(private d: LeadUpdateDeps) {}
 
   attach() {
+    this.detached = false
     for (const w of this.d.store.workspaces()) this.prev.set(w.id, w.prState)
     this.load()
     const on = (e: PushEvent) => { if (e.type === 'pr') this.onPr(e.workspaceId, e.state) }
@@ -254,6 +256,7 @@ export class LeadUpdates {
   }
 
   detach() {
+    this.detached = true
     this.off()
     for (const t of this.timers.values()) clearTimeout(t)
     this.timers.clear()
@@ -302,12 +305,16 @@ export class LeadUpdates {
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
   }
 
-  /** Kernel is reading the workspace's PR after a turn. Its updates wait until `read`. */
-  readingPr(workspaceId: string) { this.reading.add(workspaceId) }
+  /** Kernel is reading the workspace's PR after a turn. Its updates wait until every read started has ended (`readPr`). */
+  readingPr(workspaceId: string) { this.reading.set(workspaceId, (this.reading.get(workspaceId) ?? 0) + 1) }
 
-  /** Kernel read the workspace's PR. Its updates go once things are quiet again. */
+  /** Kernel read the workspace's PR. Its updates go once things are quiet again. Ignored once Kernel has stopped. */
   readPr(workspaceId: string) {
-    if (!this.reading.delete(workspaceId)) return
+    const n = this.reading.get(workspaceId)
+    if (!n) return
+    if (n > 1) { this.reading.set(workspaceId, n - 1); return }
+    this.reading.delete(workspaceId)
+    if (this.detached) return
     const ws = this.d.store.workspace(workspaceId)
     if (ws) this.rearm(ws)
   }
@@ -531,7 +538,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
   const out = { wake: new Set<TeamEvent>(), todo: [] as string[] }
   const at = `(workspace ${ws.id})`
   // An archived workspace takes no more messages, and archiving it was the user's call, so only news that asks nothing
-  // of it still wakes the Lead: the last merge of a plan, and blockers found after the work was done.
+  // of it still wakes the Lead: the last merge of a plan, and a review's verdict, which is about other work.
   const archived = ws.status === 'archived'
   for (const e of b.events) {
     const pr = e.pr ? `PR #${e.pr}` : 'the PR'
@@ -542,7 +549,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'setup.failed': if (!e.told) wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
       case 'review': {
         const r = e.review
-        if (!r) { wake(`Read ${name}'s review and pass on what it found.`); break }
+        if (!r) { wake(`Read ${name}'s review and pass on what it found.`, true); break }
         const of = c.workspace?.(r.of)
         // The work was merged, closed or archived before the verdict came. Nobody can act on it there any more.
         if (of && (of.prState === 'merged' || of.prState === 'closed' || of.status === 'archived')) {
@@ -551,12 +558,13 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
           if (r.verdict === 'blockers') wake(`${name} found blockers in ${what} after it ${when}. Tell the user what they are in a line or two.`, true)
           break
         }
-        if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}). When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`); break }
+        // A review workspace the user archived can't review again, so its blockers go to the author without asking for that.
+        if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}).${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true); break }
         // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge.
         if (!r.current && of?.prNumber) { wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
-        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name])); break }
-        if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`); break }
-        wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`)
+        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name]), true); break }
+        if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
+        wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
         break
       }
       case 'pr.cifail': wake(`Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break

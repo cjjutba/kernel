@@ -564,11 +564,16 @@ describe('who sent a message (KERNEL-116)', () => {
 
   it('lets go of messages held for setup when the workspace is archived (KERNEL-136)', async () => {
     const s = await setup()
-    s.sessions.hold('chat', [{ type: 'text', text: 'Build T-14' }], { from: 'lead' })
+    // A chat held for setup has no session yet.
+    s.store.saveChat({ ...s.chat, id: 'held' })
+    s.sessions.hold('held', [{ type: 'text', text: 'Build T-14' }], { from: 'lead' })
+    // Stopping alone keeps the brief: an archive that fails still needs it for Run again.
     s.sessions.stopWorkspace('ws')
-    expect(s.sessions.queued('chat')).toEqual([])
+    expect(s.sessions.queued('held')).toHaveLength(1)
+    s.sessions.dropHeld('ws')
+    expect(s.sessions.queued('held')).toEqual([])
     // Restored, the chat no longer waits for a setup that will never run again.
-    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Back again' }])).toEqual({ queued: false })
+    expect(await s.sessions.send('held', [{ type: 'text', text: 'Back again' }])).toEqual({ queued: false })
   })
 
   it('reports a session that ended on its own, mid-turn or idle, and not one that was stopped', async () => {
