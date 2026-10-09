@@ -105,7 +105,7 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
           const on = t.id === active
           const editing = renaming === t.id
           // A chat tab's icon shows the chat's state, like its sidebar row. The other kinds keep their own icon.
-          const g = t.kind === 'chat' ? chatGlyph({ needsYou: approvals.some((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
+          const g = t.kind === 'chat' ? chatGlyph({ waiting: approvals.filter((a) => a.chatId === t.id && a.status === 'pending'), running: !!running[t.id] }) : undefined
           return (
             <span key={t.id} ref={on ? tabAnchor : undefined} className="tab-group" data-on={on || undefined}>
               {editing ? (

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Room, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
-import { isLeadWorkspace, leadOf, openLead } from '../../lead'
+import { isLeadWorkspace, leadOf, openLead, useLeadWaiting } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { resetDraft } from '../../screens/rooms/draft'
 import { AccountButton } from './AccountMenu'
@@ -46,9 +46,10 @@ function LeadItem({ roomId }: { roomId: string }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
+  const waiting = useLeadWaiting(roomId)
   const card = useHoverCard()
   if (!lead) return null
-  const g = leadGlyph(status)
+  const g = leadGlyph(status, waiting)
   return (
     <div {...card.bind}>
       <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
@@ -82,11 +83,12 @@ async function archiveFromSidebar(ws: Workspace) {
  * for Archive and, after a moment, shows the workspace's card.
  */
 function WorkspaceItem({ ws }: { ws: Workspace }) {
-  const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
+  const approvals = useStore((s) => s.approvals)
+  const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, run] = useBusy()
   const card = useHoverCard()
-  const g = workspaceGlyph(ws, { needsYou, running })
+  const g = workspaceGlyph(ws, { waiting, running })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
     <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`}>

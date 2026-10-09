@@ -139,6 +139,24 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   }
 }
 
+/** Rowan's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
+const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
+  ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
+    userMsg('l1', 'Add PDF export to invoices. Spec first.'),
+    { kind: 'note', id: 'l-note', ts: at(10, 28), text: 'Rowan is at the task wall on the floor.', link: { label: 'View floor', href: `kernel://floor/${ids.roomA}` } },
+    { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
+    tool('l-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
+    tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
+    { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' }
+  ], {
+    approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: [
+      { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
+      { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
+    ] }), ...f.approvals]
+  }, { plan: true, model: 'claude-opus-5-5' }),
+  changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
+})
+
 /** The new workspace modal over Client A's floor (NewWorkspace.png and its four popovers). */
 const newWorkspace = (menu?: 'branch' | 'from' | 'model' | 'plus') => scene(() => ({
   branches: ['origin/main', 'origin/dev', 'main', 'feat/t-14-invoice-table', 'feat/t-12-invoice-schema', 'fix/docker-local-startup'],
@@ -284,22 +302,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     ui: open
   })),
-  WorkspaceLead: scene((f) => ({
-    ...scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
-      userMsg('l1', 'Add PDF export to invoices. Spec first.'),
-      { kind: 'note', id: 'l-note', ts: at(10, 28), text: 'Rowan is at the task wall on the floor.', link: { label: 'View floor', href: `kernel://floor/${ids.roomA}` } },
-      { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
-      tool('l-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
-      tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
-      { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will walk the floor and hand them out.' }
-    ], {
-      approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: [
-        { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
-        { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
-      ] }), ...f.approvals]
-    }, { plan: true, model: 'claude-opus-5-5' }),
-    changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
-  })),
+  // The canvas draws Rowan's plan in a worktree called export-invoices-as-pdf. WorkspaceLeadPlan keeps the Lead's real workspace, on the main checkout.
+  WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree' })),
+  WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   WorkspaceHire: scene((f) => ({
     ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
       userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),

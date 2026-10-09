@@ -1,12 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityEvent, AgentStatus, Workspace } from '@shared/types'
+import type { ActivityEvent, Workspace } from '@shared/types'
 import { Icon } from '../../ui'
 import { useStore } from '../../store'
-import { leadOf } from '../../lead'
+import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
-import { STATUS_WORD } from '../../screens/team/model'
-import { workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
+import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
 const OPEN_MS = 450
 /** Right after a card closes the next one opens at once, so running the pointer down the list doesn't wait on every row. */
@@ -90,12 +89,8 @@ function Status({ accent, spin, icon, label }: { accent: Accent; spin?: boolean;
 
 function glyphAccent(g: WorkspaceGlyph): Accent {
   if (g.icon === 'spin') return 'working'
-  if (g.icon === 'question') return 'needs'
+  if (g.icon === 'question' || g.icon === 'plan') return 'needs'
   return g.tone === 'ink' ? 'muted' : g.tone
-}
-
-const AGENT_ACCENT: Record<AgentStatus, Accent> = {
-  working: 'working', planning: 'working', walking: 'working', needs: 'needs', blocked: 'del', idle: 'muted', offline: 'muted', paused: 'muted'
 }
 
 /** The newest event that matches, whatever order the list arrived in. */
@@ -127,10 +122,11 @@ function Card({ eyebrow, status, title, line, meta, when }: { eyebrow: ReactNode
 export function WorkspaceCard({ ws, at, id }: { ws: Workspace; at: DOMRect; id: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === ws.roomId)?.name)
   const agent = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId))
-  const needsYou = useStore((s) => s.approvals.some((a) => a.workspaceId === ws.id && a.status === 'pending'))
+  const approvals = useStore((s) => s.approvals)
+  const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const last = useStore((s) => newest(s.activity, (e) => e.workspaceId === ws.id))
-  const g = workspaceGlyph(ws, { needsYou, running })
+  const g = workspaceGlyph(ws, { waiting, running })
   const stat = ws.stat && (ws.stat.added || ws.stat.removed) ? ws.stat : undefined
   const meta = (
     <>
@@ -158,14 +154,17 @@ export function LeadCard({ roomId, at, id }: { roomId: string; at: DOMRect; id: 
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
+  const waiting = useLeadWaiting(roomId)
   const last = useStore((s) => (lead ? newest(s.activity, (e) => e.roomId === roomId && e.agentId === lead.id) : undefined))
   const open = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && w.name !== 'lead').length)
   if (!lead || !room) return null
+  const g = leadGlyph(status, waiting)
   return (
     <HoverCard at={at} id={id}>
       <Card
         eyebrow={`${room.name} · Lead`}
-        status={<Status accent={AGENT_ACCENT[status]} spin={AGENT_ACCENT[status] === 'working'} label={STATUS_WORD[status]} />}
+        // The icon shows only for what waits on you, so the other statuses keep the card as designed.
+        status={<Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={waiting.length ? g.icon : undefined} label={g.label} />}
         title={lead.name}
         line={last ? lineOf(last, lead.name) : 'No recent activity'}
         meta={<span className="grow ellipsis">{open ? `${open} open workspace${open === 1 ? '' : 's'}` : 'No open workspaces'}</span>}
