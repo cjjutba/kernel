@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, PrState, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, PrState, ReviewVerdict, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
@@ -288,7 +288,7 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     s.reviewer = THEO
     pr('w1', 'ready')
     await wait()
-    expect(parts(s.posts.pop()!).todo).toEqual(['- PR #54 needs a review. Theo (theo) reviews on this team: hand it over with create_workspace (agent "theo"), unless a review of it is already running.'])
+    expect(parts(s.posts.pop()!).todo).toEqual(['- PR #54 needs a review. Theo (theo) reviews on this team: call create_workspace with agent "theo" and review_of "w1".'])
     s.review = { approvedBy: [], blockers: false, inProgress: true }
     pr('w1', 'checks'); pr('w1', 'ready')
     await wait()
@@ -367,7 +367,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   const ws = (prState: PrState): Workspace => ({ id: 'w1', roomId: 'r', name: 'w1', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'noor', port: 1, status: 'ready', prState, createdAt: 1, leadChatId: 'lc' })
   const ev = (kind: TeamEventKind, extra: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...extra })
   const at = '(workspace w1)'
-  const NEEDS_REVIEW = 'PR #54 needs a review. Theo (theo) reviews on this team: hand it over with create_workspace (agent "theo"), unless a review of it is already running.'
+  const NEEDS_REVIEW = 'PR #54 needs a review. Theo (theo) reviews on this team: call create_workspace with agent "theo" and review_of "w1".'
   const rows: [string, TeamEvent[], PrState, Partial<WakeContext>, string[]][] = [
     ['an error in a turn Rowan started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
@@ -389,6 +389,11 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR that passed checks with blockers found on it', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: true, inProgress: false } }, []],
     ['a PR that passed checks and was approved', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: ['Theo'], blockers: false, inProgress: false } }, ['PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.']],
     ['a PR that passed checks on a team with no reviewer', [ev('pr.ready')], 'ready', {}, ['PR #54 passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.']],
+    ['a PR that passed checks with an idle review workspace open', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).']],
+    ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
+    ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } } }, ["PR #54 needs a review, and setup failed in Theo's review workspace. Tell the user to fix it and click Run again there (workspace rv)."]],
+    ['a review with blockers', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send Noor's blockers to Kai with message_agent (workspace w2). When Kai is done, ask Noor to review again with message_agent (workspace w1)."]],
+    ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', current: true } })], 'none', {}, ["Noor approved Kai's work. Ask Kai to open a pull request with message_agent (workspace w2)."]],
     ['a turn Rowan started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn the user started', [ev('turn', { by: 'user' })], 'none', {}, []],
@@ -398,7 +403,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a turn after an older PR event', [ev('pr.opened', { n: 0 }), ev('turn', { by: 'lead' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]]
   ]
   it.each(rows)('%s', (_label, events, prState, c, todo) => {
-    const out = decide({ ws: ws(prState), name: 'Noor', events }, { allMerged: () => false, ...c })
+    const out = decide({ ws: ws(prState), name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
     expect(out.todo).toEqual(todo)
     expect(out.wake.size).toBe(todo.length)
   })
@@ -474,6 +479,90 @@ describe("a teammate's setup (KERNEL-126)", () => {
     u.setup(w1, true)
     await wait()
     expect(s.posts).toEqual([])
+  })
+})
+
+describe('reviews (KERNEL-130)', () => {
+  const verdict = (o: Partial<ReviewVerdict> = {}): ReviewVerdict => ({ workspaceId: 'rv', agentId: 'theo', verdict: 'approved', summary: 'The Try rows are gone. No blockers.', ts: 1, ...o })
+  async function reviewSetup() {
+    const t = await setup()
+    t.ws('rv', 'theo', { title: 'Review PR #54', reviewOf: 'w1' })
+    t.chat('rvc', 'rv')
+    NAMES.theo = 'Theo'
+    t.s.reviewer = THEO
+    return { ...t, rv: t.store.workspace('rv')!, rvc: t.store.chat('rvc')! }
+  }
+  const THEO_BLOCK = 'Theo (theo) · Review PR #54 · workspace rv'
+
+  it("tells the Lead a PR that passed checks was approved, once, and folds the reviewer's turn into the verdict", async () => {
+    const { u, s, pr, rv, rvc, store } = await reviewSetup()
+    pr('w1', 'ready')
+    s.review = { approvedBy: [], blockers: false, inProgress: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }
+    await wait()
+    // The review runs, so passing checks rides along, saying so.
+    expect(s.posts).toEqual([])
+    s.review = { approvedBy: ['Theo'], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } }
+    u.reviewed(rv, { ...store.workspace('w1')!, prHead: 'abc' }, verdict({ sha: 'abc', prNumber: 54 }))
+    u.turnDone(rv, rvc, done)
+    await wait()
+    const sent = parts(s.posts.pop()!)
+    expect(sent.body).toEqual([
+      NOOR, OPENED_54, '- PR #54 passed checks and has no conflicts. Theo approved it.', '',
+      THEO_BLOCK, '- Approved PR #54 by Noor (workspace w1), at its latest commit.', "- Theo's summary:", '  > The Try rows are gone. No blockers.'
+    ])
+    expect(sent.todo).toEqual(['- PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.'])
+    expect(s.updates.at(-1)?.rows[1].events).toEqual([{ kind: 'review', text: 'Approved PR #54', actionable: true }])
+    expect(s.updates.at(-1)?.rows[0].events[1].text).toBe('Passed checks, no conflicts. Theo approved it')
+  })
+
+  it('lists the blockers a review found and says who fixes them and who reviews again', async () => {
+    const { u, s, rv, store } = await reviewSetup()
+    u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict({ verdict: 'blockers', summary: 'Two things block it.', blockers: [{ text: 'The Check hooks row still renders.', file: 'src/Sidebar.tsx', line: 212 }, { text: 'No test covers the removed rows.' }] }))
+    await wait()
+    const sent = parts(s.posts.pop()!)
+    expect(sent.body).toEqual([
+      THEO_BLOCK, '- Found 2 blockers in PR #54 by Noor (workspace w1):', '  1. src/Sidebar.tsx:212: The Check hooks row still renders.', '  2. No test covers the removed rows.',
+      "- Theo's summary:", '  > Two things block it.'
+    ])
+    expect(sent.todo).toEqual(["- Send Theo's blockers to Noor with message_agent (workspace w1). When Noor is done, ask Theo to review again with message_agent (workspace rv)."])
+  })
+
+  it("asks for another review when the approval was of a different commit, even if the PR moved after the verdict", async () => {
+    const { u, s, rv, store } = await reviewSetup()
+    store.saveWorkspace({ ...store.workspace('w1')!, prNumber: 54, prState: 'ready', prHead: 'abc' })
+    s.accept = false
+    u.reviewed(rv, store.workspace('w1')!, verdict({ sha: 'abc', prNumber: 54 }))
+    await wait()
+    // A push lands before the update goes out.
+    store.saveWorkspace({ ...store.workspace('w1')!, prHead: 'def' })
+    s.accept = true
+    u.flushAll()
+    const sent = parts(s.posts.pop()!)
+    expect(sent.body[1]).toBe('- Approved PR #54 by Noor (workspace w1).')
+    expect(sent.todo).toEqual(['- PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).'])
+  })
+
+  it('waits for checks when a current approval comes before they pass', async () => {
+    const { u, s, rv, store } = await reviewSetup()
+    store.saveWorkspace({ ...store.workspace('w1')!, prNumber: 54, prState: 'checks', prHead: 'abc' })
+    u.reviewed(rv, store.workspace('w1')!, verdict({ sha: 'abc', prNumber: 54 }))
+    await wait()
+    expect(parts(s.posts.pop()!).todo).toEqual(["- Theo approved PR #54. Its checks haven't passed yet; tell the user it is ready to merge once they do."])
+  })
+
+  it("folds the reviewer's turn into its verdict even when the verdict already went out, and reports the next turn", async () => {
+    const { u, s, rv, rvc, store } = await reviewSetup()
+    u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict({ verdict: 'blockers', blockers: [{ text: 'x' }] }))
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    // Theo writes a closing reply long after the verdict went out: the turn's end still isn't news.
+    u.turnDone(rv, rvc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    // Rowan asks Theo something, and that answer is.
+    u.turnDone(rv, rvc, done)
+    await wait()
+    expect(s.posts).toHaveLength(2)
   })
 })
 

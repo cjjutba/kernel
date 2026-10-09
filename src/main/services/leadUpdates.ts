@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, PrState, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrState, ReviewVerdict, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -63,6 +63,8 @@ export interface TeamEvent {
   code?: number | null
   /** A failed setup the Lead already heard about in create_workspace's result. It doesn't wake the Lead again. */
   told?: boolean
+  /** A review: the verdict, and the work it is about, with its author's name and PR number (KERNEL-130). */
+  review?: { verdict: ReviewVerdict['verdict']; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean }
 }
 
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
@@ -101,12 +103,12 @@ const REPLY_KEPT = 4000
 const prOf = (e: TeamEvent) => (e.pr ? `PR #${e.pr}` : 'the PR')
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** The event as a sentence for the Lead. */
-function sentence(e: TeamEvent, name: string): string {
+/** The event as a sentence for the Lead. `status` is where a PR that passed checks stands with its review. */
+function sentence(e: TeamEvent, name: string, status = ''): string {
   const pr = prOf(e)
   switch (e.kind) {
     case 'pr.opened': return `Opened ${e.pr ? `PR #${e.pr}` : 'a pull request'}${e.prTitle ? ` "${e.prTitle}"` : ''}.`
-    case 'pr.ready': return `${upper(pr)} passed checks and has no conflicts.`
+    case 'pr.ready': return `${upper(pr)} passed checks and has no conflicts.${status ? ` ${status}` : ''}`
     case 'pr.cifail': return `Checks failed on ${pr}.`
     case 'pr.changes': return `Changes were requested on ${pr}.`
     case 'pr.conflict': return `${upper(pr)} has conflicts with its base branch.`
@@ -117,15 +119,23 @@ function sentence(e: TeamEvent, name: string): string {
     case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. The worktree and chat are saved; the user can restart it from the workspace.`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
     case 'setup.passed': return `Setup passed on Run again, and ${name}'s brief was released.`
-    case 'review': return 'Sent a review.'
+    case 'review': {
+      const r = e.review
+      if (!r) return 'Sent a review.'
+      const what = `${r.ofPr ? `PR #${r.ofPr} by ${r.ofName}` : `${r.ofName}'s work`} (workspace ${r.of})`
+      if (r.verdict === 'approved') return `Approved ${what}${r.current ? ', at its latest commit' : ''}.`
+      const list = (r.blockers ?? []).map((x, i) => `  ${i + 1}. ${x.file ? `${x.file}${x.line ? `:${x.line}` : ''}: ` : ''}${x.text}`)
+      const total = r.total ?? list.length
+      return [`Found ${total} ${total === 1 ? 'blocker' : 'blockers'} in ${what}${total > list.length ? ` (the first ${list.length} below)` : ''}:`, ...list].join('\n')
+    }
   }
 }
 
 /** The event in a few words, for the card. */
-function cardText(e: TeamEvent): string {
+function cardText(e: TeamEvent, status = ''): string {
   switch (e.kind) {
     case 'pr.opened': return e.pr ? `Opened PR #${e.pr}` : 'Opened a pull request'
-    case 'pr.ready': return 'Passed checks, no conflicts'
+    case 'pr.ready': return `Passed checks, no conflicts${status ? `. ${status.replace(/\.$/, '')}` : ''}`
     case 'pr.cifail': return 'Checks failed'
     case 'pr.changes': return 'Changes requested'
     case 'pr.conflict': return 'Has conflicts with its base branch'
@@ -136,7 +146,13 @@ function cardText(e: TeamEvent): string {
     case 'crash': return 'Session ended unexpectedly'
     case 'setup.failed': return 'Setup failed'
     case 'setup.passed': return 'Setup passed'
-    case 'review': return 'Sent a review'
+    case 'review': {
+      const r = e.review
+      if (!r) return 'Sent a review'
+      const what = r.ofPr ? `PR #${r.ofPr}` : `${r.ofName}'s work`
+      const n = r.total ?? r.blockers?.length ?? 0
+      return r.verdict === 'approved' ? `Approved ${what}` : `Found ${n} ${n === 1 ? 'blocker' : 'blockers'} in ${what}`
+    }
   }
 }
 
@@ -166,7 +182,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
 }
 
 /** One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it off. */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; reply?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: Chat; owner?: string }
@@ -179,6 +195,20 @@ export interface ReviewState {
   blockers: boolean
   /** A linked review workspace is setting up or working. */
   inProgress: boolean
+  /** Every verdict there is was of an earlier commit. */
+  stale?: boolean
+  /** The newest review workspace still open, to ask for another pass instead of a new one. `failed`: its setup failed. */
+  open?: { workspaceId: string; agentId: string; name: string; failed?: boolean }
+}
+
+/** Where a PR that passed checks stands with its review, for the Lead's text, or nothing when Kernel can't tell. */
+function reviewStatus(review: ReviewState | undefined, reviewer: AgentDef | undefined): string {
+  if (!review) return ''
+  if (review.inProgress) return `${review.open?.name ?? 'The reviewer'} is reviewing it.`
+  if (review.approvedBy.length) return `${review.approvedBy.join(' and ')} approved it.`
+  if (review.blockers) return `${review.open?.name ?? 'Its review'} found blockers.`
+  if (review.stale) return `${review.open ? `${review.open.name}'s review` : 'Its last review'} was of a different commit.`
+  return reviewer || review.open ? 'Nobody has reviewed it yet.' : ''
 }
 
 /** PR states that mean the PR is still being created or checked, so a turn that just ended isn't news on its own. */
@@ -195,6 +225,8 @@ export class LeadUpdates {
    * usually the user's next message, instead of starting a Kernel turn right after the Stop (KERNEL-122).
    */
   private stopped = new Set<string>()
+  /** Review workspaces whose running turn sent a verdict. That turn's end isn't news of its own (KERNEL-130). */
+  private submitted = new Set<string>()
   private seq = 0
   private off: () => void = () => undefined
 
@@ -249,8 +281,11 @@ export class LeadUpdates {
       this.flush(ws.roomId)
       return
     }
+    // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130).
+    const verdictTurn = this.submitted.delete(ws.id)
     if (t.interrupted || t.queued) return
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
+    if (verdictTurn) return
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
   }
@@ -262,6 +297,19 @@ export class LeadUpdates {
   setup(ws: Workspace, ok: boolean, o: { told?: boolean; code?: number | null } = {}) {
     if (this.d.isLead(ws)) return
     this.add(ws, ok ? { kind: 'setup.passed' } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}) })
+  }
+
+  /** A reviewer's submit_review (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
+  reviewed(reviewer: Workspace, of: Workspace, v: ReviewVerdict) {
+    if (this.d.isLead(reviewer)) return
+    // The turn that sent the verdict ends soon after; the verdict speaks for it.
+    this.submitted.add(reviewer.id)
+    this.add(reviewer, { kind: 'review', review: {
+      verdict: v.verdict, summary: capText(v.summary, REPLY_KEPT),
+      ...(v.blockers?.length ? { blockers: v.blockers.slice(0, 20), total: v.blockers.length } : {}),
+      of: of.id, ofName: this.d.agentName(of.roomId, of.agentId) ?? of.agentId, ...(of.prNumber ? { ofPr: of.prNumber } : {}),
+      ...(v.sha ? { sha: v.sha } : {}), current: !v.sha || !of.prHead || v.sha === of.prHead
+    } })
   }
 
   /**
@@ -368,14 +416,25 @@ export class LeadUpdates {
       for (const [id, events] of byWs) {
         const ws = this.d.store.workspace(id)
         if (!ws || this.d.isLead(ws)) continue
-        const kept = collapse(events, ws)
+        // A verdict is current while the reviewed PR's head is the commit it reviewed, as of now, not as of the verdict.
+        const kept = collapse(events, ws).map((e) => {
+          if (!e.review?.sha) return e
+          const head = this.d.store.workspace(e.review.of)?.prHead
+          return { ...e, review: { ...e.review, current: !head || head === e.review.sha } }
+        })
         if (!kept.length) continue
         const turn = kept.find((e) => e.kind === 'turn')
+        const verdict = kept.find((e) => e.kind === 'review')?.review
         const name = this.d.agentName(roomId, ws.agentId) ?? ws.agentId
-        const block: Block = { ws, name, events: kept, reply: turn?.reply, latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: [] }
+        const review = kept.some((e) => e.kind === 'pr.ready') ? this.d.reviewState?.(ws) : undefined
+        const reviewer = this.d.reviewer?.(ws.roomId)
+        const block: Block = {
+          ws, name, events: kept, reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer),
+          latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
+        }
         if (source.owner) {
           const decided = decide({ ws, name, events: kept, fromChat: source.from?.title }, {
-            review: this.d.reviewState?.(ws), reviewer: this.d.reviewer?.(ws.roomId), allMerged: () => this.allMerged(ws.roomId, source.owner!)
+            review, reviewer, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id)
           })
           block.wake = decided.wake
           block.todo = decided.todo
@@ -409,7 +468,7 @@ export class LeadUpdates {
       return {
         workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
         ...(prNumber ? { prNumber } : {}),
-        events: b.events.map((e) => ({ kind: e.kind, text: cardText(e), actionable: b.wake.has(e) })),
+        events: b.events.map((e) => ({ kind: e.kind, text: cardText(e, b.status), actionable: b.wake.has(e) })),
         ...(b.reply ? { reply: b.reply } : {}),
         ...(b.from ? { fromChat: b.from.title } : {})
       }
@@ -432,7 +491,13 @@ export class LeadUpdates {
 }
 
 /** What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer, and whether this merge was the last. */
-export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; allMerged: () => boolean }
+export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
+
+/** The To do line for a PR that passed checks and was approved. The review's own line says the same, so it shows once. */
+const readyToMerge = (pr: string, by: string[]) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. Tell the user it is ready to merge.`
+
+/** The To do line for a PR whose review was of another commit. The PR's own line says the same, so it shows once. */
+const anotherReview = (pr: string, name: string, at: string) => `${upper(pr)} needs another review: the last one was of a different commit. Ask ${name} to review it again with message_agent (workspace ${at}).`
 
 /**
  * Which of one workspace's events need the Lead, and what to do about each (KERNEL-121). Called only for work a Lead chat
@@ -450,7 +515,18 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
       case 'crash': wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
       case 'setup.failed': if (!e.told) wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
-      case 'review': wake(`Read ${name}'s review and pass on what it found.`); break
+      case 'review': {
+        const r = e.review
+        if (!r) { wake(`Read ${name}'s review and pass on what it found.`); break }
+        const of = c.workspace?.(r.of)
+        if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}). When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`); break }
+        // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge.
+        if (!r.current && of?.prNumber) { wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
+        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name])); break }
+        if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`); break }
+        wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`)
+        break
+      }
       case 'pr.cifail': wake(`Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break
       case 'pr.changes': wake(`Tell ${name} about the changes requested on ${pr} with message_agent ${at}.`); break
       case 'pr.conflict': wake(`Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
@@ -460,15 +536,18 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         break
       case 'pr.ready': {
         const review = c.review
+        // Blockers come with the review's own update, and a review that runs will say what it found.
         if (review?.blockers || review?.inProgress) break
-        if (review?.approvedBy.length) { wake(`${upper(pr)} passed checks, has no conflicts and ${review.approvedBy.join(' and ')} approved it. Tell the user it is ready to merge.`); break }
+        if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy)); break }
+        if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in ${review.open.name}'s review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
+        if (review?.open) { wake(review.stale ? anotherReview(pr, review.open.name, review.open.workspaceId) : `${upper(pr)} needs a review. Ask ${review.open.name} to review it with message_agent (workspace ${review.open.workspaceId}).`); break }
         if (!c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
-        wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: hand it over with create_workspace (agent "${c.reviewer.id}"), unless a review of it is already running.`)
+        wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: call create_workspace with agent "${c.reviewer.id}" and review_of "${ws.id}".`)
         break
       }
       case 'turn':
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
-        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && x.kind.startsWith('pr.'))) break
+        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && (x.kind.startsWith('pr.') || x.kind === 'review'))) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
         break
       default: break
@@ -483,9 +562,9 @@ const ALL_MERGED = 'Every task you handed off in this chat has merged. Tell the 
 /** One workspace's block in the Lead's text: who and what, each event, then the reply quoted. A reply says the turn ended. */
 function blockLines(b: Block): string[] {
   const lines = [`${b.name} (${b.ws.agentId}) · ${b.ws.title ?? b.ws.name} · workspace ${b.ws.id}`]
-  for (const e of b.events) if (!(e.kind === 'turn' && b.reply)) lines.push(`- ${sentence(e, b.name)}`)
+  for (const e of b.events) if (!(e.kind === 'turn' && b.reply && !b.summary)) lines.push(`- ${sentence(e, b.name, b.status)}`)
   if (b.reply) {
-    lines.push(`- ${b.name}'s last reply:`)
+    lines.push(`- ${b.name}'s ${b.summary ? 'summary' : 'last reply'}:`)
     for (const l of b.reply.split('\n')) lines.push(l.trim() ? `  > ${l}` : '  >')
   }
   return lines

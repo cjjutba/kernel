@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { ChatItem, ChatPart, PrInfo, Workspace } from '@shared/types'
 import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
-import { checkOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
+import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
 import { headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { Kernel } from '../src/main/kernel'
 
@@ -154,6 +154,18 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     gh.pr = info({ state: 'draft' })
     expect(await k.refreshPr(ws.id)).toMatchObject({ prState: 'draft', prNumber: 42, prTitle: 'feat: table' })
     await expect(k.createPr(ws.id)).rejects.toThrow('already has a pull request')
+    await k.stop()
+  })
+
+  it("saves the PR's head commit as GitHub reports it, so a review of another commit reads as stale (KERNEL-130)", async () => {
+    const { k, ws, gh } = await setup()
+    const view = { number: 42, url: 'u', state: 'OPEN' as const, isDraft: false, mergeable: 'MERGEABLE' as const, reviewDecision: null, statusCheckRollup: [] }
+    expect(infoOf('w', { ...view, headRefOid: 'abc' }, [], []).head).toBe('abc')
+    expect(infoOf('w', view, [], [])).not.toHaveProperty('head')
+    gh.pr = { ...info({ state: 'ready' }), head: 'abc' }
+    expect((await k.refreshPr(ws.id)).prHead).toBe('abc')
+    gh.pr = { ...info({ state: 'checks' }), head: 'def' }
+    expect((await k.refreshPr(ws.id)).prHead).toBe('def')
     await k.stop()
   })
 
