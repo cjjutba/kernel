@@ -123,9 +123,9 @@ class Component extends DCLogic {
         var st = i < s.step ? 'ok' : (i === s.step ? 'run' : 'wait');
         return { title: x[0], detail: x[1], meta: st === 'ok' ? x[2] : (st === 'run' ? 'running' : ''), ok: st === 'ok', run: st === 'run', wait: st === 'wait', fail: false, hasFix: false, titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8' };
       });
-      title = 'Setting up Client C'; sub = 'This takes a minute. Agents take their desks when it finishes.';
+      title = 'Setting up Client C'; sub = 'This takes a minute. Your team is ready when it finishes.';
       ready = s.step >= 6; foot = ready ? 'Done. Rowan is waiting for a brief.' : 'You can leave this screen. Kernel keeps going.';
-      nextLabel = 'Open the floor'; nextHref = 'Main.dc.html';
+      nextLabel = 'Open the room'; nextHref = 'WorkspaceLead.dc.html';
     } else {
       var F = fails[s.kind];
       var fixed = !!s.fixed[F.id];

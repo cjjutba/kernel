@@ -54,7 +54,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <div style="display: flex; flex-direction: column; align-items: center; text-align: center">
 <span aria-hidden="true" style="width: 72px; height: 72px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 18px; border: 1px solid #2a2b30; background: #141516; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset"><svg width="34" height="34" viewBox="0 0 16 16" fill="none" stroke="#f7f8f8" stroke-width="1.2" stroke-linejoin="round"><path d="M8 2.2 13.8 5.3 8 8.4 2.2 5.3Z"></path><path d="M2.2 8.2 8 11.3l5.8-3.1"></path><path d="M2.2 11 8 14.1l5.8-3.1"></path></svg></span>
 <h1 style="margin: 28px 0 0; font-size: 36px; font-weight: 600; letter-spacing: -1px; line-height: 1.15">Welcome to Kernel</h1>
-<p style="margin: 12px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: #8a8f98">Give your Claude Code agents a desk. They do the work, you stay the director.</p>
+<p style="margin: 12px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: #8a8f98">Run your Claude Code agents as a team. They do the work, you stay the director.</p>
 <button type="button" onClick="{{ next }}" style="margin-top: 32px; width: 280px; height: 40px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 14px; font-weight: 500; cursor: pointer">Get started</button>
 </div>
 </sc-if>
@@ -62,7 +62,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ s1 }}" hint-placeholder-val="{{ false }}">
 <div style="width: 440px; display: flex; flex-direction: column; align-items: center; text-align: center">
 <h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">Connect Claude Code</h1>
-<p style="margin: 10px 0 0; font-size: 14px; color: #8a8f98">The office watches your sessions through hooks. Nothing leaves your Mac.</p>
+<p style="margin: 10px 0 0; font-size: 14px; color: #8a8f98">Kernel watches your sessions through hooks. Nothing leaves your Mac.</p>
 <div style="width: 100%; margin-top: 28px; box-sizing: border-box; border-radius: 12px; border: 1px solid #1f2024; background: #0f1011; text-align: left">
 <div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 16px; border-bottom: 1px solid #1a1b1e">
 <span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span>
@@ -75,7 +75,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 <div style="display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 12px 0 16px">
 <sc-if value="{{ hooksOn }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #f7f8f8"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></span></sc-if>
 <sc-if value="{{ hooksOff }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; border-radius: 50%; border: 1.5px dashed #62666d"></span></sc-if>
-<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Office hooks</span><span style="font-size: 12px; color: #8a8f98">{{ hooksSub }}</span></span>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500">Kernel hooks</span><span style="font-size: 12px; color: #8a8f98">{{ hooksSub }}</span></span>
 <sc-if value="{{ hooksOff }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ install }}" style="height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Install</button></sc-if>
 </div>
 </div>
@@ -133,7 +133,7 @@ class Component extends DCLogic {
       s2: s.step === 2,
       hooksOn: s.hooks,
       hooksOff: !s.hooks,
-      hooksSub: s.hooks ? 'Added to ~/.claude/settings.json' : 'Lets the office see what each agent is doing',
+      hooksSub: s.hooks ? 'Added to ~/.claude/settings.json' : 'Lets Kernel see what each agent is doing',
       install: function () { self.setState({ hooks: true }); },
       next: function () {
         if (s.step === 1 && !s.hooks) return;

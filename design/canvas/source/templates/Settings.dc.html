@@ -135,8 +135,7 @@ class Component extends DCLogic {
     };
     return {
       general: { title: 'General', sections: [
-        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] },
-        { title: 'Floor', rows: [seg('floor', 'Floor style', ['Isometric', 'Plan', 'List']), tog('tags', 'Show name tags', true), tog('anim', 'Animate agents', true, 'Typing, raised hands, walking to the planning room')] }
+        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] }
       ] },
       appearance: { title: 'Appearance', sections: [
         { title: 'Interface', rows: [seg('theme', 'Theme', ['Dark', 'Light', 'System']), sel('font', 'Font size', ['Default', 'Small', 'Large']), seg('density', 'Density', ['Comfortable', 'Compact']), tog('pointer', 'Use pointer cursors', false), tog('motion', 'Reduce motion', false)] }
@@ -159,9 +158,9 @@ class Component extends DCLogic {
         { title: 'Default model by role', rows: [sel('m-lead', 'Lead', ['Opus 5.5', 'Sonnet 5.5']), sel('m-eng', 'Frontend and Backend', ['Sonnet 5.5', 'Opus 5.5', 'Haiku 4.5']), sel('m-qa', 'QA', ['Sonnet 5.5', 'Haiku 4.5']), sel('m-rev', 'Reviewer', ['Opus 5.5', 'Sonnet 5.5'])] },
         { title: 'Defaults', rows: [seg('effort', 'Effort', ['Low', 'Medium', 'High', 'Extra high'], 2), tog('planlead', 'Start the Lead in plan mode', true), sel('max', 'Agents working at once', ['4', '5', '6', '3'], 'More agents means more usage and more diffs for you to review'), tog('teams', 'Use agent teams', true, 'Experimental in Claude Code. The Lead coordinates teammates through a shared task list.')] }
       ] },
-      team: { title: 'Agents', intro: 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it takes a desk on the floor.', sections: [
+      team: { title: 'Agents', intro: 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.', sections: [
         { title: 'In this room', rows: [btn('Rowan · Lead', 'Edit', '.claude/agents/rowan.md · Plans and hands out tasks'), btn('Kai · Frontend', 'Edit', '.claude/agents/kai.md · UI work, follows DESIGN.md'), btn('Noor · Backend', 'Edit', '.claude/agents/noor.md · Schema, API, migrations'), btn('Ivy · QA', 'Edit', '.claude/agents/ivy.md · Runs tests, attaches output'), btn('Theo · Reviewer', 'Edit', '.claude/agents/theo.md · Types, security, tenancy'), btn('Lumi · Designer', 'Edit', '.claude/agents/lumi.md · Joined today')] },
-        { title: 'Sync', rows: [val('Agents folder', '.claude/agents'), tog('syncfloor', 'Add new agent files to the floor', true, 'New files in the folder get a desk automatically'), tog('names', 'Show names instead of roles', true)] }
+        { title: 'Sync', rows: [val('Agents folder', '.claude/agents'), tog('names', 'Show names instead of roles', true)] }
       ] },
       permissions: { title: 'Permissions', sections: [
         { title: 'Mode', rows: [seg('pmode', 'Permission mode', ['Ask', 'Accept edits', 'Bypass in worktrees'], 1, 'Bypass only applies inside isolated worktrees, never on your current branch'), tog('net', 'Allow network access', true)] },
@@ -190,14 +189,14 @@ class Component extends DCLogic {
       hooks: { title: 'Hooks', sections: [
         { title: 'Status', rows: [val('Hook server', 'Live on localhost:7420'), btn('Test', 'Send test event')] },
         { title: 'Gates', rows: [tog('g1', 'Block TaskCompleted without test output', true), tog('g2', 'Keep idle teammates working', false), sel('timeout', 'Approval timeout', ['5 min', '2 min', '10 min'], 'After this, the request falls back to the normal prompt in Claude Code')] },
-        { title: 'Maintenance', rows: [btn('Reinstall hooks', 'Reinstall', 'Rewrites the office entries in ~/.claude/settings.json'), btn('Settings file', 'Open settings.json')] }
+        { title: 'Maintenance', rows: [btn('Reinstall hooks', 'Reinstall', 'Rewrites Kernel\u2019s entries in ~/.claude/settings.json'), btn('Settings file', 'Open settings.json')] }
       ] },
       integrations: { title: 'Integrations', sections: [
         { title: 'Connected', rows: [btn('GitHub', 'Manage', 'Through the GitHub CLI as cjjutba'), btn('Linear', 'Connect', 'Create workspaces from issues'), btn('Vercel', 'Connect', 'Preview deployments show up in Checks'), btn('Remote Control', 'Set up', 'Approvals and briefs from your phone')] }
       ] },
       experimental: { title: 'Experimental', intro: 'Early features. They may change or go away.', sections: [
-        { title: 'Big terminal', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens Claude Code itself in a terminal tab, next to your chats'), code('Runs', ['claude --dangerously-skip-permissions'], 'In the workspace worktree. Hooks still report to the floor and logs.'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T'])] },
-        { title: 'Floor', rows: [tog('walk', 'Agents walk the floor', true, 'Rowan walks to each desk when he hands out tasks'), tog('floor3d', '3D floor', false, 'A WebGL floor with a free camera. Uses more battery.'), tog('voice', 'Voice briefs', false, 'Hold Fn and talk to Rowan')] }
+        { title: 'Big terminal', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens Claude Code itself in a terminal tab, next to your chats'), code('Runs', ['claude --dangerously-skip-permissions'], 'In the workspace worktree. Hooks still report to Kernel.'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T'])] },
+        { title: 'Voice', rows: [tog('voice', 'Voice briefs', false, 'Hold Fn and talk to Rowan')] }
       ] },
       about: { title: 'About', sections: [
         { title: 'Kernel', rows: [val('Version', '0.1.0'), btn('Updates', 'Check for updates'), val('Data', '~/Library/Application Support/Kernel'), btn('Logs', 'Export logs'), btn('Onboarding', 'Show again')] }

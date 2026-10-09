@@ -45,7 +45,7 @@
       <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5"></path></svg>
     </a>
     <h1 id="hero-title" class="h1">Your coding agents,<br>working as a team.</h1>
-    <p class="hero-lead">Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, on an office floor you can actually see.</p>
+    <p class="hero-lead">Brief a lead, approve the plan, and watch agents build in parallel, each in its own workspace, until a pull request is ready for you to merge.</p>
     <div class="cta-row">
       <a href="https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg" class="btn btn-primary btn-lg">
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"></path></svg>
@@ -60,7 +60,7 @@
   </div>
   <div class="shot shot-hero">
     <div class="shot-in">
-      <img src="../images/floor.png" alt="The Kernel floor: the lead's plan waits for review while the team works at their desks" width="1280" height="800">
+      <img src="../images/lead-plan.png" alt="Kernel: Rowan's plan for four tasks waits for review, with the room's team and workspaces in the sidebar" width="1280" height="800">
     </div>
   </div>
 </section>
@@ -80,7 +80,7 @@
           <div class="mc-row"><span class="chip">To Rowan · Lead</span><span class="grow"></span><span class="send"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#08090a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></span></div>
         </div>
       </div>
-      <div class="step-body"><span class="num">01</span><h3>Brief your lead</h3><p>Tell Rowan what to build in a sentence or two, from the floor or a new workspace.</p></div>
+      <div class="step-body"><span class="num">01</span><h3>Brief your lead</h3><p>Tell Rowan what to build in a sentence or two, from Rowan's chat or a new workspace.</p></div>
     </article>
     <article class="step">
       <div class="step-vis" aria-hidden="true">
@@ -120,12 +120,12 @@
   </div>
   <input type="radio" name="tour" id="tour-ws" class="tour-r" checked="">
   <input type="radio" name="tour" id="tour-inbox" class="tour-r">
-  <input type="radio" name="tour" id="tour-board" class="tour-r">
+  <input type="radio" name="tour" id="tour-team" class="tour-r">
   <input type="radio" name="tour" id="tour-cp" class="tour-r">
   <div class="tabs"><div class="tabs-in" role="presentation">
       <label for="tour-ws"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z"></path></svg>Workspaces</label>
       <label for="tour-inbox"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9ZM2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1"></path></svg>Inbox</label>
-      <label for="tour-board"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.2 4.6a1.8 1.8 0 0 1 1.8-1.8h8a1.8 1.8 0 0 1 1.8 1.8v6.8a1.8 1.8 0 0 1-1.8 1.8H4a1.8 1.8 0 0 1-1.8-1.8ZM6.1 2.8v10.4M9.9 2.8v10.4"></path></svg>Board</label>
+      <label for="tour-team"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM2 13c.4-2 2-3 4-3s3.6 1 4 3M11 3.9a1.8 1.8 0 1 1 0 3.6M12 10.2c1.2.4 1.9 1.4 2 2.8"></path></svg>Team</label>
       <label for="tour-cp"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6M8 5.2V8l2 1.3"></path></svg>Checkpoints</label>
     </div></div>
   <div class="panels">
@@ -137,9 +137,9 @@
       <p class="panel-line">Plans, risky commands and questions wait here for you.</p>
       <div class="shot"><div class="shot-in"><img src="../images/inbox.png" alt="The Kernel Inbox: an agent asks to run a database command, with Deny and Approve" width="1200" height="750"></div></div>
     </div>
-    <div class="panel p-board">
-      <p class="panel-line">Every task from the plan, moving on its own as agents work.</p>
-      <div class="shot"><div class="shot-in"><img src="../images/board.png" alt="The Kernel Board: tasks in Spec, Plan, Building, QA, Review and Done" width="1200" height="750"></div></div>
+    <div class="panel p-team">
+      <p class="panel-line">See who is working, who needs you and which workspace each agent is in.</p>
+      <div class="shot"><div class="shot-in"><img src="../images/team.png" alt="The Kernel Team: each agent with its model, status and workspace" width="1200" height="750"></div></div>
     </div>
     <div class="panel p-cp">
       <p class="panel-line">Every turn is saved. Step back without losing the chat.</p>
@@ -155,9 +155,9 @@
     <h2 id="details-title" class="h2">The small things, done right.</h2>
   </div>
   <div class="dt-grid">
-      <div class="dt-item"><h3>The floor</h3><p>See who is working, planning or waiting on you. Everything on it comes from real agent events, never a timer.</p></div>
+      <div class="dt-item"><h3>Statuses from real events</h3><p>See who is working, planning or waiting on you, right in the sidebar. Nothing changes on a timer.</p></div>
       <div class="dt-item"><h3>Pull requests, end to end</h3><p>Create, fix and merge without leaving Kernel. Conflicts and failing checks go straight back to the agent.</p></div>
-      <div class="dt-item"><h3>Your agent's own terminal</h3><p>Prefer the command line? Open it in a tab. The session still shows up on the floor.</p></div>
+      <div class="dt-item"><h3>Your agent's own terminal</h3><p>Prefer the command line? Open Claude Code in a tab, in the same worktree as your chats.</p></div>
       <div class="dt-item"><h3>A team made of plain files</h3><p>Agents live as files in your repo. Edit them, or ask your lead to hire someone new.</p></div>
       <div class="dt-item"><h3>Pause the room</h3><p>Freeze every agent after its current step with one click, and pick up again when you are ready.</p></div>
       <div class="dt-item"><h3>Notifications that matter</h3><p>A quiet nudge when an agent needs you or a pull request is ready. Nothing else.</p></div>

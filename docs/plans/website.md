@@ -2,6 +2,8 @@
 
 Implementation plan for Claude Code. Owner: CJ. Branch: `feat/website`.
 
+> **Since D-104.** The floor and the Board are hidden, so the site no longer shows them. The hero shows Rowan's plan in Rowan's chat (`lead-plan.png`), the tour's Board tab is now Team (`team.png`), and the Details card "The floor" is "Statuses from real events". `design/site/` has the same changes and is still the spec. The plan below is kept as it was written. `floor.png` stays only for the 0.1.0 changelog entry, which shipped with the floor.
+
 ## 0. Read this first
 
 You are building Kernel's public website: a landing page at `/` and a changelog at `/changelog`, as a standalone Next.js app in `site/` inside this repo. The design is finished and approved. Your job is to reproduce it faithfully, as production code, without redesigning anything.

@@ -63,12 +63,12 @@
 <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b">
 <span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
 <div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">Plan for T-15 is ready</span><span style="color: #8a8f98">Rowan · Client A</span></div>
-<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Review plan</a>
+<a href="WorkspaceLead.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Review plan</a>
 </div>
 <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 12px; border-bottom: 1px solid #18191b">
 <span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>
-<div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">T-09 is ready to merge</span><span style="color: #8a8f98">Theo · Client A</span></div>
-<a href="Board.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Open PR</a>
+<div style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px"><span style="font-weight: 500">PR #41 is ready to merge</span><span style="color: #8a8f98">Theo · Client A</span></div>
+<a href="Workspace.dc.html" style="display: inline-flex; align-items: center; height: 28px; box-sizing: border-box; padding: 0 12px; border-radius: 7px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 12.5px; font-weight: 500">Open PR</a>
 </div>
 </section>
 
@@ -79,7 +79,7 @@
 </div>
 <p style="margin: 14px 12px 4px; font-size: 12px; font-weight: 500; color: #8a8f98">Today</p>
 <sc-for list="{{ today }}" as="r" hint-placeholder-count="3">
-<a href="Main.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
+<a href="History.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
 <span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9.5px; font-weight: 600">{{ r.av }}</span>
 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.title }}</span>
 <span style="color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.room }}</span>
@@ -89,7 +89,7 @@
 </sc-for>
 <p style="margin: 14px 12px 4px; font-size: 12px; font-weight: 500; color: #8a8f98">Yesterday</p>
 <sc-for list="{{ yesterday }}" as="r" hint-placeholder-count="2">
-<a href="Main.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
+<a href="History.dc.html" style="display: grid; grid-template-columns: 20px minmax(0, 1fr) 96px 92px 48px; align-items: center; gap: 12px; height: 40px; padding: 0 12px; border-radius: 6px; color: #f7f8f8; text-decoration: none">
 <span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #1c1d21; color: #d0d6e0; font-size: 9.5px; font-weight: 600">{{ r.av }}</span>
 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.title }}</span>
 <span style="color: #8a8f98; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{ r.room }}</span>
@@ -108,7 +108,7 @@
 <a href="Rooms.dc.html" style="font-size: 12px; color: #8a8f98; text-decoration: none">See all</a>
 </div>
 <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="4">
-<a href="Main.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #141516; color: #f7f8f8; text-decoration: none">
+<a href="WorkspaceLead.dc.html" style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 10px; border: 1px solid #1f2024; background: #141516; color: #f7f8f8; text-decoration: none">
 <div style="display: flex; align-items: center; gap: 10px">
 <span aria-hidden="true" style="width: 20px; height: 20px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10.5px; font-weight: 600">{{ r.letter }}</span>
 <span style="flex: 1; font-weight: 500">{{ r.name }}</span>

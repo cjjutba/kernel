@@ -6,7 +6,7 @@ const steps: { num: string; title: string; text: string; visual: ReactNode }[] =
   {
     num: '01',
     title: 'Brief your lead',
-    text: 'Tell Rowan what to build in a sentence or two, from the floor or a new workspace.',
+    text: "Tell Rowan what to build in a sentence or two, from Rowan's chat or a new workspace.",
     visual: <BriefMini />
   },
   {
