@@ -21,6 +21,8 @@ export interface KernelToolDeps {
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
+  /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
+  refreshPr?: (workspaceId: string) => Promise<Workspace>
   /** Whether any of the workspace's chats is running a turn. */
   isRunning: (workspaceId: string) => boolean
   /** Whether archiving would lose uncommitted work: 'dirty', 'unknown' when git can't tell, or false. */
@@ -60,6 +62,14 @@ export function kernelTools(d: KernelToolDeps) {
     if (w.leadChatId === d.chatId) return ' · yours'
     const title = d.chatTitle?.(w.leadChatId)
     return title ? ` · from Lead chat "${title}"` : ' · from another Lead chat'
+  }
+  /**
+   * The workspace with its PR state as GitHub has it. A saved open state can be stale, as when the PR merged after the
+   * folder was deleted. A closed one needs no check, and when GitHub can't be reached the saved state decides (KERNEL-109).
+   */
+  const latestPr = async (ws: Workspace): Promise<Workspace> => {
+    if (CLOSED_PR.has(ws.prState) || !d.refreshPr) return ws
+    return d.refreshPr(ws.id).catch(() => ws)
   }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
@@ -118,12 +128,14 @@ export function kernelTools(d: KernelToolDeps) {
       // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
       for (const id of workspace_ids) {
         const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
-        const skip = !ws ? 'not an open workspace in this room'
+        const first = !ws ? 'not an open workspace in this room'
           // Only the Lead's current-branch workspace. One handed to the Lead when an agent retired can go.
           : ws.mode === 'current' && !!d.lead && ws.agentId === d.lead.id ? 'it is your own workspace'
           : d.isRunning(ws.id) ? 'its agent is still working'
-          : !CLOSED_PR.has(ws.prState) ? `its PR${ws.prNumber ? ' #' + ws.prNumber : ''} is open and not merged`
           : undefined
+        const pr = ws && !first ? await latestPr(ws) : undefined
+        const prOpen = pr && !CLOSED_PR.has(pr.prState) ? `its PR${pr.prNumber ? ' #' + pr.prNumber : ''} is open and not merged` : undefined
+        const skip = first ?? prOpen
         // Archive removes the worktree with --force, and Restore can't bring back what was never committed.
         // Unpushed commits stay on the kept branch (KERNEL-70), so only uncommitted work blocks, as in the sidebar.
         const unsaved = !ws || skip ? false : await d.unsaved(ws.id)

@@ -126,14 +126,17 @@ export function infoOf(workspaceId: string, view: PrView, comments: ReviewCommen
   }
 }
 
-/** The PR for `ref` with its checks, review comments and conflicting files. */
-export async function prInfo(cwd: string, ref: string, workspaceId: string): Promise<PrInfo | null> {
+/**
+ * The PR for `ref` with its checks, review comments and conflicting files. `conflicts: false` is for a cwd that isn't the
+ * PR's checkout (the room, when the worktree is gone): `conflictFiles` merges against cwd's HEAD, which would be main.
+ */
+export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean } = {}): Promise<PrInfo | null> {
   const view = await prView(cwd, ref)
   if (!view) return null
   const open = view.state === 'OPEN'
   const [comments, conflicts] = await Promise.all([
     open ? prReviews(cwd, view.number) : Promise.resolve([]),
-    open && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName) : Promise.resolve([])
+    open && o.conflicts !== false && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName) : Promise.resolve([])
   ])
   return infoOf(workspaceId, view, comments, conflicts)
 }
@@ -153,7 +156,7 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
 
 /** The GitHub calls Kernel makes for a workspace's PR. Tests swap it for a stub. */
 export interface GitHub {
-  info: (cwd: string, ref: string, workspaceId: string) => Promise<PrInfo | null>
+  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean }) => Promise<PrInfo | null>
   merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
   ready: (cwd: string, ref: string) => Promise<void>
   reopen: (cwd: string, ref: string) => Promise<void>
