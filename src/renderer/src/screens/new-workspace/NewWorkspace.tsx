@@ -7,7 +7,8 @@ import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
 import { ModelPicker } from '../workspace/composer/ModelPicker'
-import { effortLabel as labelOf, rememberEffort } from '../workspace/composer/modelPrefs'
+import { effortFor } from '@shared/effort'
+import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
 import { FromPopover } from './FromPopover'
@@ -40,7 +41,10 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const [baseRef, setBaseRef] = useState('')
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
   const [model, setModel] = useState<ModelId>(settings?.models.engineers ?? 'claude-sonnet-5-5')
-  const [effort, setEffort] = useState<Effort>(settings?.models.effort ?? 'high')
+  const memory = useEffortMemory()
+  const defaultEffort = useDefaultEffort()
+  // The picker shows each model at its remembered effort, so the modal starts there too.
+  const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, defaultEffort))
   const [plan, setPlan] = useState(settings?.models.workspacePlanMode ?? false)
   const d = useDraft()
   const [branches, setBranches] = useState<string[]>([])
@@ -155,7 +159,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={10} /></Button>
-            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
+            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
           <span className="grow">
             {busy && <span className="nw-status" role="status">Creating the workspace and running setup</span>}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { filterSkills, isLongPaste, mentionAt, slashAt } from '../src/renderer/src/screens/workspace/composer/autocomplete'
-import { effortFor, nextEffort, parseEffortMemory } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
+import { effortFor, effortMemory } from '../src/shared/effort'
+import { nextEffort } from '../src/renderer/src/screens/workspace/composer/modelPrefs'
 import { toUserMessage } from '../src/main/services/sessions'
 
 describe('composer text rules', () => {
@@ -47,11 +48,12 @@ describe('composer text rules', () => {
   })
 
   it('remembers an effort per model and cycles Low to Extra high and back', () => {
-    const memory = parseEffortMemory(JSON.stringify({ 'claude-opus-5-5': 'xhigh', 'claude-nope': 'high', 'claude-sonnet-5-5': 'max' }))
+    const memory = effortMemory({ 'claude-opus-5-5': 'xhigh', 'claude-nope': 'high', 'claude-sonnet-5-5': 'max' })
     expect(memory).toEqual({ 'claude-opus-5-5': 'xhigh' })
     expect(effortFor('claude-opus-5-5', memory, 'low')).toBe('xhigh')
     expect(effortFor('claude-sonnet-5-5', memory, 'low')).toBe('low')
-    expect(parseEffortMemory('not json')).toEqual({})
+    expect(effortMemory('not an object')).toEqual({})
+    expect(effortMemory(null)).toEqual({})
     expect(nextEffort('high')).toBe('xhigh')
     expect(nextEffort('xhigh')).toBe('low')
   })

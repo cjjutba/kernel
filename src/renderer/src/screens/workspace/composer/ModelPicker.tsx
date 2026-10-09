@@ -3,7 +3,8 @@ import { EFFORTS, MODELS, type Effort, type ModelId } from '@shared/types'
 import { actions } from '../../../store'
 import { Icon } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
-import { effortFor, effortLabel, nextEffort, readEffortMemory, rememberEffort } from './modelPrefs'
+import { effortFor } from '@shared/effort'
+import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
 
 export { EFFORTS }
 
@@ -25,15 +26,16 @@ function EffortMenu({ effort, at, onAt, onPick, onClose }: { effort: Effort; at:
 
 /**
  * Model and effort, as in Conductor (D-093). Type to search, arrow keys move, Enter picks. Each model shows the effort
- * you last used with it and comes back at that effort. The Effort row opens the levels to its right (Enter or ArrowRight).
+ * you last used with it and comes back at that effort, else at `fallback`, the default effort, never the open chat's (D-130).
+ * The caller remembers a picked effort. The Effort row opens the levels to its right (Enter or ArrowRight).
  * Ctrl+Cmd+1 to 4 pick a model and Cmd+Shift+/ cycles the effort; the workspace composer also takes them while it is closed.
  */
-export function ModelPicker({ model, effort, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: ModelId; effort: Effort; onModel: (m: ModelId, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
+export function ModelPicker({ model, effort, fallback, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: ModelId; effort: Effort; fallback: Effort; onModel: (m: ModelId, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(() => Math.max(0, MODELS.findIndex((m) => m.id === model)))
   const [sub, setSub] = useState(false)
   const [subAt, setSubAt] = useState(() => Math.max(0, EFFORTS.findIndex((x) => x.id === effort)))
-  const memory = useMemo(readEffortMemory, [effort])
+  const memory = useEffortMemory()
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   useEffect(() => { ref.current?.querySelector('input')?.focus() }, [])
@@ -43,10 +45,10 @@ export function ModelPicker({ model, effort, onModel, onEffort, onClose, anchorR
     return MODELS.map((m, i) => ({ ...m, n: i + 1 })).filter((m) => !needle || m.label.toLowerCase().includes(needle))
   }, [q])
   const effortRow = rows.length
-  const rowEffort = (m: ModelId) => (m === model ? effort : effortFor(m, memory, effort))
+  const rowEffort = (m: ModelId) => (m === model ? effort : effortFor(m, memory, fallback))
 
   const pickModel = (m: ModelId) => onModel(m, rowEffort(m))
-  const pickEffort = (e: Effort) => { rememberEffort(model, e); onEffort(e); setSub(false) }
+  const pickEffort = (e: Effort) => { onEffort(e); setSub(false) }
   const openSub = () => { setSubAt(Math.max(0, EFFORTS.findIndex((x) => x.id === effort))); setSub(true) }
 
   const onKey = (e: React.KeyboardEvent) => {
