@@ -1007,7 +1007,7 @@ export class Kernel {
 
   /**
    * A quick question to the room's Lead. It starts a Lead chat of its own like the New chat modal, so it never queues behind
-   * whatever the first tab is doing (KERNEL-145, D-132). The answer arrives there like any turn; the popover reads it from there.
+   * whatever the first tab is doing (KERNEL-145, D-133). The answer arrives there like any turn; the popover reads it from there.
    */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
     const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
