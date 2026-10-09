@@ -13,6 +13,8 @@ import { chipIcon, ImageButton, isPastedText, TextButton } from './composer/Chip
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
+import { userView } from './sender'
+import { KernelNote } from './KernelNote'
 import { ReviewCard } from './pr/ReviewCard'
 
 const EMPTY: ChatItem[] = []
@@ -144,7 +146,11 @@ function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: 
   }
   const item = block.item
   switch (item.kind) {
-    case 'user': { const sent = instructionOf(item); return sent ? <InstructionCard part={sent} /> : <UserMessage item={item} onEdit={onEdit} /> }
+    case 'user': {
+      const sent = instructionOf(item)
+      if (sent) return <InstructionCard part={sent} />
+      return userView(item) === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
+    }
     case 'text': return <ReplyMessage item={item} chat={chat} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />

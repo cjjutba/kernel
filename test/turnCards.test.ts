@@ -82,3 +82,36 @@ describe('Lead requests', () => {
     expect(noteFromParts([{ type: 'issue', name: '#41', title: 'Export fails', source: 'github' }])).toBe('Linked issue #41: Export fails')
   })
 })
+
+describe('who sent a message, as the transcript draws it (KERNEL-120)', () => {
+  it("draws the user's and the Lead's messages as the bubble, Kernel's nudges as a note, and team updates as a card", async () => {
+    const { userView } = await import('../src/renderer/src/screens/workspace/sender')
+    const user = (extra: object): Extract<ChatItem, { kind: 'user' }> => ({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Your session ended unexpectedly. Check the worktree and pick up where you left off.' }], ...extra })
+    expect(userView(user({}))).toBe('bubble')
+    expect(userView(user({ from: 'lead' }))).toBe('bubble')
+    expect(userView(user({ from: 'kernel' }))).toBe('note')
+    expect(userView(user({ from: 'kernel', update: { rows: [] } }))).toBe('update')
+    expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Kai · X (workspace w): PR #1 is ready to merge' }] })).toBe('update')
+    // The user typing the old header themselves gets their own bubble.
+    expect(userView({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Update from Kernel (not the user): what does this line mean?' }] })).toBe('bubble')
+  })
+
+  it('draws a Kernel note with Copy and no Edit', async () => {
+    const React = await import('react')
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    Object.assign(globalThis, { React })
+    const path = '../src/renderer/src/screens/workspace/KernelNote'
+    const { KernelNote } = await import(/* @vite-ignore */ path) as { KernelNote: (p: { item: ChatItem }) => React.ReactElement }
+    const html = renderToStaticMarkup(React.createElement(KernelNote, { item: { kind: 'user', id: 'n', ts: 1, from: 'kernel', parts: [{ type: 'text', text: 'Your session ended unexpectedly.' }] } }))
+    expect(html).toContain('class="note"')
+    expect(html).toContain('Your session ended unexpectedly.')
+    expect(html).toContain('Copy')
+    expect(html).not.toContain('Edit')
+  })
+
+  it('still starts a new turn at a Kernel nudge', () => {
+    const nudge: ChatItem = { kind: 'user', id: 'n', ts: 3, from: 'kernel', parts: [{ type: 'text', text: 'The usage limit that stopped you no longer applies. Pick up where you left off.' }] }
+    const blocks = buildThread([{ kind: 'user', id: 'u', ts: 0, parts: [] }, { kind: 'text', id: 't', ts: 1, text: 'Working.' }, nudge, { kind: 'text', id: 't2', ts: 4, text: 'Carrying on.' }])
+    expect(blocks.filter((b) => b.kind === 'item' && b.item.kind === 'user').map((b) => (b as { item: ChatItem }).item.id)).toEqual(['u', 'n'])
+  })
+})
