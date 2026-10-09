@@ -107,14 +107,14 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
   )
 }
 
-/** Retry now: send the last message again at once. The waiting retry is interrupted and the copy goes first. */
+/**
+ * Retry now: send the last message again at once. The waiting retry is interrupted and the copy goes first. The engine
+ * sends it with its sender, so a Kernel update sent again is still Kernel's, not the user's (KERNEL-127).
+ */
 async function retryNow(chatId: string) {
   const items = await call('chats.items', { chatId })
   const user = [...items].reverse().find((i) => i.kind === 'user')
   if (user?.kind !== 'user') return
-  const { queued } = await call('chats.send', { chatId, parts: user.parts })
-  if (!queued) return
-  const queue = await call('chats.queue', { chatId })
-  const copy = queue[queue.length - 1]
-  if (copy) actions.chats.setQueue(chatId, await call('chats.sendNow', { chatId, id: copy.id }))
+  await call('chats.retry', { chatId, itemId: user.id, now: true })
+  actions.chats.setQueue(chatId, await call('chats.queue', { chatId }))
 }

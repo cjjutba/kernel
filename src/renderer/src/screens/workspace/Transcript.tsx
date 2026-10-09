@@ -15,6 +15,7 @@ import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
 import { userView } from './sender'
 import { KernelNote } from './KernelNote'
+import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { ReviewCard } from './pr/ReviewCard'
 
 const EMPTY: ChatItem[] = []
@@ -149,7 +150,8 @@ function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: 
     case 'user': {
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
-      return userView(item) === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
+      const view = userView(item)
+      return view === 'update' ? <TeamUpdateCard item={item} /> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
     }
     case 'text': return <ReplyMessage item={item} chat={chat} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />

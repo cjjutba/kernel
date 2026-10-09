@@ -11,7 +11,7 @@
 .steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: 13.5px; color: var(--ink); }
 .steps .n { color: var(--muted); font-size: 12px; }
-.steps .open { border: 0; background: transparent; padding: 0 0 0 12px; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.steps .open { border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 .opts { display: flex; flex-direction: column; gap: 6px; }
 .opt { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 11px; border-radius: 7px; border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: 13.5px; text-align: left; }
 .opt:hover { background: var(--surface-3); }
@@ -43,3 +43,23 @@
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
 .plan-inline .plan-copy:hover { background: var(--surface-3); color: var(--ink-2); }
 .plan-open { margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+/* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127) */
+.tucard-wrap { align-self: flex-start; width: 82%; gap: 4px; }
+.tucard-wrap .msg-acts { margin-left: 2px; }
+.tcard.tucard { gap: 0; padding: 0; margin: 0; }
+.tucard-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-bottom: 1px solid var(--card-line); font-size: 12.5px; }
+.tucard .tucard-title { display: block; margin: 0; color: var(--ink-2); font-size: inherit; font-weight: 500; }
+.tucard-row { display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; }
+.tucard-row + .tucard-row, .tucard-section + .tucard-section { border-top: 1px solid var(--card-line); }
+.tucard-line { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+.tucard-name { flex-shrink: 0; color: var(--ink); font-weight: 500; }
+.tucard-task { flex: 1; min-width: 0; color: var(--ink-2); }
+.tucard-open { flex-shrink: 0; border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
+.tucard-open:hover { color: var(--ink); }
+.tucard-events { margin: 0; font-size: 13px; line-height: 1.5; }
+.tucard-quote { margin: 4px 0 0; padding: 0 0 0 10px; border-left: 1px solid var(--line-3); color: var(--ink-3); font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tucard-quote[data-clamped='true'] { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin-left: 11px; padding: 0; color: var(--muted); font-size: 12px; }
+.tucard-toggle:hover { color: var(--ink-2); }
+.tucard-from { padding: 10px 14px 0; font-size: 12px; color: var(--muted); }
+.tucard-omitted { padding: 8px 14px 10px; border-top: 1px solid var(--card-line); font-size: 12px; color: var(--muted); }
