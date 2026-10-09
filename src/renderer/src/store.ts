@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, Room, RoomSettings,
+  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSetupStep, Route, ScriptKind, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -66,6 +66,8 @@ export interface State {
   /** By room id. */
   roomSettings: Record<string, RoomSettings>
   system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null }
+  /** By room id. The Ask Rowan popover's draft and last question, kept while it is closed. */
+  quickAsk: Record<string, QuickAskState>
   ui: UiState
 }
 
@@ -91,6 +93,7 @@ let state: State = {
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
+  quickAsk: {},
   ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
@@ -221,6 +224,12 @@ export const actions = {
       return { retry: next }
     })
   },
+  quickAsk: {
+    setDraft: (roomId: string, draft: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft } } })),
+    /** The question sent. Clears the draft, which is what was just asked. */
+    setAsked: (roomId: string, asked: NonNullable<QuickAskState['asked']>) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: '', asked } } })),
+    clearAsked: (roomId: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: s.quickAsk[roomId]?.draft ?? '' } } }))
+  },
   approvals: {
     set: (list: Approval[]) => setState({ approvals: byRecent(list) }),
     upsert: (a: Approval) => setState((s) => ({ approvals: byRecent(upsert(s.approvals, a)) }))
@@ -348,8 +357,8 @@ function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
-function applyFixture(ui: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } } }))
+function applyFixture({ quickAsk, ...ui }: ForcedUi, push: PushEvent[]) {
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } }, quickAsk: quickAsk ?? s.quickAsk }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)
