@@ -14,8 +14,10 @@ describe('isKernelUpdate (KERNEL-112)', () => {
     expect(isKernelUpdate(user('Team update from Kernel, not from the user.', { from: 'kernel', update }))).toBe(true)
   })
 
-  it('is true for an older unmarked item that starts with the legacy header', () => {
-    expect(isKernelUpdate(user(`${LEGACY_UPDATE_HEADER}\n- Kai · Remove the Try section (workspace w1): PR #108 is ready to merge`))).toBe(true)
+  it("is true for an older item that starts with the legacy header, also once Retry sent it again as Kernel's", () => {
+    const legacy = `${LEGACY_UPDATE_HEADER}\n- Kai · Remove the Try section (workspace w1): PR #108 is ready to merge`
+    expect(isKernelUpdate(user(legacy))).toBe(true)
+    expect(isKernelUpdate(user(legacy, { from: 'kernel' }))).toBe(true)
   })
 
   it('is false for a message the user typed', () => {
