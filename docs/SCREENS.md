@@ -127,3 +127,5 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | SettingsRoom | Room · Client A | [png](../design/screens/SettingsRoom.png) | [dc.html](../design/canvas/project/SettingsRoom.dc.html) | KERNEL-26 | Platform | settings/room + roomId | `screens/settings/pages/Room.tsx` | done |
 | HomeLight | Home · light | [png](../design/screens/HomeLight.png) | [dc.html](../design/canvas/project/HomeLight.dc.html) | KERNEL-29 | Platform | home, theme light | `tokens.css` | done |
 | WorkspaceLight | Workspace · light | [png](../design/screens/WorkspaceLight.png) | [dc.html](../design/canvas/project/WorkspaceLight.dc.html) | KERNEL-29 | Platform | workspace, theme light | `tokens.css` | done |
+
+Fixtures without a canvas PNG, for screens the canvas doesn't draw: `WorkspaceLeadPlan` (Rowan's plan on the main checkout) and `WorkspaceLeadUpdate` (Kernel's Team update card in Rowan's chat, KERNEL-127, D-128). They are listed in `noCanvas` in `test/fixtures.test.ts`.

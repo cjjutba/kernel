@@ -1,4 +1,4 @@
-import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, Workspace } from '@shared/types'
+import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
 
@@ -137,6 +137,41 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
     approvals: extra.approvals && [{ ...extra.approvals[0], workspaceId: id, chatId }, ...extra.approvals.slice(1)],
     ui: { route: { name: 'workspace', workspaceId: id } }
   }
+}
+
+/** Two team updates in Rowan's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
+const leadUpdate = (f: Fixture): Partial<Fixture> => {
+  const header = 'Team update from Kernel, not from the user.'
+  const kai: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'kai', name: 'Kai', task: 'Remove the Try section from the sidebar', prNumber: 108,
+    events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Passed checks, no conflicts. Nobody has reviewed it yet', actionable: true }],
+    reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the rooms plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/samrivera/client-a/pull/108'
+  }
+  const theo: TeamUpdateRow = {
+    workspaceId: 'ws-review-108', agentId: 'theo', name: 'Theo', task: 'Review PR #108',
+    events: [{ kind: 'review', text: 'Approved PR #108', actionable: true }],
+    reply: 'The Try rows are gone and nothing else in the sidebar moved. Connect a repo and Open a folder are still reachable from the rooms plus menu. No blockers.'
+  }
+  const update = (id: string, m: number, row: TeamUpdateRow, todo: string): ChatItem => ({
+    kind: 'user', id, ts: at(10, m), from: 'kernel', update: { rows: [row] },
+    parts: [{ type: 'text', text: [header, '', `${row.name} (${row.agentId}) · ${row.task} · workspace ${row.workspaceId}`, ...row.events.map((e) => `- ${e.text}.`), '', 'To do:', `- ${todo}`].join('\n') }]
+  })
+  const done = (id: string, m: number): ChatItem => ({ kind: 'result', id, ts: at(10, m), durationMs: 9_000, ok: true })
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Remove the Try section', [
+    userMsg('lu1', 'Remove the Try section from the sidebar, and have Theo review it before I merge.'),
+    { kind: 'text', id: 'lu1-r', ts: at(10, 28), text: 'Kai has it. Once its checks pass, Theo reviews the PR.' },
+    done('lu1-res', 28),
+    update('lu2', 41, kai, 'PR #108 needs a review. Theo (theo) reviews on this team: call create_workspace with agent "theo" and review_of "ws-invoice-table".'),
+    { kind: 'text', id: 'lu2-r', ts: at(10, 41), text: "Kai's PR #108 passed checks. Theo is reviewing it." },
+    done('lu2-res', 41),
+    update('lu3', 49, theo, 'PR #108 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.'),
+    { kind: 'text', id: 'lu3-r', ts: at(10, 49), text: 'Theo approved PR #108. It is ready for you to merge.' },
+    done('lu3-res', 49)
+  ], {}, { model: 'claude-opus-5-5' })
+  const review: Workspace = { id: 'ws-review-108', roomId: ids.roomA, name: 'review-pr-108', title: 'Review PR #108', branch: 'feat/t-14-invoice-table-review', baseRef: 'feat/t-14-invoice-table', path: '/Users/you/kernel/worktrees/client-a/review-pr-108', mode: 'worktree', agentId: 'theo', port: 4316, status: 'ready', prState: 'none', reviewOf: ids.table, createdAt: at(10, 42) }
+  // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+  const { approvals: _none, ...rest } = s
+  return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
 }
 
 /** Rowan's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
@@ -304,6 +339,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The canvas draws Rowan's plan in a worktree called export-invoices-as-pdf. WorkspaceLeadPlan keeps the Lead's real workspace, on the main checkout.
   WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree' })),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
+  // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
+  WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   WorkspaceHire: scene((f) => ({
     ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
       userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
