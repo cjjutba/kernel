@@ -3,7 +3,9 @@ import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { openRoom } from '../../../lead'
+import { archivedByHand } from '../byHand'
 import './pr.css'
 
 const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
@@ -49,8 +51,20 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
     return () => { live = false }
   }, [id, ws.prNumber])
 
-  // Archive goes through the archive confirmation; once the workspace is archived, it lives in History.
-  useEffect(() => { if (ws.status === 'archived') go({ name: 'history' }) }, [ws.status])
+  // Archive goes through the archive confirmation; once the workspace is archived, it lives in History. A review Kernel
+  // archived on its own while on screen, after its work merged, opens the Lead's chat instead, with a toast (KERNEL-132).
+  const reviewed = useStore((s) => (ws.reviewOf ? s.workspaces.find((w) => w.id === ws.reviewOf) : undefined))
+  const reviewer = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name)
+  const last = useRef({ id, status: ws.status })
+  useEffect(() => {
+    const before = last.current
+    last.current = { id, status: ws.status }
+    if (ws.status !== 'archived') return
+    const next = afterArchive(ws, reviewed, reviewer, { seen: before.id === id && before.status !== 'archived', byHand: archivedByHand(id) })
+    if (next.to === 'history') { go({ name: 'history' }); return }
+    actions.ui.toast(next.toast)
+    void openRoom(ws.roomId)
+  }, [id, ws.status])
 
   // ⌘⇧P creates the PR, as the menu says.
   const canCreate = ws.prState === 'none' && changed && !busy

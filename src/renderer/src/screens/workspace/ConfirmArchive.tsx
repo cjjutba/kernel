@@ -3,6 +3,7 @@ import type { WorkspaceGitStatus } from '@shared/types'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, ConfirmDialog, useBusy } from '../../ui'
+import { archiveByHand } from './byHand'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -34,7 +35,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
     setError(null)
     try {
       // Archive anyway keeps the branch: it holds the only copy of the unpushed commits. Main refuses to delete it too.
-      await call('workspaces.archive', { workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
+      await archiveByHand({ workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
       actions.ui.closeModal()
       actions.ui.toast({ title: push ? `Pushed ${plural(unpushed, 'commit')} and archived ${ws.name}.` : unpushed ? 'Archived without pushing. The commits are on the local branch.' : `Archived ${ws.name}.` })
     } catch (e) { setError(clean(e)) }

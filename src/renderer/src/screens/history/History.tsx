@@ -4,6 +4,7 @@ import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, Pill, useBusy } from '../../ui'
 import { archivedList, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
+import { restoredFromHistory } from '../workspace/byHand'
 import './history.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -29,6 +30,7 @@ export function History() {
   const restore = (w: Workspace) => run(w.id, async () => {
     try {
       const back = await call('workspaces.restore', { workspaceId: w.id })
+      restoredFromHistory(w.id)
       actions.workspaces.upsert(back)
       actions.ui.toast({ title: `Restored ${w.name}`, sub: `Back on ${w.branch}` })
       go({ name: 'workspace', workspaceId: w.id })
