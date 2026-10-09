@@ -177,7 +177,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       {panels && (
         <aside ref={aside} aria-label="Workspace panels" className="ws-aside" style={panelWidth === null ? undefined : { width: `max(${PANEL_MIN}px, min(${panelWidth}px, 100cqw - ${CHAT_MIN}px))` }}>
           <ResizeHandle
-            targetRef={aside} edge="left" label="Resize panel" width={panelWidth === null ? panelDefault() : Math.min(panelWidth, panelLimit())} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault()}
+            targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head"><PrHeader ws={ws} spread /></div>

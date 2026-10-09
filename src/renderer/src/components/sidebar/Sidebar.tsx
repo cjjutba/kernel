@@ -178,6 +178,7 @@ const PANEL_MIN = 520
 
 /** The widest the sidebar can be in this window. It never drops below the minimum, since narrow windows fold the sidebar anyway (D-080). */
 const widthLimit = () => Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - PANEL_MIN))
+const sidebarDefault = () => SIDEBAR_DEFAULT
 const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDEBAR_DEFAULT
 
 export function Sidebar() {
@@ -245,7 +246,7 @@ export function Sidebar() {
         <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
       </div>
       <ResizeHandle
-        targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={widthLimit} defaultWidth={SIDEBAR_DEFAULT}
+        targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={widthLimit} defaultWidth={sidebarDefault}
         storageKey={SIDEBAR_KEY} hideBelow={HIDE_BELOW} onHide={() => actions.ui.setSidebar(false)} onCommit={(w) => setSaved(w ?? SIDEBAR_DEFAULT)}
       />
     </nav>

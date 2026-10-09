@@ -31,8 +31,8 @@ interface Props {
   min: number
   /** The widest the target can be in this window, read when a drag or key needs it. Never below `min`. */
   limit: () => number
-  /** What a reset goes back to, and the width at which nothing is stored. */
-  defaultWidth: number
+  /** What a reset goes back to, and the width at which nothing is stored. Read when needed, since a default that follows the window changes with it. */
+  defaultWidth: () => number
   storageKey: string
   /** Letting go below this hides the target and keeps the saved width. */
   hideBelow: number
@@ -64,11 +64,11 @@ export function ResizeHandle({ targetRef, edge, label, width, min, limit, defaul
     handle.current?.setAttribute('aria-valuenow', String(Math.round(d.startWidth)))
   }
   const commit = (w: number) => {
-    const chosen = w === defaultWidth ? null : w
+    const chosen = w === defaultWidth() ? null : w
     keepWidth(storageKey, chosen)
     onCommit(chosen)
   }
-  const reset = () => commit(defaultWidth)
+  const reset = () => commit(defaultWidth())
 
   /** Puts the body back the way it was, and the handle with it. */
   const end = () => {
@@ -118,7 +118,9 @@ export function ResizeHandle({ targetRef, edge, label, width, min, limit, defaul
     const step = e.shiftKey ? BIG_STEP : STEP
     const grow = edge === 'right' ? 'ArrowRight' : 'ArrowLeft'
     const shrink = edge === 'right' ? 'ArrowLeft' : 'ArrowRight'
-    const next = e.key === shrink ? width - step : e.key === grow ? width + step : e.key === 'Home' ? min : e.key === 'End' ? limit() : null
+    // Steps start from the width on screen. The `width` prop is as of the last render, which a window resize can leave behind.
+    const now = Math.round(targetRef.current?.getBoundingClientRect().width ?? width)
+    const next = e.key === shrink ? now - step : e.key === grow ? now + step : e.key === 'Home' ? min : e.key === 'End' ? limit() : null
     if (next === null) return
     e.preventDefault()
     commit(clamp(next))
@@ -128,8 +130,11 @@ export function ResizeHandle({ targetRef, edge, label, width, min, limit, defaul
     <div
       ref={handle} className="resize-handle nodrag" data-edge={edge} role="separator" aria-orientation="vertical" aria-label={label}
       aria-valuemin={min} aria-valuemax={Math.max(min, limit())} aria-valuenow={width} tabIndex={0}
-      // The room can change without this rendering (the window, the sidebar), so the maximum is read again as the handle gets focus.
-      onFocus={(e) => e.currentTarget.setAttribute('aria-valuemax', String(Math.max(min, limit())))}
+      // The room and the width can change without this rendering (the window, the sidebar), so both are read again as the handle gets focus.
+      onFocus={(e) => {
+        e.currentTarget.setAttribute('aria-valuemax', String(Math.max(min, limit())))
+        e.currentTarget.setAttribute('aria-valuenow', String(Math.round(targetRef.current?.getBoundingClientRect().width ?? width)))
+      }}
       onPointerDown={start} onPointerMove={move} onPointerUp={finish} onPointerCancel={cancel} onLostPointerCapture={cancel}
       onDoubleClick={reset} onKeyDown={key}
     />
