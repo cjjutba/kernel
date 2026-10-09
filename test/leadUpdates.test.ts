@@ -439,6 +439,36 @@ describe('waiting updates (KERNEL-121)', () => {
   })
 })
 
+describe('Stop on the Lead (KERNEL-122)', () => {
+  it("holds a stopped Lead chat's updates through the wait and the poll, until its next turn ends normally", async () => {
+    const { u, s, pr, lead, lc } = await setup()
+    s.accept = false
+    pr('w1', 'cifail')
+    await wait()
+    s.accept = true
+    // The user stops Rowan: no Kernel turn may follow.
+    u.turnDone(lead, lc, { ...done, lead: true, interrupted: true })
+    expect(s.posts).toEqual([])
+    pr('w1', 'conflict')
+    await wait()
+    u.flushAll()
+    expect(s.posts).toEqual([])
+    // The user's next message ends normally, and the held update goes out.
+    u.turnDone(lead, lc, { ...done, lead: true, by: 'user' })
+    expect(parts(s.posts.pop()!).todo).toEqual(['- Ask Noor to resolve the conflicts on PR #54 with message_agent (workspace w1).'])
+  })
+
+  it("doesn't hold another Lead chat's updates", async () => {
+    const { store, u, s, pr, own, lead } = await setup()
+    own('w2', 'lc2')
+    u.turnDone(lead, store.chat('lc')!, { ...done, lead: true, interrupted: true })
+    pr('w1', 'cifail')
+    pr('w2', 'cifail', 60)
+    await wait()
+    expect(s.to).toEqual(['lc2'])
+  })
+})
+
 describe('capText', () => {
   it('leaves a short text alone, keeping its paragraphs', () => {
     expect(capText('  One.\n\n\n\nTwo.  ', 50)).toBe('One.\n\nTwo.')

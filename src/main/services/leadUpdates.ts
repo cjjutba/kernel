@@ -180,6 +180,11 @@ export class LeadUpdates {
   private timers = new Map<string, NodeJS.Timeout>()
   /** The last PR state seen per workspace, to tell "opened" from a later change. */
   private prev = new Map<string, PrState>()
+  /**
+   * Lead chats the user stopped. Stop means stop: their updates wait for the chat's next turn that ends normally,
+   * usually the user's next message, instead of starting a Kernel turn right after the Stop (KERNEL-122).
+   */
+  private stopped = new Set<string>()
   private seq = 0
   private off: () => void = () => undefined
 
@@ -198,9 +203,17 @@ export class LeadUpdates {
     this.timers.clear()
   }
 
-  /** A turn ended. A teammate's finished turn is news for the Lead; the end of the Lead's own turn is a chance to deliver. */
+  /**
+   * A turn ended. A teammate's finished turn is news for the Lead; the end of the Lead's own turn is a chance to deliver,
+   * unless the user stopped it.
+   */
   turnDone(ws: Workspace, chat: Chat, t: TurnDone) {
-    if (t.lead || this.d.isLead(ws)) { this.flush(ws.roomId); return }
+    if (t.lead || this.d.isLead(ws)) {
+      if (t.interrupted) { this.stopped.add(chat.id); return }
+      this.stopped.delete(chat.id)
+      this.flush(ws.roomId)
+      return
+    }
     if (t.interrupted || t.queued) return
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
@@ -268,7 +281,7 @@ export class LeadUpdates {
       byChat.set(t.chat.id, group)
     }
     for (const g of byChat.values()) {
-      if (!g.quiet) continue
+      if (!g.quiet || this.stopped.has(g.chat.id)) continue
       const message = this.compose(roomId, g.sources)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
       if (!message) { for (const key of g.keys) this.pending.delete(key); continue }
