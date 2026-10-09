@@ -1005,9 +1005,16 @@ export class Kernel {
     return back
   }
 
-  /** A quick question to the room's Lead. The answer arrives in the Lead's chat like any turn; the popover reads it from there. */
+  /**
+   * A quick question to the room's Lead. Each one gets its own Lead chat tab, so it never queues behind whatever the first tab
+   * is doing (KERNEL-145). The answer arrives there like any turn; the popover reads it from there.
+   */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.leadChat(roomId)
+    const { lead, ws } = await this.leadWorkspace(roomId)
+    const flat = text.trim().replace(/\s+/g, ' ')
+    const title = flat.length > 40 ? `${flat.slice(0, 39).trimEnd()}…` : flat || NEW_CHAT
+    const chat = this.saveChat(this.newChat(ws.id, title, { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: false }))
+    // Resets nothing unless every other Lead chat is closed and this one now gets their updates (D-131).
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'text', text }])
     return { chatId: chat.id }
@@ -1223,6 +1230,12 @@ export class Kernel {
 
   /** The Lead lives in a room-level workspace on the main checkout. Floor briefs go there. */
   async leadChat(roomId: string): Promise<Chat> {
+    const { lead, ws } = await this.leadWorkspace(roomId)
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+  }
+
+  /** The room's Lead and its workspace, made on first use. */
+  private async leadWorkspace(roomId: string): Promise<{ lead: AgentDef; ws: Workspace }> {
     const agents = await this.agents(roomId)
     const lead = agents.find((a) => a.lead)
     if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
@@ -1231,7 +1244,7 @@ export class Kernel {
       const room = this.mustRoom(roomId)
       ws = this.saveWs({ id: newId(), roomId, name: 'lead', branch: await currentBranch(room.path), baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port: await freePort(4300), status: 'ready', prState: 'none', createdAt: Date.now() })
     }
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return { lead, ws }
   }
 
   private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
