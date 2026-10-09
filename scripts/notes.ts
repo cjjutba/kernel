@@ -149,7 +149,7 @@ export function buildRelease(version: string, date: string, c: Collected): Relea
 export interface Compiled { file: string; release: Release; collected: Collected; moved: string }
 
 /**
- * `npm run release:notes -- <version>`: writes site/content/releases/<version>.md and moves the fragments to
+ * `pnpm release:notes <version>`: writes site/content/releases/<version>.md and moves the fragments to
  * .changes/released/<version>/. Refuses an existing file, a version that isn't above package.json, and a release
  * with nothing to publish.
  */

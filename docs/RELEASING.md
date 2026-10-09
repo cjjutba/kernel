@@ -38,33 +38,33 @@ A release compiles the fragments into `site/content/releases/<version>.md` and m
 
 Run `/release` in Claude Code. It does the steps below, stops for you where a person decides, and checks the result. By hand:
 
-1. On an up-to-date, clean `main` with green CI, run `npm run release:notes -- --preview`. It prints the unreleased notes and suggests the version: minor if anything is new, otherwise patch.
+1. On an up-to-date, clean `main` with green CI, run `pnpm release:notes --preview`. It prints the unreleased notes and suggests the version: minor if anything is new, otherwise patch.
 2. Make the release PR:
 
    ```sh
    git checkout -b release/<version>
-   npm run release:notes -- <version>
-   npm version <version> --no-git-tag-version
+   pnpm release:notes <version>
+   pnpm version <version> --no-git-tag-version --no-git-checks
    ```
 
-   For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check.
+   `pnpm version` changes only `package.json`. It needs `--no-git-checks` because the new release file isn't committed yet. For a minor version, replace `TITLE: write me` in `site/content/releases/<version>.md` with a title, and add an `intro:` line if you like. The site build and the release script both refuse the placeholder. Open the PR as `chore(release): <version>`. Release branches skip the Release note check.
 3. After it merges, tag the merge commit and publish:
 
    ```sh
    git checkout main && git pull --ff-only
    git tag -a v<version> -m "Kernel <version>" && git push origin v<version>
-   npm run release
+   pnpm release
    ```
 
    The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
 
-`npm run release -- --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `npm run dist:mac` makes an unsigned local build with no certificate needed.
+`pnpm release --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 
 When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`.
 
 ## When notarization is slow
 
-Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `npm run release` again on the same tag.
+Notarization usually takes a few minutes, and Apple sometimes takes an hour or more. Keep the Mac awake and on power while it runs. `/release` starts the script under `caffeinate -i` for this. Nothing goes to GitHub Releases until notarization passes. The website is ahead, though: merging the release PR already deployed the changelog entry and the hero pill, while the download link still serves the previous version. So finish a stopped or failed run soon. Check `xcrun notarytool history --keychain-profile kernel-notary`, then run `pnpm release` again on the same tag.
 
 ## When a release is broken
 

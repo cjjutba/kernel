@@ -61,5 +61,5 @@ Run the check locally with `node scripts/release-note-check.ts`.
 
 `/release` in Claude Code runs the whole routine, and `docs/RELEASING.md` describes it. The pieces:
 
-- `npm run release:notes -- --preview` prints the unreleased notes by type and suggests the version: minor if anything is new, otherwise patch. It changes nothing.
-- `npm run release:notes -- <version>` writes `site/content/releases/<version>.md` (New, Improved, Fixed, with PR numbers) and moves the notes to `.changes/released/<version>/`.
+- `pnpm release:notes --preview` prints the unreleased notes by type and suggests the version: minor if anything is new, otherwise patch. It changes nothing.
+- `pnpm release:notes <version>` writes `site/content/releases/<version>.md` (New, Improved, Fixed, with PR numbers) and moves the notes to `.changes/released/<version>/`.

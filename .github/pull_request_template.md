@@ -8,6 +8,6 @@ Release note: <!-- the sentence from your .changes/unreleased/ fragment, or "int
 
 ## Checked
 
-- [ ] `npm test`
-- [ ] `npm run typecheck`
+- [ ] `pnpm test`
+- [ ] `pnpm typecheck`
 - [ ] Screens compared with their PNGs (if UI changed)

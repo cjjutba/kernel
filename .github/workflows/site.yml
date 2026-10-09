@@ -24,18 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The version comes from packageManager in site/package.json.
+      - uses: pnpm/action-setup@v6
+        with:
+          package_json_file: site/package.json
+
       - uses: actions/setup-node@v7
         with:
           node-version-file: site/.nvmrc
-          cache: npm
-          cache-dependency-path: site/package-lock.json
+          cache: pnpm
+          cache-dependency-path: site/pnpm-lock.yaml
 
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
 
-      - run: npm run build
+      - run: pnpm build
         env:
           # Read-only token for the star count, so the build isn't rate limited.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,15 +50,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('site/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('site/pnpm-lock.yaml') }}
 
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: pnpm exec playwright install-deps chromium
 
       # End to end, axe, the visual comparison with the design renders, and the JS budget.
-      - run: npm run test:e2e
+      - run: pnpm test:e2e
 
       - name: Upload the Playwright report
         if: failure()

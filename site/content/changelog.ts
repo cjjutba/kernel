@@ -4,7 +4,7 @@ import { Changelog } from '@/lib/schema'
 import { upNext } from './upNext'
 
 // Each release is a file in content/releases, compiled from the repo's .changes fragments by
-// `npm run release:notes` (see .changes/README.md). Entries are newest first; the first gets the Latest badge.
+// `pnpm release:notes` (see .changes/README.md). Entries are newest first; the first gets the Latest badge.
 // Everything is parsed at build time, so a malformed file fails the build.
 const releases = loadReleases(join(process.cwd(), 'content', 'releases'))
 

@@ -69,11 +69,11 @@ You need Node 22 or later and the Xcode command line tools.
 ```sh
 git clone https://github.com/cjjutba/kernel.git
 cd kernel
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
-`npm install` also rebuilds the native modules for Electron. `npm run dist:mac` builds an unsigned app into `dist/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and pull requests, and [docs/RELEASING.md](docs/RELEASING.md) for signed releases.
+`pnpm install` also rebuilds the native modules for Electron. `pnpm dist:mac` builds an unsigned app into `dist/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for tests and pull requests, and [docs/RELEASING.md](docs/RELEASING.md) for signed releases.
 
 ## How Kernel was built
 
