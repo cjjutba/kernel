@@ -66,7 +66,7 @@ When the queue is empty, print the status lines for the whole run and say that K
 
 Stop the whole run and report. Never skip to the next issue. Stop when:
 
-- `npm test`, `npm run typecheck` or `npm run build` still fails after two fix attempts (the worker returns `FAILED`)
+- `pnpm test`, `pnpm typecheck` or `pnpm build` still fails after two fix attempts (the worker returns `FAILED`)
 - a merge conflicts or `gh pr merge` fails
 - theo's blockers survive two fix rounds, or the third round allowed for a single blocker with a concrete fix (the stop report lists each one with file and line)
 - an issue needs a decision from CJ (the worker returns `NEEDS_DECISION`)
@@ -87,7 +87,7 @@ The coordinator has already checked out an up to date `main`.
 2. Open every PNG listed under Screens, and the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value. Read `DESIGN.md`, and `docs/DECISIONS.md` before changing anything deliberate. Read `docs/PRODUCT.md` if you haven't.
 3. Plan, then post the plan as a Linear comment on the issue that starts with `Plan`. Don't wait for approval. List the files you'll touch, any shared contract change, the tests and fixtures you'll add, and any judgment call you're making.
 4. Implement. Stay inside the files listed under Owns. A change to a shared contract (`src/shared/*`, `store.ts`, `App.tsx`) goes in its own first commit and gets called out in the PR. Add tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for every screen the issue builds.
-5. Verify, in this order: `npm test`, `npm run typecheck`, `npm run build`, then `npm run shots -- <Screen> ...` and `npm run shots:compare -- <Screen> ...` for every listed screen. Open each `shots/compare/<Screen>.png` and fix differences a person would notice.
+5. Verify, in this order: `pnpm test`, `pnpm typecheck`, `pnpm build`, then `pnpm shots <Screen> ...` and `pnpm shots:compare <Screen> ...` for every listed screen. Open each `shots/compare/<Screen>.png` and fix differences a person would notice.
 6. Set the issue's rows in `docs/SCREENS.md` to `done` and fill the Route and Component columns where they apply. Add a `docs/DECISIONS.md` entry for any new deliberate choice. Add a release-note fragment for the issue in `.changes/unreleased/` (with `issue: KERNEL-N`), following the rules in `.changes/README.md`. The Release note check fails the PR without one.
 7. Commit with Conventional Commits, scoped to the lane, ending the subject with the issue: `feat(workspace): composer chips and queue (KERNEL-11)`. Push with `git push -u origin <branch>`.
 8. Open the PR with `gh pr create`. The body references KERNEL-N and lists the acceptance criteria with a check or a cross each, what changed, any shared contract commit, the screens compared, the release note's sentence, and the results of the four commands. Note any place the PNG and DESIGN.md disagreed and which one you followed.
@@ -100,7 +100,7 @@ You get a PR number and theo's blockers. Check out the PR's branch, fix every bl
 
 ### Fix attempts
 
-If `npm test`, `npm run typecheck` or `npm run build` fails, you get two fix attempts: fix, rerun, and if it still fails, fix and rerun once more. If it fails a third time, stop and return `FAILED` with the command and the last lines of its error. Don't disable, skip or loosen tests to get green.
+If `pnpm test`, `pnpm typecheck` or `pnpm build` fails, you get two fix attempts: fix, rerun, and if it still fails, fix and rerun once more. If it fails a third time, stop and return `FAILED` with the command and the last lines of its error. Don't disable, skip or loosen tests to get green.
 
 ### When to stop instead of guessing
 
@@ -115,7 +115,7 @@ Return `OUTSIDE_REPO` when finishing the issue would touch anything outside this
 - Don't edit `.claude/settings.json` or `.claude/hooks/`.
 - Keep temp files inside the repo under `shots/` (gitignored). Edits outside the repo are blocked.
 - Write commit messages and PR bodies to a file under `shots/` and pass it with `git commit -F` and `gh pr create --body-file`. The guard checks the whole command text, so a body that quotes a blocked path or setting inline gets the command denied.
-- If you start a dev server, start it detached (`nohup npm run dev > shots/dev.log 2>&1 &`) and stop it before you return.
+- If you start a dev server, start it detached (`nohup pnpm dev > shots/dev.log 2>&1 &`) and stop it before you return.
 - Give long commands an explicit timeout, up to 600000 ms.
 
 ### Result block
@@ -132,7 +132,7 @@ DETAIL: only for FAILED, NEEDS_DECISION and OUTSIDE_REPO. The failing command an
 
 ## Guardrails
 
-`.claude/settings.json` allows the routine commands so a run doesn't stall on a prompt: `npm`, `npx`, `node`, `git`, `gh pr` and the Linear MCP tools. It denies force pushes, pushes to `main`, `gh repo delete`, `gh repo edit`, edits to `~/.claude/settings.json`, the `KERNEL_LIVE` test, and `rm -rf` on absolute, home or parent paths.
+`.claude/settings.json` allows the routine commands so a run doesn't stall on a prompt: `pnpm`, `node`, `git`, `gh pr` and the Linear MCP tools. It denies force pushes, pushes to `main`, `gh repo delete`, `gh repo edit`, edits to `~/.claude/settings.json`, the `KERNEL_LIVE` test, and `rm -rf` on absolute, home or parent paths.
 
 Permission rules can't say "outside this repo" or catch every spelling of a force push, so `.claude/hooks/guard.mjs` runs before every Bash, Edit and Write call and denies:
 

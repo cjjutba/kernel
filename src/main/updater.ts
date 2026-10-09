@@ -120,7 +120,7 @@ const clean = (s: string) => s.replace(/\*\*/g, '').replace(/\s*\(#\d+(?:,\s*#\d
  * Release notes to What's new items. Each `###` heading (or `<h3>`, since the GitHub feed sends HTML) is a title,
  * and the text under it until the next heading is the body. Each list item starts a new line of the body, and
  * paragraph text joins the line it follows. Text before the first heading is dropped. The notes come from
- * `npm run release:notes -- --app` (scripts/notes.ts, D-058).
+ * `pnpm release:notes --app` (scripts/notes.ts, D-058).
  */
 export function parseNotes(raw: UpdateInfo['releaseNotes']): Note[] {
   if (!raw) return []

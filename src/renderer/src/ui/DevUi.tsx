@@ -44,7 +44,7 @@ function Controls() {
       <Section title="Meter, code, kbd, avatar, spinner, skeleton">
         <div className="col" style={{ gap: 10 }}>
           <div className="col" style={{ gap: 6 }}><Meter label="Session, 40%" value={0.4} /><Meter label="Weekly, 85%" value={0.85} /><Meter label="Session, 100%" value={1} /></div>
-          <CodeBlock>{'npm run shots -- Home'}</CodeBlock>
+          <CodeBlock>{'pnpm shots Home'}</CodeBlock>
           <div className="devui-row"><Kbd>⌘K</Kbd><Kbd>⇧⌘N</Kbd><Avatar name="Client A" /><Avatar name="Rowan" size={28} solid /><Spinner /><Skeleton width={120} /></div>
         </div>
       </Section>

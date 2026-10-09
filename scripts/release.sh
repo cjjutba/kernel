@@ -2,8 +2,8 @@
 # Builds, signs, notarizes, verifies and then publishes a Kernel release from the v<version> tag on HEAD (KERNEL-30).
 # One-time setup and the full routine (fragments, /release) are in docs/RELEASING.md.
 #
-#   npm run release           publish to GitHub Releases on cjjutba/kernel
-#   npm run release -- --dry  build, sign, notarize and verify, but don't publish
+#   pnpm release        publish to GitHub Releases on cjjutba/kernel
+#   pnpm release --dry  build, sign, notarize and verify, but don't publish
 #
 # The notes come from site/content/releases/<version>.md, compiled in the release PR (D-058). The same file becomes
 # What's new (through latest-mac.yml) and the GitHub release body.
@@ -11,6 +11,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 dry=false
+# pnpm passes a `--` through (`pnpm release -- --dry`). Left in, it would turn a dry run into a real release.
+[[ "${1:-}" == "--" ]] && shift
 [[ "${1:-}" == "--dry" ]] && dry=true
 
 version=$(node -p "require('./package.json').version")
@@ -23,7 +25,7 @@ profile="${APPLE_KEYCHAIN_PROFILE:-kernel-notary}"
 fail() { echo "release: $*" >&2; exit 1; }
 
 [[ -z "$(git status --porcelain)" ]] || fail "the working tree has changes. Commit or stash them first."
-[[ -f "$notes" ]] || fail "$notes is missing. Compile it in the release PR first (/release, or npm run release:notes -- $version)."
+[[ -f "$notes" ]] || fail "$notes is missing. Compile it in the release PR first (/release, or pnpm release:notes $version)."
 node scripts/release-notes.ts --check "$version" >/dev/null || fail "$notes is not valid. Fix it in a PR first."
 security find-identity -v -p codesigning | grep -q "$identity" || fail "no \"$identity\" certificate in the keychain."
 xcrun notarytool history --keychain-profile "$profile" >/dev/null 2>&1 || fail "the notarytool profile \"$profile\" is missing or invalid."
@@ -41,11 +43,11 @@ node scripts/release-notes.ts --app "$version" > "$tmp/app-notes.md"
 
 echo "release: building Kernel $version"
 rm -rf dist
-npx electron-vite build
+pnpm exec electron-vite build
 # Other Apple credentials in the shell would win over the keychain profile in electron-builder's notarize step.
 env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_TEAM_ID -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER \
   APPLE_KEYCHAIN_PROFILE="$profile" CSC_IDENTITY_AUTO_DISCOVERY=true \
-  npx electron-builder --mac --publish never -c.releaseInfo.releaseNotesFile="$tmp/app-notes.md"
+  pnpm exec electron-builder --mac --publish never -c.releaseInfo.releaseNotesFile="$tmp/app-notes.md"
 
 # Nothing is published until the app passes. The app is what Gatekeeper checks on first launch, so it carries the
 # notarization ticket; the DMG is only its box.
@@ -60,7 +62,7 @@ ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Kernel" -e '
   const modules = process.argv[1] + "/Contents/Resources/app.asar/node_modules/";
   new (require(modules + "better-sqlite3"))(":memory:").close();
   require(modules + "node-pty");
-' "$PWD/$app" || fail "the packaged app can't load better-sqlite3 or node-pty. Run npm install and release again."
+' "$PWD/$app" || fail "the packaged app can't load better-sqlite3 or node-pty. Run pnpm install and release again."
 
 if $dry; then
   node scripts/release-notes.ts --github "$version" > dist/release-body.md

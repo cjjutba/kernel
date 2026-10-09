@@ -1,5 +1,5 @@
-// npm run release:notes -- --preview      what the next release would say, and the version to use. Changes nothing.
-// npm run release:notes -- <version>      writes site/content/releases/<version>.md and moves the fragments.
+// pnpm release:notes --preview           what the next release would say, and the version to use. Changes nothing.
+// pnpm release:notes <version>           writes site/content/releases/<version>.md and moves the fragments.
 //
 // scripts/release.sh also runs:
 //   --check <version>                       validate the release file
@@ -11,6 +11,8 @@ import { collect, compile, packageVersion, readRelease, renderApp, renderGithub,
 
 const root = join(import.meta.dirname, '..')
 const args = process.argv.slice(2)
+// pnpm passes a `--` through (`pnpm release:notes -- --preview`), so drop it.
+if (args[0] === '--') args.shift()
 const flag = (name: string) => {
   const i = args.indexOf(name)
   return i === -1 ? undefined : args[i + 1]
@@ -57,7 +59,7 @@ try {
     process.stdout.write(renderGithub(readRelease(root, args[1] ?? ''), list ? readFileSync(list, 'utf8') : undefined))
   } else if (args[0] && /^\d/.test(args[0])) release(args[0])
   else {
-    console.error('Usage: npm run release:notes -- --preview | <version>')
+    console.error('Usage: pnpm release:notes --preview | <version>')
     process.exit(2)
   }
 } catch (e) {
