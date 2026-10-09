@@ -50,7 +50,7 @@ Each release is a file in `content/releases/<version>.md`, compiled from the rep
 version: 0.2.0
 date: 2026-11-02
 title: Short headline
-image: /images/floor.png
+image: /images/workspace.png
 imageAlt: What the screenshot shows
 intro: One or two sentences.
 ---

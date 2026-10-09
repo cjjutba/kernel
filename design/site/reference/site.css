@@ -101,10 +101,10 @@ a:focus-visible,label:focus-visible,summary:focus-visible{outline:2px solid rgba
 .tabs-in{display:inline-flex;flex-wrap:wrap;justify-content:center;gap:4px;padding:4px;border:1px solid #1f2024;border-radius:12px;background:#0d0e0f}
 .tabs label{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 16px;border-radius:8px;border:1px solid transparent;font-size:14px;font-weight:500;color:#8a8f98;cursor:pointer;transition:color .15s,background .15s}
 .tabs label:hover{color:#d0d6e0}
-#tour-ws:checked~.tabs label[for=tour-ws],#tour-inbox:checked~.tabs label[for=tour-inbox],#tour-board:checked~.tabs label[for=tour-board],#tour-cp:checked~.tabs label[for=tour-cp]{background:#1c1d21;border-color:#2a2b30;color:#f7f8f8}
-#tour-ws:focus-visible~.tabs label[for=tour-ws],#tour-inbox:focus-visible~.tabs label[for=tour-inbox],#tour-board:focus-visible~.tabs label[for=tour-board],#tour-cp:focus-visible~.tabs label[for=tour-cp]{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+#tour-ws:checked~.tabs label[for=tour-ws],#tour-inbox:checked~.tabs label[for=tour-inbox],#tour-team:checked~.tabs label[for=tour-team],#tour-cp:checked~.tabs label[for=tour-cp]{background:#1c1d21;border-color:#2a2b30;color:#f7f8f8}
+#tour-ws:focus-visible~.tabs label[for=tour-ws],#tour-inbox:focus-visible~.tabs label[for=tour-inbox],#tour-team:focus-visible~.tabs label[for=tour-team],#tour-cp:focus-visible~.tabs label[for=tour-cp]{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
 .panel{display:none}
-#tour-ws:checked~.panels .p-ws,#tour-inbox:checked~.panels .p-inbox,#tour-board:checked~.panels .p-board,#tour-cp:checked~.panels .p-cp{display:block}
+#tour-ws:checked~.panels .p-ws,#tour-inbox:checked~.panels .p-inbox,#tour-team:checked~.panels .p-team,#tour-cp:checked~.panels .p-cp{display:block}
 .panel-line{margin:32px auto;max-width:640px;text-align:center;font-size:16.5px;color:#8a8f98}
 
 /* Details */

@@ -52,10 +52,10 @@ export function InboxIcon({ size = 15, className }: IconProps) {
   )
 }
 
-export function BoardIcon({ size = 15, className }: IconProps) {
+export function TeamIcon({ size = 15, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" {...stroke} strokeWidth={1.4} className={className}>
-      <path d="M2.2 4.6a1.8 1.8 0 0 1 1.8-1.8h8a1.8 1.8 0 0 1 1.8 1.8v6.8a1.8 1.8 0 0 1-1.8 1.8H4a1.8 1.8 0 0 1-1.8-1.8ZM6.1 2.8v10.4M9.9 2.8v10.4" />
+      <path d="M8 5.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM2 13c.4-2 2-3 4-3s3.6 1 4 3M11 3.9a1.8 1.8 0 1 1 0 3.6M12 10.2c1.2.4 1.9 1.4 2 2.8" />
     </svg>
   )
 }
