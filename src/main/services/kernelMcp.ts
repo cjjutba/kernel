@@ -61,14 +61,14 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
 const CLOSED_PR = new Set<PrState>(['none', 'merged', 'closed'])
 
 /**
- * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces on the floor:
+ * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces:
  * Rowan proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
     name: 'kernel',
     version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one agent with create_workspace in the same turn. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
+    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn, and follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
     // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
     // so the hand-off doesn't depend on it.
     alwaysLoad: true,
@@ -146,7 +146,7 @@ export function kernelTools(d: KernelToolDeps) {
       // Nothing went out: say why, as an error, so the Lead doesn't report it as done (KERNEL-118).
       if (!r.ok) return { ...text(r.note), isError: true }
       const ws = d.workspaces().find((w) => w.id === workspace_id)
-      // The speaker walks to the listener's desk and says the first line (KERNEL-24), once the message has gone out.
+      // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
       if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
       const from = ws?.leadChatId && d.chatId && ws.leadChatId !== d.chatId ? d.chatTitle?.(ws.leadChatId) : undefined

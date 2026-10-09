@@ -327,6 +327,8 @@ describe('Approve and hand off (KERNEL-67)', () => {
     expect(lead.append).toContain(rowan.prompt)
     expect(lead.append).toContain(LEAD_RULE)
     expect(LEAD_RULE).toContain('mcp__kernel__create_workspace')
+    // KERNEL-129: what the rule asks of the Lead beyond the hand-off.
+    for (const part of ['Never hand a task to yourself', 'Team update from Kernel', 'Never leave a teammate waiting', 'mcp__kernel__ask_user', 'pass on the details', 'tell the user it is ready to merge', 'Call teammates by name, not he or she', 'one or two short lines', 'Leave workspace ids out', 'tell the user what is stuck']) expect(LEAD_RULE).toContain(part)
     const builder = (await setup('acceptEdits', { agent: noor })).options.systemPrompt as { append: string }
     expect(builder.append).not.toContain(LEAD_RULE)
   })

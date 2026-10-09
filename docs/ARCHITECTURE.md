@@ -32,7 +32,7 @@ Requests go the other way: screens call `call(channel, req)`, the preload forwar
 - `canUseTool` routing whatever Claude Code would prompt for through `approvals.ts`. The user's own allow rules still apply, so with a broad allow list that is mostly Always ask commands (D-016)
 - in-process `hooks` reporting activity, the same shape as the http hooks, plus a Bash guard that applies Never allow (`deny`) and Always ask (`ask`) and lets room "Always allow" rules through
 - `thinking: { type: 'adaptive', display: 'summarized' }` so thinking rows have text, a preset `sessionId` for new chats, and an env without API keys (D-018, D-019)
-- `mcpServers.kernel` for the Lead only (`services/kernelMcp.ts`): list_agents, list_workspaces, request_plan_approval, ask_user, create_workspace, message_agent, say, hire_agent
+- `mcpServers.kernel` for the Lead only (`services/kernelMcp.ts`): list_agents, list_workspaces, request_plan_approval, ask_user, create_workspace, message_agent, archive_workspace, say (a status line on the Lead's card in the sidebar), hire_agent. `LEAD_RULE` (`services/handoff.ts`) is appended to every Lead's prompt: hand off on approval, read Kernel's team updates, answer or route teammates' questions, write for the user
 - `resume` with the stored session id so chats survive restarts
 - `rate_limit_event` messages feed usage meters and limit banners; `usage.get` also asks a live session's experimental usage call on demand (D-017)
 
