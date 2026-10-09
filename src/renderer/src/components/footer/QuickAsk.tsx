@@ -40,7 +40,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
     await openLead(room.id)
     // After a question, land on the chat it went to rather than the tab last selected. The tab is set after `openLead`
     // navigates: the workspace screen clears the tab when the workspace changes, so setting it first would be wiped.
-    if (asked && getState().ui.route.name === 'workspace') actions.ui.setWorkspaceView({ tab: asked.chatId, diff: undefined })
+    if (asked && getState().ui.route.name === 'workspace') actions.ui.setWorkspaceView({ tab: asked.chatId })
   }
   const ask = () => {
     if (!room || !text.trim()) return

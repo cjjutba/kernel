@@ -40,7 +40,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const close = () => run('close', async () => {
     setError(null)
     try {
-      await closeChats(workspaceId, chatIds, getState().ui.workspace.tab, (tab) => actions.ui.setWorkspaceView({ tab, diff: undefined }))
+      await closeChats(workspaceId, chatIds, getState().ui.workspace.tab, (tab) => actions.ui.setWorkspaceView({ tab }))
       actions.ui.closeModal()
     } catch (e) { setError(clean(e)) }
   })

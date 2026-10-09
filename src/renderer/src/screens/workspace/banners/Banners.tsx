@@ -73,7 +73,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       case 'newChat': return run(id, 'Could not start a new chat', async () => {
         const c = await call('chats.create', { workspaceId: ws.id, kind: 'chat' })
         await loadWorkspace(ws.id)
-        actions.ui.setWorkspaceView({ tab: c.id, diff: undefined })
+        actions.ui.setWorkspaceView({ tab: c.id })
       })
       case 'compact': return chat && run(id, 'Could not compact', () => call('chats.compact', { chatId: chat.id }))
       case 'switchModel': return commandComposer('model')
