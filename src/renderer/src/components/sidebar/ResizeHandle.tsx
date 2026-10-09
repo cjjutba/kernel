@@ -16,11 +16,11 @@ const KEY = 'kernel.sidebarWidth'
 export const widthLimit = () => Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - PANEL_MIN))
 export const clampWidth = (w: number) => Math.round(Math.min(widthLimit(), Math.max(SIDEBAR_MIN, w)))
 
-/** The saved width, read once. localStorage may be missing or blocked, and a stored value may be junk. */
+/** The saved width, read once. localStorage may be missing or blocked, and a stored value may be junk. It keeps the saved width even when this window is too narrow for it, since the Sidebar caps what it shows. */
 export function readWidth(): number {
   try {
     const n = Number(localStorage.getItem(KEY))
-    return Number.isFinite(n) && n > 0 ? clampWidth(n) : SIDEBAR_DEFAULT
+    return Number.isFinite(n) && n > 0 ? Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, Math.round(n))) : SIDEBAR_DEFAULT
   } catch { return SIDEBAR_DEFAULT }
 }
 /** Only a width the user chose is stored, so the default can still change. */
@@ -28,7 +28,8 @@ function keepWidth(w: number) {
   try { if (w === SIDEBAR_DEFAULT) localStorage.removeItem(KEY); else localStorage.setItem(KEY, String(w)) } catch { /* not remembered */ }
 }
 
-type Drag = { startX: number; startWidth: number; id: number }
+/** `esc` is kept on the drag, so the listener `end` removes is the one `start` added, whatever renders in between. */
+type Drag = { startX: number; startWidth: number; id: number; esc: (e: globalThis.KeyboardEvent) => void }
 
 /**
  * The sidebar's right edge, in the 8px gutter before the panel (D-112). A drag moves the nav's width through `navRef`, so the
@@ -44,14 +45,12 @@ export function ResizeHandle({ navRef, width, limit, onCommit }: { navRef: RefOb
     handle.current?.setAttribute('aria-valuenow', String(w))
   }
   const commit = (w: number) => { keepWidth(w); onCommit(w) }
-  const reset = () => commit(clampWidth(SIDEBAR_DEFAULT))
-
-  const esc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); cancel() } }
+  const reset = () => commit(SIDEBAR_DEFAULT)
 
   /** Puts the body back the way it was, and the handle with it. */
   const end = () => {
+    if (drag.current) document.removeEventListener('keydown', drag.current.esc, true)
     drag.current = null
-    document.removeEventListener('keydown', esc, true)
     document.body.style.removeProperty('cursor')
     document.body.style.removeProperty('user-select')
     handle.current?.removeAttribute('data-dragging')
@@ -63,8 +62,9 @@ export function ResizeHandle({ navRef, width, limit, onCommit }: { navRef: RefOb
     // Without this the browser can take a later drag over as a text drag and cancel the pointer. It also keeps focus off the handle, so Escape listens on the document.
     e.preventDefault()
     e.currentTarget.setPointerCapture(e.pointerId)
+    const esc = (ev: globalThis.KeyboardEvent) => { if (ev.key === 'Escape') { ev.preventDefault(); cancel() } }
     document.addEventListener('keydown', esc, true)
-    drag.current = { startX: e.clientX, startWidth: navRef.current.getBoundingClientRect().width, id: e.pointerId }
+    drag.current = { startX: e.clientX, startWidth: navRef.current.getBoundingClientRect().width, id: e.pointerId, esc }
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
     e.currentTarget.setAttribute('data-dragging', '')
