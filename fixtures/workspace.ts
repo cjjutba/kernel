@@ -278,6 +278,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceFile: scene(() => ({
     ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'file:src/app/invoices/table.tsx' } }
   })),
+  // No PNG draws a diff tab (KERNEL-144). The diff opens in a tab of its own next to the chat, with the composer below it.
+  WorkspaceDiffTab: scene(() => ({
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'diff:src/app/invoices/page.tsx' } }
+  })),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }

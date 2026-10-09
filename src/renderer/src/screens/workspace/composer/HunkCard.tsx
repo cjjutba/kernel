@@ -3,6 +3,7 @@ import type { Hunk, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions } from '../../../store'
 import { Button, useBusy } from '../../../ui'
+import { diffTab } from '../ChatTabs'
 import { attempt } from '../MessageActions'
 
 /**
@@ -57,7 +58,7 @@ export function HunkCard({ ws, agentName, refreshKey }: { ws: Workspace; agentNa
         ))}
       </div>
       <div className="row" style={{ gap: 8 }}>
-        <Button onClick={() => actions.ui.setWorkspaceView({ diff: file })}>Open diff</Button>
+        <Button onClick={() => actions.ui.setWorkspaceView({ tab: diffTab(file) })}>Open diff</Button>
         <Button variant="primary" busy={!!busy} busyLabel="Committing" disabled={!ids.length} onClick={() => void commit()}>Commit selected</Button>
       </div>
     </section>
