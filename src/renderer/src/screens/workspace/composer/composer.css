@@ -14,6 +14,9 @@
 .agent-dot { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--line-4); color: var(--ink); font-size: 9px; font-weight: 600; }
 .cmp-sep { width: 1px; height: 16px; background: var(--card-line); }
 .cmp-model { padding: 0 8px; color: var(--ink-2); gap: 6px; }
+/* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
+.cmp-model > svg:last-child { margin: 0 -3px 0 -1.5px; color: var(--muted); }
+.cmp-model[aria-expanded='true'] { background: var(--card-line); }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
