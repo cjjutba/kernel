@@ -3,6 +3,7 @@ import { join, dirname, resolve } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
@@ -19,7 +20,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: 'feat/{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false },
+  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -37,6 +38,7 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
     const s = deepMerge(defaults, JSON.parse(await readFile(file, 'utf8')))
     // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
     delete (s.models as { maxConcurrent?: number }).maxConcurrent
+    s.models.effortByModel = effortMemory(s.models.effortByModel)
     return s
   } catch { return defaults }
 }
@@ -52,6 +54,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   const whole = (n: unknown, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n as number))) : fallback)
   next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
+  next.models.effortByModel = effortMemory(next.models.effortByModel)
   return next
 }
 

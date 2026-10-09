@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
-import { applySettingsPatch, DEFAULT_SETTINGS } from '../src/main/services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, loadAppSettings } from '../src/main/services/settings'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
 const sdk = vi.hoisted(() => ({ calls: [] as { feed: (m: unknown) => void }[] }))
@@ -41,6 +41,21 @@ describe('applySettingsPatch', () => {
     const next = applySettingsPatch(base, { models: { agentLimit: -2 }, permissions: { approvalTimeoutSec: 1 } })
     expect(next.models.agentLimit).toBe(0)
     expect(next.permissions.approvalTimeoutSec).toBe(10)
+  })
+  it('keeps the effort memory to known models and efforts, and merges it per model', () => {
+    const one = applySettingsPatch(base, { models: { effortByModel: { 'claude-opus-5-5': 'xhigh' } } })
+    const both = applySettingsPatch(one, { models: { effortByModel: { 'claude-sonnet-5-5': 'low', 'claude-nope': 'high', 'claude-haiku-4-5-20251001': 'max' } as never } })
+    expect(both.models.effortByModel).toEqual({ 'claude-opus-5-5': 'xhigh', 'claude-sonnet-5-5': 'low' })
+  })
+})
+
+describe('loadAppSettings', () => {
+  it('drops unknown models and efforts from a saved effort memory', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ models: { effortByModel: { 'claude-opus-5-5': 'xhigh', 'claude-nope': 'low', 'claude-sonnet-5-5': 'max' } } }))
+    expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({ 'claude-opus-5-5': 'xhigh' })
+    await writeFile(file, JSON.stringify({ models: { effortByModel: ['xhigh'] } }))
+    expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({})
   })
 })
 

@@ -5,6 +5,7 @@ import type { Server } from 'node:http'
 import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
+import { effortFor } from '@shared/effort'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -1146,7 +1147,17 @@ export class Kernel {
     this.sessions.stop(chatId)
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
-    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: chat.effort, plan: false }))
+    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
+  }
+
+  /**
+   * The effort of a chat the user opens: the one they last picked for its model, else the workspace agent's, else Settings, Models (D-130).
+   * The Lead's hand-offs and its first chat skip the memory, so they follow the agent file.
+   */
+  private openedEffort(workspaceId: string, model: ModelId): Effort {
+    const ws = this.mustWs(workspaceId)
+    const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
+    return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? this.settings.models.effort)
   }
 
   private saveChat(chat: Chat): Chat {
@@ -1865,7 +1876,13 @@ export class Kernel {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind }) => { const first = this.store.chats(workspaceId)[0]; return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : NEW_CHAT, { model: first?.model ?? this.settings.models.engineers, effort: first?.effort ?? this.settings.models.effort, plan: false, kind }) },
+      'chats.create': async ({ workspaceId, kind }) => {
+        // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
+        const { roomId } = this.mustWs(workspaceId)
+        if (!this.agentCache.has(roomId)) await this.agents(roomId)
+        const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
+        return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind })
+      },
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'checkpoints.list': async ({ workspaceId }) => listCheckpoints(this.mustWs(workspaceId)),
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId),
