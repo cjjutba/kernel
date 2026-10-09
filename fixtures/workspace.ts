@@ -285,7 +285,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: open
   })),
   WorkspaceLead: scene((f) => ({
-    ...scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree' }, 'Export invoices as PDF', [
+    ...scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
       userMsg('l1', 'Add PDF export to invoices. Spec first.'),
       { kind: 'note', id: 'l-note', ts: at(10, 28), text: 'Rowan is at the task wall on the floor.', link: { label: 'View floor', href: `kernel://floor/${ids.roomA}` } },
       { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
@@ -301,7 +301,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
   })),
   WorkspaceHire: scene((f) => ({
-    ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan' }, 'Hire a designer', [
+    ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
       userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
       { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
       tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
