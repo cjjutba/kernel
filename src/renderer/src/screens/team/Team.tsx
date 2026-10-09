@@ -3,6 +3,7 @@ import type { AgentDef } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, EmptyState, Icon, useBusy } from '../../ui'
+import { TeamTemplates } from './Templates'
 import { FILTERS, LOUD, STATUS_WORD, currentWorkspace, isNew, modelName, shirtOf, shortFile, workspaceLabel, type FilterId } from './model'
 import './team.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -50,18 +51,14 @@ export function Team({ roomId }: { roomId: string }) {
         <Button variant="primary" icon="plus" onClick={hire}>New agent</Button>
       </header>
       <div className="tm-bar">
-        <button type="button" className="pill" onClick={() => go({ name: 'floor', roomId })}>Floor</button>
-        <button type="button" className="pill" onClick={() => go({ name: 'board', roomId })}>Board</button>
-        <button type="button" className="pill" aria-current="page">Team</button>
-        <span className="grow" />
         <div role="group" aria-label="Filter by status" className="tm-filter">
           {FILTERS.map((f) => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)}>{f.label}<span className="tm-n">{count(f.id)}</span></button>)}
         </div>
       </div>
       <div className="tm-body">
-        <p className="tm-intro">Agents come from <span className="mono ink2">.claude/agents</span> in this repo. Add a file, or ask Rowan to write one, and the agent takes a desk on the floor.</p>
+        <p className="tm-intro">Agents come from <span className="mono ink2">.claude/agents</span> in this repo. Add a file, or ask Rowan to write one, and the agent joins the team.</p>
         {!team.length ? (
-          <EmptyState icon="team" title="No agents yet" action={<Button variant="primary" icon="plus" onClick={hire}>New agent</Button>}>Describe one and Rowan writes the file.</EmptyState>
+          <EmptyState icon="team" title="No agents yet" action={<><TeamTemplates room={room} /><Button variant="ghost" icon="plus" onClick={hire}>Make one agent instead</Button></>}>Start from a team, or describe one agent and Rowan writes the file.</EmptyState>
         ) : (
           <>
             <div className="tm-grid tm-head" aria-hidden="true"><span>Agent</span><span>Model</span><span>Status</span><span>Workspace</span><span>File</span></div>

@@ -24,3 +24,14 @@ export async function openLead(roomId: string): Promise<void> {
     actions.ui.toast({ title: `Could not open ${name ? `${name}'s` : "the Lead's"} chat`, sub: (e as Error).message })
   }
 }
+
+/** Where a room opens, now the floor is hidden (D-104): the Lead's chat, or Team when the room has no Lead to open. */
+export async function openRoom(roomId: string): Promise<void> {
+  try {
+    const ws = await call('lead.open', { roomId })
+    actions.workspaces.upsert(ws)
+    go({ name: 'workspace', workspaceId: ws.id })
+  } catch {
+    go({ name: 'team', roomId })
+  }
+}

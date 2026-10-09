@@ -4,7 +4,9 @@ import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, useBusy } from '../../ui'
 import { attempt } from '../workspace/MessageActions'
-import { inboxItems, needsYou, type InboxItem } from '../inbox/model'
+import { openRoom } from '../../lead'
+import { SortOverlap } from '../inbox/Inbox'
+import { allOverlaps, fileName, inboxItems, needsYou, type InboxItem } from '../inbox/model'
 import { openNewRoom, resetDraft } from '../rooms/draft'
 import { roomLetter, roomState, sourceOf, stateLabel } from '../rooms/roomInfo'
 import './home.css'
@@ -21,7 +23,7 @@ function dayLabel(ts: number, now: number) {
 }
 
 function NeedsRow({ item }: { item: InboxItem }) {
-  const { n, approval: a } = item
+  const { n, approval: a, overlap } = item
   const agents = useStore((s) => (n.roomId ? s.agents[n.roomId] : undefined)) ?? []
   const room = useStore((s) => s.rooms.find((r) => r.id === n.roomId))
   const [busy, run] = useBusy<'deny' | 'approve'>()
@@ -30,9 +32,14 @@ function NeedsRow({ item }: { item: InboxItem }) {
   const letter = room ? roomLetter(room.name) : 'K'
   const input = (a?.input ?? {}) as Record<string, unknown>
   const plan = !!a && (a.kind === 'plan' || a.toolName === 'ExitPlanMode')
-  const toFloor = () => go(n.roomId ? { name: 'floor', roomId: n.roomId } : { name: 'inbox' })
+  // Where the item happened: its workspace, else the room's Lead chat (D-104), else the Inbox.
+  const workspaceId = a?.workspaceId ?? n.workspaceId
+  const toItem = () => (workspaceId ? go({ name: 'workspace', workspaceId }) : n.roomId ? void openRoom(n.roomId) : go({ name: 'inbox' }))
   let text: React.ReactNode, actionsEl: React.ReactNode
-  if (a && a.kind === 'tool' && !plan) {
+  if (overlap) {
+    text = <><span>{n.title}</span><span className="hm-by">{fileName(overlap.path)}{room ? ` · ${room.name}` : ''}</span></>
+    actionsEl = <SortOverlap overlap={overlap} />
+  } else if (a && a.kind === 'tool' && !plan) {
     text = a.toolName === 'Bash'
       ? <><span>{who} wants to run</span><code className="hm-cmd">{String(input.command ?? '').split('\n')[0]}</code></>
       : <span>{who} wants to {a.title.charAt(0).toLowerCase()}{a.title.slice(1)}</span>
@@ -44,13 +51,13 @@ function NeedsRow({ item }: { item: InboxItem }) {
     )
   } else if (plan) {
     text = <><span>{/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
-    actionsEl = <Button onClick={toFloor}>Review plan</Button>
+    actionsEl = <Button onClick={toItem}>Review plan</Button>
   } else if (a) {
     text = <><span>{a.kind === 'question' ? a.title : n.title}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
     actionsEl = <Button onClick={() => go({ name: 'inbox' })}>{a.kind === 'question' ? 'Answer' : 'Review'}</Button>
   } else {
     text = <><span>{n.title}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
-    actionsEl = <Button onClick={() => (n.workspaceId ? go({ name: 'workspace', workspaceId: n.workspaceId }) : toFloor())}>{n.kind === 'merge' ? 'Open PR' : 'Open'}</Button>
+    actionsEl = <Button onClick={toItem}>{n.kind === 'merge' ? 'Open PR' : 'Open'}</Button>
   }
   return (
     <div className="hm-need">
@@ -129,12 +136,13 @@ export function Home() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.archived))
   const notifications = useStore((s) => s.notifications)
   const approvals = useStore((s) => s.approvals)
+  const overlaps = useStore((s) => s.overlaps)
   const allRooms = useStore((s) => s.rooms)
   const agents = useStore((s) => s.agents)
   const status = useStore((s) => s.status)
   const workspaces = useStore((s) => s.workspaces)
   const account = useStore((s) => s.account)
-  const needs = useMemo(() => inboxItems(notifications, approvals, allRooms).filter(needsYou), [notifications, approvals, allRooms])
+  const needs = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou), [notifications, approvals, allRooms, overlaps])
   const shipped = useMemo(() => workspaces.filter((w) => w.prState === 'merged').sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt)).slice(0, 8), [workspaces])
   if (!rooms.length) return <Welcome />
   const working = rooms.reduce((n, r) => n + Object.values(status[r.id] ?? {}).filter((x) => x === 'working' || x === 'planning' || x === 'walking').length, 0)
@@ -171,7 +179,7 @@ export function Home() {
                   const team = agents[r.id] ?? []
                   const state = roomState(r, approvals, status[r.id])
                   return (
-                    <button key={r.id} type="button" className="hm-room" onClick={() => go({ name: 'floor', roomId: r.id })}>
+                    <button key={r.id} type="button" className="hm-room" onClick={() => void openRoom(r.id)}>
                       <span className="hm-room-top"><span className="hm-av" aria-hidden="true">{roomLetter(r.name)}</span><b>{r.name}</b><span className="grow" /><span className="hm-state" data-state={state}>{r.paused ? 'Paused' : stateLabel[state]}</span></span>
                       <span className="hm-room-sub"><span className="mono ellipsis">{sourceOf(r)}</span><span className="grow" />{team.length ? `${team.length} ${team.length === 1 ? 'agent' : 'agents'}` : ''}</span>
                     </button>
