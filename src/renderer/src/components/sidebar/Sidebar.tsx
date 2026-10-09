@@ -7,6 +7,7 @@ import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, useLeadWaiting } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
+import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
 import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
@@ -14,18 +15,48 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
+import { liveWorkspaces, slotKey, slotsFor } from './slots'
 import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
 
-function NavItem({ route, icon, label, right, sub, describedBy }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; describedBy?: string }) {
+/** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
+const HINT_DELAY = 400
+
+/** True once ⌘ has been held alone for HINT_DELAY. Another key, letting go of ⌘ or the window losing focus ends it. */
+function useCmdHeld(): boolean {
+  const [held, setHeld] = useState(false)
+  useEffect(() => {
+    let timer: number | undefined
+    const off = () => { window.clearTimeout(timer); timer = undefined; setHeld(false) }
+    const down = (e: KeyboardEvent) => {
+      if (e.key !== 'Meta' || e.ctrlKey || e.altKey || e.shiftKey) return off()
+      if (e.repeat || timer !== undefined) return
+      timer = window.setTimeout(() => setHeld(true), HINT_DELAY)
+    }
+    const up = (e: KeyboardEvent) => { if (e.key === 'Meta') off() }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    window.addEventListener('blur', off)
+    return () => { off(); window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', off) }
+  }, [])
+  return held
+}
+
+/** A numbered row's ⌘N, shown at its right end while ⌘ is held. The row's aria-keyshortcuts says the same to a screen reader. */
+const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hidden="true">⌘{n}</span>
+
+/** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
+type RowKey = { n: number; hint: boolean }
+
+function NavItem({ route, icon, label, right, sub, describedBy, slot }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; describedBy?: string; slot?: RowKey }) {
   const current = useStore((s) => same(s.ui.route, route))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} onClick={() => go(route)}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => go(route)}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
-      {right}
+      {slot?.hint ? <KeyHint n={slot.n} /> : right}
     </button>
   )
 }
@@ -43,7 +74,7 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
  * The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace.
  * Its icon shows the Lead's floor status, and hovering it shows the Lead's card.
  */
-function LeadItem({ roomId }: { roomId: string }) {
+function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
@@ -53,10 +84,10 @@ function LeadItem({ roomId }: { roomId: string }) {
   const g = leadGlyph(status, waiting)
   return (
     <div {...card.bind}>
-      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
         <Glyph g={g} />
         <span className="grow ellipsis">{lead.name}</span>
-        <span className="muted" style={{ fontSize: 12 }}>Lead</span>
+        {slot?.hint ? <KeyHint n={slot.n} /> : <span className="muted" style={{ fontSize: 12 }}>Lead</span>}
       </button>
       {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} />}
     </div>
@@ -83,7 +114,7 @@ async function archiveFromSidebar(ws: Workspace) {
  * A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals
  * for Archive and, after a moment, shows the workspace's card.
  */
-function WorkspaceItem({ ws }: { ws: Workspace }) {
+function WorkspaceItem({ ws, slot }: { ws: Workspace; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
@@ -92,9 +123,9 @@ function WorkspaceItem({ ws }: { ws: Workspace }) {
   const g = workspaceGlyph(ws, { waiting, running })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
-    <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`}>
+    <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
-        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined}
+        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined} slot={slot}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
@@ -126,8 +157,13 @@ function useChatLists(workspaceIds: string[]) {
  * A room in the sidebar. Expanded, it lists Team, the Lead and its live workspaces (D-104 hid Floor and Board). Pressing the row folds or unfolds it,
  * as in Conductor, and hovering it swaps the room's letter for a chevron and shows the menu button.
  */
-function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: boolean; expanded: boolean; onToggle: () => void }) {
-  const live = useStore((s) => s.workspaces.filter((w) => w.roomId === room.id && w.status !== 'archived' && w.name !== 'lead'))
+const NO_KEYS: string[] = []
+
+function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; onToggle: () => void }) {
+  const live = useStore((s) => liveWorkspaces(s.workspaces, room.id))
+  // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
+  const order = useStore((s) => (numbered ? slotsFor(room, s.agents, s.workspaces).map(slotKey) : NO_KEYS))
+  const slotOf = (key: string): RowKey | undefined => { const i = order.indexOf(key); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
   useChatLists(expanded ? live.map((w) => w.id) : [])
@@ -150,9 +186,9 @@ function RoomItem({ room, current, expanded, onToggle }: { room: Room; current: 
       </div>
       {expanded && (
         <>
-          <NavItem sub route={{ name: 'team', roomId: room.id }} icon="team" label="Team" />
-          <LeadItem roomId={room.id} />
-          {live.map((w) => <WorkspaceItem key={w.id} ws={w} />)}
+          <NavItem sub route={{ name: 'team', roomId: room.id }} icon="team" label="Team" slot={slotOf('team')} />
+          <LeadItem roomId={room.id} slot={slotOf('lead')} />
+          {live.map((w) => <WorkspaceItem key={w.id} ws={w} slot={slotOf(`workspace:${w.id}`)} />)}
         </>
       )}
     </div>
@@ -187,6 +223,8 @@ export function Sidebar() {
   const workspaces = useStore((s) => s.workspaces)
   const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps)).filter(needsYou).length)
   const route = useStore((s) => s.ui.route)
+  const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
+  const hints = useCmdHeld()
   const roomsMenu = useStore((s) => s.ui.menu === 'rooms')
   const plan = useStore((s) => s.account?.plan)
   const roomsAnchor = useRef<HTMLDivElement>(null)
@@ -235,7 +273,7 @@ export function Sidebar() {
       <div className="nav-list" style={{ overflowY: 'auto', minHeight: 0 }} onScroll={() => { if (getState().ui.menu?.startsWith('room:')) actions.ui.closeMenu() }}>
         {rooms.map((r) => {
           const expanded = chosen[r.id] ?? r.id === openRoom
-          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} onToggle={() => toggle(r.id, expanded)} />
+          return <RoomItem key={r.id} room={r} current={r.id === openRoom} expanded={expanded} numbered={r.id === numberedRoom} hints={hints} onToggle={() => toggle(r.id, expanded)} />
         })}
       </div>
       <div style={{ flex: 1 }} />

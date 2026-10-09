@@ -28,6 +28,9 @@
 .ws-row.busy .more { opacity: 1; }
 /* The archive icon brightens on hover with no square behind it. */
 .ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
+/* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap. */
+.nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }
+.ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
 .sb-foot { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 2px; padding: 0 0 0 2px; }
