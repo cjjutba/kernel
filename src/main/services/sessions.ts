@@ -94,6 +94,8 @@ export interface SessionDeps {
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit stopped changed. Kernel saves them, so they still carry on after a restart. */
   onCutOff?: (chatIds: string[]) => void
+  /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
+  onHeld?: (held: Record<string, QueuedMessage[]>) => void
 }
 
 /** Who sent a message the user didn't type, and the Team update card it carries (KERNEL-116). */
@@ -134,12 +136,23 @@ export class Sessions {
   constructor(private d: SessionDeps) {}
 
   /**
-   * What Kernel saved before it last quit: the usage windows and the chats a limit stopped. A rejection without a reset time
-   * is dropped, since nothing could tell when it ends, so it no longer holds anything.
+   * What Kernel saved before it last quit: the usage windows, the chats a limit stopped, and the queues of chats held for
+   * setup (KERNEL-128). A rejection without a reset time is dropped, since nothing could tell when it ends, so it no longer
+   * holds anything. A held queue comes back only while its workspace's setup still has to pass.
    */
-  restore(limits: RateLimit[], cutOff: string[]) {
+  restore(limits: RateLimit[], cutOff: string[], held: Record<string, QueuedMessage[]> = {}) {
     for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
     for (const id of cutOff) this.cutOff.add(id)
+    // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
+    for (const [id, queue] of Object.entries(held)) {
+      const chat = this.d.store.chat(id)
+      const ws = chat && this.d.store.workspace(chat.workspaceId)
+      if (ws?.status !== 'failed' || !Array.isArray(queue)) continue
+      this.waiting.add(id)
+      this.setQueue(id, queue)
+    }
+    // Entries left out above, as an archived workspace's, drop out of what Kernel saves.
+    this.saveHeld()
     this.pushLimits()
   }
 
@@ -171,7 +184,16 @@ export class Sessions {
 
   release(chatId: string) {
     this.waiting.delete(chatId)
+    this.saveHeld()
     if (!this.live.get(chatId)?.running) this.drain(chatId)
+  }
+
+  /** Hands Kernel what every chat held for setup is holding, to save. */
+  private saveHeld() {
+    if (!this.d.onHeld) return
+    const held: Record<string, QueuedMessage[]> = {}
+    for (const id of this.waiting) held[id] = this.queued(id)
+    this.d.onHeld(held)
   }
 
   /** Mark a usage window as reset (its resetsAt passed) and tell the renderer. */
@@ -449,6 +471,8 @@ export class Sessions {
     if (queue.length) this.queues.set(chatId, queue)
     else this.queues.delete(chatId)
     bus.push({ type: 'chat.queue', chatId, queue })
+    // A held brief edited or removed in the composer is saved too.
+    if (this.waiting.has(chatId)) this.saveHeld()
     return queue
   }
 

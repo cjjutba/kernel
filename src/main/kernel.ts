@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { QueuedMessage, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
@@ -41,6 +41,9 @@ const COPY = 'fork:'
 
 /** The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session (`nameChat`). */
 const NEW_CHAT = 'New chat'
+
+/** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
+interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
 const LIMIT_RECHECK_MS = 90_000
@@ -81,8 +84,11 @@ export class Kernel {
   readonly approvals: Approvals
   readonly notifications: Notifications
   readonly leadUpdates: LeadUpdates
-  /** The Lead's messages to a workspace whose setup is still running, sent after its brief (KERNEL-118). */
-  private duringSetup = new Map<string, ChatPart[][]>()
+  /**
+   * Workspaces whose brief hasn't gone out yet: the chat and brief, and the Lead's messages that follow it (KERNEL-118).
+   * Saved under the meta key `setups`, so a quit during setup doesn't lose the brief (KERNEL-128).
+   */
+  private setups = new Map<string, SetupHold>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
   private setupFailures = new Map<string, number | null>()
   readonly tasks: Tasks
@@ -167,7 +173,8 @@ export class Kernel {
       // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
       onExit: (ws, _chat, reason, midTurn) => { if (midTurn) this.leadUpdates.crashed(ws, reason) },
       onLimits: (limits) => this.applyLimits(limits),
-      onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds)
+      onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
+      onHeld: (held) => this.store.saveMeta('held', held)
     })
     this.leadUpdates = new LeadUpdates({
       store: this.store,
@@ -231,7 +238,8 @@ export class Kernel {
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [])
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {})
+    this.recoverSetups()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
   }
@@ -794,7 +802,7 @@ export class Kernel {
     const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
-    this.duringSetup.set(ws.id, [])
+    this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -805,15 +813,16 @@ export class Kernel {
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
+    this.setSetup(ws.id, { ...this.setups.get(ws.id), chatId: chat.id, brief: parts, ...(from ? { from } : {}), later: this.setups.get(ws.id)?.later ?? [] })
     let ready: boolean
-    try { ready = await this.runSetup(ws, room, repo.scripts.setup) } catch (e) { this.duringSetup.delete(ws.id); throw e }
+    try { ready = await this.runSetup(ws, room, repo.scripts.setup) } catch (e) { this.setSetup(ws.id, undefined); throw e }
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
-    if (this.mustWs(ws.id).status === 'archived') { this.duringSetup.delete(ws.id); return this.mustWs(ws.id) }
+    if (this.mustWs(ws.id).status === 'archived') { this.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The Lead's messages sent before the brief went out follow it, never go before it (KERNEL-118). Messages that
     // arrive while the brief is sent are still caught here, and the mark goes only once the list is empty.
     const after = async (send: (m: ChatPart[]) => Promise<unknown> | void) => {
-      for (let held = this.duringSetup.get(ws.id); held?.length; held = this.duringSetup.get(ws.id)) await send(held.shift()!)
-      this.duringSetup.delete(ws.id)
+      for (let held = this.setups.get(ws.id); held?.later.length; held = this.setups.get(ws.id)) { const m = held.later.shift()!; this.saveSetups(); await send(m) }
+      this.setSetup(ws.id, undefined)
     }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
     if (!ready) {
@@ -1222,8 +1231,8 @@ export class Kernel {
     if (ws.mode === 'worktree' && await folderGone(ws.path).catch(() => false)) return refuse(`Not sent: ${ws.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.`)
     const name = agent?.name ?? ws.agentId
     const parts: ChatPart[] = [{ type: 'text', text }]
-    const held = this.duringSetup.get(ws.id)
-    if (held) { held.push(parts); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
+    const held = this.setups.get(ws.id)
+    if (held) { held.later.push(parts); this.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
@@ -1262,6 +1271,35 @@ export class Kernel {
   private prChat(id: string): Chat | undefined {
     const chats = this.chatTabs(id)
     return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
+  }
+
+  private setSetup(id: string, hold: SetupHold | undefined) {
+    if (hold) this.setups.set(id, hold)
+    else this.setups.delete(id)
+    this.saveSetups()
+  }
+
+  private saveSetups() { this.store.saveMeta('setups', Object.fromEntries(this.setups)) }
+
+  /**
+   * A workspace still in setup when Kernel quit has no script running any more (KERNEL-128). It counts as failed, with a
+   * note saying why, and its brief, and whatever the Lead sent after it, wait in the chat for Run again. So does one whose
+   * setup had just passed when Kernel quit, before its brief went out.
+   */
+  private recoverSetups() {
+    const saved = this.store.meta<Record<string, SetupHold>>('setups') ?? {}
+    for (const ws of this.store.workspaces()) {
+      const hold = saved[ws.id]
+      const chat = (hold?.chatId && this.store.chat(hold.chatId)) || this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+      const unsent = ws.status === 'ready' && !!hold?.brief && !!chat && !this.store.items(chat.id).some((i) => i.kind === 'user')
+      if (ws.status !== 'setup' && !unsent) continue
+      if (chat && hold?.brief) this.sessions.hold(chat.id, hold.brief, hold.from ? { from: hold.from } : {})
+      if (chat) for (const m of hold?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
+      this.updateWs(ws.id, { status: 'failed' })
+      this.note(ws.id, 'Setup stopped when Kernel quit. Click Run again.')
+    }
+    this.setups.clear()
+    this.saveSetups()
   }
 
   private note(workspaceId: string, text: string) {
