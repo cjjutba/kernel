@@ -229,6 +229,12 @@ export const teamFixtures: Record<string, Fixture> = {
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
+  // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).
+  QuickAskAnswered: scene((f) => ({
+    ...homeScene(f),
+    push: [{ type: 'chat.item', chatId: ids.leadChat, item: { kind: 'text', id: 'qa-answer', ts: at(10, 33), text: 'T-15 is in review: Theo has the PR open. Nobody is blocked.' } }],
+    ui: { ...home, menu: 'quickAsk', quickAsk: { [ids.roomA]: { draft: '', asked: { chatId: ids.leadChat, since: at(10, 32), question: "What's the status of T-15? Who is blocked?" } } } }
+  })),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
   Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
