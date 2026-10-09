@@ -16,7 +16,7 @@ function deny(reason) {
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
         permissionDecision: 'deny',
-        permissionDecisionReason: `Kernel guard: ${reason} See docs/AUTOPILOT.md.`
+        permissionDecisionReason: `Kernel guard: ${reason} See D-023 in docs/DECISIONS.md.`
       }
     })
   )

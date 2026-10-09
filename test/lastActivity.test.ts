@@ -9,7 +9,7 @@ import { actions, apply, getState } from '../src/renderer/src/store'
 import { roomSeating } from '../src/renderer/src/floor/useSeating'
 import type { ActivityEvent, AgentDef } from '../src/shared/types'
 
-const TEAM = ['issue-worker', 'issue-worker-opus', 'ivy', 'kai', 'lumi', 'noor', 'rowan', 'theo']
+const TEAM = ['eli', 'eli-opus', 'ivy', 'kai', 'lumi', 'noor', 'rowan', 'theo']
 const agentFile = (id: string) => `---\nname: ${id}\ndescription: ${id}.\n${id === 'rowan' ? 'lead: true\n' : ''}---\nYou are ${id}.`
 
 describe('rooms.lastActivity (KERNEL-104)', () => {
@@ -25,24 +25,24 @@ describe('rooms.lastActivity (KERNEL-104)', () => {
       const agents = await k.agents(room.id)
       const h = k.handlers()
 
-      // Everyone acted once, a while ago. Then Issue Worker logged 250 events, which push the others out of any 200-event window.
+      // Everyone acted once, a while ago. Then Eli logged 250 events, which push the others out of any 200-event window.
       const t = Date.now() + 10_000
       const once: Record<string, number> = { theo: t + 50, noor: t + 40, rowan: t + 60, kai: t + 30, ivy: t + 20 }
       for (const [agentId, ts] of Object.entries(once)) bus.activity({ kind: 'note', roomId: room.id, agentId, text: 'did something', ts })
       bus.activity({ kind: 'note', roomId: other.id, agentId: 'lumi', text: 'worked in another room', ts: t + 5000 })
-      for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'issue-worker', text: 'ran a tool', ts: t + 100 + i })
+      for (let i = 0; i < 250; i++) bus.activity({ kind: 'tool.end', roomId: room.id, agentId: 'eli', text: 'ran a tool', ts: t + 100 + i })
       bus.activity({ kind: 'room.paused', roomId: room.id, actor: 'you', text: 'paused', ts: t + 9000 })
 
       const last = await h['rooms.lastActivity']({ roomId: room.id })
-      expect(last).toEqual({ ...once, 'issue-worker': t + 349 })
+      expect(last).toEqual({ ...once, 'eli': t + 349 })
       expect(last.lumi).toBeUndefined()
-      expect(last['issue-worker-opus']).toBeUndefined()
+      expect(last['eli-opus']).toBeUndefined()
 
       const window = await h['activity.recent']({ roomId: room.id, limit: 200 })
-      expect(new Set(window.flatMap((e) => (e.agentId ? [e.agentId] : [])))).toEqual(new Set(['issue-worker']))
+      expect(new Set(window.flatMap((e) => (e.agentId ? [e.agentId] : [])))).toEqual(new Set(['eli']))
 
       const seats = (ctx: Parameters<typeof roomSeating>[2]) => roomSeating(agents, room, ctx).seated.map((a) => a.id)
-      expect(seats({ lastActivity: last })).toEqual(['rowan', 'issue-worker', 'theo', 'noor', 'kai', 'ivy'])
+      expect(seats({ lastActivity: last })).toEqual(['rowan', 'eli', 'theo', 'noor', 'kai', 'ivy'])
     } finally { await k.stop() }
   })
 })
@@ -52,17 +52,17 @@ describe('store lastActivity', () => {
   const ev = (agentId: string, ts: number, roomId = 'r-last'): ActivityEvent => ({ id: `${agentId}-${ts}-${roomId}`, kind: 'note', roomId, agentId, text: 'did something', ts })
 
   it('keeps an agent ranked after its events leave the window, and new events move it forward', () => {
-    actions.activity.setLast('r-last', { noor: 40, theo: 50, 'issue-worker': 10 })
+    actions.activity.setLast('r-last', { noor: 40, theo: 50, 'eli': 10 })
     for (let i = 0; i < 250; i++) apply({ type: 'activity', event: ev('kai', 100 + i) })
     expect(getState().activity.some((e) => e.agentId === 'noor')).toBe(false)
-    expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, 'issue-worker': 10, kai: 349 })
+    expect(getState().lastActivity['r-last']).toEqual({ noor: 40, theo: 50, 'eli': 10, kai: 349 })
 
-    const team = [a('issue-worker'), a('issue-worker-opus'), a('kai'), a('noor'), a('rowan', true), a('theo')]
+    const team = [a('eli'), a('eli-opus'), a('kai'), a('noor'), a('rowan', true), a('theo')]
     const seats = () => roomSeating(team, undefined, { lastActivity: getState().lastActivity['r-last'] }).seated.map((x) => x.id)
-    expect(seats()).toEqual(['rowan', 'kai', 'theo', 'noor', 'issue-worker', 'issue-worker-opus'])
+    expect(seats()).toEqual(['rowan', 'kai', 'theo', 'noor', 'eli', 'eli-opus'])
 
     apply({ type: 'activity', event: ev('noor', 400) })
-    expect(seats()).toEqual(['rowan', 'noor', 'kai', 'theo', 'issue-worker', 'issue-worker-opus'])
+    expect(seats()).toEqual(['rowan', 'noor', 'kai', 'theo', 'eli', 'eli-opus'])
   })
 
   it('keeps a newer pushed time over an older loaded one, and leaves other rooms alone', () => {
