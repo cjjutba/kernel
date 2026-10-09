@@ -10,9 +10,6 @@
 .nw-tool[aria-expanded='true'], .nw-trigger[aria-expanded='true'], .nw-model[aria-expanded='true'] { background: var(--card-line); }
 .nw-trigger { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font-size: 13px; font-weight: 400; }
 .nw-trigger svg { color: var(--muted); }
-/* At size 11 the glyph has about 3px of air each side of its box. Pull the model chevron in so the gap before it matches the gap before the effort label (canvas: 9px). */
-.nw-model > svg:last-child { margin: 0 -3px 0 -1px; }
-.nw-model > svg:last-child, .nw-room > svg:last-child { color: var(--muted); }
 .nw-body { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 6px; }
 .nw-body .cmp-input { min-height: 168px; font-size: 15px; line-height: 24px; cursor: text; }
 .nw-chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -21,6 +18,9 @@
 .nw-foot { position: relative; display: flex; align-items: center; gap: 6px; padding: 10px 10px 12px 12px; }
 .nw-foot .grow { flex: 1; min-width: 0; }
 .nw-model { gap: 7px; height: 32px; padding: 0 10px; border: 0; border-radius: 8px; font-size: 13px; }
+/* At size 11 the glyph has about 3px of air each side of its box. Pull the model chevron in so the gap before it matches the gap before the effort label (canvas: 9px). */
+.nw-model > svg:last-child { position: relative; top: -1px; margin: 0 -3px 0 -1px; }
+.nw-model > svg:last-child, .nw-room > svg:last-child { color: var(--muted); }
 .nw[data-plan] .nw-head { background: var(--surface-2); }
 .nw-plus > .icon-btn { width: 32px; height: 32px; border-radius: 8px; }
 .nw-plus > .icon-btn[aria-expanded='true'] { background: var(--card-line); }
