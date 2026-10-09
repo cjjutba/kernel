@@ -93,8 +93,8 @@ export interface KernelApi {
   'chats.close': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
   'chats.fork': { req: { chatId: string; itemId?: string }; res: Chat }
-  /** Run the turn that produced `itemId` again. */
-  'chats.retry': { req: { chatId: string; itemId: string }; res: Ok }
+  /** Run the turn that produced `itemId` again. `now` sends it ahead of the queue and stops the running turn (Retry now). */
+  'chats.retry': { req: { chatId: string; itemId: string; now?: boolean }; res: Ok }
   'chats.compact': { req: { chatId: string }; res: Ok }
   /** Start a crashed session again (FloorOffline "Restart session"). */
   'chats.restart': { req: { chatId: string }; res: Ok }
