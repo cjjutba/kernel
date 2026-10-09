@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
+import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -11,7 +11,7 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
-import { planExists, savePlan } from './services/plans'
+import { attachmentNote, planExists, saveAttachments, savePlan } from './services/plans'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
@@ -1060,6 +1060,17 @@ export class Kernel {
     return { path: join(ws.path, relative), relative }
   }
 
+  /** A plan's change request with images: saves them in the workspace and names their paths in the message (D-131). */
+  async withAttachments(id: string, decision: Decision): Promise<Decision> {
+    if (decision.behavior !== 'deny' || !decision.images?.length) return decision
+    const { images, ...rest } = decision
+    const a = this.store.approvals().find((x) => x.id === id)
+    if (!a || a.toolName !== 'ExitPlanMode' || !this.approvals.isPending(id)) return rest
+    const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
+    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("Its workspace folder is gone, so the image can't be saved.")
+    return { ...rest, message: attachmentNote(rest.message, await saveAttachments(ws.path, images)) }
+  }
+
   async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
     const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
@@ -1918,7 +1929,7 @@ export class Kernel {
       'notifications.list': async () => this.notifications.list(),
       'notifications.read': async ({ ids }) => this.notifications.read(ids),
       'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
-      'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, decision); if (!a) throw new Error('This request already timed out or was answered.'); return a },
+      'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, await this.withAttachments(id, decision)); if (!a) throw new Error('This request already timed out or was answered.'); return a },
       'approvals.planFile': async ({ id }) => this.planFile(id),
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
