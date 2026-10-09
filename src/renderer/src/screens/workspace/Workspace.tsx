@@ -7,7 +7,7 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
-import { ChatTabs, fileTab } from './ChatTabs'
+import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
@@ -30,7 +30,7 @@ const PANEL_HIDE_BELOW = 240
 const CHAT_MIN = 420
 /** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
 const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
-/** The workspace the stored tab and diff belong to. */
+/** The workspace the stored tab belongs to. */
 let viewOwner: string | undefined
 let imageCount = 0
 let textCount = 0
@@ -51,6 +51,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const panels = useStore((s) => s.ui.rightPanel)
   const [changes, setChanges] = useState<ChangedFile[]>([])
   const [openFiles, setOpenFiles] = useState<string[]>([])
+  const [openDiffs, setOpenDiffs] = useState<string[]>([])
   const [images, setImages] = useState<OpenedImage[]>([])
   const [texts, setTexts] = useState<OpenedText[]>([])
   const [lastChat, setLastChat] = useState<string | undefined>()
@@ -65,20 +66,31 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
   const tab = gone ? lastChat ?? chats[0]?.id : stored
   const filePath = tab?.startsWith('file:') ? tab.slice(5) : undefined
+  // An empty path is the diff of every changed file, so test for undefined, never for truthiness.
+  const diffPath = tab?.startsWith('diff:') ? tab.slice(5) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
-  const chat = filePath || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
+  const chat = filePath || diffPath !== undefined || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
+  const diffs = diffPath !== undefined && !openDiffs.includes(diffPath) ? [...openDiffs, diffPath] : openDiffs
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
-  // The open tab and diff live in the store, so they outlast this screen. Whenever the screen shows a different workspace
-  // than the one they belong to, clear them. The very first mount keeps what a fixture or a restored view set.
+  // Anything can open a diff by setting the store's tab (the hunk card does), so keep the tab in the list once it is active,
+  // or it would vanish when the user moves to another tab.
+  useEffect(() => { if (diffPath !== undefined) setOpenDiffs((d) => (d.includes(diffPath) ? d : [...d, diffPath])) }, [diffPath])
+  // Likewise remember the open chat however it was reached, so a diff, file, image or text tab opened from there closes back to it
+  // and the composer stays on it.
+  useEffect(() => { if (tab && chats.some((c) => c.id === tab)) setLastChat(tab) }, [tab, chats])
+  // These run before the clear below on purpose, so on a workspace switch the clear has the last word.
+
+  // The open tab lives in the store, so it outlasts this screen. Whenever the screen shows a different workspace
+  // than the one it belongs to, clear it. The very first mount keeps what a fixture or a restored view set.
   useEffect(() => {
     if (viewOwner !== undefined && viewOwner !== workspaceId) {
-      setOpenFiles([]); setImages([]); setTexts([]); setLastChat(undefined)
-      actions.ui.setWorkspaceView({ tab: undefined, diff: undefined })
+      setOpenFiles([]); setOpenDiffs([]); setImages([]); setTexts([]); setLastChat(undefined)
+      actions.ui.setWorkspaceView({ tab: undefined })
     }
     viewOwner = workspaceId
   }, [workspaceId])
@@ -94,8 +106,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const select = (id: string) => {
-    if (!/^(file|image|text):/.test(id)) setLastChat(id)
-    actions.ui.setWorkspaceView({ tab: id, diff: undefined })
+    if (!/^(file|diff|image|text):/.test(id)) setLastChat(id)
+    actions.ui.setWorkspaceView({ tab: id })
   }
   const openFile = (path: string) => {
     setOpenFiles((f) => (f.includes(path) ? f : [...f, path]))
@@ -104,6 +116,15 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const closeFile = (path: string) => {
     setOpenFiles((f) => f.filter((x) => x !== path))
     if (tab === fileTab(path)) select(chat?.id ?? '')
+  }
+  /** The same diff again selects its tab. An empty path is All changes. */
+  const openDiff = (path: string) => {
+    setOpenDiffs((d) => (d.includes(path) ? d : [...d, path]))
+    select(diffTab(path))
+  }
+  const closeDiff = (path: string) => {
+    setOpenDiffs((d) => d.filter((x) => x !== path))
+    if (tab === diffTab(path)) select(chat?.id ?? '')
   }
   /** The same image again selects its tab instead of opening a second one. */
   const openImage = (part: ImagePart) => {
@@ -148,10 +169,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} diffs={diffs} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
-            {view.diff !== undefined
-              ? <DiffView ws={ws} path={view.diff} changes={changes} onClose={() => actions.ui.setWorkspaceView({ diff: undefined })} />
+            {diffPath !== undefined
+              ? <DiffView ws={ws} path={diffPath} changes={changes} />
               : filePath
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : image
@@ -181,7 +202,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head"><PrHeader ws={ws} spread /></div>
-          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={(path) => actions.ui.setWorkspaceView({ diff: path })} />
+          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} />
           <BottomPanel ws={ws} />
         </aside>
       )}

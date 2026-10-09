@@ -156,6 +156,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (!ws) throw new Error('This fixture has no workspace for the Lead.')
       return ws
     },
+    'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),

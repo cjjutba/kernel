@@ -8,16 +8,18 @@ import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
 
 export const fileTab = (path: string) => `file:${path}`
+/** An empty path is the diff of every changed file. */
+export const diffTab = (path: string) => `diff:${path}`
 const base = (path: string) => path.split('/').pop() ?? path
 
 /**
- * The row of chat, terminal, file and image tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
+ * The row of chat, terminal, file, diff, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
  * a close button on hover and the Checkpoints button.
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, chats, files, images, texts, active, onSelect, onCloseFile, onCloseImage, onCloseText }: {
-  workspaceId: string; chats: Chat[]; files: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
-  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
+export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseImage, onCloseText }: {
+  workspaceId: string; chats: Chat[]; files: string[]; diffs: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
   const newAnchor = useRef<HTMLSpanElement>(null)
@@ -60,13 +62,14 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
 
   // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, onCloseImage, onCloseText, active, chats })
-  latest.current = { create, close, onCloseFile, onCloseImage, onCloseText, active, chats }
+  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats })
+  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats }
   useEffect(() => {
     const closeActive = () => {
-      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseImage: img, onCloseText: txt } = latest.current
+      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseDiff: dif, onCloseImage: img, onCloseText: txt } = latest.current
       if (!a) return
       if (a.startsWith('file:')) f(a.slice(5))
+      else if (a.startsWith('diff:')) dif(a.slice(5))
       else if (a.startsWith('image:')) img(a)
       else if (a.startsWith('text:')) txt(a)
       else if (cs.some((x) => x.id === a)) void c([a])
@@ -92,9 +95,10 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'image' | 'text' | 'terminal'; path?: string }[] = [
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'image' | 'text' | 'terminal'; path?: string }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p })),
+    ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p })),
     ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const })),
     ...texts.map((t) => ({ id: t.id, title: t.name, kind: 'text' as const }))
   ]
@@ -120,7 +124,7 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
                   <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
-                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>
@@ -130,7 +134,7 @@ export function ChatTabs({ workspaceId, chats, files, images, texts, active, onS
                 <span className="tab-end">
                   {t.kind === 'chat' && on && <span className="tab-pen"><Icon name="pen" size={12} /></span>}
                   <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
-                    onClick={() => (t.path ? onCloseFile(t.path) : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
+                    onClick={() => (t.kind === 'file' && t.path ? onCloseFile(t.path) : t.kind === 'diff' ? onCloseDiff(t.path ?? '') : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
                 </span>
               )}
               {t.kind === 'chat' && on && menu === 'tab' && (
