@@ -1221,8 +1221,8 @@ export class Kernel {
     return m.engineers
   }
 
-  /** The Lead lives in a room-level workspace on the main checkout. Floor briefs go there. */
-  async leadChat(roomId: string): Promise<Chat> {
+  /** The Lead lives in a room-level workspace on the main checkout, made the first time it is needed. */
+  private async leadWorkspace(roomId: string): Promise<{ ws: Workspace; lead: AgentDef }> {
     const agents = await this.agents(roomId)
     const lead = agents.find((a) => a.lead)
     if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
@@ -1231,7 +1231,30 @@ export class Kernel {
       const room = this.mustRoom(roomId)
       ws = this.saveWs({ id: newId(), roomId, name: 'lead', branch: await currentBranch(room.path), baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port: await freePort(4300), status: 'ready', prState: 'none', createdAt: Date.now() })
     }
+    return { ws, lead }
+  }
+
+  /** The Lead's first open chat. Floor briefs go there. */
+  async leadChat(roomId: string): Promise<Chat> {
+    const { ws, lead } = await this.leadWorkspace(roomId)
     return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+  }
+
+  /**
+   * The new workspace modal's prompt, sent to the Lead in a chat of its own (KERNEL-148). A chat nobody used yet is taken
+   * instead of adding another, so the first start leaves no empty "Lead" tab. The first message names the chat.
+   */
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
+    const { ws, lead } = await this.leadWorkspace(roomId)
+    const pick = { model: o.model ?? this.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const unused = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
+    // The default "Lead" title gives way to the first message's; a name the user gave stays.
+    const chat = unused
+      ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === 'Lead' ? { title: NEW_CHAT } : {}) })
+      : this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
+    this.userSpoke(chat.id)
+    await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
+    return chat
   }
 
   private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
@@ -1848,6 +1871,7 @@ export class Kernel {
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
       'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
+      'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
