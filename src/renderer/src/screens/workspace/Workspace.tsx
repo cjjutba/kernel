@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangedFile } from '@shared/types'
 import { call } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
+import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, fileTab } from './ChatTabs'
@@ -20,6 +21,15 @@ import { onRefreshChanges } from './changesBus'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
+const PANEL_MIN = 320
+const PANEL_MAX = 720
+const PANEL_KEY = 'kernel.rightPanelWidth'
+/** Letting go below this hides the panel. The saved width stays. */
+const PANEL_HIDE_BELOW = 240
+/** The chat column keeps at least this much, however wide the panel was saved. */
+const CHAT_MIN = 420
+/** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
+const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
 /** The workspace the stored tab and diff belong to. */
 let viewOwner: string | undefined
 let imageCount = 0
@@ -45,6 +55,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const [texts, setTexts] = useState<OpenedText[]>([])
   const [lastChat, setLastChat] = useState<string | undefined>()
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
+  // The panel's width is the CSS clamp until it is dragged, then a saved px width. It is read once. The CSS caps a saved width so the chat column keeps CHAT_MIN, whatever the window or the sidebar does.
+  const aside = useRef<HTMLElement>(null)
+  const [panelWidth, setPanelWidth] = useState(() => readWidth(PANEL_KEY, PANEL_MIN, PANEL_MAX))
+  const panelLimit = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, (aside.current?.parentElement?.clientWidth ?? window.innerWidth) - CHAT_MIN))
 
   const stored = view.tab ?? lastChat ?? chats[0]?.id
   // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
@@ -161,7 +175,11 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       </OpenText.Provider>
       </OpenImage.Provider>
       {panels && (
-        <aside aria-label="Workspace panels" className="ws-aside">
+        <aside ref={aside} aria-label="Workspace panels" className="ws-aside" style={panelWidth === null ? undefined : { width: `max(${PANEL_MIN}px, min(${panelWidth}px, 100cqw - ${CHAT_MIN}px))` }}>
+          <ResizeHandle
+            targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
+            storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
+          />
           <div className="ws-aside-head"><PrHeader ws={ws} spread /></div>
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={(path) => actions.ui.setWorkspaceView({ diff: path })} />
           <BottomPanel ws={ws} />

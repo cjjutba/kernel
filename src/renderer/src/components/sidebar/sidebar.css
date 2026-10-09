@@ -64,9 +64,5 @@
 .hc-status[data-accent='add'] { --tone: var(--add); --tint: var(--tint-add); }
 .hc-status[data-accent='del'] { --tone: var(--del); --tint: var(--tint-del); }
 .hc-status[data-accent='merged'] { --tone: var(--merged); --tint: var(--tint-merged); }
-/* The resize handle fills the sidebar's 8px right gutter (ResizeHandle.tsx). Its hairline sits mid-gutter and shows on hover,
-   on keyboard focus (with the app's usual 2px ring) and while dragging. The width itself is inline on the nav, over tokens.css. */
+/* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
-.sb-resize { position: absolute; top: 0; bottom: 0; right: 0; width: 8px; z-index: 5; cursor: col-resize; touch-action: none; }
-.sb-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: calc(50% - 0.5px); width: 1px; background: transparent; }
-.sb-resize:hover::after, .sb-resize:focus-visible::after, .sb-resize[data-dragging]::after { background: var(--line-3); }
