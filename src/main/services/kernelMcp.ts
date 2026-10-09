@@ -1,10 +1,11 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, PrState, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
 import { renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
+import { archiveSkip, CLOSED_PR } from './archiveGuard'
 
 export interface KernelToolDeps {
   roomId: string
@@ -56,9 +57,6 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
     ? `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.`
     : `Not created: this team has no teammates yet. Propose one with hire_agent.`
 }
-
-/** PR states the Lead may archive over. Every other state is a PR still in flight. */
-const CLOSED_PR = new Set<PrState>(['none', 'merged', 'closed'])
 
 /**
  * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces:
@@ -141,6 +139,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
         if (team.find((a) => a.id === target.agentId)?.lead) return refuse('that is your own workspace.')
         if (target.reviewOf) return refuse(`${target.name} is itself a review. Review the work it reviews instead (workspace ${target.reviewOf}).`)
+        if (target.prState === 'merged' || target.prState === 'closed') return refuse(`${target.name}'s PR is already ${target.prState}, so there is nothing left to review.`)
         if (target.mode === 'current') return refuse(`${target.name} works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.`)
         const open = d.workspaces().find((w) => w.reviewOf === target.id && w.agentId === pick.id && w.status !== 'archived')
         if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
@@ -173,19 +172,13 @@ export function kernelTools(d: KernelToolDeps) {
       // One id at a time, so a skip or a failed archive doesn't stop the rest (D-090).
       for (const id of workspace_ids) {
         const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
-        const first = !ws ? 'not an open workspace in this room'
+        if (!ws) { lines.push(`Skipped ${id}: not an open workspace in this room.`); continue }
+        const reason = await archiveSkip(ws, {
           // Only the Lead's current-branch workspace. One handed to the Lead when an agent retired can go.
-          : ws.mode === 'current' && !!d.lead && ws.agentId === d.lead.id ? 'it is your own workspace'
-          : d.isRunning(ws.id) ? 'its agent is still working'
-          : undefined
-        const pr = ws && !first ? await latestPr(ws) : undefined
-        const prOpen = pr && !CLOSED_PR.has(pr.prState) ? `its PR${pr.prNumber ? ' #' + pr.prNumber : ''} is open and not merged` : undefined
-        const skip = first ?? prOpen
-        // Archive removes the worktree with --force, and Restore can't bring back what was never committed.
-        // Unpushed commits stay on the kept branch (KERNEL-70), so only uncommitted work blocks, as in the sidebar.
-        const unsaved = !ws || skip ? false : await d.unsaved(ws.id)
-        const reason = skip ?? (unsaved === 'dirty' ? 'it has uncommitted changes' : unsaved === 'unknown' ? 'its git status could not be read' : undefined)
-        if (!ws || reason) { lines.push(`Skipped ${ws?.name ?? id}: ${reason}.`); continue }
+          isOwnLead: (w) => w.mode === 'current' && !!d.lead && w.agentId === d.lead.id,
+          isRunning: d.isRunning, latestPr, unsaved: d.unsaved
+        })
+        if (reason) { lines.push(`Skipped ${ws.name}: ${reason}.`); continue }
         try {
           await d.archiveWorkspace(ws.id)
           lines.push(`Archived ${ws.name}.`)
