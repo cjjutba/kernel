@@ -59,6 +59,10 @@ export interface TeamEvent {
   by?: TurnBy
   /** A crash: what Claude Code said as it went, when it said anything. */
   reason?: string
+  /** A failed setup: its exit code, or null when it was stopped. */
+  code?: number | null
+  /** A failed setup the Lead already heard about in create_workspace's result. It doesn't wake the Lead again. */
+  told?: boolean
 }
 
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
@@ -111,8 +115,8 @@ function sentence(e: TeamEvent, name: string): string {
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. The worktree and chat are saved; the user can restart it from the workspace.`
-    case 'setup.failed': return `Setup failed, so ${name} hasn't started.`
-    case 'setup.passed': return `Setup passed, and ${name} started.`
+    case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
+    case 'setup.passed': return `Setup passed on Run again, and ${name}'s brief was released.`
     case 'review': return 'Sent a review.'
   }
 }
@@ -249,6 +253,15 @@ export class LeadUpdates {
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
+  }
+
+  /**
+   * A teammate's workspace setup failed, or passed on Run again (KERNEL-126). `told` marks a failure the Lead already read in
+   * create_workspace's result, which rides along instead of waking it again.
+   */
+  setup(ws: Workspace, ok: boolean, o: { told?: boolean; code?: number | null } = {}) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, ok ? { kind: 'setup.passed' } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}) })
   }
 
   /**
@@ -436,7 +449,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
     switch (e.kind) {
       case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
       case 'crash': wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
-      case 'setup.failed': wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
+      case 'setup.failed': if (!e.told) wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
       case 'review': wake(`Read ${name}'s review and pass on what it found.`); break
       case 'pr.cifail': wake(`Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break
       case 'pr.changes': wake(`Tell ${name} about the changes requested on ${pr} with message_agent ${at}.`); break

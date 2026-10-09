@@ -373,6 +373,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
     ['a crashed session', [ev('crash')], 'none', {}, ["Noor's session ended. Tell the user they can restart it from the workspace."]],
     ['a failed setup', [ev('setup.failed')], 'none', {}, ["Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]],
+    ['a failed setup create_workspace already reported', [ev('setup.failed', { told: true })], 'none', {}, []],
     ['a setup that passed on retry', [ev('setup.passed')], 'none', {}, []],
     ['a review verdict', [ev('review')], 'none', {}, ["Read Noor's review and pass on what it found."]],
     ['failed checks', [ev('pr.cifail')], 'cifail', {}, [`Tell Noor about the failed checks on PR #54 with message_agent ${at}.`]],
@@ -453,6 +454,25 @@ describe("a teammate's session that dies (KERNEL-124)", () => {
       todo: ["- Noor's session ended. Tell the user they can restart it from the workspace."]
     })
     expect(s.updates.at(-1)?.rows[0].events).toEqual([{ kind: 'crash', text: 'Session ended unexpectedly', actionable: true }])
+    expect(s.posts).toEqual([])
+  })
+})
+
+describe("a teammate's setup (KERNEL-126)", () => {
+  it('wakes the Lead for a failure nothing told it about, with the exit code, and lets the rest ride along', async () => {
+    const { u, s, w1 } = await setup()
+    u.setup(w1, false, { code: 1, told: true })
+    await wait()
+    expect(s.posts).toEqual([])
+    u.setup(w1, false, { code: 2 })
+    await wait()
+    expect(parts(s.posts.pop()!)).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, "- Setup failed with exit code 2, so Noor hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace."],
+      todo: ["- Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]
+    })
+    u.setup(w1, true)
+    await wait()
     expect(s.posts).toEqual([])
   })
 })
