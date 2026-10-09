@@ -1,6 +1,7 @@
 import type { AgentDef, Approval, Room, Route, SettingsPage, Workspace } from '@shared/types'
 
 import { roomLetter } from '../rooms/roomInfo'
+import { hasChanges } from '../workspace/pr/model'
 
 export type Section = 'Suggested' | 'Go to' | 'Rooms' | 'Results'
 
@@ -95,7 +96,9 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const room = roomInView(route, rooms, workspaces)
   const visible = rooms.filter((r) => !r.archived)
   const current = route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId) : undefined
-  const forPr = current && current.prState === 'none' ? current : workspaces.filter((w) => live(w) && w.prState === 'none' && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  // Same rule as the PR header: a workspace with no changes has nothing to open a PR for.
+  const canPr = (w: Workspace) => w.prState === 'none' && hasChanges(w)
+  const forPr = current && canPr(current) ? current : workspaces.filter((w) => live(w) && canPr(w) && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const pending = approvals.find((a) => a.status === 'pending' && a.kind === 'tool')
   const nameOf = (roomId?: string, agentId?: string) => (roomId ? i.agents[roomId]?.find((a) => a.id === agentId)?.name : undefined)
   const leadAgent = room ? i.agents[room.id]?.find((a) => a.lead) : undefined
