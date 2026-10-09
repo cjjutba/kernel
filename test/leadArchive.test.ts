@@ -39,7 +39,7 @@ function leadTools(list: Workspace[], o: { running?: string[]; unsaved?: Record<
   const handedOff = vi.fn()
   const deps: KernelToolDeps = {
     roomId: 'room', lead: { id: 'rowan', lead: true } as AgentDef, agents: async () => [], workspaces: () => list,
-    createWorkspace: async () => list[0], messageWorkspace: async () => {}, askUser: async () => null, hireAgent: async () => '',
+    createWorkspace: async () => list[0], messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
     archiveWorkspace, refreshPr, isRunning: (id) => o.running?.includes(id) ?? false, unsaved: async (id) => o.unsaved?.[id] ?? false, handedOff
   }
   const tool = kernelTools(deps).find((t) => t.name === 'archive_workspace')!

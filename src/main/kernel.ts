@@ -81,6 +81,8 @@ export class Kernel {
   readonly approvals: Approvals
   readonly notifications: Notifications
   readonly leadUpdates: LeadUpdates
+  /** The Lead's messages to a workspace whose setup is still running, sent after its brief (KERNEL-118). */
+  private duringSetup = new Map<string, ChatPart[][]>()
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
@@ -789,6 +791,8 @@ export class Kernel {
     // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
     const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
+    // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
+    this.duringSetup.set(ws.id, [])
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -799,12 +803,26 @@ export class Kernel {
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
-    const ready = await this.runSetup(ws, room, repo.scripts.setup)
+    let ready: boolean
+    try { ready = await this.runSetup(ws, room, repo.scripts.setup) } catch (e) { this.duringSetup.delete(ws.id); throw e }
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
-    if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
+    if (this.mustWs(ws.id).status === 'archived') { this.duringSetup.delete(ws.id); return this.mustWs(ws.id) }
+    // The Lead's messages sent before the brief went out follow it, never go before it (KERNEL-118). Messages that
+    // arrive while the brief is sent are still caught here, and the mark goes only once the list is empty.
+    const after = async (send: (m: ChatPart[]) => Promise<unknown> | void) => {
+      for (let held = this.duringSetup.get(ws.id); held?.length; held = this.duringSetup.get(ws.id)) await send(held.shift()!)
+      this.duringSetup.delete(ws.id)
+    }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
-    if (!ready) { this.sessions.hold(chat.id, parts, { from }); return this.updateWs(ws.id, { status: 'failed' }) }
-    return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts, { from }) })
+    if (!ready) {
+      this.sessions.hold(chat.id, parts, { from })
+      await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
+      return this.updateWs(ws.id, { status: 'failed' })
+    }
+    return this.setupDone(ws, room, chat, o.prompt, async () => {
+      await this.sessions.send(chat.id, parts, { from })
+      await after((m) => this.sessions.send(chat.id, m, { from: 'lead' }))
+    })
   }
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
@@ -1136,7 +1154,7 @@ export class Kernel {
         this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         return ws
       },
-      messageWorkspace: async (workspaceId, text) => { const chat = this.chatTabs(workspaceId).find((c) => c.kind !== 'terminal'); if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'lead' }) },
+      messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text),
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.agents(roomId)
@@ -1169,6 +1187,38 @@ export class Kernel {
         return file
       }
     })
+  }
+
+  /**
+   * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this room that has its folder and
+   * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
+   * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
+   * runs goes after the brief.
+   */
+  private async messageWorkspace(roomId: string, workspaceId: string, text: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
+    const refuse = (note: string) => ({ ok: false, sent: false, note })
+    const ws = this.store.workspace(workspaceId)
+    if (!ws || ws.roomId !== roomId) return refuse(`Not sent: there is no workspace ${workspaceId} in this room. Call list_workspaces for the ids.`)
+    if (ws.status === 'archived') return refuse(`Not sent: ${ws.name} is archived. Ask the user to restore it from History, or hand the work out again with create_workspace.`)
+    const agent = (await this.agents(roomId)).find((a) => a.id === ws.agentId)
+    if (agent?.lead) return refuse('Not sent: that is your own workspace.')
+    if (ws.mode === 'worktree' && await folderGone(ws.path).catch(() => false)) return refuse(`Not sent: ${ws.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.`)
+    const name = agent?.name ?? ws.agentId
+    const parts: ChatPart[] = [{ type: 'text', text }]
+    const held = this.duringSetup.get(ws.id)
+    if (held) { held.push(parts); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
+    let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+    const opened = !chat
+    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
+    const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
+    if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
+    const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
+      : why === 'setup' ? (this.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
+      : why === 'paused' ? 'The room is paused, so the message goes out when the user resumes it.'
+      : why === 'offline' ? 'Kernel is offline or signed out, so the message goes out once it is back.'
+      : why === 'capacity' ? 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.'
+      : 'The message waits in the queue.'
+    return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }
   }
 
   /**
