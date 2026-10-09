@@ -89,7 +89,7 @@ export interface SessionDeps {
    * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
    * archive and quit don't call this.
    */
-  onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean) => void
+  onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean, resumed: boolean) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
@@ -337,7 +337,10 @@ export class Sessions {
     return true
   }
 
-  /** Who sent the message that started this chat's running turn, or its last one once it is idle: Kernel, the Lead, or the user (undefined). */
+  /**
+   * Who started this chat's running turn, or its last one once it is idle: Kernel, the Lead, or the user (undefined). A
+   * limit or restart nudge's turn counts as the turn it carries on.
+   */
   turnFrom(chatId: string): MessageFrom | undefined { return this.live.get(chatId)?.from }
 
   /** This chat's running turn, or its last one once it is idle, was started by Kernel. */
@@ -386,15 +389,28 @@ export class Sessions {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
     if (o.from !== 'kernel') { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
+    // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
+    // Read before the nudge is saved, which would be the last message.
+    const by = o.from === 'kernel' && isNudge(parts) ? this.startedBy(chat.id) : o.from
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
-    live.from = o.from
+    live.from = by
     // A new message takes the agent past whatever a hook refused.
     live.blocked = undefined
     live.input.push(toUserMessage(parts))
     this.setRunning(chat, ws, live, true)
+  }
+
+  /** Who sent the chat's last message that wasn't one of Kernel's nudges: the turn a nudge picks up. */
+  private startedBy(chatId: string): MessageFrom | undefined {
+    const items = this.d.store.items(chatId)
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]
+      if (it.kind === 'user' && !(it.from === 'kernel' && isNudge(it.parts))) return it.from
+    }
+    return undefined
   }
 
   /** Send the oldest held message. The next one goes when this turn ends. */
@@ -534,7 +550,13 @@ export class Sessions {
     this.drain(chatId)
   }
 
-  stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
+  /** The workspace is going. Chats held for its setup let go too, so a restore doesn't find them still waiting. */
+  stopWorkspace(workspaceId: string) {
+    for (const c of this.d.store.chats(workspaceId)) {
+      this.stop(c.id)
+      if (this.waiting.delete(c.id)) { this.setQueue(c.id, []); this.saveHeld() }
+    }
+  }
   stopAll() { for (const id of [...this.live.keys()]) this.stop(id) }
 
   private baseMode(): NonNullable<Options['permissionMode']> { return this.d.settings().permissions.mode === 'ask' ? 'default' : 'acceptEdits' }
@@ -594,10 +616,12 @@ export class Sessions {
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
       if (chat && !replaced) this.drainWaiting()
       if (chat && !replaced && ended !== null) {
+        // A message that waited for this chat may have started a new session just now. Then it is working again.
+        const resumed = !!this.live.get(chatId)?.running
         // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
-        if (midTurn) this.crashed.add(chatId)
-        this.offline(ws, ended)
-        this.d.onExit?.(ws, chat, ended, midTurn)
+        if (midTurn && !resumed) this.crashed.add(chatId)
+        if (!resumed) this.offline(ws, ended)
+        this.d.onExit?.(ws, chat, ended, midTurn, resumed)
       }
     }
   }
@@ -974,6 +998,9 @@ export const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 
 /** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
+
+/** Kernel's restart and limit nudges, which carry on a turn rather than start one. */
+const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED)
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600

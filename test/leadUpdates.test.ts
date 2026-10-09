@@ -372,6 +372,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['an error in a turn Rowan started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
     ['a crashed session', [ev('crash')], 'none', {}, ["Noor's session ended. Tell the user they can restart it from the workspace."]],
+    ['a crash a waiting message already restarted', [ev('crash', { resumed: true })], 'none', {}, []],
     ['a failed setup', [ev('setup.failed')], 'none', {}, ["Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]],
     ['a failed setup create_workspace already reported', [ev('setup.failed', { told: true })], 'none', {}, []],
     ['a setup that passed on retry', [ev('setup.passed')], 'none', {}, []],
@@ -393,6 +394,9 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
     ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } } }, ["PR #54 needs a review, and setup failed in Theo's review workspace. Tell the user to fix it and click Run again there (workspace rv)."]],
     ['a review with blockers', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send Noor's blockers to Kai with message_agent (workspace w2). When Kai is done, ask Noor to review again with message_agent (workspace w1)."]],
+    ['an approval of work that merged before the verdict came', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('merged'), id: 'w2', prNumber: 60 }) }, []],
+    ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Noor found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],
+    ['blockers found in work the user archived', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', current: true } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor found blockers in Kai's work after it was archived. Tell the user what they are in a line or two."]],
     ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', current: true } })], 'none', {}, ["Noor approved Kai's work. Ask Kai to open a pull request with message_agent (workspace w2)."]],
     ['a turn Rowan started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
@@ -406,6 +410,14 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     const out = decide({ ws: ws(prState), name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
     expect(out.todo).toEqual(todo)
     expect(out.wake.size).toBe(todo.length)
+  })
+
+  it('asks nothing of an archived workspace, and still says when the last task merged', () => {
+    const archived = (prState: PrState) => ({ ...ws(prState), status: 'archived' as const })
+    for (const [kind, prState] of [['pr.cifail', 'cifail'], ['pr.changes', 'changes'], ['pr.conflict', 'conflict'], ['pr.ready', 'ready'], ['error', 'none'], ['crash', 'none'], ['turn', 'none'], ['pr.closed', 'closed']] as [TeamEventKind, PrState][]) {
+      expect(decide({ ws: archived(prState), name: 'Noor', events: [ev(kind, { by: 'lead' })] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([])
+    }
+    expect(decide({ ws: archived('merged'), name: 'Noor', events: [ev('pr.merged')] }, { allMerged: () => true }).todo).toEqual(['Every task you handed off in this chat has merged. Tell the user in one line.'])
   })
 
   it("names the closed chat whose last task merged", () => {
@@ -563,6 +575,79 @@ describe('reviews (KERNEL-130)', () => {
     u.turnDone(rv, rvc, done)
     await wait()
     expect(s.posts).toHaveLength(2)
+  })
+
+  it("folds a verdict turn that ended with an error into the verdict too", async () => {
+    const { u, s, rv, rvc, store } = await reviewSetup()
+    u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict())
+    u.turnDone(rv, rvc, { ...done, ok: false })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(s.posts[0]).not.toContain('Stopped with an error')
+  })
+
+  it('carries the first 10 blockers, each cut short, and counts the rest', async () => {
+    const { u, s, rv, store } = await reviewSetup()
+    const long = 'The row still renders. '.repeat(40)
+    u.reviewed(rv, { ...store.workspace('w1')!, prNumber: 54 }, verdict({ verdict: 'blockers', blockers: Array.from({ length: 15 }, () => ({ text: long })) }))
+    await wait()
+    const body = parts(s.posts.pop()!).body
+    expect(body[1]).toBe('- Found 15 blockers in PR #54 by Noor (workspace w1) (the first 10 below):')
+    const listed = body.filter((l) => /^ {2}\d+\. /.test(l))
+    expect(listed).toHaveLength(10)
+    for (const l of listed) expect(l.length).toBeLessThan(320)
+  })
+})
+
+describe("a teammate's turn and its PR (KERNEL-136)", () => {
+  it('waits for Kernel to read the PR after a turn, so a PR the turn opened speaks for it however long GitHub takes', async () => {
+    const { u, s, pr, w1, nc } = await setup()
+    u.readingPr('w1')
+    u.turnDone(w1, nc, done)
+    await wait()
+    // GitHub is slow: the read takes longer than the wait. Nothing goes out meanwhile.
+    expect(s.posts).toEqual([])
+    pr('w1', 'checks')
+    u.readPr('w1')
+    await wait()
+    // The turn opened a PR whose checks run, so neither wakes Rowan.
+    expect(s.posts).toEqual([])
+  })
+
+  it('sends the turn once the read finds no PR news', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.readingPr('w1')
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toEqual([])
+    u.readPr('w1')
+    await wait()
+    expect(parts(s.posts.pop()!).todo).toEqual([READ('Noor', 'w1')])
+  })
+
+  it('says a crash a waiting message already restarted is over, without waking the Lead', async () => {
+    const { u, s, pr, w1, store } = await setup()
+    u.crashed(w1, 'exit 1', { resumed: true })
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    expect(s.posts.pop()).toContain("- Noor's session ended unexpectedly (exit 1), partway through a turn. A message waiting for Noor started a new session, so Noor is working again.")
+    expect(store.workspace('w1')).toBeTruthy()
+  })
+
+  it('drops a close the PR left by opening again', async () => {
+    const { s, pr, store } = await setup()
+    s.accept = false
+    pr('w1', 'closed')
+    await wait()
+    store.saveWorkspace({ ...store.workspace('w1')!, prState: 'open' })
+    pr('w1', 'cifail')
+    s.accept = true
+    await wait()
+    const sent = s.posts.pop()!
+    expect(sent).not.toContain('closed without merging')
+    expect(sent).toContain('Checks failed on PR #54.')
   })
 })
 

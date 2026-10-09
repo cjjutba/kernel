@@ -9,13 +9,8 @@ import { isKernelUpdate } from '@shared/teamUpdate'
 export type UserView = 'bubble' | 'update' | 'note'
 
 export function userView(item: Extract<ChatItem, { kind: 'user' }>): UserView {
-  // An unmarked message with the old header is an update only when its lines are an update's, not one the user typed.
-  if (isKernelUpdate(item) && (item.update || item.from || LEGACY_LINE.test(text(item)))) return 'update'
+  // An unmarked message with the old header is an update only when its lines are an update's (`isKernelUpdate`).
+  if (isKernelUpdate(item)) return 'update'
   if (item.from === 'kernel') return 'note'
   return 'bubble'
 }
-
-/** A line of a teammate update before KERNEL-117: "- Kai · Inbox actions (workspace <id>): what happened". */
-const LEGACY_LINE = /^- .+ \(workspace [^)]+\): /m
-
-const text = (item: Extract<ChatItem, { kind: 'user' }>) => item.parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join('\n')

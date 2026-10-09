@@ -355,6 +355,21 @@ describe('kernel recovery paths', () => {
     await k2.stop()
   })
 
+  it('marks a workspace ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
+    const { k, room } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const lead = await k.leadChat(room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const chat = k.store.chats(ws.id)[0]
+    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
+    let heldWhenReady: unknown = 'never ready'
+    const on = (e: PushEvent) => { if (e.type === 'workspace' && e.workspace.id === ws.id && e.workspace.status === 'ready') queueMicrotask(() => { heldWhenReady = k.store.meta<Record<string, unknown>>('held')?.[chat.id] ?? null }) }
+    bus.on('push', on)
+    try { expect((await k.retrySetup(ws.id)).status).toBe('ready') } finally { bus.off('push', on) }
+    // Anything Kernel saves after the workspace reads as ready already has the brief out of the held queue.
+    expect(heldWhenReady).toBeNull()
+    await k.stop()
+  })
+
   it('saves removing a held message in the composer, and drops an archived workspace\'s held queue (KERNEL-128)', async () => {
     const { k, room, again } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
