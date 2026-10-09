@@ -62,6 +62,10 @@ export interface TeamEvent {
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
 interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
 
+/** What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). */
+interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[] }
+const SAVED = 'leadUpdates'
+
 /** PR states GitHub reports. Moving into one of these from none or creating means the PR was just opened. */
 const ON_GITHUB: PrState[] = ['draft', 'open', 'checks', 'cifail', 'changes', 'conflict', 'ready', 'merged', 'closed']
 
@@ -192,6 +196,7 @@ export class LeadUpdates {
 
   attach() {
     for (const w of this.d.store.workspaces()) this.prev.set(w.id, w.prState)
+    this.load()
     const on = (e: PushEvent) => { if (e.type === 'pr') this.onPr(e.workspaceId, e.state) }
     bus.on('push', on)
     this.off = () => bus.off('push', on)
@@ -204,13 +209,37 @@ export class LeadUpdates {
   }
 
   /**
+   * What waited when Kernel last quit. Events for workspaces that are gone, or that are the Lead's own, are dropped, and
+   * so are stop marks of chats that are closed or gone. Nothing is sent from here: the next event, the next Lead turn end
+   * or the PR poll delivers it, so opening Kernel never starts a Lead turn on its own.
+   */
+  private load() {
+    const saved = this.d.store.meta<Saved>(SAVED)
+    if (saved?.v !== 1) return
+    // A saved value Kernel can't read is dropped rather than stopping Kernel from starting.
+    try {
+      this.seq = Math.max(this.seq, saved.seq ?? 0)
+      for (const [key, p] of saved.pending ?? []) {
+        const events = (p.events ?? []).filter((e) => { const ws = this.d.store.workspace(e.workspaceId); return !!ws && !this.d.isLead(ws) })
+        if (events.length) this.pending.set(key, { ...p, events })
+      }
+      for (const id of saved.stopped ?? []) { const chat = this.d.store.chat(id); if (chat && !chat.closed) this.stopped.add(id) }
+    } catch { this.pending.clear(); this.stopped.clear() }
+    this.save()
+  }
+
+  private save() {
+    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped] })
+  }
+
+  /**
    * A turn ended. A teammate's finished turn is news for the Lead; the end of the Lead's own turn is a chance to deliver,
    * unless the user stopped it.
    */
   turnDone(ws: Workspace, chat: Chat, t: TurnDone) {
     if (t.lead || this.d.isLead(ws)) {
-      if (t.interrupted) { this.stopped.add(chat.id); return }
-      this.stopped.delete(chat.id)
+      if (t.interrupted) { this.stopped.add(chat.id); this.save(); return }
+      if (this.stopped.delete(chat.id)) this.save()
       this.flush(ws.roomId)
       return
     }
@@ -246,6 +275,7 @@ export class LeadUpdates {
     const kept = new Set(collapse(mine, undefined))
     p.events = p.events.filter((x) => x.workspaceId !== ws.id || kept.has(x))
     this.pending.set(key, p)
+    this.save()
     this.arm(key, ws.roomId)
   }
 
@@ -269,11 +299,17 @@ export class LeadUpdates {
   flush(roomId: string) {
     const waiting = [...this.pending].filter(([, p]) => p.roomId === roomId && p.events.length)
     if (!waiting.length) return
-    if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) this.pending.delete(key); return }
+    const changed = { any: false }
+    try { this.deliver(roomId, waiting, changed) } finally { if (changed.any) this.save() }
+  }
+
+  private deliver(roomId: string, waiting: [string, Pending][], changed: { any: boolean }) {
+    const drop = (key: string) => { if (this.pending.delete(key)) changed.any = true }
+    if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) drop(key); return }
     const byChat = new Map<string, { chat: Chat; sources: Source[]; keys: string[]; quiet: boolean }>()
     for (const [key, p] of waiting) {
       const t = this.d.target(roomId, p.owner)
-      if (!t) { if (!this.timers.has(key)) this.pending.delete(key); continue }
+      if (!t) { if (!this.timers.has(key)) drop(key); continue }
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
       group.sources.push({ events: p.events, from: t.closed, owner: p.owner })
       group.keys.push(key)
@@ -284,11 +320,11 @@ export class LeadUpdates {
       if (!g.quiet || this.stopped.has(g.chat.id)) continue
       const message = this.compose(roomId, g.sources)
       // Everything that waited was overtaken, as a failed check fixed since. There is nothing left to say.
-      if (!message) { for (const key of g.keys) this.pending.delete(key); continue }
+      if (!message) { for (const key of g.keys) drop(key); continue }
       // Nothing needs the Lead yet. It all waits for the next update that does (KERNEL-121).
       if (!message.wakes) continue
       if (!this.d.post(g.chat.id, message.text, message.update)) continue
-      for (const key of g.keys) this.pending.delete(key)
+      for (const key of g.keys) drop(key)
       this.d.delivered?.(roomId, g.chat, message.update)
     }
   }
