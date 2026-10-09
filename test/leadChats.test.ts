@@ -362,8 +362,6 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   it('starts over when the user answers the Lead\'s question or the PR merges, and not on an Ask Rowan question', async () => {
     const { k, room, first, ws, ask, spend, call } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
-    // The first tab is the Lead's ongoing chat, so Ask Rowan does not take it as an empty tab.
-    k.sessions.isRunning = (id) => id === first.id
     await spend()
     const asking = call(first, 'ask_user', { question: 'Checks keep failing on the snapshot test. Skip it?' })
     const pending = await vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
@@ -394,25 +392,34 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
 })
 
 describe('Ask Rowan (KERNEL-145)', () => {
-  it('starts a Lead chat of its own for each question, so a busy first tab never holds one, and gives it the Lead tools', async () => {
+  it('opens a new Lead chat tab for each question, past a busy first tab, and gives it the Lead tools', async () => {
     const { k, room, first, icons, sent, rowan } = await setup()
-    // The first tab is mid-turn, and a tab that got a question is in use from then on.
-    k.sessions.isRunning = (id: string) => id === first.id || sent.some((s) => s.chatId === id)
+    k.sessions.isRunning = (id: string) => id === first.id
     const a = await k.askLead(room.id, 'What is kai working on?')
     const b = await k.askLead(room.id, 'Is the release branch ready to merge?')
     expect(sent).toEqual([
       { chatId: a.chatId, text: 'What is kai working on?', from: undefined },
       { chatId: b.chatId, text: 'Is the release branch ready to merge?', from: undefined }
     ])
-    // Like the New chat modal, an empty Lead tab is taken before another is added (D-131).
-    expect(a.chatId).toBe(icons.id)
-    expect([first.id, icons.id]).not.toContain(b.chatId)
-    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id, icons.id, b.chatId])
+    expect(k.chatTabs(first.workspaceId).map((c) => c.id)).toEqual([first.id, icons.id, a.chatId, b.chatId])
     expect([a, b].map(({ chatId }) => k.store.chat(chatId)!.plan)).toEqual([false, false])
     expect(await k.leadChat(room.id)).toEqual(first)
     // Each tab gets the Lead's kernel server, bound to that tab.
     const ws = k.store.workspace(first.workspaceId)!
     expect(k.sessions['d'].mcpFor(ws, rowan, k.store.chat(b.chatId)!)).toHaveProperty('kernel')
     expect(wired!.chatId).toBe(b.chatId)
+  })
+
+  it('leaves an unused Lead tab alone, since the user may be typing a brief there', async () => {
+    const { k, room, first, icons, sent } = await setup()
+    // Nothing sent yet, so the engine sees it as unused, but the composer may hold a draft.
+    const drafting = k.newChat(first.workspaceId, 'Lead', { model: 'claude-fable-5-1', effort: 'xhigh', plan: true })
+    for (const c of [first, icons]) k.store.saveChat({ ...k.store.chat(c.id)!, closed: true })
+    const { chatId } = await k.askLead(room.id, 'What is kai working on?')
+    expect(chatId).not.toBe(drafting.id)
+    expect(sent.map((s) => s.chatId)).toEqual([chatId])
+    expect(k.store.chat(drafting.id)).toEqual(drafting)
+    // The New chat modal still takes it.
+    expect((await k.startLeadChat(room.id, { prompt: 'Add PDF export' })).id).toBe(drafting.id)
   })
 })
