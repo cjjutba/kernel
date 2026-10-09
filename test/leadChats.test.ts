@@ -177,6 +177,16 @@ describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
   })
 })
 
+describe("create_workspace when the teammate's setup fails (KERNEL-126)", () => {
+  it('says so with the exit code after the Created prefix, which the backfill still reads', async () => {
+    const { first, call } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "exit 3"\n' })
+    const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
+    expect(said).toMatch(/^Created \S+ on \S+ for kai\. Setup failed \(exit code 3\), so Kai hasn't started\. The brief waits until the user fixes setup and clicks Run again in that workspace\.$/)
+    // Kernel's backfill of older chats parses this prefix (backfillLeadChats).
+    expect(/^Created (\S+) on /.exec(said)?.[1]).toBeTruthy()
+  })
+})
+
 describe('message_agent says what really happened (KERNEL-118)', () => {
   it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
     const { k, first, run, byTitle, sent } = await setup()

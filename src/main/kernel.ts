@@ -83,6 +83,8 @@ export class Kernel {
   readonly leadUpdates: LeadUpdates
   /** The Lead's messages to a workspace whose setup is still running, sent after its brief (KERNEL-118). */
   private duringSetup = new Map<string, ChatPart[][]>()
+  /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
+  private setupFailures = new Map<string, number | null>()
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
@@ -817,7 +819,12 @@ export class Kernel {
     if (!ready) {
       this.sessions.hold(chat.id, parts, { from })
       await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
-      return this.updateWs(ws.id, { status: 'failed' })
+      const failed = this.updateWs(ws.id, { status: 'failed' })
+      // The Lead's create_workspace says so in its result while the Lead's turn still waits for it, so this event doesn't
+      // wake the Lead a second time (KERNEL-126). A setup that was stopped, by archive or quit, isn't a failure to report.
+      const code = this.setupFailures.get(ws.id)
+      if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { told: !!o.leadChatId && this.sessions.isRunning(o.leadChatId), code })
+      return failed
     }
     return this.setupDone(ws, room, chat, o.prompt, async () => {
       await this.sessions.send(chat.id, parts, { from })
@@ -854,11 +861,17 @@ export class Kernel {
     const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
     if (repo.scripts.setup) {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
-      if (!this.setupPassed(ws, code)) return this.mustWs(workspaceId)
-    }
-    if (!chat) return this.updateWs(ws.id, { status: 'ready' })
+      if (!this.setupPassed(ws, code)) {
+        // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
+        const now = this.mustWs(workspaceId)
+        if (code !== null && now.status !== 'archived') this.leadUpdates.setup(now, false, { code })
+        return now
+      }
+    } else this.setupFailures.delete(ws.id)
+    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status !== 'archived') this.leadUpdates.setup(now, true); return now }
+    if (!chat) return passed(this.updateWs(ws.id, { status: 'ready' }))
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
-    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id))
+    return passed(await this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id)))
   }
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
@@ -869,12 +882,14 @@ export class Kernel {
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
   private setupPassed(ws: Workspace, code: number | null) {
-    if (code === 0) return true
+    if (code === 0) { this.setupFailures.delete(ws.id); return true }
+    this.setupFailures.set(ws.id, code)
     bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`, stream: 'stderr' })
     return false
   }
 
   async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
+    this.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back.
     const ws = await this.syncBranch(id)
     const room = this.mustRoom(ws.roomId)
@@ -1152,7 +1167,9 @@ export class Kernel {
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
         const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, leadChatId: chat.id, taskFor: (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
-        return ws
+        if (ws.status !== 'failed') return ws
+        const code = this.setupFailures.get(ws.id)
+        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text),
       askUser: async (o) => {

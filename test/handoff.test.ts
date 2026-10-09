@@ -70,11 +70,11 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     { id: 'theo-2', name: 'Theo', role: 'Reviewer', lead: false },
     { id: 'ivy-qa', name: 'Ivy', role: 'QA', lead: false }
   ] as AgentDef[]
-  function tools() {
+  function tools(made: Partial<Workspace & { setupFailed: string }> = {}) {
     const asked: string[] = []
     const deps: KernelToolDeps = {
       roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => [],
-      createWorkspace: async (o) => { asked.push(o.agentId); return { id: 'ws-1', branch: 'feat/x', agentId: o.agentId } as Workspace },
+      createWorkspace: async (o) => { asked.push(o.agentId); return { id: 'ws-1', branch: 'feat/x', agentId: o.agentId, ...made } as Workspace },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
     }
@@ -106,6 +106,11 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   it('refuses a name two agents share', async () => {
     const t = tools()
     expect(await t.create('Theo')).toEqual({ isError: true, text: 'Not created: "Theo" matches more than one agent (theo, theo-2). Use the id from list_agents.' })
+  })
+
+  it('says when setup failed, so the teammate has not started, and keeps the Created prefix (KERNEL-126)', async () => {
+    const t = tools({ status: 'failed', setupFailed: 'exit code 1' })
+    expect(await t.create('kai')).toEqual({ isError: false, text: "Created ws-1 on feat/x for kai. Setup failed (exit code 1), so Kai hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
   })
 
   it('refuses to hand a task to the Lead', async () => {

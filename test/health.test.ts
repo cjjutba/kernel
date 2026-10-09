@@ -319,6 +319,39 @@ async function kernel(files: Record<string, string> = {}) {
 }
 
 describe('kernel recovery paths', () => {
+  it("tells the Lead about a setup failure only once, and about Run again failing or passing (KERNEL-126)", async () => {
+    const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const lead = await k.leadChat(room.id)
+    // Rowan's turn waits on create_workspace, so its result tells Rowan.
+    const running = k.sessions.isRunning
+    k.sessions.isRunning = (id) => id === lead.id
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    k.sessions.isRunning = running
+    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; told?: boolean; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
+    expect(waiting()).toEqual([expect.objectContaining({ kind: 'setup.failed', told: true, code: 1 })])
+    await k.retrySetup(ws.id)
+    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.failed', code: 1 })
+    expect(waiting().at(-1)?.told).toBeUndefined()
+    await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
+    expect((await k.retrySetup(ws.id)).status).toBe('ready')
+    expect(waiting().at(-1)).toMatchObject({ kind: 'setup.passed' })
+    await k.stop()
+  })
+
+  it("doesn't tell the Lead setup failed when the user archived the workspace during Run again (KERNEL-126)", async () => {
+    const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt || (sleep 1 && false)"\n' })
+    const lead = await k.leadChat(room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const waiting = () => [...(k.leadUpdates as unknown as { pending: Map<string, { events: { kind: string; code?: number | null }[] }> }).pending.values()].flatMap((p) => p.events)
+    const before = waiting()
+    const rerun = k.retrySetup(ws.id)
+    await new Promise((r) => setTimeout(r, 200))
+    await k.archiveWorkspace(ws.id)
+    await rerun
+    expect(waiting()).toEqual(before)
+    await k.stop()
+  })
+
   it("tells the Lead when a teammate's session dies partway through a turn (KERNEL-124)", async () => {
     const { k, room } = await kernel()
     const lead = await k.leadChat(room.id)
