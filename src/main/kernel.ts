@@ -14,6 +14,7 @@ import { planExists, savePlan } from './services/plans'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
+import { NUDGE_LIMIT, Nudges } from './services/nudges'
 import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
@@ -84,6 +85,8 @@ export class Kernel {
   readonly approvals: Approvals
   readonly notifications: Notifications
   readonly leadUpdates: LeadUpdates
+  /** The loop guard on the Lead's automatic requests to a teammate (KERNEL-125). */
+  private nudges: Nudges
   /**
    * Workspaces whose brief hasn't gone out yet: the chat and brief, and the Lead's messages that follow it (KERNEL-118).
    * Saved under the meta key `setups`, so a quit during setup doesn't lose the brief (KERNEL-128).
@@ -176,6 +179,7 @@ export class Kernel {
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
       onHeld: (held) => this.store.saveMeta('held', held)
     })
+    this.nudges = new Nudges(this.store)
     this.leadUpdates = new LeadUpdates({
       store: this.store,
       enabled: () => this.settings.models.leadUpdates !== false,
@@ -211,6 +215,8 @@ export class Kernel {
     }
     const onPush = (e: PushEvent) => {
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
+      // The work moved on, so the loop guard starts over for it (KERNEL-125).
+      if (e.type === 'pr' && (e.state === 'ready' || e.state === 'merged')) this.nudges.reset(e.workspaceId)
     }
     bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
     // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
@@ -949,6 +955,7 @@ export class Kernel {
   /** A quick question to the room's Lead. The answer arrives in the Lead's chat like any turn; the popover reads it from there. */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
     const chat = await this.leadChat(roomId)
+    this.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'text', text }])
     return { chatId: chat.id }
   }
@@ -1180,7 +1187,7 @@ export class Kernel {
         const code = this.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
-      messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text),
+      messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.agents(roomId)
@@ -1189,7 +1196,8 @@ export class Kernel {
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
         })
         this.sessions.placeApproval(chat.id, approval.id)
-        return decision
+        // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125).
+        return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
       },
       archiveWorkspace: (id) => this.archiveWorkspace(id),
       refreshPr: (id) => this.refreshPr(id, { settle: true }),
@@ -1221,7 +1229,7 @@ export class Kernel {
    * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
    * runs goes after the brief.
    */
-  private async messageWorkspace(roomId: string, workspaceId: string, text: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
+  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
     const refuse = (note: string) => ({ ok: false, sent: false, note })
     const ws = this.store.workspace(workspaceId)
     if (!ws || ws.roomId !== roomId) return refuse(`Not sent: there is no workspace ${workspaceId} in this room. Call list_workspaces for the ids.`)
@@ -1230,6 +1238,12 @@ export class Kernel {
     if (agent?.lead) return refuse('Not sent: that is your own workspace.')
     if (ws.mode === 'worktree' && await folderGone(ws.path).catch(() => false)) return refuse(`Not sent: ${ws.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.`)
     const name = agent?.name ?? ws.agentId
+    // A request in a Lead turn Kernel started is automatic. After a few tries at one workspace, the user decides (KERNEL-125).
+    // The turn is keyed by the message that started it, so several messages in one turn are one try.
+    const auto = !!leadChatId && this.sessions.kernelTurn(leadChatId)
+    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user')?.id : undefined
+    if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
+    if (auto) this.nudges.add(ws.id, turn)
     const parts: ChatPart[] = [{ type: 'text', text }]
     const held = this.setups.get(ws.id)
     if (held) { held.later.push(parts); this.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
@@ -1271,6 +1285,18 @@ export class Kernel {
   private prChat(id: string): Chat | undefined {
     const chats = this.chatTabs(id)
     return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
+  }
+
+  /**
+   * The user wrote in a chat, so the loop guard starts over (KERNEL-125): for that workspace, or, in a Lead chat, for every
+   * workspace whose updates that chat gets, a closed chat's work included.
+   */
+  private userSpoke(chatId: string) {
+    const chat = this.store.chat(chatId)
+    const ws = chat && this.store.workspace(chat.workspaceId)
+    if (!ws) return
+    if (!this.isLeadWorkspace(ws)) { this.nudges.reset(ws.id); return }
+    this.nudges.reset(...this.store.workspaces(ws.roomId).filter((w) => !this.isLeadWorkspace(w) && this.leadUpdateTarget(ws.roomId, w.leadChatId)?.chat.id === chatId).map((w) => w.id))
   }
 
   private setSetup(id: string, hold: SetupHold | undefined) {
@@ -1337,6 +1363,7 @@ export class Kernel {
     const info = await this.github.info(ws.path, ws.branch, id)
     if (info) bus.push({ type: 'pr.info', info })
     const [name, text] = resolveFile(ws.prState, this.settings.pr.resolveInstructions, info)
+    this.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'file', name, text }])
     this.setPrState(ws, 'resolving')
   }
@@ -1587,6 +1614,7 @@ export class Kernel {
           chat = first
         } else chat = await this.leadChat(roomId)
         const message = messageOf(text, parts)
+        this.userSpoke(chat.id)
         await this.sessions.send(chat.id, message)
         // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
         const to = this.store.workspace(chat.workspaceId)?.agentId
@@ -1661,12 +1689,16 @@ export class Kernel {
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {
+        // Sending their own message again is the user stepping in; a Kernel update sent again isn't.
+        const items = this.store.items(chatId)
+        const sent = items.slice(0, items.findIndex((i) => i.id === itemId) + 1).reverse().find((i) => i.kind === 'user')
+        if (sent?.kind === 'user' && !sent.from && !isKernelUpdate(sent)) this.userSpoke(chatId)
         const copy = await this.sessions.retry(chatId, itemId)
         // Retry now: the copy goes first and the running turn stops, past a limit's pause as Send now does.
         if (now && copy) await this.sendNow(chatId, copy.id)
         return { ok: true }
       },
-      'chats.send': async ({ chatId, parts }) => this.sessions.send(chatId, parts),
+      'chats.send': async ({ chatId, parts }) => { this.userSpoke(chatId); return this.sessions.send(chatId, parts) },
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),
       'notifications.list': async () => this.notifications.list(),
