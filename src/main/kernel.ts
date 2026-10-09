@@ -17,6 +17,8 @@ import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
 import { reviewMcpServer, type ReviewInput } from './services/reviewMcp'
 import { reviewRule } from './services/handoff'
+import { archiveSkip } from './services/archiveGuard'
+import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
 import { PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
@@ -95,6 +97,10 @@ export class Kernel {
    * Saved under the meta key `setups`, so a quit during setup doesn't lose the brief (KERNEL-128).
    */
   private setups = new Map<string, SetupHold>()
+  /** Review workspaces whose reviewed work merged or closed while they were working. They go when their turn ends. */
+  private reviewsToArchive = new Set<string>()
+  /** Archives under way, so a second call for the same workspace waits for the first. */
+  private archiving = new Map<string, Promise<void>>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
   private setupFailures = new Map<string, number | null>()
   readonly tasks: Tasks
@@ -169,6 +175,8 @@ export class Kernel {
         const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
         this.notifications.turnDone(ws, chat, done)
         this.leadUpdates.turnDone(ws, chat, done)
+        // A review workspace that was still working when its work merged or closed goes now (KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
         void this.changes(ws.id).catch(() => undefined)
         // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh.
         if (!this.isLeadWorkspace(ws)) void this.refreshPr(ws.id).catch(() => undefined)
@@ -223,6 +231,9 @@ export class Kernel {
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
       // The work moved on, so the loop guard starts over for it (KERNEL-125).
       if (e.type === 'pr' && (e.state === 'ready' || e.state === 'merged')) this.nudges.reset(e.workspaceId)
+      // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
+      if (e.type === 'pr' && (e.state === 'merged' || e.state === 'closed')) void this.archiveReviews(e.workspaceId).catch(() => undefined)
+      else if (e.type === 'pr') for (const r of this.store.workspaces().filter((w) => w.reviewOf === e.workspaceId)) this.reviewsToArchive.delete(r.id)
     }
     bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
     // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
@@ -252,6 +263,7 @@ export class Kernel {
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
     this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {})
     this.recoverSetups()
+    void this.sweepReviews()
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
   }
@@ -913,7 +925,16 @@ export class Kernel {
     return false
   }
 
-  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
+  /** One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice. */
+  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}): Promise<void> {
+    const running = this.archiving.get(id)
+    if (running) return running
+    const next = this.archiveNow(id, deleteBranch, o).finally(() => this.archiving.delete(id))
+    this.archiving.set(id, next)
+    return next
+  }
+
+  private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
     this.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back.
     const ws = await this.syncBranch(id)
@@ -1215,14 +1236,7 @@ export class Kernel {
       isRunning: (id) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id)),
       // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
       // worktree whose folder is already gone (KERNEL-109).
-      unsaved: async (id) => {
-        try {
-          const ws = await this.syncBranch(id)
-          if (ws.mode !== 'worktree') return false
-          if (await folderGone(ws.path)) return false
-          return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
-        } catch { return 'unknown' }
-      },
+      unsaved: (id) => this.unsavedOf(id),
       planApproved: () => this.sessions.handoffs.approved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {
@@ -1296,6 +1310,53 @@ export class Kernel {
   private prChat(id: string): Chat | undefined {
     const chats = this.chatTabs(id)
     return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
+  }
+
+  /**
+   * The sidebar's check before a one-click archive: whether archiving would lose uncommitted work. A current-branch
+   * workspace removes no files, and neither does a worktree whose folder is already gone (KERNEL-109).
+   */
+  private async unsavedOf(id: string): Promise<'dirty' | 'unknown' | false> {
+    try {
+      const ws = await this.syncBranch(id)
+      if (ws.mode !== 'worktree') return false
+      if (await folderGone(ws.path)) return false
+      return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
+    } catch { return 'unknown' }
+  }
+
+  /**
+   * The work a review looked at merged or closed, so its review workspaces are done (KERNEL-131). They go through the same
+   * checks as archive_workspace. One still working is archived when its turn ends; one that would lose uncommitted work is
+   * kept, with a note in the log.
+   */
+  private async archiveReviews(ofId: string, only?: string) {
+    const of = this.store.workspace(ofId)
+    if (!of || (of.prState !== 'merged' && of.prState !== 'closed')) return
+    for (const r of this.store.workspaces().filter((w) => w.reviewOf === ofId && w.status !== 'archived' && (!only || w.id === only))) {
+      // A review with a turn running, or a message about to start one, goes when that turn ends.
+      const working = (id: string) => this.chatTabs(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
+      if (working(r.id)) { this.reviewsToArchive.add(r.id); continue }
+      this.reviewsToArchive.delete(r.id)
+      const keep = (reason: string) => bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text: 'kept the review workspace', object: r.name, warn: true, quote: `The work it reviewed is done, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
+      const why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: working, latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
+      if (why === 'its agent is still working') { this.reviewsToArchive.add(r.id); continue }
+      if (why) { keep(why); continue }
+      // Checked again after the git call: a message may have started a turn meanwhile, or another archive got there first.
+      if (working(r.id)) { this.reviewsToArchive.add(r.id); continue }
+      if (this.store.workspace(r.id)?.status === 'archived') continue
+      try { await this.archiveWorkspace(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
+    }
+  }
+
+  /**
+   * At start: reviews of work that merged or closed while Kernel was closed, or whose turn was still running when Kernel
+   * quit, are archived now (KERNEL-131).
+   */
+  private async sweepReviews() {
+    const done = new Set(this.store.workspaces().filter((w) => w.prState === 'merged' || w.prState === 'closed').map((w) => w.id))
+    const of = new Set(this.store.workspaces().filter((w) => w.status !== 'archived' && w.reviewOf && done.has(w.reviewOf)).map((w) => w.reviewOf!))
+    for (const id of of) await this.archiveReviews(id).catch(() => undefined)
   }
 
   // ---------- reviews (KERNEL-130)
