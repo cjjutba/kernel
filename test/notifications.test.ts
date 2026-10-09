@@ -106,7 +106,7 @@ describe('notifications service', () => {
 
 describe('finished and idle rows (KERNEL-71)', () => {
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-  const done = { ok: true, interrupted: false, lead: false, queued: false }
+  const done = { ok: true, interrupted: false, lead: false, queued: false, by: 'user' as const }
 
   async function teammate(o: Parameters<typeof setup>[0] = {}) {
     const t = await setup(o)

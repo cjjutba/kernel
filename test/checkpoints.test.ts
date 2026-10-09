@@ -175,6 +175,12 @@ describe('checkpoints in the kernel', () => {
     await expect(h['checkpoints.revert']({ workspaceId: ws.id, checkpointId: '0' })).rejects.toThrow('Stop it, then revert')
     k.sessions.isRunning = running
 
+    // A turn Kernel's team update started is titled for what it is, not by the update's first line (KERNEL-116).
+    k.store.saveItem(chat.id, { kind: 'user', id: 'u2', ts: 2, from: 'kernel', parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], update: { rows: [] } })
+    await writeFile(join(ws.path, 'empty.tsx'), 'y\n')
+    await k.checkpoint(ws, chat)
+    expect((await h['checkpoints.list']({ workspaceId: ws.id }))[0].title).toBe('Team update')
+
     const { backupBranch } = await h['checkpoints.revert']({ workspaceId: ws.id, checkpointId: '0' })
     expect(backupBranch).toMatch(/^kernel\/backup\/invoice-table-\d{8}-\d{6}$/)
     expect(await exists(ws.path, 'empty.tsx')).toBe(false)

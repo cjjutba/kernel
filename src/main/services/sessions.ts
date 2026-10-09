@@ -2,9 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, QueuedMessage, RateLimit, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
+import { isKernelUpdate } from '@shared/teamUpdate'
 import type { Store } from '../db'
 import { bus } from '../bus'
 import { describeTool, matchesRule, needsUser, type Approvals } from './approvals'
@@ -60,6 +61,8 @@ interface Live {
   limited?: boolean
   /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
   cleared?: boolean
+  /** Who sent the message that started the running turn: Kernel, the Lead, or the user when unset (KERNEL-116). */
+  from?: MessageFrom
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
@@ -77,8 +80,10 @@ export interface SessionDeps {
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
-  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it. */
-  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean }) => void
+  /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
+  onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy }) => void
+  /** The session's process ended without being stopped, mid-turn or idle. Stop, archive and quit don't call this. */
+  onExit?: (ws: Workspace, chat: Chat, reason: string) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
@@ -86,6 +91,21 @@ export interface SessionDeps {
   /** The chats a limit stopped changed. Kernel saves them, so they still carry on after a restart. */
   onCutOff?: (chatIds: string[]) => void
 }
+
+/** Who sent a message the user didn't type, and the Team update card it carries (KERNEL-116). */
+export interface Sender { from?: MessageFrom; update?: TeamUpdate }
+
+/** Who started a turn. */
+export type TurnBy = MessageFrom | 'user'
+
+/**
+ * What a sent message waits for in the queue: the running turn, the workspace's setup, a paused room, every room held
+ * (`offline` covers a lost connection and a sign-out alike), or the agent limit in Settings, Models.
+ */
+export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+
+/** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
+const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
 
 export class Sessions {
   private live = new Map<string, Live>()
@@ -138,9 +158,9 @@ export class Sessions {
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
 
   /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
-  hold(chatId: string, parts: ChatPart[]) {
+  hold(chatId: string, parts: ChatPart[], o: Sender = {}) {
     this.waiting.add(chatId)
-    this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
+    this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
   }
 
   release(chatId: string) {
@@ -249,18 +269,30 @@ export class Sessions {
 
   /**
    * Starts a turn, or holds the message when one is running. A held message shows in the composer
-   * (edit or remove it until it goes) and is sent, in order, when the turn ends.
+   * (edit or remove it until it goes) and is sent, in order, when the turn ends. `why` says what it waits for.
+   * `from` marks a message the user didn't type, and it stays on the message while it waits (KERNEL-116).
    */
-  async send(chatId: string, parts: ChatPart[]): Promise<{ queued: boolean }> {
+  async send(chatId: string, parts: ChatPart[], o: Sender = {}): Promise<{ queued: boolean; why?: QueueReason }> {
     const chat = this.mustChat(chatId)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
-    this.handoffs.done(chatId)
-    if (this.live.get(chatId)?.running || this.pausedChat(chat) || this.atCapacity(chatId)) {
-      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now() }])
-      return { queued: true }
+    if (o.from !== 'kernel') this.handoffs.done(chatId)
+    const why = this.waitsFor(chat)
+    if (why) {
+      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+      return { queued: true, why }
     }
-    this.dispatch(chat, parts)
+    this.dispatch(chat, parts, o)
     return { queued: false }
+  }
+
+  /** What a message sent now would wait for, or nothing when it can go at once. */
+  private waitsFor(chat: Chat): QueueReason | undefined {
+    if (this.live.get(chat.id)?.running) return 'running'
+    if (this.waiting.has(chat.id)) return 'setup'
+    if (this.global) return 'offline'
+    if (this.pausedChat(chat)) return 'paused'
+    if (this.atCapacity(chat.id)) return 'capacity'
+    return undefined
   }
 
   /**
@@ -268,12 +300,18 @@ export class Sessions {
    * message, but it isn't the user redirecting, so a pending hand-off reminder stays. It sends nothing and returns false
    * when the chat is running, has messages queued, is paused or is over the agent limit; the caller keeps it for later.
    */
-  post(chatId: string, parts: ChatPart[]): boolean {
+  post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
     if (this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId)) return false
-    this.dispatch(chat, parts, { fromKernel: true })
+    this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
+
+  /** Who sent the message that started this chat's running turn, or its last one once it is idle: Kernel, the Lead, or the user (undefined). */
+  turnFrom(chatId: string): MessageFrom | undefined { return this.live.get(chatId)?.from }
+
+  /** This chat's running turn, or its last one once it is idle, was started by Kernel. */
+  kernelTurn(chatId: string): boolean { return this.turnFrom(chatId) === 'kernel' }
 
   queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
 
@@ -292,29 +330,37 @@ export class Sessions {
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
-    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts) }
+    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
 
-  /** Send the same message again: the user message before the given reply. */
-  async retry(chatId: string, itemId: string): Promise<void> {
+  /**
+   * Send the same message again: `itemId` itself when it is a user message, else the user message before it (a reply or a
+   * turn's result). It keeps its sender, so a Kernel update sent again is still Kernel's and leaves a pending hand-off
+   * reminder alone. Returns the copy when it waits in the queue, so Retry now can send it first.
+   */
+  async retry(chatId: string, itemId: string): Promise<QueuedMessage | undefined> {
     const items = this.d.store.items(chatId)
     const at = items.findIndex((i) => i.id === itemId)
     if (at < 0) throw new Error('That message is no longer in this chat.')
-    const user = items.slice(0, at).reverse().find((i) => i.kind === 'user')
+    const user = items.slice(0, at + 1).reverse().find((i) => i.kind === 'user')
     if (!user || user.kind !== 'user') throw new Error('There is no message to send again.')
-    await this.send(chatId, user.parts)
+    // An update from before KERNEL-116 carries no marker, only its header.
+    const from = user.from ?? (isKernelUpdate(user) ? 'kernel' : undefined)
+    const { queued } = await this.send(chatId, user.parts, { from, update: user.update })
+    return queued ? this.queued(chatId).at(-1) : undefined
   }
 
-  private dispatch(chat: Chat, parts: ChatPart[], o: { fromKernel?: boolean } = {}) {
+  private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}) {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if (!o.fromKernel) this.handoffs.done(chat.id)
+    if (o.from !== 'kernel') this.handoffs.done(chat.id)
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
-    this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts })
+    this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
+    live.from = o.from
     // A new message takes the agent past whatever a hook refused.
     live.blocked = undefined
     live.input.push(toUserMessage(parts))
@@ -327,7 +373,7 @@ export class Sessions {
     const chat = this.d.store.chat(chatId)
     if (!next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
     this.setQueue(chatId, rest)
-    this.dispatch(chat, next.parts)
+    this.dispatch(chat, next.parts, next)
   }
 
   /** Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher limit starts waiting work. */
@@ -376,7 +422,7 @@ export class Sessions {
       if (!chat || chat.closed || !ws || ws.status === 'archived') { this.setCutOff(id, false); continue }
       if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat)) continue
       if (this.queued(id).length) this.drain(id)
-      else this.dispatch(chat, [{ type: 'text', text: LIMIT_LIFTED }])
+      else this.dispatch(chat, [{ type: 'text', text: LIMIT_LIFTED }], { from: 'kernel' })
     }
   }
 
@@ -404,7 +450,9 @@ export class Sessions {
   async interrupt(chatId: string, sendNext = false) {
     const live = this.live.get(chatId)
     if (!live?.running) return
-    this.handoffs.done(chatId)
+    // Stop is the user taking over. Send now isn't on its own: the message it sends first decides, so a Kernel update
+    // sent again with Retry now leaves a pending hand-off reminder alone (KERNEL-116).
+    if (!sendNext) this.handoffs.done(chatId)
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
@@ -448,8 +496,8 @@ export class Sessions {
     // Messages held while the session was down or the room was paused still go out, first, and the nudge follows them.
     const held = this.queued(chatId)
     this.stop(chatId)
-    if (!held.length) { await this.send(chatId, [{ type: 'text', text: RESTART_NUDGE }]); return }
-    this.setQueue(chatId, [...held, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RESTART_NUDGE }], ts: Date.now() }])
+    if (!held.length) { await this.send(chatId, [{ type: 'text', text: RESTART_NUDGE }], { from: 'kernel' }); return }
+    this.setQueue(chatId, [...held, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RESTART_NUDGE }], ts: Date.now(), from: 'kernel' }])
     this.drain(chatId)
   }
 
@@ -511,7 +559,7 @@ export class Sessions {
       const chat = this.d.store.chat(chatId)
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
       if (chat && !replaced) this.drainWaiting()
-      if (chat && !replaced && ended !== null) this.offline(ws, ended)
+      if (chat && !replaced && ended !== null) { this.offline(ws, ended); this.d.onExit?.(ws, chat, ended) }
     }
   }
 
@@ -612,7 +660,7 @@ export class Sessions {
         live.limited = false
         live.cleared = false
         this.setRunning(chat, ws, live, false)
-        this.d.onTurnDone?.(ws, chat, { ok, interrupted })
+        this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: live.from ?? 'user' })
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
         if (stopped) this.setQueue(chatId, [])
         else this.drain(chatId)
