@@ -856,6 +856,8 @@ export interface UiState {
 export interface QuickAskState {
   /** What you typed and haven't sent. */
   draft: string
+  /** A question is on its way to the Lead. Ask stays busy while the popover is closed and reopened. */
+  sending?: boolean
   /** The question just sent, with the chat it went to and when, so the answer is the Lead's text after `since`. */
   asked?: { chatId: string; since: number; question: string }
 }

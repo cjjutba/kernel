@@ -226,6 +226,7 @@ export const actions = {
   },
   quickAsk: {
     setDraft: (roomId: string, draft: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft } } })),
+    setSending: (roomId: string, sending: boolean) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { ...s.quickAsk[roomId], draft: s.quickAsk[roomId]?.draft ?? '', sending } } })),
     /** The question sent. Clears the draft, which is what was just asked. */
     setAsked: (roomId: string, asked: NonNullable<QuickAskState['asked']>) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: '', asked } } })),
     clearAsked: (roomId: string) => setState((s) => ({ quickAsk: { ...s.quickAsk, [roomId]: { draft: s.quickAsk[roomId]?.draft ?? '' } } }))
