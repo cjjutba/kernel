@@ -214,6 +214,12 @@ export interface Workspace {
   taskId?: string
   /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
   leadChatId?: string
+  /** On a review workspace: the workspace whose work it reviews. */
+  reviewOf?: string
+  /** Reviewers' verdicts on this workspace's PR, one per review workspace. */
+  reviews?: ReviewVerdict[]
+  /** The PR's head commit as GitHub last reported it. */
+  prHead?: string
   prNumber?: number
   prUrl?: string
   prTitle?: string
@@ -332,7 +338,8 @@ export interface Chat {
 
 /** One rendered row in a chat transcript. Mirrors the kinds drawn on the canvas. */
 export type ChatItem =
-  | { kind: 'user'; id: string; ts: number; parts: ChatPart[] }
+  /** `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111). */
+  | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; durationMs?: number }
@@ -359,6 +366,60 @@ export interface QueuedMessage {
   id: string
   chatId: string
   parts: ChatPart[]
+  ts: number
+  /** Carried to the chat item, so a held brief stays the Lead's and a resent update stays Kernel's. */
+  from?: MessageFrom
+  update?: TeamUpdate
+}
+
+/** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
+export type MessageFrom = 'kernel' | 'lead'
+
+/** What happened in a teammate's workspace, as Kernel reports it to the Lead (KERNEL-111). */
+export type TeamEventKind =
+  | 'turn' | 'error' | 'crash' | 'setup.failed' | 'setup.passed'
+  | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
+  | 'review'
+
+/** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
+export interface TeamUpdateEvent {
+  kind: TeamEventKind
+  text: string
+  actionable: boolean
+}
+
+/** One teammate workspace in a Team update. `fromChat` is the closed Lead chat the work came from, when it isn't this chat's. */
+export interface TeamUpdateRow {
+  workspaceId: string
+  agentId: string
+  name: string
+  task: string
+  prNumber?: number
+  events: TeamUpdateEvent[]
+  /** The teammate's last reply, or a reviewer's summary, as the Lead got it. */
+  reply?: string
+  fromChat?: string
+}
+
+/** Kernel's update to a Lead chat. The card draws this; the Lead reads the item's text. `omitted` counts workspaces left out. */
+export interface TeamUpdate {
+  rows: TeamUpdateRow[]
+  omitted?: number
+  /** Every task this chat handed off has merged. */
+  allMerged?: boolean
+}
+
+/** A reviewer's verdict from submit_review. `sha` is the review worktree's HEAD; a verdict for an older commit is stale. */
+export interface ReviewVerdict {
+  /** The review workspace that sent it, and its agent. */
+  workspaceId: string
+  agentId: string
+  verdict: 'approved' | 'blockers'
+  summary: string
+  blockers?: { text: string; file?: string; line?: number }[]
+  sha?: string
+  /** The PR it was about. A verdict for another number no longer counts. */
+  prNumber?: number
   ts: number
 }
 
@@ -550,6 +611,8 @@ export interface PrInfo {
   /** Files with conflicts against the base. */
   conflicts: string[]
   reviewDecision?: 'approved' | 'changes' | 'pending'
+  /** The head commit (headRefOid). */
+  head?: string
 }
 
 /** A PR the new workspace modal can start from. */
