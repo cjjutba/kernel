@@ -129,6 +129,8 @@ export interface KernelApi {
   'lead.ask': { req: { roomId: string; text: string }; res: { chatId: string } }
   /** The Lead's workspace, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Created on the main checkout the first time. */
   'lead.open': { req: { roomId: string }; res: Workspace }
+  /** The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). */
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }; res: Chat }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
