@@ -11,6 +11,7 @@ import { AccountButton } from './AccountMenu'
 import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
+import { ResizeHandle, readWidth, widthLimit } from './ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
 import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
@@ -175,6 +176,16 @@ export function Sidebar() {
   const plan = useStore((s) => s.account?.plan)
   const roomsAnchor = useRef<HTMLDivElement>(null)
   const [chosen, setChosen] = useState(readExpanded)
+  // The saved width is read once. The window's room for it is state only so a resize that changes the limit re-renders; one that doesn't bails out.
+  const nav = useRef<HTMLElement>(null)
+  const [saved, setSaved] = useState(readWidth)
+  const [limit, setLimit] = useState(widthLimit)
+  useEffect(() => {
+    const onResize = () => setLimit(widthLimit())
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const width = Math.min(saved, limit)
   const openRoom = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : rooms[0]?.id
   const toggle = (id: string, expanded: boolean) => {
     const next = { ...chosen, [id]: !expanded }
@@ -183,7 +194,7 @@ export function Sidebar() {
   }
 
   return (
-    <nav aria-label="Sidebar" className="sidebar">
+    <nav ref={nav} aria-label="Sidebar" className="sidebar" style={{ width }}>
       {/* The traffic lights end near x 70. The toggle sits just right of them, where the header's Show sidebar sits when hidden. */}
       <div className="drag" style={{ height: 42, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 70 }}>
         <IconButton className="nodrag" icon="sidebar" size={15} label="Hide sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(false)} />
@@ -220,6 +231,7 @@ export function Sidebar() {
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
         <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
       </div>
+      <ResizeHandle navRef={nav} width={width} limit={limit} onCommit={setSaved} />
     </nav>
   )
 }
