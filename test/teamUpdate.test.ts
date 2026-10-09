@@ -22,8 +22,9 @@ describe('isKernelUpdate (KERNEL-112)', () => {
 
   it('is false for a message the user typed', () => {
     expect(isKernelUpdate(user('Add PDF export to invoices.'))).toBe(false)
-    // Quoting the old header mid-message doesn't make it an update.
+    // Quoting the old header mid-message doesn't make it an update, and neither does starting with it without an update's lines.
     expect(isKernelUpdate(user(`What does "${LEGACY_UPDATE_HEADER}" mean?`))).toBe(false)
+    expect(isKernelUpdate(user(`${LEGACY_UPDATE_HEADER} what does this mean?`))).toBe(false)
   })
 
   it('is false for Kernel and Lead messages without the card data', () => {
