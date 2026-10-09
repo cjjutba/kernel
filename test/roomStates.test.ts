@@ -80,7 +80,7 @@ describe('pausing a room', () => {
     expect(released).toBe(false)
 
     // Held sends show in the chat's queue, and nothing reaches the SDK.
-    expect(await sessions.send(chat.id, text('second'))).toEqual({ queued: true })
+    expect(await sessions.send(chat.id, text('second'))).toEqual({ queued: true, why: 'running' })
     expect(sessions.queued(chat.id)).toHaveLength(1)
     expect(sdk.calls.length).toBe(before)
 
@@ -170,7 +170,7 @@ describe('the pause hold', () => {
   it('sends held messages before the restart nudge when the room is not paused', async () => {
     const { sessions, chat, store, done } = await runner()
     await sessions.send(chat.id, text('first'))
-    expect(await sessions.send(chat.id, text('held'))).toEqual({ queued: true })
+    expect(await sessions.send(chat.id, text('held'))).toEqual({ queued: true, why: 'running' })
     const before = sdk.calls.length
     await sessions.restart(chat.id)
     expect(sdk.calls.length).toBe(before + 1)

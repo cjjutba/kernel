@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import type { Server } from 'node:http'
 import type { AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
+import { isKernelUpdate } from '@shared/teamUpdate'
 import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
@@ -790,12 +791,14 @@ export class Kernel {
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     const parts = messageOf(o.prompt, o.parts)
+    // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
+    const from = o.leadChatId ? 'lead' as const : undefined
     const ready = await this.runSetup(ws, room, repo.scripts.setup)
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
-    if (!ready) { this.sessions.hold(chat.id, parts); return this.updateWs(ws.id, { status: 'failed' }) }
-    return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts) })
+    if (!ready) { this.sessions.hold(chat.id, parts, { from }); return this.updateWs(ws.id, { status: 'failed' }) }
+    return this.setupDone(ws, room, chat, o.prompt, async () => { await this.sessions.send(chat.id, parts, { from }) })
   }
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
@@ -966,7 +969,8 @@ export class Kernel {
   async checkpoint(ws: Workspace, chat: Chat) {
     const items = this.store.items(chat.id)
     const user = [...items].reverse().find((i) => i.kind === 'user')
-    const text = user?.kind === 'user' ? user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ') : ''
+    // A turn Kernel's team update started is titled for what it is, not for the update's first line (KERNEL-116).
+    const text = user?.kind !== 'user' ? '' : isKernelUpdate(user) ? 'Team update' : user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ')
     const c = await snapshot(ws, { chatId: chat.id, title: text || chat.title })
     bus.push({ type: 'checkpoint', checkpoint: c })
     return c
@@ -1126,7 +1130,7 @@ export class Kernel {
         this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         return ws
       },
-      messageWorkspace: async (workspaceId, text) => { const chat = this.chatTabs(workspaceId).find((c) => c.kind !== 'terminal'); if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }]) },
+      messageWorkspace: async (workspaceId, text) => { const chat = this.chatTabs(workspaceId).find((c) => c.kind !== 'terminal'); if (chat) await this.sessions.send(chat.id, [{ type: 'text', text }], { from: 'lead' }) },
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.agents(roomId)
@@ -1545,7 +1549,12 @@ export class Kernel {
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
-      'chats.retry': async ({ chatId, itemId }) => { await this.sessions.retry(chatId, itemId); return { ok: true } },
+      'chats.retry': async ({ chatId, itemId, now }) => {
+        const copy = await this.sessions.retry(chatId, itemId)
+        // Retry now: the copy goes first and the running turn stops, past a limit's pause as Send now does.
+        if (now && copy) await this.sendNow(chatId, copy.id)
+        return { ok: true }
+      },
       'chats.send': async ({ chatId, parts }) => this.sessions.send(chatId, parts),
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),

@@ -3,18 +3,19 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatItem, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, TeamUpdate, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { Sessions } from '../src/main/services/sessions'
+import { LIMIT_LIFTED, RESTART_NUDGE, Sessions, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
+import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // After an abort it yields what was already fed, then throws, as the real one does.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; interrupts: number; flags: unknown[] }[] }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; end: () => void; interrupts: number; flags: unknown[] }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ options }: { options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
@@ -22,12 +23,19 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
     signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
-    const call = { options, interrupts: 0, flags: [] as unknown[], feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } }
+    // end() is the process exiting on its own: the stream finishes once what was fed is read.
+    let ended = false
+    const call = {
+      options, interrupts: 0, flags: [] as unknown[],
+      feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
+      end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) }
+    }
     sdk.calls.push(call)
     return {
       [Symbol.asyncIterator]: () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
-          : signal?.aborted ? Promise.reject(aborted()) : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
+          : signal?.aborted ? Promise.reject(aborted()) : ended ? Promise.resolve({ value: undefined, done: true })
+          : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
       }),
       interrupt: async () => { call.interrupts++ },
       setModel: async () => {},
@@ -39,7 +47,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef; models?: Partial<AppSettings['models']> } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -50,7 +58,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }
+    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
   const call = sdk.calls[sdk.calls.length - 1]
@@ -167,7 +175,7 @@ describe('session runner (SDK scripted)', () => {
       expect(sessions.isRunning(chat.id)).toBe(true)
       expect(running).toEqual([true])
 
-      expect(await sessions.send(chat.id, [{ type: 'text', text: 'And backfill it' }])).toEqual({ queued: true })
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'And backfill it' }])).toEqual({ queued: true, why: 'running' })
       expect(sdk.calls.length).toBe(before + 1)
 
       sessions.stop(chat.id)
@@ -215,8 +223,8 @@ describe('session runner (SDK scripted)', () => {
     const onPush = (e: PushEvent) => { if (e.type === 'chat.queue' && e.chatId === chat.id) queues.push(e.queue.length) }
     bus.on('push', onPush)
     try {
-      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Also add a skeleton' }])).toEqual({ queued: true })
-      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Use EmptyState' }])).toEqual({ queued: true })
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Also add a skeleton' }])).toEqual({ queued: true, why: 'running' })
+      expect(await sessions.send(chat.id, [{ type: 'text', text: 'Use EmptyState' }])).toEqual({ queued: true, why: 'running' })
       expect(sessions.queued(chat.id).map((q) => (q.parts[0] as { text: string }).text)).toEqual(['Also add a skeleton', 'Use EmptyState'])
       expect(kinds()).toEqual(['user'])
 
@@ -351,21 +359,23 @@ describe('Approve and hand off (KERNEL-67)', () => {
   it('drops the reminder when the user sends something else, even while it waits in the queue', async () => {
     const s = await setup('acceptEdits', { agent: rowan })
     await approvePlan(s)
-    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Hold off, post it to Linear instead' }])).toEqual({ queued: true })
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Hold off, post it to Linear instead' }])).toEqual({ queued: true, why: 'running' })
     expect(await contexts(s.options, 'Stop')).toEqual([])
   })
 
   it('takes a Kernel post into an idle chat without cancelling a pending hand-off, and refuses one while running (KERNEL-72)', async () => {
     const s = await setup('acceptEdits', { agent: rowan })
     s.sessions.handoffs.approved('chat')
-    expect(s.sessions.post('chat', [{ type: 'text', text: 'Update from Kernel (not the user):' }])).toBe(false)
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }])).toBe(false)
     s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
     s.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 10 })
     await flush()
     expect(s.sessions.isRunning('chat')).toBe(false)
-    expect(s.sessions.post('chat', [{ type: 'text', text: 'Update from Kernel (not the user):' }])).toBe(true)
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }])).toBe(true)
     expect(s.sessions.isRunning('chat')).toBe(true)
     expect(s.sessions.handoffs.due('chat')).toBe(true)
+    // The update is marked as Kernel's, so the transcript and Retry can tell it from the user's messages (KERNEL-116).
+    expect(s.store.items('chat').filter((i: ChatItem) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel' })
   })
 
   it('leaves agents that are not the Lead alone', async () => {
@@ -387,5 +397,147 @@ describe('agent teams (KERNEL-73)', () => {
   it('reports TeammateIdle from Kernel sessions', async () => {
     const { options } = await setup()
     expect(Object.keys(options.hooks!)).toContain('TeammateIdle')
+  })
+})
+
+describe('who sent a message (KERNEL-116)', () => {
+  const lead: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+  const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
+  const HEADER = 'Team update from Kernel, not from the user.'
+  const users = (s: Awaited<ReturnType<typeof setup>>) => s.store.items('chat').filter((i: ChatItem): i is Extract<ChatItem, { kind: 'user' }> => i.kind === 'user')
+  const init = (s: Awaited<ReturnType<typeof setup>>) => s.call.feed({ type: 'system', subtype: 'init', session_id: s.options.sessionId, apiKeySource: 'none' })
+  const reply = (s: Awaited<ReturnType<typeof setup>>, uuid: string, text: string) => s.call.feed({ type: 'assistant', uuid, parent_tool_use_id: null, message: { content: [{ type: 'text', text }] } })
+  const finish = async (s: Awaited<ReturnType<typeof setup>>, uuid: string) => { s.call.feed({ type: 'result', subtype: 'success', uuid, duration_ms: 10 }); await flush() }
+
+  it("marks a Kernel post with its card, and reports who started each turn", async () => {
+    const turns: TurnBy[] = []
+    const s = await setup('acceptEdits', { onTurnDone: (_ws, _chat, t) => { turns.push(t.by) } })
+    init(s)
+    await finish(s, 'r1')
+    expect(s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })).toBe(true)
+    expect(s.sessions.kernelTurn('chat')).toBe(true)
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', update })
+    await finish(s, 'r2')
+    await s.sessions.send('chat', [{ type: 'text', text: 'Thanks' }])
+    expect(s.sessions.kernelTurn('chat')).toBe(false)
+    expect(users(s).at(-1)).not.toHaveProperty('from')
+    await finish(s, 'r3')
+    expect(turns).toEqual(['user', 'kernel', 'user'])
+  })
+
+  it("sends a Kernel update again as Kernel's, with its card, and leaves a pending hand-off alone", async () => {
+    const s = await setup('acceptEdits', { agent: lead })
+    init(s)
+    await finish(s, 'r1')
+    s.sessions.handoffs.approved('chat')
+    s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
+    reply(s, 'a2', "Kai's PR #108 passed checks. Theo is reviewing it.")
+    await finish(s, 'r2')
+    const answer = s.store.items('chat').find((i: ChatItem) => i.kind === 'text')!
+    // Idle, so the copy goes out at once and nothing waits.
+    expect(await s.sessions.retry('chat', answer.id)).toBeUndefined()
+    expect(users(s)).toHaveLength(3)
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', update })
+    expect(s.sessions.handoffs.due('chat')).toBe(true)
+  })
+
+  it("treats an update saved before the marker as Kernel's when it is sent again", async () => {
+    const s = await setup('acceptEdits', { agent: lead })
+    init(s)
+    await finish(s, 'r1')
+    s.store.saveItem('chat', { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: `${LEGACY_UPDATE_HEADER}\n- Kai · Inbox actions (workspace w2): PR #60 is ready to merge` }] })
+    s.sessions.handoffs.approved('chat')
+    // The id of the user message itself works too, as Retry now on the limit banner passes it.
+    await s.sessions.retry('chat', 'old')
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel' })
+    expect(users(s).at(-1)?.id).not.toBe('old')
+    expect(s.sessions.handoffs.due('chat')).toBe(true)
+  })
+
+  it("sends the user's own message again as the user's, which ends a pending hand-off", async () => {
+    const s = await setup('acceptEdits', { agent: lead })
+    init(s)
+    reply(s, 'a1', 'Done.')
+    await finish(s, 'r1')
+    s.sessions.handoffs.approved('chat')
+    await s.sessions.retry('chat', s.store.items('chat').find((i: ChatItem) => i.kind === 'text')!.id)
+    expect(users(s).map((u) => u.from)).toEqual([undefined, undefined])
+    expect(s.sessions.handoffs.due('chat')).toBe(false)
+  })
+
+  it('returns the copy that waits behind a running turn, so Retry now can send it first, and it keeps its marker and the hand-off as it drains', async () => {
+    const s = await setup('acceptEdits', { agent: lead })
+    init(s)
+    await finish(s, 'r1')
+    s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'later' }])).toEqual({ queued: true, why: 'running' })
+    s.sessions.handoffs.approved('chat')
+    const copy = await s.sessions.retry('chat', users(s).at(-1)!.id)
+    expect(copy).toMatchObject({ from: 'kernel', update })
+    await s.sessions.sendNow('chat', copy!.id)
+    expect(s.call.interrupts).toBe(1)
+    expect(s.sessions.handoffs.due('chat')).toBe(true)
+    expect(s.sessions.queued('chat').map((q) => q.id)[0]).toBe(copy!.id)
+    s.call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r2', duration_ms: 10 })
+    await flush()
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', update })
+    expect(s.sessions.kernelTurn('chat')).toBe(true)
+    expect(s.sessions.handoffs.due('chat')).toBe(true)
+  })
+
+  it('still ends a pending hand-off when the user stops the turn', async () => {
+    const s = await setup('acceptEdits', { agent: lead })
+    init(s)
+    await finish(s, 'r1')
+    s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })
+    s.sessions.handoffs.approved('chat')
+    await s.sessions.interrupt('chat')
+    expect(s.sessions.handoffs.due('chat')).toBe(false)
+  })
+
+  it("says what a queued message waits for, and a brief held for setup stays the Lead's", async () => {
+    const s = await setup()
+    init(s)
+    await finish(s, 'r1')
+    s.sessions.hold('chat', [{ type: 'text', text: 'Build T-14 from the plan' }], { from: 'lead' })
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Use EmptyState' }], { from: 'lead' })).toEqual({ queued: true, why: 'setup' })
+    expect(s.sessions.queued('chat').map((q) => q.from)).toEqual(['lead', 'lead'])
+    s.sessions.release('chat')
+    expect(users(s).at(-1)).toMatchObject({ from: 'lead', parts: [{ type: 'text', text: 'Build T-14 from the plan' }] })
+    await finish(s, 'r2')
+    expect(users(s).at(-1)).toMatchObject({ from: 'lead', parts: [{ type: 'text', text: 'Use EmptyState' }] })
+    await finish(s, 'r3')
+    s.sessions.pause('room')
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'paused' }])).toEqual({ queued: true, why: 'paused' })
+    s.sessions.holdAll('offline')
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'offline' }])).toEqual({ queued: true, why: 'offline' })
+  })
+
+  it("marks Kernel's own nudges as Kernel's", async () => {
+    const s = await setup()
+    init(s)
+    await finish(s, 'r1')
+    // A chat a limit stopped carries on once nothing holds it.
+    s.sessions.restore([], ['chat'])
+    s.sessions.drainWaiting()
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+    await finish(s, 'r2')
+    await s.sessions.restart('chat')
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: RESTART_NUDGE }] })
+  })
+
+  it('reports a session that ended on its own, and not one that was stopped', async () => {
+    const exits: string[] = []
+    const s = await setup('acceptEdits', { onExit: (_ws, chat, reason) => { exits.push(`${chat.id}:${reason}`) } })
+    init(s)
+    await flush()
+    s.call.end()
+    await flush()
+    expect(exits).toEqual(['chat:'])
+    await s.sessions.send('chat', [{ type: 'text', text: 'Carry on' }])
+    await flush()
+    s.sessions.stop('chat')
+    await flush()
+    expect(exits).toEqual(['chat:'])
   })
 })

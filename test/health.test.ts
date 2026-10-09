@@ -242,7 +242,7 @@ describe('sessions under failure', () => {
     const before = sdk.calls.length
     sessions.holdAll('offline')
     sessions.holdAll('auth')
-    expect(await sessions.send(chat.id, [{ type: 'text', text: 'Also add a loading skeleton.' }])).toEqual({ queued: true })
+    expect(await sessions.send(chat.id, [{ type: 'text', text: 'Also add a loading skeleton.' }])).toEqual({ queued: true, why: 'offline' })
     sessions.releaseAll('offline')
     expect(sessions.queued(chat.id)).toHaveLength(1)
     // A second release for the same reason does nothing.
@@ -313,6 +313,38 @@ async function kernel(files: Record<string, string> = {}) {
 }
 
 describe('kernel recovery paths', () => {
+  it("Retry now sends a Kernel update first, as Kernel's, and leaves a pending hand-off alone (KERNEL-116)", async () => {
+    const { k, room } = await kernel()
+    const chat = await k.leadChat(room.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed(result())
+    await flush()
+    const update = { rows: [] }
+    expect(k.sessions.post(chat.id, [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)
+    const sent = k.store.items(chat.id).filter((i) => i.kind === 'user').pop()!
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'later' }])
+    k.sessions.handoffs.approved(chat.id)
+    await k.handlers()['chats.retry']({ chatId: chat.id, itemId: sent.id, now: true })
+    expect(k.sessions.queued(chat.id).map((q) => q.from)).toEqual(['kernel', undefined])
+    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
+    // The interrupted turn ends and the copy goes out before "later".
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r2', duration_ms: 10 })
+    await flush()
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel', update })
+    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
+    await k.stop()
+  })
+
+  it('Retry now sends an update past a limit pause, as Send now does (KERNEL-116)', async () => {
+    const { k, chat } = await limited()
+    k.store.saveItem(chat.id, { kind: 'user', id: 'old', ts: 2, parts: [{ type: 'text', text: 'Update from Kernel (not the user):\n- Kai · Inbox actions (workspace w2): PR #60 is ready to merge' }] })
+    await k.handlers()['chats.retry']({ chatId: chat.id, itemId: 'old', now: true })
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    expect(k.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ from: 'kernel' })
+    await k.stop()
+  })
+
   it('holds the first prompt while setup fails, and sends it once Run again passes', async () => {
     const { k, room } = await kernel({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const before = sdk.calls.length
@@ -350,7 +382,7 @@ describe('kernel recovery paths', () => {
 
   it('lifts a limit pause when Claude Code reports room before the reset time, and sends what queued', async () => {
     const { k, room, chat, resetsAt } = await limited()
-    expect(await k.sessions.send(chat.id, [{ type: 'text', text: 'hi' }])).toEqual({ queued: true })
+    expect(await k.sessions.send(chat.id, [{ type: 'text', text: 'hi' }])).toEqual({ queued: true, why: 'paused' })
     sdk.usage = usageAt(100, resetsAt)
     await k.checkLimits()
     expect(k.store.room(room.id)?.paused).toBe(true)
