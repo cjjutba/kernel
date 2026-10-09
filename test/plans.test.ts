@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -7,6 +7,7 @@ import { run } from '../src/main/services/exec'
 import { searchFiles } from '../src/main/services/files'
 import { attachmentNote, planName, saveAttachments, savePlan } from '../src/main/services/plans'
 import { Kernel } from '../src/main/kernel'
+import type { Approval } from '@shared/types'
 
 // D-092: plan-mode plans are saved as files a later chat can build from, and git never sees them.
 
@@ -99,7 +100,8 @@ describe('a plan change request with images, through approvals.decide', () => {
     const room = await k.addRoom(repo)
     const chat = await k.leadChat(room.id)
     const ws = k.store.workspace(chat.workspaceId)!
-    const ask = (toolName = 'ExitPlanMode') => k.approvals.request({ roomId: room.id, workspaceId: ws.id, chatId: chat.id, kind: 'plan', source: 'sdk', toolName, title: 'Plan for lead', input: { plan: PLAN } })
+    const ask = (o: { kind?: Approval['kind']; toolName?: string } = { toolName: 'ExitPlanMode' }) =>
+      k.approvals.request({ roomId: room.id, workspaceId: ws.id, chatId: chat.id, kind: o.kind ?? 'plan', source: 'sdk', toolName: o.toolName, title: 'Plan for lead', input: { plan: PLAN } })
     return { k, ws, ask, decide: k.handlers()['approvals.decide'] }
   }
 
@@ -123,5 +125,31 @@ describe('a plan change request with images, through approvals.decide', () => {
     const second = ask()
     await decide({ id: second.approval.id, decision: { behavior: 'deny', message: 'Smaller steps' } })
     expect(await second.decision).toEqual({ behavior: 'deny', message: 'Smaller steps' })
+  })
+
+  it("saves them for the Lead's task list too, which has no tool name", async () => {
+    const { ws, ask, decide } = await kernel()
+    const { approval, decision } = ask({ kind: 'plan' })
+    await decide({ id: approval.id, decision: { behavior: 'deny', message: 'Split T-2', images: [{ name: 'board.png', dataUrl: png('a') }] } })
+    expect(await decision).toEqual({ behavior: 'deny', message: `Split T-2\n\nAttached image: ${join(ws.path, '.kernel/attachments/board.png')}. Read it before revising the plan.` })
+  })
+
+  it('drops images from any other denial and writes nothing', async () => {
+    const { ws, ask, decide } = await kernel()
+    const { approval, decision } = ask({ kind: 'tool', toolName: 'Bash' })
+    await decide({ id: approval.id, decision: { behavior: 'deny', message: 'No', images: [{ name: 'image.png', dataUrl: png('a') }] } })
+    expect(await decision).toEqual({ behavior: 'deny', message: 'No' })
+    await expect(access(join(ws.path, '.kernel/attachments'))).rejects.toThrow()
+  })
+
+  it('keeps the plan waiting when the workspace folder is gone, and refuses a second answer', async () => {
+    const { k, ws, ask, decide } = await kernel()
+    const gone = ask()
+    k.store.workspace = () => ({ ...ws, path: join(ws.path, 'missing') })
+    const images = [{ name: 'image.png', dataUrl: png('a') }]
+    await expect(decide({ id: gone.approval.id, decision: { behavior: 'deny', message: 'x', images } })).rejects.toThrow("The workspace folder is gone, so the images can't be saved.")
+    expect(k.approvals.isPending(gone.approval.id)).toBe(true)
+    await decide({ id: gone.approval.id, decision: { behavior: 'deny', message: 'x' } })
+    await expect(decide({ id: gone.approval.id, decision: { behavior: 'deny', message: 'x', images } })).rejects.toThrow('already timed out or was answered')
   })
 })

@@ -1060,14 +1060,17 @@ export class Kernel {
     return { path: join(ws.path, relative), relative }
   }
 
-  /** A plan's change request with images: saves them in the workspace and names their paths in the message (D-131). */
+  /**
+   * A plan's change request with images: saves them in the workspace and names their paths in the message (D-131).
+   * A plan is ExitPlanMode or the Lead's `request_plan_approval`, the same test as the composer's `isPlanApproval`.
+   */
   async withAttachments(id: string, decision: Decision): Promise<Decision> {
     if (decision.behavior !== 'deny' || !decision.images?.length) return decision
     const { images, ...rest } = decision
     const a = this.store.approvals().find((x) => x.id === id)
-    if (!a || a.toolName !== 'ExitPlanMode' || !this.approvals.isPending(id)) return rest
+    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || !this.approvals.isPending(id)) return rest
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
-    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("Its workspace folder is gone, so the image can't be saved.")
+    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("The workspace folder is gone, so the images can't be saved.")
     return { ...rest, message: attachmentNote(rest.message, await saveAttachments(ws.path, images)) }
   }
 
