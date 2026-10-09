@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, loadWorkspace, useStore } from '../../store'
+import { leadOf } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
@@ -25,9 +26,33 @@ const letter = (name = '') => { const w = name.trim().split(/\s+/); const l = w[
 
 const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
+/** What the pickers chose, as plain lines for the Lead. A picked source already wrote its own prompt (pick.ts). */
+export function pickedLines({ mode, target, fallback, picked }: { mode: WorkspaceMode; target: string; fallback: string; picked: string }): string[] {
+  if (mode === 'current') return ['Work on the current branch, not a new worktree.']
+  return target !== fallback && target !== picked ? [`Cut the branch from ${target}.`] : []
+}
+
+/** The message the Lead gets: what was typed or attached, a picked issue as a chip, then the lines the pickers add. */
+export function briefParts(typed: ChatPart[], source: WorkspaceSource | null, lines: string[]): ChatPart[] {
+  const parts = [...typed]
+  if (source?.kind === 'issue' && !parts.some((p) => p.type === 'issue' && p.name === source.id)) {
+    parts.unshift({ type: 'issue', name: source.id, title: source.title, url: source.url, source: source.id.startsWith('#') ? 'github' : 'linear' })
+  }
+  if (lines.length) {
+    const last = parts[parts.length - 1]
+    const text = lines.join('\n')
+    if (last?.type === 'text') parts[parts.length - 1] = { type: 'text', text: `${last.text}\n\n${text}` }
+    else parts.push({ type: 'text', text })
+  }
+  return parts
+}
+
+/** The text a chip-only message sends as its prompt, so Create works with a long paste or a file and nothing typed. */
+const promptOf = (parts: ChatPart[]) => parts.map((p) => (p.type === 'text' ? p.text : p.type === 'file' ? p.text ?? p.name : p.name)).join('\n').trim()
+
 /**
- * "What do you want to work on?" (NewWorkspace.png and its four popovers). It always goes to the room's Lead,
- * who names the branch from the task, so there is no agent picker. Cmd+Enter creates.
+ * "What do you want to work on?" (NewWorkspace.png and its four popovers). Create opens a new chat with the room's Lead
+ * and sends the prompt there, so the Lead plans and hands off (D-131). Enter and Cmd+Enter create, Shift+Enter breaks the line.
  */
 export function NewWorkspace({ roomId, source: initial }: { roomId?: string; source?: WorkspaceSource }) {
   const rooms = useStore((s) => s.rooms)
@@ -39,19 +64,22 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   /** The prompt a picked source wrote, replaced by the next pick or cleared with the source until you edit it. */
   const [filled, setFilled] = useState('')
   const [baseRef, setBaseRef] = useState('')
+  /** The base a picked PR or branch set, which its prompt already says. */
+  const [pickedRef, setPickedRef] = useState('')
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
-  const [model, setModel] = useState<ModelId>(settings?.models.engineers ?? 'claude-sonnet-5-5')
+  const [model, setModel] = useState<ModelId>(settings?.models.lead ?? 'claude-opus-5-5')
+  const lead = useStore((s) => leadOf(s.agents, room))
   const memory = useEffortMemory()
-  const defaultEffort = useDefaultEffort()
+  const defaultEffort = useDefaultEffort(lead?.effort)
   // The picker shows each model at its remembered effort, so the modal starts there too.
   const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, defaultEffort))
-  const [plan, setPlan] = useState(settings?.models.workspacePlanMode ?? false)
+  const [plan, setPlan] = useState(settings?.models.leadPlanMode ?? false)
   const d = useDraft()
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
   const [creating, run] = useBusy()
   const busy = creating !== null
-  const [error, setError] = useState<{ message: string; open?: string } | null>(null)
+  const [error, setError] = useState<{ message: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
   const fallback = `origin/${current?.defaultBranch ?? 'main'}`
@@ -87,42 +115,55 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
 
   const pick = (r: FromRow) => {
     setSource(r.source)
-    if (r.baseRef) setBaseRef(r.baseRef)
+    if (r.baseRef) { setBaseRef(r.baseRef); setPickedRef(r.baseRef) }
     actions.ui.closeMenu()
     if (!d.plain() || (!!filled && d.text === filled)) { d.setText(r.prompt); setFilled(r.prompt) }
     else requestAnimationFrame(() => d.focus())
   }
-  const clearSource = () => { setSource(null); setBaseRef(''); if (filled && d.text === filled) d.setText(''); setFilled('') }
+  const clearSource = () => { setSource(null); setBaseRef(''); setPickedRef(''); if (filled && d.text === filled) d.setText(''); setFilled('') }
 
   const togglePlan = () => { setPlan((p) => !p); actions.ui.closeMenu() }
 
   const create = () => {
-    const prompt = d.plain()
-    if (!room || !prompt) { d.focus(); return }
-    void run('create', () => start(room, prompt))
+    if (!room) { setError({ message: 'Pick a room first.' }); return }
+    const typed = d.message()
+    if (!typed.length) { d.focus(); return }
+    const lines = pickedLines({ mode, target, fallback, picked: pickedRef })
+    const parts = briefParts(typed, source, lines)
+    void run('create', () => start(room, parts))
   }
-  const start = async (room: string, prompt: string) => {
+  const start = async (room: string, parts: ChatPart[]) => {
     setError(null)
+    let chat
+    try { chat = await call('lead.start', { roomId: room, prompt: promptOf(parts), parts, model, effort, plan }) }
+    catch (e) { setError({ message: reason(e) }); return }
+    // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
     try {
-      const ws = await call('workspaces.create', {
-        roomId: room, prompt, parts: d.message(), mode,
-        baseRef: mode === 'worktree' ? target : undefined, source: source ?? undefined, model, effort, plan
-      })
-      await loadWorkspace(ws.id)
-      if (ws.status === 'failed') { setError({ message: `Setup failed on ${ws.branch}. The workspace is there, with the setup output.`, open: ws.id }); return }
-      go({ name: 'workspace', workspaceId: ws.id })
-    } catch (e) { setError({ message: reason(e) }) }
+      const ws = (await call('workspaces.list', { roomId: room })).find((w) => w.id === chat.workspaceId)
+      if (ws) actions.workspaces.upsert(ws)
+      actions.chats.upsert(chat)
+      await loadWorkspace(chat.workspaceId)
+    } catch { actions.chats.upsert(chat) }
+    go({ name: 'workspace', workspaceId: chat.workspaceId })
+    actions.ui.setWorkspaceView({ tab: chat.id })
+  }
+
+  /** Enter creates and Shift+Enter breaks the line, as in the chat composer. Cmd+Enter is the keyboard shortcut below. */
+  const onEnter = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.nativeEvent.isComposing) return
+    e.preventDefault()
+    create()
   }
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && e.metaKey) { e.preventDefault(); create() }
+    if (e.key === 'Enter' && e.metaKey && !e.nativeEvent.isComposing) { e.preventDefault(); create() }
     else if (e.key === 'Tab' && e.shiftKey && e.target === d.input.current) { e.preventDefault(); togglePlan() }
     else if (e.key.toLowerCase() === 'u' && e.metaKey && !e.shiftKey) { e.preventDefault(); filePick.current?.click() }
     else if (e.key.toLowerCase() === 'i' && e.metaKey && !e.shiftKey && room) { e.preventDefault(); setPlusPanel('linkIssue') }
   }
 
   return (
-    <Modal title="New workspace" onClose={close} bare width={680} top={170}>
+    <Modal title="New chat" onClose={close} bare width={680} top={170}>
       <div className="nw" data-plan={plan || undefined} onKeyDown={onKey} {...d.drop}>
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
@@ -153,7 +194,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
               <span className="chip nw-chip"><span className="ellipsis">{label.chip}</span><button type="button" className="chip-x" aria-label={`Clear ${label.chip}`} onClick={clearSource}><Icon name="close" size={9} stroke={2} /></button></span>
             </div>
           )}
-          <DraftInput d={d} id="nw-prompt" aria-label="What do you want to work on?" placeholder="What do you want to work on?" disabled={busy} />
+          <DraftInput d={d} id="nw-prompt" aria-label="What do you want to work on?" placeholder="What do you want to work on?" disabled={busy} onKeyDown={onEnter} />
         </div>
 
         <div className="nw-foot">
@@ -162,16 +203,14 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
           <span className="grow">
-            {busy && <span className="nw-status" role="status">Creating the workspace and running setup</span>}
-            {error && !busy && (
-              <span role="alert" className="nw-status">{error.message}{error.open && <button type="button" className="link" onClick={() => go({ name: 'workspace', workspaceId: error.open! })}>Open workspace</button>}</span>
-            )}
+            {busy && <span className="nw-status" role="status">Sending to {lead?.name ?? 'the Lead'}</span>}
+            {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}
           </span>
           <span ref={plusAnchor} className="nw-plus" style={{ position: 'relative' }}>
             <PlusMenu panel={plusPanel} onPanel={setPlusPanel} anchorRef={plusAnchor} roomId={room || undefined} plan={plan} onPlan={togglePlan}
               onAttach={() => filePick.current?.click()} onInsert={(parts) => { for (const p of parts) d.insert(p); d.focus() }} />
           </span>
-          <Button variant="primary" className="nw-create" busy={busy} busyLabel="Creating" onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
+          <Button variant="primary" className="nw-create" busy={busy} busyLabel="Sending" onClick={create}>Create<Icon name="reply" size={12} stroke={1.6} /></Button>
         </div>
         <input ref={filePick} type="file" hidden tabIndex={-1} aria-hidden="true" multiple onChange={(e) => { d.attach([...(e.target.files ?? [])]); e.target.value = '' }} />
       </div>
