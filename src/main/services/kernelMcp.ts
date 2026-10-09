@@ -39,6 +39,23 @@ export interface KernelToolDeps {
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
+/**
+ * The agent `asked` names: its exact id, else the one whose id or name matches ignoring case. A miss or a name two
+ * agents share comes back as the tool's refusal, listing the team, so the Lead can try again with a real id (KERNEL-119).
+ */
+export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
+  const exact = team.find((a) => a.id === asked)
+  if (exact) return exact
+  const want = asked.trim().toLowerCase()
+  const found = team.filter((a) => a.id.toLowerCase() === want || a.name.toLowerCase() === want)
+  if (found.length === 1) return found[0]
+  const list = team.filter((a) => !a.lead).map((a) => `${a.id} (${a.name}, ${a.role})`).join(', ')
+  if (found.length > 1) return `Not created: "${asked}" matches more than one agent (${found.map((a) => a.id).join(', ')}). Use the id from list_agents.`
+  return list
+    ? `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.`
+    : `Not created: this team has no teammates yet. Propose one with hire_agent.`
+}
+
 /** PR states the Lead may archive over. Every other state is a PR still in flight. */
 const CLOSED_PR = new Set<PrState>(['none', 'merged', 'closed'])
 
@@ -109,10 +126,15 @@ export function kernelTools(d: KernelToolDeps) {
       base_ref: z.string().optional(),
       branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the title")
     }, async ({ agent, title, brief, mode, base_ref, branch }) => {
-      const ws = await d.createWorkspace({ prompt: brief, agentId: agent, mode, baseRef: base_ref, title, branch })
-      bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: agent, data: { assignee: agent } })
+      // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
+      const team = await d.agents()
+      const pick = pickAgent(team, agent)
+      if (typeof pick === 'string') return { ...text(pick), isError: true }
+      if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch })
+      bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
-      return text(`Created ${ws.id} on ${ws.branch} for ${agent}.`)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.`)
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
       workspace_id: z.string(), text: z.string()

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { PrInfo, PrState } from '@shared/types'
+import type { AgentDef, PrInfo, PrState } from '@shared/types'
 import { tempRepo } from './helpers'
 import { run } from '../src/main/services/exec'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
@@ -58,7 +58,7 @@ describe('the Lead names the branch', () => {
   it('passes branch from create_workspace through to the workspace', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
     const deps: KernelToolDeps = {
-      roomId: 'room', lead: undefined, agents: async () => [], workspaces: () => [],
+      roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
       createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: o.branch ?? 'feat/x', agentId: o.agentId } as never },
       messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
       archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
