@@ -8,22 +8,22 @@ Node 22 or later.
 
 ```bash
 cd site
-npm install
-npm run dev            # http://localhost:3000
+pnpm install
+pnpm dev               # http://localhost:3000
 ```
 
 ## Check
 
 ```bash
-npm run lint
-npm run typecheck
-npm test               # unit tests, including the design rules
-npm run build
-npx playwright install --with-deps chromium   # once
-npm run test:e2e       # e2e, axe, render comparison, JS budget
+pnpm lint
+pnpm typecheck
+pnpm test              # unit tests, including the design rules
+pnpm build
+pnpm exec playwright install --with-deps chromium   # once
+pnpm test:e2e          # e2e, axe, render comparison, JS budget
 ```
 
-`npm run test:e2e` builds the site into `.next-e2e` against a stub GitHub API that reports 1,234 stars and serves it on port 3100. Locally it reuses a server that is already running on that port.
+`pnpm test:e2e` builds the site into `.next-e2e` against a stub GitHub API that reports 1,234 stars and serves it on port 3100. Locally it reuses a server that is already running on that port.
 
 The design rules are tests (`tests/unit/rules.test.ts`): no hex colors in components or pages, no arbitrary Tailwind values, and no em or en dashes. Colors, sizes and effects are tokens and named utilities in `app/globals.css`.
 
@@ -43,7 +43,7 @@ node scripts/check-render.mjs changelog        # full page against design/site/r
 
 ## Add a changelog entry
 
-Each release is a file in `content/releases/<version>.md`, compiled from the repo's release-note fragments by `npm run release:notes` at the repo root (`../.changes/README.md`, `../docs/RELEASING.md`). Don't write one from scratch; edit the compiled file in the release PR.
+Each release is a file in `content/releases/<version>.md`, compiled from the repo's release-note fragments by `pnpm release:notes` at the repo root (`../.changes/README.md`, `../docs/RELEASING.md`). Don't write one from scratch; edit the compiled file in the release PR.
 
 ```md
 ---

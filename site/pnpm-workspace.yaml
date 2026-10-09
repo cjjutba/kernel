@@ -1,0 +1,8 @@
+# Settings for pnpm. This file also makes site/ its own workspace, so pnpm here never installs the app at the
+# repo root (D-056, D-110).
+
+# Dependencies that may run install scripts. Anything not listed fails the install (strictDepBuilds).
+allowBuilds:
+  # Its postinstall only downloads the native binding when the platform package is missing, and pnpm installs
+  # that package as an optional dependency.
+  unrs-resolver: false
