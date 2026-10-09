@@ -1005,11 +1005,13 @@ export class Kernel {
     return back
   }
 
-  /** A quick question to the room's Lead. The answer arrives in the Lead's chat like any turn; the popover reads it from there. */
+  /**
+   * A quick question to the room's Lead. It always gets a new Lead chat tab, so it never queues behind whatever the first tab
+   * is doing or lands in a tab with a brief being typed (KERNEL-145, D-133). The answer arrives there like any turn; the popover
+   * reads it from there.
+   */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.leadChat(roomId)
-    this.userSpoke(chat.id)
-    await this.sessions.send(chat.id, [{ type: 'text', text }])
+    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false, fresh: true })
     return { chatId: chat.id }
   }
 
@@ -1244,10 +1246,11 @@ export class Kernel {
    * The new workspace modal's prompt, sent to the Lead in a chat of its own (KERNEL-148). A chat nobody used yet is taken
    * instead of adding another, so the first start leaves no empty "Lead" tab. The first message names the chat.
    */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; fresh?: boolean }): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
     const pick = { model: o.model ?? this.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
-    const unused = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
+    // `fresh` always adds a tab: an unused one may hold a draft the engine can't see, since the composer keeps it (D-133).
+    const unused = o.fresh ? undefined : this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
     // The default "Lead" title gives way to the first message's; a name the user gave stays.
     const chat = unused
       ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === 'Lead' ? { title: NEW_CHAT } : {}) })
