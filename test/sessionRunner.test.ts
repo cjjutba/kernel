@@ -528,6 +528,54 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(users(s).at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: RESTART_NUDGE }] })
   })
 
+  it("counts a nudge's turn as the turn it picks up, not as one Kernel started (KERNEL-136)", async () => {
+    const turns: TurnBy[] = []
+    const s = await setup('acceptEdits', { onTurnDone: (_ws, _chat, t) => { turns.push(t.by) } })
+    init(s)
+    await finish(s, 'r1')
+    // The user's turn, cut off by a limit, carries on as the user's.
+    s.sessions.restore([], ['chat'])
+    s.sessions.drainWaiting()
+    expect(users(s).at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: LIMIT_LIFTED }] })
+    expect(s.sessions.kernelTurn('chat')).toBe(false)
+    await finish(s, 'r2')
+    // Rowan's message, then a restart after a crash: the restarted turn is still Rowan's.
+    await s.sessions.send('chat', [{ type: 'text', text: 'Use EmptyState' }], { from: 'lead' })
+    await finish(s, 'r3')
+    await s.sessions.restart('chat')
+    expect(s.sessions.turnFrom('chat')).toBe('lead')
+    sdk.calls[sdk.calls.length - 1].feed({ type: 'result', subtype: 'success', uuid: 'r4', duration_ms: 10 })
+    await flush()
+    expect(turns).toEqual(['user', 'user', 'lead', 'lead'])
+  })
+
+  it('says when a message waiting for a chat whose session died started a new session at once', async () => {
+    const exits: string[] = []
+    const s = await setup('acceptEdits', { onExit: (_ws, _chat, _reason, midTurn, resumed) => { exits.push(`${midTurn}:${resumed}`) } })
+    init(s)
+    await flush()
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'Also rename it' }])).toEqual({ queued: true, why: 'running' })
+    s.call.end()
+    await flush()
+    expect(exits).toEqual(['true:true'])
+    expect(users(s).at(-1)).toMatchObject({ parts: [{ type: 'text', text: 'Also rename it' }] })
+    expect(s.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it('lets go of messages held for setup when the workspace is archived (KERNEL-136)', async () => {
+    const s = await setup()
+    // A chat held for setup has no session yet.
+    s.store.saveChat({ ...s.chat, id: 'held' })
+    s.sessions.hold('held', [{ type: 'text', text: 'Build T-14' }], { from: 'lead' })
+    // Stopping alone keeps the brief: an archive that fails still needs it for Run again.
+    s.sessions.stopWorkspace('ws')
+    expect(s.sessions.queued('held')).toHaveLength(1)
+    s.sessions.dropHeld('ws')
+    expect(s.sessions.queued('held')).toEqual([])
+    // Restored, the chat no longer waits for a setup that will never run again.
+    expect(await s.sessions.send('held', [{ type: 'text', text: 'Back again' }])).toEqual({ queued: false })
+  })
+
   it('reports a session that ended on its own, mid-turn or idle, and not one that was stopped', async () => {
     const exits: string[] = []
     const s = await setup('acceptEdits', { onExit: (_ws, chat, reason, midTurn) => { exits.push(`${chat.id}:${reason}:${midTurn}`) } })

@@ -60,6 +60,25 @@ describe('the review link (KERNEL-130)', () => {
     expect(deps.rulesFor(author, agent('kai'))).toBeUndefined()
   })
 
+  it("resets to the PR's commit on GitHub once the work has a PR, the commit verdicts are checked against (KERNEL-136)", async () => {
+    const { k, review, author, agent, deps } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prNumber: 108, prState: 'ready' })
+    const rule = deps.rulesFor(k.store.workspace(review.id)!, agent('theo'))!
+    expect(rule).toContain(`git fetch origin ${author.branch} && git reset --hard origin/${author.branch}`)
+  })
+
+  it('starts a review from the branch the author is on now (KERNEL-136)', async () => {
+    const { k, room, lead, author } = await setup()
+    await git(author.path, 'checkout', '-qb', 'kernel-99-sidebar')
+    await writeFile(join(author.path, 'rows.txt'), 'rows\n')
+    await git(author.path, 'add', '.')
+    await git(author.path, 'commit', '-qm', 'rows')
+    const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
+    const again = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the rows', leadChatId: lead.id, reviewOf: author.id })
+    expect(again.branch).toBe('kernel-99-sidebar-review')
+    expect((await git(again.path, 'rev-parse', 'HEAD')).trim()).toBe(tip)
+  })
+
   it('saves a verdict on the reviewed work with the commit it reviewed, replaces it on a resubmit, and tells the Lead', async () => {
     const { k, review, author, tip } = await setup()
     expect(await k.submitReview(review.id, { verdict: 'approved', summary: 'Looks right.' })).toContain('you approved')

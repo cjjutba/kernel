@@ -88,7 +88,7 @@ export function prToast(before: PrState | undefined, ws: Workspace, o: { method?
 /**
  * Where the workspace view goes once the open workspace is archived (KERNEL-132). Archive lands in History, except a
  * review workspace Kernel archived while it was on screen because the work it reviewed merged or closed: that one opens
- * the room's Lead chat, where the review was asked for, with a toast saying what happened. `seen` is false when the view
+ * the room's Lead chat, the first chat of the Lead's workspace, with a toast saying what happened. `seen` is false when the view
  * opened on a workspace that was already archived, and `byHand` is true when the user archived it.
  */
 export function afterArchive(ws: Workspace, reviewed: Workspace | undefined, reviewer: string | undefined, how: { seen: boolean; byHand: boolean }): { to: 'history' } | { to: 'room'; toast: { title: string; sub: string } } {

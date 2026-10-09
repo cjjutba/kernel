@@ -59,6 +59,8 @@ export interface TeamEvent {
   by?: TurnBy
   /** A crash: what Claude Code said as it went, when it said anything. */
   reason?: string
+  /** A crash after which a message waiting for the teammate started a new session at once, so it is working again. */
+  resumed?: boolean
   /** A failed setup: its exit code, or null when it was stopped. */
   code?: number | null
   /** A failed setup the Lead already heard about in create_workspace's result. It doesn't wake the Lead again. */
@@ -99,6 +101,10 @@ const REPLY_BUDGET = 6000
 /** A reply is kept up to this long while it waits, so the saved queue stays small. */
 const REPLY_KEPT = 4000
 
+/** A verdict's blockers in one update: the first few, each cut to a few lines. The rest are counted. */
+const MAX_BLOCKERS = 10
+const BLOCKER_MAX = 300
+
 /** "PR #54", or "the PR" before it has a number. */
 const prOf = (e: TeamEvent) => (e.pr ? `PR #${e.pr}` : 'the PR')
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -116,7 +122,7 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
-    case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. The worktree and chat are saved; the user can restart it from the workspace.`
+    case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
     case 'setup.passed': return `Setup passed on Run again, and ${name}'s brief was released.`
     case 'review': {
@@ -176,6 +182,8 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     if (STATE_OF[e.kind]) return e === state && (!ws || ws.prState === STATE_OF[e.kind])
     if (e.kind === 'setup.failed' || e.kind === 'setup.passed') return e === setup
     if (e.kind === 'review') return e === review
+    // A close the PR has since left, by reopening or Continue, says nothing any more.
+    if (e.kind === 'pr.closed' && ws && ws.prState !== 'closed') return false
     if (ONCE.has(e.kind)) { const key = `${e.kind}:${e.pr ?? ''}`; if (seen.has(key)) return false; seen.add(key); return true }
     return true
   })
@@ -227,12 +235,19 @@ export class LeadUpdates {
   private stopped = new Set<string>()
   /** Review workspaces whose running turn sent a verdict. That turn's end isn't news of its own (KERNEL-130). */
   private submitted = new Set<string>()
+  /**
+   * Teammate workspaces whose PR Kernel is reading after a turn ended. Their updates wait for the read, so a PR the turn
+   * opened or pushed to speaks for the turn however long GitHub takes, instead of the turn waking the Lead on its own.
+   */
+  private reading = new Map<string, number>()
+  private detached = false
   private seq = 0
   private off: () => void = () => undefined
 
   constructor(private d: LeadUpdateDeps) {}
 
   attach() {
+    this.detached = false
     for (const w of this.d.store.workspaces()) this.prev.set(w.id, w.prState)
     this.load()
     const on = (e: PushEvent) => { if (e.type === 'pr') this.onPr(e.workspaceId, e.state) }
@@ -241,6 +256,7 @@ export class LeadUpdates {
   }
 
   detach() {
+    this.detached = true
     this.off()
     for (const t of this.timers.values()) clearTimeout(t)
     this.timers.clear()
@@ -249,7 +265,7 @@ export class LeadUpdates {
   /**
    * What waited when Kernel last quit. Events for workspaces that are gone, or that are the Lead's own, are dropped, and
    * so are stop marks of chats that are closed or gone. Nothing is sent from here: the next event, the next Lead turn end
-   * or the PR poll delivers it, so opening Kernel never starts a Lead turn on its own.
+   * or the PR poll delivers it, so nothing goes to the Lead the moment Kernel opens. The first poll, 45 seconds in, can.
    */
   private load() {
     const saved = this.d.store.meta<Saved>(SAVED)
@@ -283,11 +299,24 @@ export class LeadUpdates {
     }
     // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130).
     const verdictTurn = this.submitted.delete(ws.id)
-    if (t.interrupted || t.queued) return
+    if (t.interrupted || t.queued || verdictTurn) return
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
-    if (verdictTurn) return
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
+  }
+
+  /** Kernel is reading the workspace's PR after a turn. Its updates wait until every read started has ended (`readPr`). */
+  readingPr(workspaceId: string) { this.reading.set(workspaceId, (this.reading.get(workspaceId) ?? 0) + 1) }
+
+  /** Kernel read the workspace's PR. Its updates go once things are quiet again. Ignored once Kernel has stopped. */
+  readPr(workspaceId: string) {
+    const n = this.reading.get(workspaceId)
+    if (!n) return
+    if (n > 1) { this.reading.set(workspaceId, n - 1); return }
+    this.reading.delete(workspaceId)
+    if (this.detached) return
+    const ws = this.d.store.workspace(workspaceId)
+    if (ws) this.rearm(ws)
   }
 
   /**
@@ -306,7 +335,7 @@ export class LeadUpdates {
     this.submitted.add(reviewer.id)
     this.add(reviewer, { kind: 'review', review: {
       verdict: v.verdict, summary: capText(v.summary, REPLY_KEPT),
-      ...(v.blockers?.length ? { blockers: v.blockers.slice(0, 20), total: v.blockers.length } : {}),
+      ...(v.blockers?.length ? { blockers: v.blockers.slice(0, MAX_BLOCKERS).map((b) => ({ ...b, text: capText(b.text, BLOCKER_MAX) })), total: v.blockers.length } : {}),
       of: of.id, ofName: this.d.agentName(of.roomId, of.agentId) ?? of.agentId, ...(of.prNumber ? { ofPr: of.prNumber } : {}),
       ...(v.sha ? { sha: v.sha } : {}), current: !v.sha || !of.prHead || v.sha === of.prHead
     } })
@@ -316,10 +345,10 @@ export class LeadUpdates {
    * A teammate's session died partway through a turn (KERNEL-124). Its turn never ends, so without this the Lead would
    * think the teammate is still working. The Lead's own sessions are left out: Sessions holds Kernel's messages for them.
    */
-  crashed(ws: Workspace, reason: string) {
+  crashed(ws: Workspace, reason: string, o: { resumed?: boolean } = {}) {
     if (this.d.isLead(ws)) return
     const said = firstLine(reason, 120).replace(/[.!?]+$/, '')
-    this.add(ws, { kind: 'crash', ...(said ? { reason: said } : {}) })
+    this.add(ws, { kind: 'crash', ...(said ? { reason: said } : {}), ...(o.resumed ? { resumed: true } : {}) })
   }
 
   private onPr(workspaceId: string, state: PrState) {
@@ -386,7 +415,7 @@ export class LeadUpdates {
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
       group.sources.push({ events: p.events, from: t.closed, owner: p.owner })
       group.keys.push(key)
-      group.quiet &&= !this.timers.has(key)
+      group.quiet &&= !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId))
       byChat.set(t.chat.id, group)
     }
     for (const g of byChat.values()) {
@@ -508,23 +537,34 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
   const { ws, name } = b
   const out = { wake: new Set<TeamEvent>(), todo: [] as string[] }
   const at = `(workspace ${ws.id})`
+  // An archived workspace takes no more messages, and archiving it was the user's call, so only news that asks nothing
+  // of it still wakes the Lead: the last merge of a plan, and a review's verdict, which is about other work.
+  const archived = ws.status === 'archived'
   for (const e of b.events) {
     const pr = e.pr ? `PR #${e.pr}` : 'the PR'
-    const wake = (todo: string) => { out.wake.add(e); out.todo.push(todo) }
+    const wake = (todo: string, evenArchived = false) => { if (archived && !evenArchived) return; out.wake.add(e); out.todo.push(todo) }
     switch (e.kind) {
       case 'error': if (e.by !== 'user') wake(`${name} stopped with an error. Ask ${name} what happened with message_agent ${at}, or tell the user.`); break
-      case 'crash': wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
+      case 'crash': if (!e.resumed) wake(`${name}'s session ended. Tell the user they can restart it from the workspace.`); break
       case 'setup.failed': if (!e.told) wake(`Setup failed in ${name}'s workspace. Tell the user to fix it and click Run again there.`); break
       case 'review': {
         const r = e.review
-        if (!r) { wake(`Read ${name}'s review and pass on what it found.`); break }
+        if (!r) { wake(`Read ${name}'s review and pass on what it found.`, true); break }
         const of = c.workspace?.(r.of)
-        if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}). When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`); break }
+        // The work was merged, closed or archived before the verdict came. Nobody can act on it there any more.
+        if (of && (of.prState === 'merged' || of.prState === 'closed' || of.status === 'archived')) {
+          const what = of.prNumber ? `PR #${of.prNumber}` : `${r.ofName}'s work`
+          const when = of.prState === 'merged' ? 'merged' : of.prState === 'closed' ? 'was closed' : 'was archived'
+          if (r.verdict === 'blockers') wake(`${name} found blockers in ${what} after it ${when}. Tell the user what they are in a line or two.`, true)
+          break
+        }
+        // A review workspace the user archived can't review again, so its blockers go to the author without asking for that.
+        if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}).${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true); break }
         // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge.
         if (!r.current && of?.prNumber) { wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
-        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name])); break }
-        if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`); break }
-        wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`)
+        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name]), true); break }
+        if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
+        wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
         break
       }
       case 'pr.cifail': wake(`Tell ${name} about the failed checks on ${pr} with message_agent ${at}.`); break
@@ -532,7 +572,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'pr.conflict': wake(`Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
       case 'pr.closed': if (ws.prState === 'closed') wake(`${upper(pr)} was closed without merging. Ask the user whether ${name}'s work is still wanted.`); break
       case 'pr.merged':
-        if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED)
+        if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
       case 'pr.ready': {
         const review = c.review

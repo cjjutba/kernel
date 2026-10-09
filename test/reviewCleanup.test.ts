@@ -127,10 +127,42 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
     expect(status(review)).toBe('archived')
   })
 
-  it('archives at start the reviews of work that merged while Kernel was closed', async () => {
-    const { k, author, review, status } = await setup()
-    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prState: 'merged' })
-    await (k as unknown as { sweepReviews: () => Promise<void> }).sweepReviews()
+  it('archives at start a review that was still working when Kernel quit, and leaves one the user restored', async () => {
+    const { k, gh, author, review, status } = await setup()
+    const chats = k.store.chats(review.id).map((c) => c.id)
+    k.sessions.isRunning = (id) => chats.includes(id)
+    gh.pr = info('merged')
+    await k.refreshPr(author.id)
+    await new Promise((r) => setTimeout(r, 300))
+    expect(status(review)).not.toBe('archived')
+    const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o
+    await k.stop()
+    const k2 = new Kernel(where)
+    await k2.start()
+    onTestFinished(() => k2.stop())
+    await new Promise((r) => setTimeout(r, 600))
+    expect(k2.store.workspace(review.id)!.status).toBe('archived')
+    // The user brings it back from History. The next launch leaves it be.
+    await k2.restoreWorkspace(review.id)
+    await k2.stop()
+    const k3 = new Kernel(where)
+    await k3.start()
+    onTestFinished(() => k3.stop())
+    await new Promise((r) => setTimeout(r, 600))
+    expect(k3.store.workspace(review.id)!.status).not.toBe('archived')
+  })
+
+  it('archives a review whose setup failed: its held brief waits for the user, not for a turn', async () => {
+    const { k, gh, author, review, settle, status } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'failed' })
+    const chat = k.store.chats(review.id)[0].id
+    k.sessions.hold(chat, [{ type: 'text', text: 'Review it' }])
+    gh.pr = info('merged')
+    const archived = settle()
+    await k.refreshPr(author.id)
+    await archived
     expect(status(review)).toBe('archived')
+    // Archive let go of the held brief, so a restore doesn't find the chat still waiting for setup.
+    expect(k.sessions.queued(chat)).toEqual([])
   })
 })

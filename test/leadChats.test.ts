@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatPart } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import type { QueueReason } from '../src/main/services/sessions'
 import { Nudges } from '../src/main/services/nudges'
@@ -283,14 +283,44 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     expect((await ask()).isError).toBe(false)
   })
 
-  it('starts over when the PR becomes ready, or when the user writes to the teammate', async () => {
+  /** GitHub as the PR is now: its state and the checks on its head commit. */
+  function github(k: Kernel) {
+    const pr = { state: 'cifail' as PrState, checks: [{ name: 'test', state: 'fail' }] as PrCheck[] }
+    k.github = { info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 7, url: 'https://github.com/o/r/pull/7', title: 't', state: pr.state, baseRef: 'main', checks: pr.checks, comments: [], conflicts: [] }), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
+    return pr
+  }
+
+  it('starts over when the PR becomes ready with checks that ran, or merges, or when the user writes to the teammate', async () => {
     const { k, first, ws, ask, spend } = await guarded()
     k.sessions.kernelTurn = (id) => id === first.id
+    const pr = github(k)
+    await k.refreshPr(ws.id)
     await spend()
-    bus.push({ type: 'pr', workspaceId: ws.id, state: 'ready' })
+    // Just after a push GitHub has no checks for the new commit, and the PR reads as ready for a moment. Nothing moved on.
+    Object.assign(pr, { state: 'ready', checks: [] })
+    await k.refreshPr(ws.id)
+    expect((await ask()).isError).toBe(true)
+    // The checks run and pass before the next read, which reads ready again: that is the work moving on.
+    pr.checks = [{ name: 'test', state: 'pass' }]
+    await k.refreshPr(ws.id)
+    await spend()
+    expect((await ask()).isError).toBe(true)
+    bus.push({ type: 'pr', workspaceId: ws.id, state: 'merged' })
     await spend()
     expect((await ask()).isError).toBe(true)
     await k.handlers()['chats.send']({ chatId: k.chatTabs(ws.id)[0].id, parts: [{ type: 'text', text: 'Use the other approach' }] })
+    expect((await ask()).isError).toBe(false)
+  })
+
+  it('starts over when a PR in a repo without checks becomes ready', async () => {
+    const { k, first, ws, ask, spend } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    const pr = github(k)
+    Object.assign(pr, { state: 'conflict', checks: [] })
+    await k.refreshPr(ws.id)
+    await spend()
+    pr.state = 'ready'
+    await k.refreshPr(ws.id)
     expect((await ask()).isError).toBe(false)
   })
 
