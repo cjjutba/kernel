@@ -6,6 +6,7 @@ import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
+import { tabOf } from '../../nav'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
@@ -103,12 +104,10 @@ function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: R
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.chatId === chat.id && a.status === 'pending'), [approvals, chat.id])
   const running = useStore((s) => !!s.running[chat.id])
-  // A workspace with no tab chosen opens on its first tab that isn't closed, as the workspace screen does.
+  // The chat the workspace shows, which is none while a file or diff tab is open there (D-139).
   const current = useStore((s) => {
     const r = s.ui.route
-    if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
-    const tab = s.ui.tabs[chat.workspaceId]?.tab
-    return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
+    return r.name === 'workspace' && r.workspaceId === chat.workspaceId && tabOf(s, chat.workspaceId) === chat.id
   })
   const g = chatGlyph({ waiting, running })
   return (

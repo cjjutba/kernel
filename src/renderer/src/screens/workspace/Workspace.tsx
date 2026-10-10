@@ -6,6 +6,7 @@ import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
+import { tabOf } from '../../nav'
 import { roomLetter } from '../rooms/roomInfo'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
@@ -22,6 +23,7 @@ import { githubIssueUrl, isGithubKey } from './issueKey'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
+const NO_TABS: string[] = []
 const PANEL_MIN = 320
 const PANEL_MAX = 720
 const PANEL_KEY = 'kernel.rightPanelWidth'
@@ -31,8 +33,6 @@ const PANEL_HIDE_BELOW = 240
 const CHAT_MIN = 420
 /** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
 const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
-/** The workspace the stored tab belongs to. */
-let viewOwner: string | undefined
 let imageCount = 0
 let textCount = 0
 
@@ -49,21 +49,19 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
   const chats = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   const view = useStore((s) => s.ui.workspace)
-  const shownTab = useStore((s) => s.ui.tabs[workspaceId]?.tab)
+  const stored = useStore((s) => tabOf(s, workspaceId))
+  const tabs = useStore((s) => s.ui.tabs[workspaceId])
   const panels = useStore((s) => s.ui.rightPanel)
   const [changes, setChanges] = useState<ChangedFile[]>([])
-  const [openFiles, setOpenFiles] = useState<string[]>([])
-  const [openDiffs, setOpenDiffs] = useState<string[]>([])
   const [images, setImages] = useState<OpenedImage[]>([])
   const [texts, setTexts] = useState<OpenedText[]>([])
-  const [lastChat, setLastChat] = useState<string | undefined>()
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
   // The panel's width is the CSS clamp until it is dragged, then a saved px width. It is read once. The CSS caps a saved width so the chat column keeps CHAT_MIN, whatever the window or the sidebar does.
   const aside = useRef<HTMLElement>(null)
   const [panelWidth, setPanelWidth] = useState(() => readWidth(PANEL_KEY, PANEL_MIN, PANEL_MAX))
   const panelLimit = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, (aside.current?.parentElement?.clientWidth ?? window.innerWidth) - CHAT_MIN))
 
-  const stored = shownTab ?? lastChat ?? chats[0]?.id
+  const lastChat = chats.some((c) => c.id === tabs?.lastChat) ? tabs?.lastChat : undefined
   // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
   const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
   const tab = gone ? lastChat ?? chats[0]?.id : stored
@@ -73,29 +71,14 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
   const chat = filePath || diffPath !== undefined || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
-  const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
-  const diffs = diffPath !== undefined && !openDiffs.includes(diffPath) ? [...openDiffs, diffPath] : openDiffs
+  const files = tabs?.files ?? NO_TABS
+  const diffs = tabs?.diffs ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
-  // Anything can open a diff by setting the store's tab (the hunk card does), so keep the tab in the list once it is active,
-  // or it would vanish when the user moves to another tab.
-  useEffect(() => { if (diffPath !== undefined) setOpenDiffs((d) => (d.includes(diffPath) ? d : [...d, diffPath])) }, [diffPath])
-  // Likewise remember the open chat however it was reached, so a diff, file, image or text tab opened from there closes back to it
-  // and the composer stays on it.
-  useEffect(() => { if (tab && chats.some((c) => c.id === tab)) setLastChat(tab) }, [tab, chats])
-  // These run before the clear below on purpose, so on a workspace switch the clear has the last word.
-
-  // The open tab lives in the store, so it outlasts this screen. Whenever the screen shows a different workspace
-  // than the one it belongs to, clear it. The very first mount keeps what a fixture or a restored view set.
-  useEffect(() => {
-    if (viewOwner !== undefined && viewOwner !== workspaceId) {
-      setOpenFiles([]); setOpenDiffs([]); setImages([]); setTexts([]); setLastChat(undefined)
-      actions.ui.setTabs(workspaceId, { tab: undefined })
-    }
-    viewOwner = workspaceId
-  }, [workspaceId])
+  // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace.
+  useEffect(() => { setImages([]); setTexts([]) }, [workspaceId])
 
   useEffect(() => { void loadWorkspace(workspaceId) }, [workspaceId])
   const refresh = () => call('workspaces.changes', { workspaceId }).then(setChanges).catch(() => setChanges([]))
@@ -108,24 +91,17 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const select = (id: string) => {
-    if (!/^(file|diff|image|text):/.test(id)) setLastChat(id)
-    actions.ui.openTab(workspaceId, id)
+    if (id) actions.ui.openTab(workspaceId, id)
   }
-  const openFile = (path: string) => {
-    setOpenFiles((f) => (f.includes(path) ? f : [...f, path]))
-    select(fileTab(path))
-  }
+  const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
-    setOpenFiles((f) => f.filter((x) => x !== path))
+    actions.ui.setTabs(workspaceId, { files: files.filter((x) => x !== path) })
     if (tab === fileTab(path)) select(chat?.id ?? '')
   }
   /** The same diff again selects its tab. An empty path is All changes. */
-  const openDiff = (path: string) => {
-    setOpenDiffs((d) => (d.includes(path) ? d : [...d, path]))
-    select(diffTab(path))
-  }
+  const openDiff = (path: string) => select(diffTab(path))
   const closeDiff = (path: string) => {
-    setOpenDiffs((d) => d.filter((x) => x !== path))
+    actions.ui.setTabs(workspaceId, { diffs: diffs.filter((x) => x !== path) })
     if (tab === diffTab(path)) select(chat?.id ?? '')
   }
   /** The same image again selects its tab instead of opening a second one. */
