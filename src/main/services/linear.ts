@@ -25,7 +25,9 @@ export async function linearRequest<T>(token: string | undefined, query: string,
   return body.data
 }
 
-const OPEN = { state: { type: { nin: ['completed', 'canceled'] } } }
+/** Open is a positive list, so duplicates and any state type Linear adds later stay out. KERNEL-172. */
+const OPEN_TYPES: LinearStateType[] = ['triage', 'backlog', 'unstarted', 'started']
+const OPEN = { state: { type: { in: OPEN_TYPES } } }
 
 /** Matches the title, or the number when the query ends in one ("KERNEL-16" or "16"). */
 function matchQuery(q: string) {

@@ -635,8 +635,8 @@ export interface IssueSummary {
 
 // ---------- Linear (KERNEL-159)
 
-/** Linear's workflow state types. Open issues are the first four. */
-export type LinearStateType = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
+/** Linear's workflow state types. Open issues are the first four. `duplicate` is an issue marked as a duplicate of another. */
+export type LinearStateType = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled' | 'duplicate'
 
 export interface LinearIssue {
   /** The identifier, "KERNEL-83". */
