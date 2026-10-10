@@ -65,7 +65,8 @@ describe('repo settings files', () => {
     expect(rs.workspace).toEqual({ remote: 'upstream' })
     expect(rs.pr).toEqual({ createInstructions: '# Mine' })
     // An array is one value, so files.copy in both files is an override. Nothing reports scripts.archive: the app default applies.
-    expect(rs.sources).toEqual({ 'scripts.setup': 'override', 'scripts.run': 'shared', 'files.copy': 'override', 'workspace.remote': 'shared', 'pr.createInstructions': 'local' })
+    // The run script reports under both its names (KERNEL-244).
+    expect(rs.sources).toEqual({ 'scripts.setup': 'override', 'scripts.run': 'shared', 'runScripts.run': 'shared', 'files.copy': 'override', 'workspace.remote': 'shared', 'pr.createInstructions': 'local' })
     expect(rs.scripts.archive).toBeUndefined()
     expect(await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).toContain('[pr]\ncreate_instructions = "# Mine"')
     expect((await loadRepoSettings(await mkdtemp(join(tmpdir(), 'kernel-repo-')))).sources).toEqual({})

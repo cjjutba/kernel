@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import type { ActivityEvent } from '../src/shared/types'
+import { PORT_BLOCK, type ActivityEvent } from '../src/shared/types'
 
 describe('Kernel orchestration (Claude session stubbed)', () => {
   it('adds a room, reads its team, creates and archives a worktree workspace', async () => {
@@ -44,7 +44,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
 
     const second = await k.createWorkspace(room.id, { prompt: 'Another pass', agentId: 'kai', title: 'Invoice table' })
     expect(second.branch).toBe('feat/invoice-table-2')
-    expect(second.port).not.toBe(ws.port)
+    // Each workspace gets its own block of ports, $KERNEL_PORT to $KERNEL_PORT + 9 (KERNEL-244).
+    expect(second.port % PORT_BLOCK).toBe(0)
+    expect(Math.abs(second.port - ws.port)).toBeGreaterThanOrEqual(PORT_BLOCK)
 
     await k.archiveWorkspace(ws.id, true)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
