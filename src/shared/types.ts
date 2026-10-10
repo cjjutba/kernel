@@ -173,7 +173,8 @@ export interface Overlap {
 // ---------- workspaces
 
 export type WorkspaceMode = 'worktree' | 'current'
-export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
+/** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
+export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
  * the rest come from `gh pr view` (github.ts prStateOf).
@@ -288,6 +289,20 @@ export interface Checkpoint {
 }
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
+
+/**
+ * A room's scripts and files.copy list as Kernel would run them, after merging settings.toml and settings.local.toml,
+ * waiting for the user to trust that exact text (KERNEL-209).
+ */
+export interface ScriptTrust {
+  roomId: string
+  /** What `rooms.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
+  hash: string
+  scripts: { setup?: string; run?: string; archive?: string }
+  copy: string[]
+  /** Open workspaces held in `trust` until the room is trusted. */
+  workspaceIds: string[]
+}
 
 export interface ScriptLine {
   kind: ScriptKind
