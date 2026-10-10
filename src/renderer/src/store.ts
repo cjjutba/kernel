@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
+  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -45,6 +45,8 @@ export interface State {
   running: Record<string, boolean>
   /** By chat id. */
   queue: Record<string, QueuedMessage[]>
+  /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
+  queueWhy: Record<string, QueueReason>
   /** By chat id. Raw pty output for terminal chats. */
   terminal: Record<string, string>
   /** By chat id. Set while Claude is overloaded and the session retries. */
@@ -100,7 +102,7 @@ let state: State = {
   rooms: [], roomSetup: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, checkpoints: {},
-  chats: {}, items: {}, running: {}, queue: {}, terminal: {}, retry: {},
+  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {},
@@ -365,7 +367,14 @@ export const actions = {
     setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
     setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running } })),
-    setQueue: (chatId: string, list: QueuedMessage[]) => setState((s) => ({ queue: { ...s.queue, [chatId]: list } })),
+    /** A `chat.queue` event passes its reason, or null when nothing holds the queue. A list handed back by a call passes none (undefined), so the last reason stays until the next event. An empty queue has none. */
+    setQueue: (chatId: string, list: QueuedMessage[], why?: QueueReason | null) => setState((s) => {
+      const queueWhy = { ...s.queueWhy }
+      if (!list.length || why === null) delete queueWhy[chatId]
+      else if (why) queueWhy[chatId] = why
+      return { queue: { ...s.queue, [chatId]: list }, queueWhy }
+    }),
+    setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
     appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-200_000) } })),
     setRetry: (chatId: string, retry: State['retry'][string] | null) => setState((s) => {
       const next = { ...s.retry }
@@ -438,7 +447,7 @@ export function apply(e: PushEvent) {
     case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': return actions.chats.setRunning(e.chatId, e.running)
-    case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue)
+    case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
     case 'terminal.data': return actions.chats.appendTerminal(e.chatId, e.data)
     case 'retry': return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)
