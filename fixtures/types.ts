@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -70,6 +70,10 @@ export interface Fixture {
   /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */
   gitStatus?: Record<string, WorkspaceGitStatus>
   update?: AppUpdate
+  /** Files agents shared (KERNEL-302). `shared.list` filters them by room or workspace. */
+  shared?: SharedFile[]
+  /** By shared id, then version: what `shared.read` returns. Images and PDFs as a data URL, Markdown and HTML as text. */
+  sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string }>>
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
