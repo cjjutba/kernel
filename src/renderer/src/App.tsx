@@ -13,6 +13,7 @@ import { Floor } from './screens/floor/Floor'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
+import { Issues } from './screens/issues/Issues'
 import { CheckHooks } from './screens/onboarding/CheckHooks'
 import { Checks } from './screens/onboarding/Checks'
 import { Loading } from './screens/onboarding/Loading'
@@ -51,6 +52,7 @@ function Screen({ route }: { route: Route }): ReactNode {
       return <Checks />
     case 'home': return <Home />
     case 'inbox': return <Inbox />
+    case 'issues': return <Issues issueId={route.issueId} />
     case 'history': return <History />
     case 'rooms': return <Rooms />
     case 'floor': return <Floor roomId={route.roomId} />
