@@ -91,8 +91,9 @@ body{margin:0}
 .ck .l{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2)}
 .ck .m{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--muted)}
 .ghead{font-size:12px;font-weight:500;color:var(--muted)}
-.k .openbtn{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 7px 0 10px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px}
-.k .openbtn.on{background:var(--surface-3);color:var(--ink)}
+.k .openbtn{display:inline-flex;align-items:center;height:24px;padding:0 10px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px 0 0 6px}
+.k .opencaret{display:inline-flex;align-items:center;height:24px;margin-left:-1px;padding:0 6px;color:var(--muted);background:var(--surface);border:1px solid var(--line-3);border-radius:0 6px 6px 0}
+.k .opencaret.on{background:var(--surface-3);color:var(--ink)}
 .out{flex:1;min-height:0;overflow:hidden;padding:4px 16px 12px;font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;line-height:1.7;color:var(--ink-3)}
 .out div{white-space:pre-wrap}
 .out .c{color:var(--ink)}
@@ -119,6 +120,7 @@ body{margin:0}
 <button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="t">Search</span><span class="kbd">⌘K</span></button>
 <button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7 8 2.5 13.5 7v6.5h-11z"></path></svg><span class="t">Home</span></button>
 <button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"></path><path d="M2.5 9.5 4 3.5h8l1.5 6v3.5h-11z"></path></svg><span class="t">Inbox</span><span class="mono" style="font-size: 11.5px; font-weight: 500; color: var(--count)">12</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V4A1.5 1.5 0 0 1 4 2.5ZM5.5 6.5h5M5.5 9.5h3"></path></svg><span class="t">Issues</span></button>
 <button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3l2 1.5"></path></svg><span class="t">History</span></button>
 </div>
 
@@ -272,7 +274,7 @@ body{margin:0}
 <div style="display: flex; flex-direction: column; gap: 4px"><span class="ghead">CI</span><div class="ck"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--add)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg><span class="l">lint</span><span class="m">12s</span></div><div class="ck"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--add)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg><span class="l">typecheck</span><span class="m">31s</span></div><div class="ck"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--add)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg><span class="l">vitest</span><span class="m">48s</span></div><div class="ck"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="var(--add)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg><span class="l">playwright</span><span class="m">2m 4s</span></div></div>
 <div class="ck" style="gap: 10px; font-size: 12px; color: var(--muted)"><span>Port</span><span class="mono" style="color: var(--ink-2)">4303</span>
 <div style="position: relative; margin-left: auto">
-<button class="openbtn{{ openCls }}" aria-haspopup="menu" aria-expanded="{{ openMenu }}">Open<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 11px; height: 11px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></button>
+<div style="display: flex"><button class="openbtn">Open</button><button class="opencaret{{ openCls }}" aria-label="More preview URLs" aria-haspopup="menu" aria-expanded="{{ openMenu }}"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 11px; height: 11px"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></button></div>
 <sc-if value="{{ openMenu }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Open preview" class="menu" style="right: -10px; top: 30px; width: 300px">
 <div class="mh">Preview URLs</div>
 <button type="button" role="menuitem" class="mi"><span class="t">Web app</span><span class="h mono">localhost:4303</span></button>
@@ -286,12 +288,10 @@ body{margin:0}
 </sc-if>
 <div style="flex: 1; min-height: 0; margin-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column">
 <div class="btab">
-<button class="bi" aria-label="Collapse panel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></button>
 <button class="bt">Setup</button>
 <button class="bt on">Run</button>
 <button class="bt">Terminal</button>
-<button class="bi" aria-label="New terminal"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
-<button class="runbtn" style="margin-left: auto"><svg viewBox="0 0 16 16" aria-hidden="true" style="width: 9px; height: 9px"><rect x="3" y="3" width="10" height="10" rx="1.5" fill="currentColor"></rect></svg>Stop</button>
+<button class="runbtn" style="margin-left: auto">Stop</button>
 </div>
 <div style="flex-shrink: 0; padding: 10px 16px 4px"><div class="seg" role="radiogroup" aria-label="Run script">
 <button type="button" role="radio" aria-checked="false">run</button>

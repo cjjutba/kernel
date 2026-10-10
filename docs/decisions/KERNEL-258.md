@@ -2,7 +2,7 @@
 
 **The Run tab picks a script with a segmented control, and a running script shows the spinner arc.** The scripts are the room's run scripts (`run`, `frontend`, `backend`), set out as the Run mode control in Settings. The selected one takes the surface-3 fill. A running script has the same spinner arc the sidebar uses, and no dot. The tab strip button reads Stop for a running script and Run for an idle one. The idle scripts show nothing extra. KERNEL-258.
 
-**Open sits at the right of the Port row on the Checks tab and opens a menu of preview URLs.** The menu lists the named URLs from Settings (name at the left, address in mono at the right), a hairline, then one row for the URL Kernel found in the run output. Shortcuts in menus stay as glyphs at the right of the row (`⌘T`, `⌘⇧T`), as in the other menus. KERNEL-258.
+**Open is a split button at the right of the Port row on the Checks tab.** Open opens the first URL, and the caret segment opens a menu of every URL. The menu lists the named URLs from Settings (name at the left, address in mono at the right), a hairline, then one row for the URL Kernel found in the run output. Shortcuts in menus stay as glyphs at the right of the row (`⌘T`, `⌘⇧T`), as in the other menus. KERNEL-258.
 
 **The + in the tab strip opens New chat, then the terminal presets.** New chat carries `⌘T`, a hairline follows, then Claude (`⌘⇧T`), Claude without permission prompts, Shell, Codex and the room's custom commands. A terminal tab is titled with its preset, for example "Terminal (codex)". KERNEL-258.
 
