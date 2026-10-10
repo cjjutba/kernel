@@ -42,6 +42,9 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
   ].join('\n')
 }
 
+/** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge tool (KERNEL-262). */
+export const TEAMMATE_RULE = "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges."
+
 /**
  * First line of Kernel's teammate updates to the Lead chat that handed the work off (KERNEL-72, KERNEL-105, KERNEL-117).
  * `LEAD_RULE` tells the Lead what it means. Older chats hold updates with the legacy header (`@shared/teamUpdate`).

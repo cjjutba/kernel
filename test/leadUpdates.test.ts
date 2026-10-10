@@ -384,7 +384,10 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR closed and opened again', [ev('pr.closed')], 'open', {}, []],
     ['a merge that leaves other tasks open', [ev('pr.merged')], 'merged', { allMerged: () => false }, []],
     ['a wait the Lead set itself (KERNEL-259)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, told: true } })], 'none', {}, []],
-    ['a wait the Lead did not set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, ['Noor is waiting for PR #60 by Kai to merge. Tell the user that merging it moves Noor on.']],
+    ['a held brief the Lead heard nothing about', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel sends Noor the brief when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['a wait the teammate set itself (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['the turn that set its own wait (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['a turn after a wait the Lead set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false, told: true } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a merge that released a wait', [ev('wait.released', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, []],
     ['a wait whose PR closed without merging', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ["Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]],
     ['a wait whose PR closed and opened again', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('open'), id: 'w2', prNumber: 60 }) }, []],
@@ -542,6 +545,31 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     s.accept = true
     await wait()
     expect(s.posts).toEqual([])
+  })
+
+  it('wakes the Lead once when a teammate sets its own wait, with the turn that set it and no line to read the reply (KERNEL-262)', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false, why: 'It needs the inbox actions.' })
+    // The turn runs on well past the update delay. Its wait goes out with its end, not before.
+    await wait(120)
+    expect(s.posts).toEqual([])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0])).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, '- Waits for PR #60 by Kai to merge. Noor says: It needs the inbox actions. Kernel tells Noor to rebase onto it when it does.', ...QUOTED],
+      todo: ['- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']
+    })
+  })
+
+  it("doesn't hold a teammate's wait past a crash (KERNEL-262)", async () => {
+    const { u, s, w1 } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    u.crashed(w1, 'exit 1')
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).todo).toContain('- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.')
   })
 })
 

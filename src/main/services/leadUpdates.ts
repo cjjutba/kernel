@@ -75,9 +75,9 @@ export interface TeamEvent {
 /**
  * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Noor"). `held`: the brief hasn't gone out, as
  * opposed to a teammate that already started. `target` and `gone`: the PR that broke the wait and how. `told`: the Lead
- * read it in its own tool's result, so it rides along.
+ * read it in its own tool's result, so it rides along. `why`: what a teammate that set its own wait said it needs (KERNEL-262).
  */
-export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean }
+export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean; why?: string }
 
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
 interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
@@ -115,6 +115,9 @@ const REPLY_KEPT = 4000
 const MAX_BLOCKERS = 10
 const BLOCKER_MAX = 300
 
+/** What a teammate says it needs from the PR it waits for, kept this long (KERNEL-262). */
+const WHY_MAX = 300
+
 /** "PR #54", or "the PR" before it has a number. */
 const prOf = (e: TeamEvent) => (e.pr ? `PR #${e.pr}` : 'the PR')
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -135,7 +138,7 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
     case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `Setup passed on Run again, and ${name}'s brief was released.`
-    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge. Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
+    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
     case 'review': {
@@ -258,6 +261,8 @@ export class LeadUpdates {
    * opened or pushed to speaks for the turn however long GitHub takes, instead of the turn waking the Lead on its own.
    */
   private reading = new Map<string, number>()
+  /** Teammates whose running turn set a wait of their own. Their updates wait for that turn to end (KERNEL-262). */
+  private waitTurns = new Set<string>()
   private detached = false
   private seq = 0
   private off: () => void = () => undefined
@@ -315,6 +320,7 @@ export class LeadUpdates {
       this.flush(ws.roomId)
       return
     }
+    this.waitTurns.delete(ws.id)
     // A reviewer's turn that sent its verdict has the verdict to speak for it, however the turn ends (KERNEL-130).
     const verdictTurn = this.submitted.delete(ws.id)
     if (t.interrupted || t.queued || verdictTurn) return
@@ -352,7 +358,9 @@ export class LeadUpdates {
    */
   waits(ws: Workspace, kind: 'wait.started' | 'wait.released' | 'wait.broken', wait: WaitNews) {
     if (this.d.isLead(ws)) return
-    this.add(ws, { kind, wait })
+    // A teammate set it mid-turn (KERNEL-262). It waits for that turn to end, so both wake the Lead once, together.
+    if (kind === 'wait.started' && !wait.told && !wait.held) this.waitTurns.add(ws.id)
+    this.add(ws, { kind, wait: wait.why ? { ...wait, why: capText(wait.why, WHY_MAX) } : wait })
   }
 
   /** A reviewer's submit_review (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
@@ -374,6 +382,7 @@ export class LeadUpdates {
    */
   crashed(ws: Workspace, reason: string, o: { resumed?: boolean } = {}) {
     if (this.d.isLead(ws)) return
+    this.waitTurns.delete(ws.id)
     const said = firstLine(reason, 120).replace(/[.!?]+$/, '')
     this.add(ws, { kind: 'crash', ...(said ? { reason: said } : {}), ...(o.resumed ? { resumed: true } : {}) })
   }
@@ -442,7 +451,7 @@ export class LeadUpdates {
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
       group.sources.push({ events: p.events, from: t.closed, owner: p.owner })
       group.keys.push(key)
-      group.quiet &&= !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId))
+      group.quiet &&= !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || this.waitTurns.has(e.workspaceId))
       byChat.set(t.chat.id, group)
     }
     for (const g of byChat.values()) {
@@ -606,7 +615,9 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         }
         break
       // A wait the Lead set itself is in its tool's result. One a teammate set mid-task is news (KERNEL-262).
-      case 'wait.started': if (!e.wait?.told) wake(`${name} is waiting for ${e.wait?.label ?? 'another PR'} to merge. Tell the user that merging it moves ${name} on.`); break
+      case 'wait.started':
+        if (!e.wait?.told) wake(`${name} is waiting for ${e.wait?.label ?? 'another PR'}. Kernel ${e.wait?.held === false ? `starts ${name} again` : `sends ${name} the brief`} when it merges. Tell the user in one line that merging it unblocks ${name}.`)
+        break
       // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
       case 'wait.released': break
       case 'pr.merged':
@@ -626,6 +637,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'turn':
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
         if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && (x.kind.startsWith('pr.') || x.kind === 'review'))) break
+        // The turn ended by waiting for another PR. Its wait line already wakes the Lead, once (KERNEL-262).
+        if (b.events.some((x) => x.kind === 'wait.started' && !x.wait?.told)) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)
         break
       default: break

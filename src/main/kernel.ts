@@ -17,7 +17,8 @@ import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
 import { reviewMcpServer, type ReviewInput } from './services/reviewMcp'
-import { reviewRule } from './services/handoff'
+import { teammateMcpServer, type TeammateToolDeps } from './services/teammateMcp'
+import { reviewRule, TEAMMATE_RULE } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
@@ -193,8 +194,10 @@ export class Kernel {
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
       mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
-        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) } : undefined),
-      rulesFor: (ws) => (ws.reviewOf ? this.reviewRuleFor(ws) : undefined),
+        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
+        : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
+      // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
+      rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
@@ -1862,7 +1865,7 @@ export class Kernel {
    * The Lead's wait_for_merge: `on` replaces what the workspace waits for, with targets that merged already left out.
    * A teammate that started waits with its brief out (`held: false`). An empty list ends the wait, and a held brief goes now.
    */
-  async setWait(id: string, on: string[]): Promise<Workspace> {
+  async setWait(id: string, on: string[], o: { told?: boolean; why?: string } = {}): Promise<Workspace> {
     const ws = this.mustWs(id)
     if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
     const all = this.store.workspaces(ws.roomId)
@@ -1875,9 +1878,20 @@ export class Kernel {
     const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
     const label = this.waitLabelOf(next)
     if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`)
-    // The Lead set it, and reads what happened in the tool's result.
-    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, told: true })
+    // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
+    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
+  }
+
+  /** What a teammate's wait_for_merge reads and calls (KERNEL-262). */
+  private teammateToolDeps(id: string): TeammateToolDeps {
+    return {
+      workspace: () => this.mustWs(id),
+      workspaces: () => this.store.workspaces(this.mustWs(id).roomId),
+      isLead: (w) => this.isLeadWorkspace(w),
+      nameOf: (w) => this.nameOf(w),
+      setWait: (on, why) => this.setWait(id, on, { told: false, why })
+    }
   }
 
   // ---------- reviews (KERNEL-130)
