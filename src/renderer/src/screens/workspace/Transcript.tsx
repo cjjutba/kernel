@@ -26,6 +26,9 @@ const PIN_PX = 80
 const LEAD_SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
 const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
 
+/** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
+export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user' && !item.from && userView(item) === 'bubble'
+
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 function PartChip({ part }: { part: ChatPart }) {
@@ -94,9 +97,10 @@ function StepRow({ icon, failed, label, detail, mono, meta, compact, children }:
   )
 }
 
-function ThinkingRow({ item, compact }: { item: Extract<ChatItem, { kind: 'thinking' }>; compact?: boolean }) {
+/** Rows compare their item, so a step that didn't change isn't drawn again when its neighbours do. `StepRow` below takes its body as children, a new element every time, so the skip has to happen here. */
+const ThinkingRow = memo(function ThinkingRow({ item, compact }: { item: Extract<ChatItem, { kind: 'thinking' }>; compact?: boolean }) {
   return <StepRow icon={compact ? undefined : 'bulb'} label="Thinking" detail={item.text} compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
-}
+})
 
 const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
 
@@ -141,9 +145,9 @@ function toolBody(item: Tool): ReactNode {
   )
 }
 
-function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
+const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
   return <StepRow icon={compact ? undefined : 'term'} failed={item.status === 'failed'} label={item.label} detail={item.detail} mono meta={meta} compact={compact}>{toolBody(item)}</StepRow>
-}
+})
 
 /** Edit and Write calls show what they added and removed, read from the changed files. */
 function toolMeta(item: Tool, changes: ChangedFile[]): string {
@@ -153,12 +157,12 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 }
 
 /** A row in the folded list: every step the turn took before its reply, in order, each closed until opened. */
-function GroupItem({ item, changes }: { item: ChatItem; changes: ChangedFile[] }) {
-  if (item.kind === 'tool') return <div className="group-item"><ToolRow item={item} meta={toolMeta(item, changes)} compact /></div>
+const GroupItem = memo(function GroupItem({ item, meta }: { item: ChatItem; meta?: string }) {
+  if (item.kind === 'tool') return <div className="group-item"><ToolRow item={item} meta={meta} compact /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} compact /></div>
   if (item.kind === 'text') return <div className="group-item"><StepRow label="Message" detail={item.text} compact>{item.text.trim() && <div className="step-text"><Markdown text={item.text} /></div>}</StepRow></div>
   return null
-}
+})
 
 function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'group' }>; changes: ChangedFile[] }) {
   // Each group opens on its own. The view's flag only sets how a group starts, which is how WorkspaceToolCalls shows them open.
@@ -172,7 +176,7 @@ function ToolGroup({ block, changes }: { block: Extract<ThreadBlock, { kind: 'gr
       </button>
       {open && (
         <div id={id} className="group-list">
-          {block.items.map((i) => <GroupItem key={i.id} item={i} changes={changes} />)}
+          {block.items.map((i) => <GroupItem key={i.id} item={i} meta={i.kind === 'tool' ? toolMeta(i, changes) : undefined} />)}
         </div>
       )}
     </div>
@@ -295,7 +299,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   useLayoutEffect(() => { pinned.current = true; const frame = follow(); return () => cancelAnimationFrame(frame) }, [chat.id])
   // Sending a message follows it even from further up, since the reader just asked for something.
   const last = items[items.length - 1]
-  const sent = last?.kind === 'user' && userView(last) === 'bubble'
+  const sent = followsSend(last)
   useEffect(() => {
     if (sent) pinned.current = true
     if (!pinned.current) return
