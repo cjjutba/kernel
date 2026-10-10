@@ -25,6 +25,9 @@ type Deps = {
 export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy }
 
 const IDLE_AFTER_MS = 10 * 60_000
+/** How long a row that no longer needs you stays in the inbox (D-137). */
+export const KEEP_SETTLED_MS = 7 * 24 * 60 * 60_000
+const PRUNE_EVERY_MS = 24 * 60 * 60_000
 
 /** The start of the agent's last reply, for the detail pane: its first paragraph, cut at about 300 characters. */
 export function replyExcerpt(text: string, max = 300): string {
@@ -50,7 +53,8 @@ const outcome = (a: Approval): string => {
     case 'allowed': return 'You approved this.'
     case 'denied': return 'You denied this.'
     case 'answered': return a.answer ? `You answered: ${a.answer}` : 'You answered this.'
-    case 'expired': return 'This request timed out before you answered. Claude Code asks in its own terminal instead.'
+    // Only a hook approval has a terminal to fall back to. An agent's own request just ends (D-137).
+    case 'expired': return a.source === 'sdk' ? 'This request ended before you answered.' : 'This request timed out before you answered. Claude Code asks in its own terminal instead.'
     default: return ''
   }
 }
@@ -65,6 +69,7 @@ export class Notifications {
   private off: () => void = () => undefined
   /** Idle checks waiting to fire, by workspace. The workspace's next turn cancels its check. */
   private idle = new Map<string, NodeJS.Timeout>()
+  private pruneTimer?: NodeJS.Timeout
   constructor(private d: Deps) {}
 
   attach() {
@@ -75,11 +80,39 @@ export class Notifications {
     }
     bus.on('push', on)
     this.off = () => bus.off('push', on)
+    // A row whose approval ended while no one listened, as the ones `Approvals.expireStale` ends at start, settles now.
+    const byId = new Map(this.d.store.approvals().map((a) => [a.id, a]))
+    for (const n of this.d.store.openApprovalNotifications()) {
+      const a = byId.get(n.approvalId!)
+      if (a && a.status !== 'pending') this.onApproval(a)
+    }
     // Approvals that were pending before this run (or before notifications existed) still need a row.
     for (const a of this.d.store.approvals({ pendingOnly: true })) if (!this.d.store.notification(approvalNotificationId(a.id))) this.onApproval(a, false)
+    this.prune()
+    this.pruneTimer = setInterval(() => this.prune(), PRUNE_EVERY_MS)
   }
 
-  detach() { this.off(); for (const id of [...this.idle.keys()]) this.cancelIdle(id) }
+  detach() { this.off(); clearInterval(this.pruneTimer); for (const id of [...this.idle.keys()]) this.cancelIdle(id) }
+
+  /**
+   * At start and once a day: deletes the rows of archived and deleted workspaces, and rows created more than a week ago
+   * that no longer need you (D-137). A row that needs you stays however old.
+   */
+  prune(): string[] {
+    const now = this.d.now?.() ?? Date.now()
+    return this.removed([...this.d.store.deleteOrphanNotifications(), ...this.d.store.deleteSettledNotifications(now - KEEP_SETTLED_MS)])
+  }
+
+  /** An archived workspace's rows go at once (D-137). History still has the workspace. */
+  forgetWorkspace(workspaceId: string): string[] {
+    this.cancelIdle(workspaceId)
+    return this.removed(this.d.store.deleteWorkspaceNotifications(workspaceId))
+  }
+
+  private removed(ids: string[]): string[] {
+    if (ids.length) bus.push({ type: 'notification.removed', ids })
+    return ids
+  }
 
   /**
    * A teammate's turn ended with nothing left to do: a "Finished" row in Inbox > Updates (Inbox.png), one per workspace,
@@ -168,7 +201,8 @@ export class Notifications {
 
   private onPr(workspaceId: string, state: PrState) {
     const ws = this.d.store.workspace(workspaceId)
-    if (!ws) return
+    // A PR refresh that lands after the archive would add a row the archive already cleared (D-137).
+    if (!ws || ws.status === 'archived') return
     const room = this.d.store.room(ws.roomId)
     const num = ws.prNumber ? `#${ws.prNumber}` : 'PR'
     const mine = this.d.store.notifications().filter((n) => n.workspaceId === workspaceId && (n.kind === 'merge' || n.kind === 'check'))

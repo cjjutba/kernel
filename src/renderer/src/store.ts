@@ -251,7 +251,8 @@ export const actions = {
   },
   notifications: {
     set: (list: Notification[]) => setState({ notifications: byRecent(list) }),
-    upsert: (n: Notification) => setState((s) => ({ notifications: byRecent(upsert(s.notifications, n)) }))
+    upsert: (n: Notification) => setState((s) => ({ notifications: byRecent(upsert(s.notifications, n)) })),
+    remove: (ids: string[]) => setState((s) => ({ notifications: s.notifications.filter((n) => !ids.includes(n.id)) }))
   },
   prs: {
     set: (info: PrInfo) => setState((s) => ({ prs: { ...s.prs, [info.workspaceId]: info } })),
@@ -302,6 +303,7 @@ export function apply(e: PushEvent) {
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
+    case 'notification.removed': return actions.notifications.remove(e.ids)
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
