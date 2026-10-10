@@ -6,7 +6,7 @@ import type {
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
-import { hasTab, isChatTab, nearest, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
+import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -179,6 +179,29 @@ const placeNow = (): Place => {
 let returnTo: Place | undefined
 let lastSettings: { page: SettingsPage; roomId?: string } | undefined
 let launch: Route = { name: 'home' }
+/**
+ * The place a relaunch reopens (KERNEL-201), kept in localStorage like the other `kernel.*` keys, which may be missing or blocked.
+ * Nothing is written before the first route is chosen (`system.booted`), so a restore never overwrites what it read, and none in fixture mode.
+ */
+const LAST_PLACE = 'kernel.lastPlace'
+let fixtureMode = false
+function savePlace() {
+  if (!state.system.booted || fixtureMode) return
+  const place = placeToSave(state, returnTo)
+  if (!place) return
+  try { localStorage.setItem(LAST_PLACE, JSON.stringify(place)) } catch { /* not remembered */ }
+}
+function savedPlace(): string | null {
+  try { return localStorage.getItem(LAST_PLACE) } catch { return null }
+}
+// A tab closed, or a workspace's tabs dropped with the workspace, changes what a relaunch shows without being a move. Every write to
+// `ui.tabs` makes a new object (`dropTabs` keeps the old one when it drops nothing), so a changed identity is a changed tab list.
+let savedTabs = state.ui.tabs
+subscribe(() => {
+  if (state.ui.tabs === savedTabs) return
+  savedTabs = state.ui.tabs
+  savePlace()
+})
 /** Back and forward: the places you left, newest last, and the ones Back stepped over. Module level like `returnTo`, so a restart starts empty. */
 const HISTORY_LIMIT = 50
 let past: Place[] = []
@@ -192,6 +215,8 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
     if (from.route.name !== 'settings') returnTo = from
     lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}) }
   }
+  // Callers apply the move before calling this, so the state is already `to` with its tabs. Saved ahead of the history block, which returns early, and for Back and Forward too.
+  savePlace()
   if (history === 'none' || samePlace(from, to)) return
   // Onboarding and the dev pages are not somewhere to come back to, and nor is a page of Settings once you are in Settings.
   const quiet = to.route.name === 'onboarding' || to.route.name === 'devUi' || from.route.name === 'onboarding' || (from.route.name === 'settings' && to.route.name === 'settings')
@@ -474,6 +499,7 @@ export async function boot() {
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
+  fixtureMode = !!fixture
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
@@ -497,13 +523,21 @@ export async function boot() {
 }
 
 /**
- * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
- * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
+ * Settings > General > Default home view: where the app opens. Where I left off reopens the saved place and brings back the tabs
+ * of its workspaces that are still live. Without one (a first launch, unreadable JSON, fixture mode) it opens the last room's Lead chat,
+ * found the way the sidebar does (the `lead` workspace on the main checkout), since agents load after this. A room nobody
+ * has briefed opens Team (D-104).
  */
 function homeRoute(settings: AppSettings): Route {
   const { openTo } = settings.general
   if (openTo === 'inbox') return { name: 'inbox' }
-  const last = openTo === 'lastPlace' ? state.rooms.find((r) => r.id === lastRoom()) : undefined
+  if (openTo === 'home') return { name: 'home' }
+  const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)
+  if (restored) {
+    setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, ...restored.tabs } } }))
+    return restored.route
+  }
+  const last = state.rooms.find((r) => r.id === lastRoom())
   return last ? nearest(roomHome(last.id, state), state) : { name: 'home' }
 }
 

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { actions, canBack, canForward, getState, go, resetHistory, setState } from '../src/renderer/src/store'
 import { tabOf } from '../src/renderer/src/nav'
 import type { AgentDef, Chat, Room, Route, Workspace } from '../src/shared/types'
@@ -270,5 +270,98 @@ describe('leaveSettings', () => {
     resetHistory()
     actions.ui.leaveSettings()
     expect(route()).toEqual(at('lead'))
+  })
+})
+
+// KERNEL-201: the place a relaunch reopens, saved in kernel.lastPlace.
+describe('the saved place', () => {
+  let store: Map<string, string>
+  beforeEach(() => {
+    store = new Map()
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) })
+    setState((s) => ({ system: { ...s.system, booted: true } }))
+  })
+  afterEach(() => {
+    setState((s) => ({ system: { ...s.system, booted: false } }))
+    vi.unstubAllGlobals()
+  })
+  const saved = () => JSON.parse(store.get('kernel.lastPlace') ?? 'null')
+
+  it('saves the place you arrive at with the tabs as they are after the move, never the one you left', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'c3')
+    go({ name: 'inbox' })
+    expect(saved().route).toEqual({ name: 'inbox' })
+    go(at('lead'))
+    expect(saved()).toMatchObject({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c3', lastChat: 'c3' } } })
+  })
+  it('saves a tab change in the workspace on screen and one in another workspace', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'file:a.ts')
+    expect(saved().tabs.lead).toMatchObject({ tab: 'file:a.ts', files: ['a.ts'] })
+    actions.ui.openTab('other', 'o1')
+    expect(saved()).toMatchObject({ route: at('lead'), tabs: { other: { tab: 'o1' } } })
+  })
+  it('saves on Back and Forward, which record no history', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'c2')
+    go({ name: 'inbox' })
+    back()
+    expect(saved()).toMatchObject({ route: at('lead'), tabs: { lead: { tab: 'c2' } } })
+    go({ name: 'rooms' })
+    go({ name: 'home' })
+    back()
+    expect(saved().route).toEqual({ name: 'rooms' })
+    forward()
+    expect(saved().route).toEqual({ name: 'home' })
+  })
+  it('saves a closed file or diff tab, which is not a move', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'diff:src/a.ts')
+    actions.ui.openTab('lead', 'file:a.ts')
+    actions.ui.setTabs('lead', { files: [], tab: 'c1' })
+    expect(saved().tabs.lead).toMatchObject({ files: [], diffs: ['src/a.ts'], tab: 'c1' })
+    actions.ui.setTabs('lead', { diffs: [] })
+    expect(saved().tabs.lead.diffs).toEqual([])
+  })
+  it('saves the tabs left when a workspace is archived or its room removed', () => {
+    for (const id of ['lead', 'other', 'r2lead']) actions.ui.openTab(id, `file:${id}.ts`)
+    go(at('lead'))
+    actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
+    expect(Object.keys(saved().tabs).sort()).toEqual(['lead', 'r2lead'])
+    actions.rooms.remove('r2')
+    expect(Object.keys(saved().tabs)).toEqual(['lead'])
+  })
+  it('saves the place Settings was opened from, never Settings', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'c2')
+    actions.ui.openSettings()
+    expect(saved()).toMatchObject({ route: at('lead'), tabs: { lead: { tab: 'c2' } } })
+    go({ name: 'settings', page: 'models' })
+    expect(saved().route).toEqual(at('lead'))
+    actions.ui.openTab('lead', 'file:a.ts')
+    expect(saved().route).toEqual(at('lead'))
+  })
+  it('saves an image or text tab as the chat you were last on', () => {
+    go(at('lead'))
+    actions.ui.openTab('lead', 'c2')
+    actions.ui.openTab('lead', 'image:1')
+    expect(saved().tabs.lead).toMatchObject({ tab: 'c2', lastChat: 'c2' })
+  })
+  it('never saves onboarding or the dev pages, and leaves the last place alone', () => {
+    go(at('lead'))
+    go({ name: 'onboarding', step: 'welcome' })
+    go({ name: 'devUi', page: 'components' })
+    expect(saved().route).toEqual(at('lead'))
+  })
+  it('saves nothing before the app has booted', () => {
+    setState((s) => ({ system: { ...s.system, booted: false } }))
+    go(at('lead'))
+    actions.ui.openTab('lead', 'c3')
+    expect(store.has('kernel.lastPlace')).toBe(false)
+  })
+  it('works when localStorage is blocked', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } })
+    expect(() => go(at('lead'))).not.toThrow()
   })
 })
