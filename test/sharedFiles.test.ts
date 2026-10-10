@@ -8,6 +8,8 @@ import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { git } from '../src/main/services/exec'
+import { Sessions } from '../src/main/services/sessions'
+import { LEAD_RULE, LEAD_SHARING_RULE } from '../src/main/services/handoff'
 import { bytesMatch, claimOf, imageSize, MAX_VERSIONS, outsideRefs, sizeLabel, textOf, titleOf } from '../src/main/services/sharedFiles'
 import { tempRepo } from './helpers'
 
@@ -15,10 +17,18 @@ import { tempRepo } from './helpers'
 // in the chat and tells the Lead.
 
 // The SDK's server and tool keep their names and handlers, so the tools run against a real Kernel without a session.
+// `query` keeps the options each session started with and never answers.
+const sdk = vi.hoisted(() => ({ calls: [] as { cwd?: string; systemPrompt?: { append?: string } }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: (o: { name: string; tools: { name: string }[] }) => ({ name: o.name, tools: o.tools.map((t) => t.name) }),
   tool: (name: string, description: string, inputSchema: unknown, handler: unknown) => ({ name, description, inputSchema, handler }),
-  query: () => ({ [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }), interrupt: async () => {} })
+  query: ({ options }: { options: { cwd?: string } }) => {
+    sdk.calls.push(options)
+    return {
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
+      interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {}, getContextUsage: async () => ({ percentage: 10 })
+    }
+  }
 }))
 
 const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
@@ -306,5 +316,19 @@ describe('who gets share_file (KERNEL-302)', () => {
     expect(mcp(off, off.review, 'theo')).toEqual({ kernel: { name: 'kernel', tools: ['submit_review'] } })
     expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge'] } })
     expect(mcp(off, off.leadWs, 'rowan').kernel.tools).toEqual(lead.slice(0, -1))
+
+    // The Lead's prompt names shared files only while sharing is on. setup stubs send, so the real one starts the session.
+    const leadPrompt = async (s: typeof on) => {
+      await Sessions.prototype.send.call(s.k().sessions, s.lead.id, [{ type: 'text', text: 'hi' }])
+      const call = await vi.waitFor(() => { const c = sdk.calls.find((x) => x.cwd === s.leadWs.path); if (!c) throw new Error('no session yet'); return c })
+      return call.systemPrompt?.append ?? ''
+    }
+    const onPrompt = await leadPrompt(on)
+    expect(onPrompt).toContain(LEAD_RULE)
+    expect(onPrompt).toContain(LEAD_SHARING_RULE)
+    const offPrompt = await leadPrompt(off)
+    expect(offPrompt).toContain(LEAD_RULE)
+    expect(offPrompt).not.toContain(LEAD_SHARING_RULE)
+    expect(offPrompt).not.toMatch(/shared/i)
   })
 })

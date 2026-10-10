@@ -247,13 +247,13 @@ export class SharedFiles {
       ...(claim.kind === 'image' ? imageSize(buf, claim.mime) ?? {} : {}), ...(outside ? { outside } : {})
     }
     // The bytes go first, through a temp file, so a row never names a copy that isn't whole.
+    const tmp = join(this.folder(id), `.v${n}-${randomUUID()}.tmp`)
     try {
-      const dir = join(this.folder(id), `v${n}`)
-      await mkdir(dir, { recursive: true })
-      const tmp = join(this.folder(id), `.v${n}-${randomUUID()}.tmp`)
+      await mkdir(join(this.folder(id), `v${n}`), { recursive: true })
       await writeFile(tmp, buf)
       await rename(tmp, this.copyPath(id, n, name))
     } catch (e) {
+      await rm(tmp, { force: true }).catch(() => undefined)
       throw new Refused(`Kernel couldn't copy ${name} (${e instanceof Error ? e.message : String(e)}).`)
     }
     const file: SharedFile = old

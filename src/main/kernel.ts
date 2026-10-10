@@ -21,7 +21,7 @@ import { teammateMcpServer, teammateTools, type TeammateToolDeps } from './servi
 import { kernelServer } from './services/kernelServer'
 import { SharedFiles, type ShareRequest } from './services/sharedFiles'
 import { sharedTools } from './services/sharedMcp'
-import { reviewRule, TEAMMATE_RULE } from './services/handoff'
+import { LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
@@ -225,8 +225,8 @@ export class Kernel {
         : agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
         : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
         : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
-      // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
-      rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
+      // The Lead's rule is LEAD_RULE, which agentPrompt adds itself. Sharing adds a line after it, only while on (KERNEL-302).
+      rulesFor: (ws, agent) => (agent?.lead ? (this.sharing ? LEAD_SHARING_RULE : undefined) : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)

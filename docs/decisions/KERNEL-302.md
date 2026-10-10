@@ -8,4 +8,4 @@ A share puts a `shared` item in the calling chat and adds a `shared` event to th
 
 `services/kernelServer.ts` is the only place the MCP server gets the name `kernel`, because the auto-allow in `canUseTool` and the hook server's quiet list both match `mcp__kernel__`. A server under another name would ask the user before every share.
 
-The tool ships behind `experimental.sharing` in settings.json, off by default, with no page in Settings. Off, every agent gets exactly the server it had before. KERNEL-308 turns it on once the card, the tab and the locked-down preview exist, so a release in between shows nothing half built. KERNEL-302.
+The tool ships behind `experimental.sharing` in settings.json, off by default, with no page in Settings. Off, every agent gets exactly the server and prompt it had before. The Lead's line about shared files in Team updates is `LEAD_SHARING_RULE`, which `rulesFor` adds after LEAD_RULE only while sharing is on. KERNEL-308 turns it on once the card, the tab and the locked-down preview exist, so a release in between shows nothing half built. KERNEL-302.
