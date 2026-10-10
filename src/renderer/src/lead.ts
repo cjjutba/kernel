@@ -61,8 +61,9 @@ export async function openLeadChat(roomId: string, chatId: string): Promise<void
     const s = getState()
     const lead = leadOf(s.agents, roomId)
     const shown = s.ui.route.name === 'workspace' ? s.workspaces.find((w) => w.id === (s.ui.route as { workspaceId: string }).workspaceId) : undefined
-    return !!shown && isLeadWorkspace(shown, roomId, lead?.id)
+    return shown && isLeadWorkspace(shown, roomId, lead?.id) ? shown : undefined
   }
   if (!shownLead()) await openLead(roomId)
-  if (shownLead()) actions.ui.setWorkspaceView({ tab: chatId })
+  const shown = shownLead()
+  if (shown) actions.ui.openTab(shown.id, chatId)
 }

@@ -889,12 +889,22 @@ export interface WorkspaceView {
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
-  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
-  tab?: string
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
   /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */
   contextOpen?: boolean
+}
+
+/** One workspace's open tabs. They outlast the workspace screen, so Settings or another workspace never resets them. */
+export interface WorkspaceTabs {
+  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
+  tab?: string
+  /** The chat the composer is on while a file, diff, image or text tab is active. */
+  lastChat?: string
+  /** Paths of the open file tabs. */
+  files: string[]
+  /** Paths of the open diff tabs. An empty path is All changes. */
+  diffs: string[]
 }
 
 export interface UiState {
@@ -907,6 +917,8 @@ export interface UiState {
   /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
   stage?: string
   workspace: WorkspaceView
+  /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
+  tabs: Record<string, WorkspaceTabs>
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */

@@ -107,7 +107,7 @@ function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: R
   const current = useStore((s) => {
     const r = s.ui.route
     if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
-    const tab = s.ui.workspace.tab
+    const tab = s.ui.tabs[chat.workspaceId]?.tab
     return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
   })
   const g = chatGlyph({ waiting, running })

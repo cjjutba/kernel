@@ -44,7 +44,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
     // `openLead` swallows its errors, so check the Lead's workspace is on screen before pointing a tab at its chat.
     const { route } = getState().ui
     const shown = route.name === 'workspace' ? getState().workspaces.find((w) => w.id === route.workspaceId) : undefined
-    if (shown && isLeadWorkspace(shown, room.id, lead?.id)) actions.ui.setWorkspaceView({ tab: asked.chatId })
+    if (shown && isLeadWorkspace(shown, room.id, lead?.id)) actions.ui.openTab(shown.id, asked.chatId)
   }
   const ask = () => {
     if (!room || !text.trim()) return

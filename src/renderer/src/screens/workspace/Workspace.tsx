@@ -49,6 +49,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
   const chats = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   const view = useStore((s) => s.ui.workspace)
+  const shownTab = useStore((s) => s.ui.tabs[workspaceId]?.tab)
   const panels = useStore((s) => s.ui.rightPanel)
   const [changes, setChanges] = useState<ChangedFile[]>([])
   const [openFiles, setOpenFiles] = useState<string[]>([])
@@ -62,7 +63,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const [panelWidth, setPanelWidth] = useState(() => readWidth(PANEL_KEY, PANEL_MIN, PANEL_MAX))
   const panelLimit = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, (aside.current?.parentElement?.clientWidth ?? window.innerWidth) - CHAT_MIN))
 
-  const stored = view.tab ?? lastChat ?? chats[0]?.id
+  const stored = shownTab ?? lastChat ?? chats[0]?.id
   // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
   const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
   const tab = gone ? lastChat ?? chats[0]?.id : stored
@@ -91,7 +92,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   useEffect(() => {
     if (viewOwner !== undefined && viewOwner !== workspaceId) {
       setOpenFiles([]); setOpenDiffs([]); setImages([]); setTexts([]); setLastChat(undefined)
-      actions.ui.setWorkspaceView({ tab: undefined })
+      actions.ui.setTabs(workspaceId, { tab: undefined })
     }
     viewOwner = workspaceId
   }, [workspaceId])
@@ -108,7 +109,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
   const select = (id: string) => {
     if (!/^(file|diff|image|text):/.test(id)) setLastChat(id)
-    actions.ui.setWorkspaceView({ tab: id })
+    actions.ui.openTab(workspaceId, id)
   }
   const openFile = (path: string) => {
     setOpenFiles((f) => (f.includes(path) ? f : [...f, path]))

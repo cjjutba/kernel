@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSetupStep, Route, ScriptKind, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceView
+  RoomSetupStep, Route, ScriptKind, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
@@ -94,7 +94,7 @@ let state: State = {
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
   quickAsk: {},
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
 
@@ -145,6 +145,15 @@ function rememberRoom(route: Route) {
 function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
+const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }
+/** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file or diff tab joins the open ones. */
+function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
+  const t = { ...emptyTabs, ...tabs, tab }
+  if (tab.startsWith('file:')) { const path = tab.slice(5); return t.files.includes(path) ? t : { ...t, files: [...t.files, path] } }
+  if (tab.startsWith('diff:')) { const path = tab.slice(5); return t.diffs.includes(path) ? t : { ...t, diffs: [...t.diffs, path] } }
+  if (tab.startsWith('image:') || tab.startsWith('text:')) return t
+  return { ...t, lastChat: tab }
+}
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
 
@@ -174,6 +183,10 @@ export const actions = {
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
+    openTab: (workspaceId: string, tab: string) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } })),
+    /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
+    setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
     setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
@@ -361,7 +374,7 @@ function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
 function applyFixture({ quickAsk, ...ui }: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } }, quickAsk: quickAsk ?? s.quickAsk }))
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)
