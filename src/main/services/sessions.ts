@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -111,11 +111,8 @@ export interface Sender { from?: MessageFrom; update?: TeamUpdate }
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
 
-/**
- * What a sent message waits for in the queue: the running turn, the workspace's setup, a paused room, every room held
- * (`offline` covers a lost connection and a sign-out alike), or the agent limit in Settings, Models.
- */
-export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+/** Moved to the shared contract (KERNEL-271). Exported here too for what imports it from Sessions. */
+export type { QueueReason }
 
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
@@ -311,7 +308,7 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
     if (o.from !== 'kernel') this.handoffs.done(chatId)
-    const why = this.waitsFor(chat)
+    const why = this.waitsFor(chat.id)
     if (why) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
       return { queued: true, why }
@@ -321,7 +318,9 @@ export class Sessions {
   }
 
   /** What a message sent now would wait for, or nothing when it can go at once. */
-  private waitsFor(chat: Chat): QueueReason | undefined {
+  waitsFor(chatId: string): QueueReason | undefined {
+    const chat = this.d.store.chat(chatId)
+    if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return 'setup'
     if (this.global) return 'offline'
@@ -352,6 +351,9 @@ export class Sessions {
   kernelTurn(chatId: string): boolean { return this.turnFrom(chatId) === 'kernel' }
 
   queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
+
+  /** What the chat's queue waits for, or nothing when it is empty or its next message is about to go (KERNEL-271). */
+  queueReason(chatId: string): QueueReason | undefined { return this.queued(chatId).length ? this.waitsFor(chatId) : undefined }
 
   unqueue(chatId: string, id: string): QueuedMessage[] {
     return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
