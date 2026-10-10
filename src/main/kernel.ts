@@ -25,7 +25,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
@@ -1588,7 +1588,12 @@ export class Kernel {
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
-        if (ws.status !== 'failed') return ws
+        if (ws.status !== 'failed') {
+          // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
+          const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+          const queued = brief && this.sessions.queueReason(brief.id)
+          return queued ? { ...ws, queued } : ws
+        }
         const code = this.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
@@ -1656,10 +1661,8 @@ export class Kernel {
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
       : why === 'setup' && waiting?.status === 'ready' && waiting.waitsFor?.held ? `${name} waits for ${this.waitLabelOf(waiting)} to merge, so this goes out after the brief. To start ${name} now, call wait_for_merge with an empty list.`
       : why === 'setup' ? (this.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
-      : why === 'paused' ? 'The room is paused, so the message goes out when the user resumes it.'
-      : why === 'offline' ? 'Kernel is offline or signed out, so the message goes out once it is back.'
-      : why === 'capacity' ? 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.'
-      : 'The message waits in the queue.'
+      // The same words as create_workspace's brief (KERNEL-272).
+      : queuedNote(why, { name }) ?? 'The message waits in the queue.'
     return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }
   }
 
