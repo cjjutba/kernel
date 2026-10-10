@@ -34,6 +34,7 @@ import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
@@ -631,10 +632,9 @@ export class Kernel {
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
     })
     await step('copy', async () => {
-      const wanted = (await loadRepoSettings(room.path)).files.copy
-      const present: string[] = []
-      for (const f of wanted) if (await stat(join(room.path, f)).then(() => true, () => false)) present.push(f)
-      return { detail: present.length ? present.join(', ') : 'No local files to copy' }
+      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
+      if (!present.length) return { detail: 'No local files to copy' }
+      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
     })
     await step('hooks', async () => {
       const status = await this.hooksStatus()
@@ -2332,6 +2332,7 @@ export class Kernel {
       },
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
+      'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {
@@ -2391,6 +2392,11 @@ export class Kernel {
       },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
       'rooms.trust': async ({ roomId, hash }) => { await this.trustRoom(roomId, hash); return { ok: true } },
+      // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
+      'files.preview': async ({ roomId, patterns }) => {
+        const { path } = this.mustRoom(roomId)
+        return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
+      },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined
         const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []

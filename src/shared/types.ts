@@ -395,6 +395,12 @@ export interface QueuedMessage {
   update?: TeamUpdate
 }
 
+/**
+ * What a chat's queue waits for: the running turn, the workspace's setup, a paused room, every room held (`offline` covers
+ * a lost connection and a sign-out alike), or the agent limit in Settings, Models. Computed, never saved (KERNEL-271).
+ */
+export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'
 
@@ -822,6 +828,7 @@ export interface AppSettings {
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
+  /** `copy` takes exact paths and patterns like `.env*` (KERNEL-245). */
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
   /** Skills and MCP servers switched off for this room, by name. */
@@ -845,6 +852,12 @@ export type RoomSettingSource = 'shared' | 'local' | 'override'
 
 /** The sections of a room's settings page. A route without one opens General. */
 export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
+
+/** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
+export interface FileToCopy {
+  path: string
+  size: number
+}
 
 /** A patch to a room's settings file. `null` removes the key so the app default applies again. */
 export type RoomSettingsPatch = {
@@ -959,6 +972,8 @@ export interface UiState {
   workspace: WorkspaceView
   /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
   tabs: Record<string, WorkspaceTabs>
+  /** Ids of the Lead chats folded by hand in the sidebar, which hides the workspaces they started. Only folded chats are listed; kept across launches. */
+  foldedChats: string[]
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */

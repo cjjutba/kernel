@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFile, copyFile, lstat, mkdir, realpath, stat, symlink } from 'node:fs/promises'
+import { appendFile, copyFile, lstat, mkdir, realpath, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
+import { resolveCopySources, within } from './filesToCopy'
 
 /** Find a free TCP port, starting at `from`. Each workspace gets its own as $KERNEL_PORT. */
 export async function freePort(from = 4300, taken: Set<number> = new Set()): Promise<number> {
@@ -20,47 +21,35 @@ export async function freePort(from = 4300, taken: Set<number> = new Set()): Pro
   throw new Error('No free port found')
 }
 
-const inside = (root: string, path: string) => { const r = relative(root, path); return !!r && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r) }
-
 /**
  * Would writing `to` land outside the worktree? True when `to` is a symlink, or a folder on its way is one that points
- * out: a repo can commit either, and the copy would follow it. Checked before any folder is made.
+ * out: a repo can commit either, and the copy would follow it. Checked before any folder is made (KERNEL-209).
  */
 async function leavesWorktree(worktreeRoot: string, to: string): Promise<boolean> {
   if (await lstat(to).then((s) => s.isSymbolicLink(), () => false)) return true
   let dir = dirname(to)
   while (!(await lstat(dir).then(() => true, () => false))) dir = dirname(dir)
-  const real = await realpath(dir)
-  return real !== worktreeRoot && !inside(worktreeRoot, real)
+  return !within(worktreeRoot, await realpath(dir))
 }
 
 /**
- * Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. Globs are not expanded.
- * Each entry must stay inside the repo once symlinks are followed, and its copy inside the worktree, so a
- * `../../.ssh/id_rsa` entry or a link that points out is refused, never copied (KERNEL-209).
+ * Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. `entries` are exact paths and
+ * patterns (KERNEL-245), resolved by `resolveFilesToCopy`, which keeps every file inside the repo once symlinks are
+ * followed and names the entries it refused. Each copy must also land inside the worktree, so a symlink the worktree
+ * checked out can't carry it out (KERNEL-209). A worktree an archive already removed gets nothing.
  */
-export async function copyLocalFiles(repo: string, worktree: string, files: string[]): Promise<{ copied: string[]; refused: string[] }> {
+export async function copyLocalFiles(repo: string, worktree: string, entries: string[]): Promise<{ copied: string[]; refused: string[] }> {
   const copied: string[] = [], refused: string[] = []
-  const roots = await Promise.all([realpath(repo), realpath(worktree)]).catch(() => undefined)
-  // A worktree archived while it was being set up is gone: there is nothing to copy into.
-  if (!roots) return { copied, refused }
-  const [repoRoot, worktreeRoot] = roots
-  for (const f of files) {
-    if (typeof f !== 'string' || !f) continue
-    const to = resolve(worktree, f)
-    if (!inside(repo, resolve(repo, f)) || !inside(worktree, to)) { refused.push(f); continue }
-    // Missing files are fine.
-    const from = await realpath(resolve(repo, f)).catch(() => undefined)
-    if (!from) continue
-    if (!inside(repoRoot, from)) { refused.push(f); continue }
+  const worktreeRoot = await realpath(worktree).catch(() => undefined)
+  if (!worktreeRoot) return { copied, refused }
+  for (const { path, from } of await resolveCopySources(repo, entries, refused)) {
+    const to = join(worktree, path)
     try {
-      // Folders were never copied. Globs are not expanded.
-      if (!(await stat(from)).isFile()) continue
-      if (await leavesWorktree(worktreeRoot, to)) { refused.push(f); continue }
+      if (await leavesWorktree(worktreeRoot, to)) { refused.push(path); continue }
       await mkdir(dirname(to), { recursive: true })
       await copyFile(from, to)
-      copied.push(f)
-    } catch { /* an unreadable file is skipped like a missing one */ }
+      copied.push(path)
+    } catch { /* a file that went away is fine */ }
   }
   return { copied, refused }
 }
