@@ -49,7 +49,7 @@ import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
-import { isMerged, joinLabels, waitLabel, waitMet } from './services/waits'
+import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from './services/waits'
 
 const COPY = 'fork:'
 
@@ -1806,11 +1806,14 @@ export class Kernel {
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
+        // Rowan named no wait, but Linear says the issue is blocked by one a teammate is building (KERNEL-263).
+        const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
           // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
+          const out = blocked ?? ws
           const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
           const queued = brief && this.sessions.queueReason(brief.id)
-          return queued ? { ...ws, queued } : ws
+          return queued ? { ...out, queued } : out
         }
         const code = this.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
@@ -2593,14 +2596,14 @@ export class Kernel {
   }
 
   /**
-   * create_workspace's `issue`: the source to save and the issue's labels, which pick the branch type, or the task title
-   * and no labels when Linear doesn't answer.
+   * create_workspace's `issue`: the source to save, the issue's labels, which pick the branch type, and the issues that
+   * block it (KERNEL-263), or the task title and no labels when Linear doesn't answer.
    */
-  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[] }> {
+  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
     if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title }, labels: [] }
     try {
       const issue = await getIssue(await this.linearKey(), key, this.linearFetch)
-      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels }
+      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels, blockedBy: issue.blockedBy }
     } catch { return { source: { kind: 'issue', id: key, title }, labels: [] } }
   }
 
@@ -2613,6 +2616,24 @@ export class Kernel {
     const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
     const read = this.linearKey().then((token) => getIssue(token, key, this.linearFetch)).then((i) => i.labels, () => [])
     try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
+  }
+
+  /**
+   * A hand-off whose Linear issue is blocked by issues open teammates are building (KERNEL-263). Once the brief has gone
+   * out, it waits for their PRs without holding anything (CJ chose "tell on merge"), and Kernel asks the teammate to rebase
+   * when they merge. Blockers with no open workspace, or one that merged, don't count. Returns the workspace when it waits.
+   */
+  private async waitOnBlockers(ws: Workspace, blockedBy: string[]): Promise<Workspace | undefined> {
+    const now = this.mustWs(ws.id)
+    if (now.status !== 'ready' || now.waitsFor) return undefined
+    const keys = new Set(blockedBy.map((k) => k.toLowerCase()))
+    const all = this.store.workspaces(ws.roomId)
+    const isLead = (w: Workspace) => !!this.agentsSync(ws.roomId).find((a) => a.id === w.agentId)?.lead
+    const on = all
+      .filter((w) => w.status !== 'archived' && !w.reviewOf && !isMerged(w) && w.source?.kind === 'issue' && keys.has(w.source.id.toLowerCase()))
+      .filter((w) => !waitRefusal({ workspaces: all, refs: [w.id], waiter: now, isLead }))
+      .map((w) => w.id)
+    return on.length ? this.setWait(ws.id, on) : undefined
   }
 
   private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }

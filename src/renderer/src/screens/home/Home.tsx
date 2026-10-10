@@ -5,10 +5,11 @@ import { actions, go, useStore } from '../../store'
 import { Button, Icon, useBusy } from '../../ui'
 import { attempt } from '../workspace/MessageActions'
 import { openRoom } from '../../lead'
+import { RoomIcon } from '../../components/RoomIcon'
 import { SortOverlap } from '../inbox/Inbox'
 import { allOverlaps, fileName, inboxItems, needsYou, type InboxItem } from '../inbox/model'
 import { openNewRoom, resetDraft } from '../rooms/draft'
-import { roomLetter, roomState, sourceOf, stateLabel } from '../rooms/roomInfo'
+import { roomState, sourceOf, stateLabel } from '../rooms/roomInfo'
 import './home.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -29,7 +30,6 @@ function NeedsRow({ item }: { item: InboxItem }) {
   const [busy, run] = useBusy<'deny' | 'approve'>()
   const agent = agents.find((x) => x.id === n.agentId)
   const who = agent?.name ?? 'An agent'
-  const letter = room ? roomLetter(room.name) : 'K'
   const input = (a?.input ?? {}) as Record<string, unknown>
   const plan = !!a && (a.kind === 'plan' || a.toolName === 'ExitPlanMode')
   // Where the item happened: its workspace, else the room's Lead chat (D-104), else the Inbox.
@@ -61,7 +61,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
   }
   return (
     <div className="hm-need">
-      <span className="hm-av" aria-hidden="true">{letter}</span>
+      <RoomIcon room={room} className="hm-av" fallback="K" />
       <span className="hm-need-text">{text}{a && a.kind === 'tool' && !plan && room && <span className="hm-by">{room.name}</span>}</span>
       <span className="hm-need-acts">{actionsEl}</span>
     </div>
@@ -180,7 +180,7 @@ export function Home() {
                   const state = roomState(r, approvals, status[r.id])
                   return (
                     <button key={r.id} type="button" className="hm-room" onClick={() => void openRoom(r.id)}>
-                      <span className="hm-room-top"><span className="hm-av" aria-hidden="true">{roomLetter(r.name)}</span><b>{r.name}</b><span className="grow" /><span className="hm-state" data-state={state}>{r.paused ? 'Paused' : stateLabel[state]}</span></span>
+                      <span className="hm-room-top"><RoomIcon room={r} className="hm-av" /><b>{r.name}</b><span className="grow" /><span className="hm-state" data-state={state}>{r.paused ? 'Paused' : stateLabel[state]}</span></span>
                       <span className="hm-room-sub"><span className="mono ellipsis">{sourceOf(r)}</span><span className="grow" />{team.length ? `${team.length} ${team.length === 1 ? 'agent' : 'agents'}` : ''}</span>
                     </button>
                   )
