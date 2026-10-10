@@ -152,9 +152,23 @@ export function kernelTools(d: KernelToolDeps) {
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
+      // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
+      if (!review_of) {
+        const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+        const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
+          ? w.source?.kind === 'issue' && same(w.source.id, issue)
+          : !!d.chatId && w.leadChatId === d.chatId && w.agentId === pick.id && !!w.title && same(w.title, title)))
+        if (open) {
+          const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
+          const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
+          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+          return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
+        }
+      }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {
-        const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
         const target = d.workspaces().find((w) => w.id === review_of)
         if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
