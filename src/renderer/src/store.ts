@@ -501,9 +501,9 @@ export async function boot() {
  * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
  */
 function homeRoute(settings: AppSettings): Route {
-  const { homeView } = settings.general
-  if (homeView === 'inbox') return { name: 'inbox' }
-  const last = homeView === 'lastRoom' ? state.rooms.find((r) => r.id === lastRoom()) : undefined
+  const { openTo } = settings.general
+  if (openTo === 'inbox') return { name: 'inbox' }
+  const last = openTo === 'lastPlace' ? state.rooms.find((r) => r.id === lastRoom()) : undefined
   return last ? nearest(roomHome(last.id, state), state) : { name: 'home' }
 }
 

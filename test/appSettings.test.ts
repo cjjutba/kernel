@@ -57,6 +57,35 @@ describe('loadAppSettings', () => {
     await writeFile(file, JSON.stringify({ models: { effortByModel: ['xhigh'] } }))
     expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({})
   })
+
+  describe('open to (replaces the default home view)', () => {
+    const load = async (general?: Record<string, unknown>) => {
+      const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+      if (general) await writeFile(file, JSON.stringify({ general }))
+      return (await loadAppSettings(file, '/home/cj')).general as Record<string, unknown>
+    }
+    it('opens where you left off for a saved home or last room, which every launch wrote without a choice', async () => {
+      for (const homeView of ['home', 'lastRoom']) {
+        const g = await load({ homeView, menuBar: false })
+        expect(g.openTo).toBe('lastPlace')
+        expect('homeView' in g).toBe(false)
+        expect(g.menuBar).toBe(false)
+      }
+    })
+    it('keeps Inbox', async () => {
+      const g = await load({ homeView: 'inbox' })
+      expect(g.openTo).toBe('inbox')
+      expect('homeView' in g).toBe(false)
+    })
+    it('keeps an openTo that was already chosen, even next to a leftover homeView', async () => {
+      expect((await load({ openTo: 'home' })).openTo).toBe('home')
+      expect((await load({ openTo: 'home', homeView: 'inbox' })).openTo).toBe('home')
+    })
+    it('defaults a fresh install, with no file, to where you left off', async () => {
+      expect((await load()).openTo).toBe('lastPlace')
+      expect(DEFAULT_SETTINGS('/home/cj').general.openTo).toBe('lastPlace')
+    })
+  })
 })
 
 describe('protected branches', () => {
