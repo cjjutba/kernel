@@ -385,6 +385,8 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
+  terminal?: { preset: string; command: string | null }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
   createdAt: number
@@ -842,9 +844,9 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'permissions'
+  | 'models' | 'permissions' | 'env'
   | 'git' | 'scripts' | 'prs'
-  | 'hooks' | 'integrations' | 'experimental' | 'about'
+  | 'hooks' | 'integrations' | 'experimental' | 'bigterm' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
@@ -876,8 +878,34 @@ export interface AppSettings {
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
+  experimental: { walking: boolean; floor3d: boolean; voice: boolean }
 }
+
+/**
+ * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).
+ * `command` is typed into the login shell, null for a plain shell. `builtin` is false for custom commands only.
+ */
+export interface TerminalPreset {
+  id: string
+  name: string
+  command: string | null
+  builtin: boolean
+  skipsPermissions: boolean
+}
+
+/** The flag Only in worktrees takes out of a command on a current-branch workspace (KERNEL-248). */
+export const SKIP_FLAG = '--dangerously-skip-permissions'
+
+/** Other agent CLIs the big terminal lists when they are on the PATH. Settings checks a custom command's name against these (KERNEL-248, KERNEL-251). */
+export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
+  { id: 'codex', name: 'Codex' },
+  { id: 'opencode', name: 'OpenCode' },
+  { id: 'amp', name: 'Amp' },
+  { id: 'copilot', name: 'Copilot' },
+  { id: 'gemini', name: 'Gemini' }
+]
 
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
@@ -972,6 +1000,8 @@ export type Modal =
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
+  /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
+  | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }

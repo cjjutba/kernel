@@ -79,6 +79,21 @@ function preview(): Fixture {
   }
 }
 
+/**
+ * KERNEL-251: the tab strip's + menu with every terminal preset, on the open PR the KERNEL-274 look draws. Codex is on the PATH, one custom
+ * command is saved and a Codex terminal tab is open next to the chat.
+ */
+function terminalPresets(): Fixture {
+  const open = prScene('open', [], { prs: prInfo('open') })
+  return {
+    ...open,
+    chats: [...open.chats, extraChat('chat-term', 'Terminal (codex)', 'terminal')],
+    settings: { ...DEFAULT_SETTINGS('/Users/you'), terminal: { ...DEFAULT_SETTINGS('/Users/you').terminal, custom: [{ id: 'custom-dev-server-logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } },
+    terminalClis: [{ id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }],
+    ui: { ...open.ui, menu: 'newTab' }
+  }
+}
+
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
@@ -539,6 +554,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
   WorkspaceRunScripts: runScripts(),
+  WorkspaceTerminalPresets: terminalPresets(),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
