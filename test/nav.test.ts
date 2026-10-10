@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { actions, getState, setState } from '../src/renderer/src/store'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_SETTINGS } from '../src/main/services/settings'
+import { actions, canBack, getState, launchRoute, resetHistory, setState } from '../src/renderer/src/store'
 import { nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
 import type { AgentDef, Chat, Room, Route, Workspace } from '../src/shared/types'
 
@@ -226,5 +227,60 @@ describe('placeToSave', () => {
     expect(placeToSave(getState())).toBeUndefined()
     actions.ui.go({ name: 'devUi', page: 'components' })
     expect(placeToSave(getState())).toBeUndefined()
+  })
+})
+
+// KERNEL-201: Continue on the checks screen opens the place the launch would have.
+describe('launchRoute, which Continue on the checks screen goes to', () => {
+  const place = JSON.stringify({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c3', lastChat: 'c3', files: [], diffs: ['src/a.ts'] } } })
+  const continueFromChecks = () => actions.ui.go(launchRoute(), { history: 'replace' })
+  const openTo = (value: 'lastPlace' | 'home' | 'inbox') => setState({ settings: { ...DEFAULT_SETTINGS('/home/cj'), general: { ...DEFAULT_SETTINGS('/home/cj').general, openTo: value } } })
+
+  beforeEach(() => {
+    vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastPlace' ? place : null), setItem: () => undefined, removeItem: () => undefined })
+    resetHistory()
+    actions.ui.go({ name: 'onboarding', step: 'checks' }, { history: 'replace' })
+  })
+  afterEach(() => { vi.unstubAllGlobals(); setState({ settings: null }) })
+
+  it('with Where I left off opens the saved place and brings its tabs back', () => {
+    openTo('lastPlace')
+    continueFromChecks()
+    expect(route()).toEqual(at('lead'))
+    expect(getState().ui.tabs.lead).toMatchObject({ tab: 'c3', diffs: ['src/a.ts'] })
+    expect(tabOf(getState(), 'lead')).toBe('c3')
+  })
+  it('replaces, so Back right after has nowhere to go', () => {
+    openTo('lastPlace')
+    continueFromChecks()
+    expect(canBack()).toBe(false)
+  })
+  it('opens the nearest place that is still there when the saved workspace was archived', () => {
+    openTo('lastPlace')
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan', status: 'archived' }))
+    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan' }))
+    continueFromChecks()
+    expect(route()).toEqual(at('lead2'))
+  })
+  it('with Inbox opens Inbox, and with Home opens Home', () => {
+    openTo('inbox')
+    continueFromChecks()
+    expect(route()).toEqual({ name: 'inbox' })
+    openTo('home')
+    continueFromChecks()
+    expect(route()).toEqual({ name: 'home' })
+  })
+  it('keeps a tab that is already open, so asking again after boot changes nothing', () => {
+    openTo('lastPlace')
+    actions.ui.setTabs('lead', { diffs: ['kept.ts'] })
+    launchRoute()
+    expect(getState().ui.tabs.lead.diffs).toEqual(['kept.ts'])
+  })
+  it('without a saved place falls back to the last room, then Home', () => {
+    vi.stubGlobal('localStorage', { getItem: (k: string) => (k === 'kernel.lastRoom' ? 'r1' : null), setItem: () => undefined, removeItem: () => undefined })
+    openTo('lastPlace')
+    expect(launchRoute()).toEqual(at('lead'))
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
+    expect(launchRoute()).toEqual({ name: 'home' })
   })
 })
