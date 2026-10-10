@@ -173,6 +173,14 @@ describe('Kernel on quit', () => {
     await k.stop()
   })
 
+  it('reads no database when a chat starts or stops, so a push never throws from the counting', async () => {
+    const k = await kernel()
+    k.store.db.close()
+    expect(() => bus.push({ type: 'chat.running', chatId: 'c1', running: true })).not.toThrow()
+    expect(() => bus.push({ type: 'chat.running', chatId: 'c1', running: false })).not.toThrow()
+    await k.stop()
+  })
+
   it('asks before Restart to update, and Cancel leaves the update uninstalled', async () => {
     let installs = 0
     let answer = false

@@ -156,12 +156,10 @@ app.whenReady().then(async () => {
     const quit: QuitGuard = new QuitGuard({
       working: (): number => kernel.workingAgents(),
       ask: async (d) => {
-        // A closed window gets no dialog parent, and the dialog shows on its own.
+        // A closed window gets no dialog parent, and the dialog shows on its own. focusWindow would open a new one.
         const w = BrowserWindow.getAllWindows()[0]
         if (!w) return (await dialog.showMessageBox(d)).response === 0
-        if (w.isMinimized()) w.restore()
-        w.show()
-        w.focus()
+        focusWindow()
         return (await dialog.showMessageBox(w, d)).response === 0
       },
       stop: async () => { updater?.stop(); await kernel.stop() },
