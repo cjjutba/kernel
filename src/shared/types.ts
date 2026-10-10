@@ -794,7 +794,7 @@ export interface AppSettings {
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
-  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; createInstructions: string; resolveInstructions: string }
+  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
 }
@@ -808,11 +808,27 @@ export interface RoomSettings {
   disabled?: { skills: string[]; mcp: string[] }
   /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
+  /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
+  pr?: Partial<PrInstructions>
+  /**
+   * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
+   * A path missing here means the app default applies (KERNEL-190).
+   */
+  sources: Record<string, RoomSettingSource>
 }
+
+/** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per room). */
+export interface PrInstructions { createInstructions: string; resolveInstructions: string; fixChecksInstructions: string; addressReviewInstructions: string }
+
+/** `shared`: only `.kernel/settings.toml` sets the value. `local`: only `.kernel/settings.local.toml`. `override`: both, and the personal one wins. */
+export type RoomSettingSource = 'shared' | 'local' | 'override'
+
+/** The sections of a room's settings page. A route without one opens General. */
+export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
 
 /** A patch to a room's settings file. `null` removes the key so the app default applies again. */
 export type RoomSettingsPatch = {
-  [K in keyof RoomSettings]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+  [K in Exclude<keyof RoomSettings, 'sources'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 }
 
 /** Recursive partial for settings patches. */
@@ -834,7 +850,8 @@ export type Route =
   | { name: 'workspace'; workspaceId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   | { name: 'issues'; issueId?: string }
-  | { name: 'settings'; page: SettingsPage; roomId?: string }
+  /** `section` is for `page: 'room'`, and none means General. */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
