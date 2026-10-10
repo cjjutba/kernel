@@ -10,7 +10,7 @@ import { listCheckpoints } from '../src/main/services/checkpoints'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { resolveTarget, waitBroken, waitMet, waitRefusal } from '../src/main/services/waits'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
 
@@ -59,6 +59,7 @@ async function setup(files: Record<string, string> = {}) {
   const k = fake(new Kernel({ dataDir, home }))
   await k.start()
   const room = await k.addRoom(repo)
+  await trustRoom(k, room.id)
   const lead = await k.leadChat(room.id)
   const again = async () => { const next = fake(new Kernel({ dataDir, home })); await next.start(); return next }
   /** A teammate's workspace with an open PR, the work others wait for. */

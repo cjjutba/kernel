@@ -19,7 +19,7 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(await resolveFilesToCopy(repo, ['.env*'])).toEqual([{ path: '.env', size: 6 }, { path: '.env.local', size: 7 }])
 
     const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
-    expect(await copyLocalFiles(repo, wt, ['.env*'])).toEqual(['.env', '.env.local'])
+    expect((await copyLocalFiles(repo, wt, ['.env*'])).copied).toEqual(['.env', '.env.local'])
     expect(await readFile(join(wt, '.env.local'), 'utf8')).toBe('KEY=22\n')
     expect((await readdir(wt)).sort()).toEqual(['.env', '.env.local'])
   })
@@ -109,23 +109,30 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     const repo = await tempRepo({ '.gitignore': '.env.local\n', 'config/app.json': '{}\n' })
     await put(repo, { '.env.local': 'L\n', 'notes.txt': 'untracked, not ignored\n' })
     const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
-    expect(await copyLocalFiles(repo, wt, ['.env.local', 'missing.env', 'notes.txt', 'config/app.json', 'config'])).toEqual(['.env.local', 'config/app.json', 'notes.txt'])
+    expect((await copyLocalFiles(repo, wt, ['.env.local', 'missing.env', 'notes.txt', 'config/app.json', 'config'])).copied).toEqual(['.env.local', 'config/app.json', 'notes.txt'])
     expect(await readFile(join(wt, 'notes.txt'), 'utf8')).toBe('untracked, not ignored\n')
     expect(await paths(repo, [])).toEqual([])
     // Nothing under .git, so the preview always equals the copy.
     expect(await paths(repo, ['.git/config', '.git/HEAD'])).toEqual([])
   })
 
-  it('follows a symlink for an exact path, as before, and skips one a pattern matches', async () => {
-    const shared = await mkdtemp(join(tmpdir(), 'kernel-shared-'))
-    await put(shared, { '.env': 'SHARED=1\n' })
-    const repo = await tempRepo({ '.gitignore': '.env*\n', 'README.md': '' })
-    await symlink(join(shared, '.env'), join(repo, '.env'))
-    await symlink(join(shared, '.env'), join(repo, '.env.local'))
+  it('follows a symlink for an exact path inside the repo, refuses one that points out, and skips one a pattern matches', async () => {
+    const repo = await tempRepo({ '.gitignore': '.env*\nshared/\n', 'README.md': '' })
+    await put(repo, { 'shared/.env': 'SHARED=1\n' })
+    await symlink(join(repo, 'shared/.env'), join(repo, '.env'))
+    await symlink(join(repo, 'shared/.env'), join(repo, '.env.local'))
     expect(await paths(repo, ['.env*'])).toEqual([])
     expect(await resolveFilesToCopy(repo, ['.env', '.env*'])).toEqual([{ path: '.env', size: 9 }])
     const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
     await copyLocalFiles(repo, wt, ['.env'])
     expect(await readFile(join(wt, '.env'), 'utf8')).toBe('SHARED=1\n')
+    // A link to a file outside the repo, shared between clones or not, is refused (KERNEL-209).
+    const outside = await mkdtemp(join(tmpdir(), 'kernel-shared-'))
+    await put(outside, { '.env': 'SHARED=1\n' })
+    const linked = await tempRepo({ '.gitignore': '.env*\n', 'README.md': '' })
+    await symlink(join(outside, '.env'), join(linked, '.env'))
+    const refused: string[] = []
+    expect(await resolveFilesToCopy(linked, ['.env'], refused)).toEqual([])
+    expect(refused).toEqual(['.env'])
   })
 })

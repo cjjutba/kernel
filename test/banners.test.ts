@@ -66,4 +66,9 @@ describe('workspace banners', () => {
   it('shows the hook server going down last', () => {
     expect(bannerFor(input({ hooks: { port: 7420, listening: false, installed: true, events: [] } }))).toMatchObject({ id: 'hooks', actions: [{ id: 'checkHooks' }, { id: 'reconnect' }] })
   })
+
+  it('shows the hooks banner when Kernel could not rewrite out-of-date hooks at start (KERNEL-206)', () => {
+    expect(bannerFor(input({ hooks: { port: 7420, listening: true, installed: false, events: [], needsInstall: true } }))).toMatchObject({ id: 'hooks', actions: [{ id: 'checkHooks' }, { id: 'reconnect' }] })
+    expect(bannerFor(input({ hooks: { port: 7420, listening: true, installed: false, events: [] } }))).toBeNull()
+  })
 })
