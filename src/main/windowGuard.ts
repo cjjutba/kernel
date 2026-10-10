@@ -27,15 +27,6 @@ export function isAppUrl(url: string | undefined, appUrl: string): boolean {
   return b !== null && b === base(appUrl)
 }
 
-/** Links leave the app only for https. A file:, javascript: or custom-scheme link would run something on the Mac. */
-export function isSafeExternal(url: string): boolean {
-  try {
-    return new URL(url).protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
 /** True when `path` is absolute and sits in one of `roots` (a room's checkout or a workspace's worktree). */
 export function insideRoots(path: string, roots: string[]): boolean {
   if (!isAbsolute(path)) return false

@@ -3,7 +3,8 @@ import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared
 import { call } from '../../api'
 import { actions, go, setState, useStore } from '../../store'
 import { Button, Icon, Tabs } from '../../ui'
-import { useRoomSettings } from '../settings/useSettings'
+import { stripRemote } from '../settings/remote'
+import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
@@ -51,10 +52,10 @@ function ChangesList({ ws, changes, onOpenDiff }: { ws: Workspace; changes: Chan
   const removed = changes.reduce((n, f) => n + f.removed, 0)
   return (
     <div className="panel-scroll" style={{ padding: '4px 10px' }}>
-      <div className="row" style={{ height: 32, padding: '0 6px', fontSize: 12.5 }}>
-        <span className="ink2" style={{ fontWeight: 500 }}>{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
+      <div className="changes-head">
+        <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
         <span className="grow" />
-        <span className="mono" style={{ fontSize: 11.5, display: 'inline-flex', gap: 6, marginRight: 4 }}>{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
+        <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
         <Button className="small" onClick={() => onOpenDiff('')}>Review all</Button>
       </div>
       {changes.map((f) => {
@@ -86,13 +87,15 @@ function CheckIcon({ state }: { state: CheckState }) {
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
 }
 
-export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo): { title: string; rows: CheckRow[] }[] {
+/** `remote` is the room's git remote, which a base ref like `origin/main` names. */
+export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin'): { title: string; rows: CheckRow[] }[] {
   const hasPr = !!ws.prNumber
+  const base = stripRemote(ws.baseRef, remote)
   const merged = ws.prState === 'merged'
   const conflict = ws.prState === 'conflict'
   const git: CheckRow = conflict
-    ? { state: 'warn', label: `${pr?.conflicts.length || 1} ${(pr?.conflicts.length || 1) === 1 ? 'conflict' : 'conflicts'} with ${ws.baseRef.replace('origin/', '')}` }
-    : { state: 'ok', label: merged ? `Merged into ${ws.baseRef.replace('origin/', '')}` : `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed, up to date with ${ws.baseRef.replace('origin/', '')}` }
+    ? { state: 'warn', label: `${pr?.conflicts.length || 1} ${(pr?.conflicts.length || 1) === 1 ? 'conflict' : 'conflicts'} with ${base}` }
+    : { state: 'ok', label: merged ? `Merged into ${base}` : `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed, up to date with ${base}` }
   const prRow: CheckRow = hasPr
     ? { state: conflict ? 'warn' : 'ok', label: `#${ws.prNumber}${ws.prTitle ? ` ${ws.prTitle}` : ''}`, meta: merged ? 'merged' : ws.prState === 'closed' ? 'closed' : 'open' }
     : { state: 'idle', label: 'No pull request yet', meta: '⌘⇧P', dim: true }
@@ -108,7 +111,7 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo):
 
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
-  const groups = checkGroups(ws, changes, pr)
+  const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId))
   return (
     <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
       {groups.map((g) => (
@@ -157,28 +160,59 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const rs = useRoomSettings(ws.roomId)
   const noSetup = !!rs && !rs.scripts.setup
-  const start = () => {
+  const noRun = !!rs && !rs.scripts.run
+  // The run script's Run and Stop stay at the top right on every tab (KERNEL-274), so they read its own state.
+  const runRunning = useStore((s) => (s.scripts[ws.id] ?? []).some((l) => l.kind === 'run') && s.scriptExit[ws.id]?.run === undefined)
+  const start = (kind: 'setup' | 'run') => {
     // A new run starts clean, so the last exit code no longer says it stopped.
-    setState((s) => ({ scriptExit: { ...s.scriptExit, [ws.id]: { ...s.scriptExit[ws.id], [scriptKind]: undefined } } }))
-    void attempt(`Could not start ${scriptKind}`, () => call('scripts.run', { workspaceId: ws.id, kind: scriptKind }))
+    setState((s) => ({ scriptExit: { ...s.scriptExit, [ws.id]: { ...s.scriptExit[ws.id], [kind]: undefined } } }))
+    void attempt(`Could not start ${kind}`, () => call('scripts.run', { workspaceId: ws.id, kind }))
   }
+  const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
+  // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
+  const empty = bottom === 'run'
+    ? noRun ? (
+      <div className="script-empty">
+        <span className="ink2">No run script</span>
+        <span>This room has no run script. Add one to start the app from here, on its own port.</span>
+        <Button onClick={addScript}>Add run script</Button>
+      </div>
+    ) : (
+      <div className="script-empty">
+        <span className="script-empty-icon"><Icon name="play" size={30} stroke={1.2} /></span>
+        <Button onClick={() => start('run')}>Start run script</Button>
+        <span>Runs on port {ws.port}. Output shows here.</span>
+      </div>
+    )
+    : noSetup ? (
+      <div className="script-empty">
+        <span className="ink2">No setup script</span>
+        <span>This room has no setup script. Add one and new workspaces run it before the agent starts.</span>
+        <Button onClick={addScript}>Add setup script</Button>
+      </div>
+    ) : (
+      <div className="script-empty">
+        <span className="ink2">No setup output yet</span>
+        <span>Setup output appears here after it runs.</span>
+        <Button icon="play" disabled={running} onClick={() => start('setup')}>Run setup</Button>
+      </div>
+    )
   return (
     <div className="bottom-panel">
       <div className="bottom-tabs">
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
-        {bottom === 'run' && running && <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>Stop</Button>}
-        {bottom === 'run' && !running && <Button className="small" icon="play" onClick={start}>Run</Button>}
-        {bottom === 'setup' && noSetup && <Button className="small" onClick={() => go({ name: 'settings', page: 'scripts', roomId: ws.roomId })}>Add setup script</Button>}
-        {bottom === 'setup' && !noSetup && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
+        {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" disabled={running} onClick={() => start('setup')}>Run setup</Button>}
+        {/* Off the Run tab it says which script it stops, so it can't read as stopping setup. */}
+        {runRunning
+          ? <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>{bottom === 'run' ? 'Stop' : 'Stop run'}</Button>
+          : !noRun && <Button className="small" icon="play" onClick={() => start('run')}>Run</Button>}
       </div>
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`}>
+      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`} data-empty={lines.length ? undefined : 'true'}>
         {lines.length
-            ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
-            : <span className="muted">{bottom === 'setup'
-                ? noSetup ? 'This room has no setup script. Add one and new workspaces run it before the agent starts.' : 'Setup output appears here.'
-                : `Start the run script to see output. It gets port ${ws.port}.`}</span>}
+          ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
+          : empty}
       </div>}
     </div>
   )

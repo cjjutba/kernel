@@ -61,7 +61,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'team': return <Team roomId={route.roomId} />
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
-    case 'settings': return <Settings page={route.page} roomId={route.roomId} />
+    case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} />
     case 'devUi': return <DevUi page={route.page} />
   }
 }
@@ -111,6 +111,13 @@ function useDevUiHash() {
   }, [])
 }
 
+/** Back or forward, unless a modal is open or setup is on screen. */
+function stepHistory(dir: 'back' | 'forward') {
+  const s = getState()
+  if (s.ui.modal || s.ui.route.name === 'onboarding') return
+  actions.ui[dir]()
+}
+
 export function App() {
   useDevUiHash()
   useAppearance()
@@ -129,6 +136,12 @@ export function App() {
       if (digit && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const s = getState()
         if (!s.ui.modal && s.ui.route.name !== 'onboarding') { e.preventDefault(); openSlot(Number(digit[1])) }
+        return
+      }
+      // ⌘[ and ⌘] go back and forward, as in Slack and Linear. Not with a modal open or during setup, like ⌘1 to ⌘9.
+      if ((e.code === 'BracketLeft' || e.code === 'BracketRight') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        stepHistory(e.code === 'BracketLeft' ? 'back' : 'forward')
         return
       }
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
@@ -151,13 +164,20 @@ export function App() {
         if (room) void openLead(room.id)
       }
     }
+    // A mouse's back button is 3 and its forward button 4.
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      stepHistory(e.button === 3 ? 'back' : 'forward')
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouseUp) }
   }, [])
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
     <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
-      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} />}
+      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} section={route.section} />}
       {!fullWindow(route) && sidebar && <Sidebar />}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />

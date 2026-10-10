@@ -43,14 +43,15 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('the w
     expect(await invoke('rooms.list')).toBe('ok')
   })
 
-  it('hands only https links to the browser', async () => {
+  it('hands only http and https links to the browser', async () => {
     // Record what would open instead of opening a browser.
     await app.evaluate(({ shell }) => { const opened: string[] = ((globalThis as any).opened = []); shell.openExternal = async (url: string) => { opened.push(url) } })
     await page.evaluate(() => { window.open('file:///Applications/Calculator.app'); window.open('javascript:alert(1)'); window.open('https://example.com/a') })
-    expect(await invoke('system.openExternal', { url: 'file:///Applications/Calculator.app' })).toContain('only opens https links')
-    expect(await invoke('system.openExternal', { url: 'javascript:alert(1)' })).toContain('only opens https links')
+    expect(await invoke('system.openExternal', { url: 'file:///Applications/Calculator.app' })).toContain('only opens http and https links')
+    expect(await invoke('system.openExternal', { url: 'javascript:alert(1)' })).toContain('only opens http and https links')
     expect(await invoke('system.openExternal', { url: 'https://example.com/b' })).toBe('ok')
-    await expect.poll(() => app.evaluate(() => (globalThis as any).opened)).toEqual(['https://example.com/a', 'https://example.com/b'])
+    expect(await invoke('system.openExternal', { url: 'http://localhost:4312/' })).toBe('ok')
+    await expect.poll(() => app.evaluate(() => (globalThis as any).opened)).toEqual(['https://example.com/a', 'https://example.com/b', 'http://localhost:4312/'])
     expect(app.windows()).toHaveLength(1)
   })
 

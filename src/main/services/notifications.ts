@@ -81,9 +81,8 @@ export class Notifications {
     bus.on('push', on)
     this.off = () => bus.off('push', on)
     // A row whose approval ended while no one listened, as the ones `Approvals.expireStale` ends at start, settles now.
-    const byId = new Map(this.d.store.approvals().map((a) => [a.id, a]))
     for (const n of this.d.store.openApprovalNotifications()) {
-      const a = byId.get(n.approvalId!)
+      const a = this.d.store.approval(n.approvalId!)
       if (a && a.status !== 'pending') this.onApproval(a)
     }
     // Approvals that were pending before this run (or before notifications existed) still need a row.
@@ -188,11 +187,12 @@ export class Notifications {
     const room = a.roomId ? this.d.store.room(a.roomId) : undefined
     const who = this.d.agentName(a.roomId, a.agentId) ?? 'An agent'
     const plan = a.kind === 'plan' || a.toolName === 'ExitPlanMode'
+    const count = a.questions?.length ?? 0
     const n: Notification = {
       id, kind: 'approval', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, approvalId: a.id,
       title: plan ? `Plan ready: ${a.title.replace(/^Plan (for|to) /i, '')}` : a.kind === 'question' ? a.title : `Wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
       sub: `${kindLabel(a)}${room ? ` · ${room.name}` : ''}`,
-      heading: plan ? `${who} has a plan for you to review` : a.kind === 'question' ? `${who} has a question` : `${who} wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
+      heading: plan ? `${who} has a plan for you to review` : a.kind === 'question' ? (count > 1 ? `${who} has ${count} questions` : `${who} has a question`) : `${who} wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
       needsYou: true, read: false, createdAt: a.createdAt
     }
     this.save(n)

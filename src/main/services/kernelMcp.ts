@@ -1,11 +1,12 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, Decision, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
 import { renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
 import { archiveSkip, CLOSED_PR } from './archiveGuard'
+import { isMerged, joinLabels, waitLabel, waitRefusal, waitTargets } from './waits'
 
 export interface KernelToolDeps {
   roomId: string
@@ -15,8 +16,11 @@ export interface KernelToolDeps {
   chatTitle?: (chatId: string) => string | undefined
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
-  /** `setupFailed` says how setup failed, when it did ("exit code 1"), so the result can tell the Lead the teammate hasn't started. */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string }) => Promise<Workspace & { setupFailed?: string }>
+  /**
+   * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
+   * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
+   */
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
@@ -27,6 +31,8 @@ export interface KernelToolDeps {
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
+  /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
+  setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
   /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
   refreshPr?: (workspaceId: string) => Promise<Workspace>
   /** Whether any of the workspace's chats is running a turn. */
@@ -42,6 +48,24 @@ export interface KernelToolDeps {
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
+const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
+  capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
+  paused: { because: 'The room is paused', until: 'when the user resumes it' },
+  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' }
+}
+
+/**
+ * What create_workspace and message_agent tell the Lead when the agent limit, a paused room or being offline holds what
+ * they sent, so both tools use the same words (KERNEL-272). A brief also says the teammate hasn't started. Nothing for
+ * other reasons, which each tool words itself.
+ */
+export function queuedNote(why: QueueReason | undefined, o: { name: string; brief?: boolean }): string | undefined {
+  const w = why && WAITS[why]
+  if (!w) return undefined
+  return o.brief ? `${w.because}, so ${o.name} hasn't started. The brief goes out ${w.until}.` : `${w.because}, so the message goes out ${w.until}.`
+}
 
 /** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176). */
 export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace. If their message already says to go ahead, hand it off now.'
@@ -71,7 +95,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
     name: 'kernel',
     version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with ExitPlanMode or request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
+    instructions: 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with ExitPlanMode or request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
     // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
     // so the hand-off doesn't depend on it.
     alwaysLoad: true,
@@ -96,14 +120,23 @@ export function kernelTools(d: KernelToolDeps) {
     if (CLOSED_PR.has(ws.prState) || !d.refreshPr) return ws
     return d.refreshPr(ws.id).catch(() => ws)
   }
+  /** What list_workspaces shows for a wait: " · waits for PR #164". */
+  const waits = (w: Workspace, all: Workspace[]) => {
+    const on = w.waitsFor?.on ?? []
+    if (!on.length) return ''
+    return ` · waits for ${joinLabels(on.map((id) => { const t = all.find((x) => x.id === id); return t?.prNumber ? `PR #${t.prNumber}` : `workspace ${id}` }))}`
+  }
+  /** "PR #164 by Noor" for each target, joined. */
+  const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
       const agents = await d.agents()
       return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
     }),
     tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
-      const list = d.workspaces().filter((w) => w.status !== 'archived')
-      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${owner(w)}`).join('\n') || 'No open workspaces.')
+      const all = d.workspaces()
+      const list = all.filter((w) => w.status !== 'archived')
+      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${waits(w, all)}${owner(w)}`).join('\n') || 'No open workspaces.')
     }),
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
@@ -124,24 +157,39 @@ export function kernelTools(d: KernelToolDeps) {
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
-    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. Starts the agent right away.', {
+    tool('create_workspace', 'Create a workspace for one task and hand it to an agent. The agent starts once setup passes, or, with wait_for, once those PRs merge.', {
       agent: z.string().describe('Agent id from list_agents, for example "kai"'),
       title: z.string().describe('Task title, used to name the branch'),
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
-      branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the issue or the title"),
+      branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
       issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
-      review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review")
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of }) => {
+      review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
+      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged')
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of, wait_for }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
+      // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
+      if (!review_of) {
+        const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+        const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
+          ? w.source?.kind === 'issue' && same(w.source.id, issue)
+          : !!d.chatId && w.leadChatId === d.chatId && w.agentId === pick.id && !!w.title && same(w.title, title)))
+        if (open) {
+          const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
+          const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
+          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+          return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
+        }
+      }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {
-        const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
         const target = d.workspaces().find((w) => w.id === review_of)
         if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
@@ -153,12 +201,51 @@ export function kernelTools(d: KernelToolDeps) {
         if (open?.status === 'failed') return refuse(`${pick.name} already has a review of this open (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
         if (open) return refuse(`${pick.name} already has a review of this open (workspace ${open.id}). Ask for another pass with message_agent.`)
       }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}) })
+      // Work that merged already is left out; with nothing left, the hand-off starts as usual (KERNEL-259).
+      let targets: Workspace[] = []
+      if (wait_for?.length) {
+        const all = d.workspaces()
+        const why = waitRefusal({ workspaces: all, refs: wait_for, mode, reviewOf: review_of, isLead: (w) => !!team.find((a) => a.id === w.agentId)?.lead })
+        if (why) return { ...text(`Not created: ${why}`), isError: true }
+        targets = waitTargets(all, wait_for).filter((t) => !isMerged(t))
+      }
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}), ...(targets.length ? { waitFor: targets.map((t) => t.id) } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}`)
+      const waiting = ws.waitsFor?.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
+      // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
+      // for a merge says so above instead.
+      const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${queued ? ` ${queued}` : ''}`)
+    }),
+    tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
+      workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
+      on: z.array(z.string()).describe('The ids of the workspaces whose PRs it waits for (a PR number like "#164" or a Linear key works too). Empty to stop waiting')
+    }, async ({ workspace_id, on }) => {
+      const refuse = (why: string) => ({ ...text(`Not set: ${why}`), isError: true })
+      if (!d.setWait) return refuse('waiting is not available here.')
+      const all = d.workspaces()
+      const ws = all.find((w) => w.id === workspace_id && w.status !== 'archived')
+      if (!ws) return refuse(`there is no open workspace ${workspace_id} in this room. Call list_workspaces for the ids.`)
+      const team = await d.agents()
+      const isLead = (w: Workspace) => !!team.find((a) => a.id === w.agentId)?.lead
+      if (isLead(ws)) return refuse('that is your own workspace.')
+      const name = team.find((a) => a.id === ws.agentId)?.name ?? ws.agentId
+      if (on.length) { const why = waitRefusal({ workspaces: all, refs: on, waiter: ws, isLead }); if (why) return refuse(why) }
+      const targets = waitTargets(all, on)
+      const merged = targets.filter(isMerged)
+      const left = targets.filter((t) => !isMerged(t))
+      const was = ws.waitsFor
+      const after = await d.setWait(ws.id, left.map((t) => t.id))
+      const already = merged.length ? `${labels(merged, team)} already merged. ` : ''
+      if (!left.length) {
+        if (!was) return text(`${already}${name} wasn't waiting for anything.`)
+        return text(`${already}${name} no longer waits.${was.held && ws.status === 'ready' ? ` Kernel sent the brief, so ${name} starts now.` : ''}`)
+      }
+      const label = labels(left, team)
+      return text(`${already}${after.waitsFor?.held ? `${name} waits for ${label} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${name}.` : `${name} waits for ${label} to merge, and Kernel tells ${name} to rebase onto it then. Tell the user that merging it moves ${name} on.`}`)
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
       workspace_id: z.string(), text: z.string()

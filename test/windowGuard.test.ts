@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { insideRoots, isAppUrl, isSafeExternal } from '../src/main/windowGuard'
+import { insideRoots, isAppUrl } from '../src/main/windowGuard'
 
 describe('isAppUrl', () => {
   const packaged = 'file:///Applications/Kernel.app/Contents/Resources/app.asar/out/renderer/index.html'
@@ -22,23 +22,6 @@ describe('isAppUrl', () => {
     ['no url (a closed frame)', undefined, packaged, false]
   ])('%s', (_name, url, appUrl, expected) => {
     expect(isAppUrl(url, appUrl)).toBe(expected)
-  })
-})
-
-describe('isSafeExternal', () => {
-  it.each([
-    ['https://github.com/cjjutba/kernel/pull/1', true],
-    ['HTTPS://linear.app/issue/KERNEL-1', true],
-    ['http://example.com', false],
-    ['file:///Applications/Calculator.app', false],
-    ['javascript:alert(1)', false],
-    ['mailto:someone@example.com', false],
-    ['vscode://file/etc/passwd', false],
-    ['smb://server/share', false],
-    ['not a url', false],
-    ['', false]
-  ])('%s', (url, expected) => {
-    expect(isSafeExternal(url)).toBe(expected)
   })
 })
 

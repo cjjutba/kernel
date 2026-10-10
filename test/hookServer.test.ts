@@ -12,7 +12,7 @@ import type { Store } from '../src/main/db'
 const port = 17420 + Math.floor(Math.random() * 500)
 // Enough of the store for approvals to report how they ended.
 const saved = new Map<string, Approval>()
-const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()] } as unknown as Store)
+const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()], approval: (id: string) => saved.get(id) } as unknown as Store)
 let server: Server
 const post = (body: unknown) => fetch(`http://127.0.0.1:${port}/hooks`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }).then((r) => r.json())
 const base = { session_id: 'outside', transcript_path: '/t', cwd: '/repo/wt/invoice-table' }
@@ -49,9 +49,39 @@ describe('hook server', () => {
     bus.off('push', onPush)
     expect(id).not.toBe('')
     expect(answered).toBe(false)
-    expect(saved.get(id)).toMatchObject({ status: 'pending', roomId: 'room', workspaceId: 'ws' })
+    expect(saved.get(id)).toMatchObject({ status: 'pending', roomId: 'room' })
+    // Room only, so no workspace's chats or composer pick it up (KERNEL-285).
+    expect(saved.get(id)?.workspaceId).toBeUndefined()
+    expect(saved.get(id)?.agentId).toBeUndefined()
     approvals.decide(id, { behavior: 'allow' })
     expect(await pending).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } })
+  })
+
+  it('passes a denial back to the waiting hook', async () => {
+    let id = ''
+    const onPush = (e: any) => { if (e.type === 'approval' && e.approval.status === 'pending') id = e.approval.id }
+    bus.on('push', onPush)
+    const pending = post({ ...base, session_id: 'denied', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'git push --force' } })
+    while (!id) await new Promise((r) => setTimeout(r, 10))
+    bus.off('push', onPush)
+    approvals.decide(id, { behavior: 'deny', message: 'Not on main' })
+    expect(await pending).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'deny', message: 'Not on main' } } })
+  })
+
+  it('leaves a plan or a question from a room to the app that started the session', async () => {
+    for (const tool_name of ['ExitPlanMode', 'AskUserQuestion']) {
+      const pushes: any[] = []
+      const onPush = (e: any) => { if (e.type === 'approval') pushes.push(e) }
+      bus.on('push', onPush)
+      const before = saved.size
+      const t = Date.now()
+      const r = await post({ ...base, session_id: 'desktop', hook_event_name: 'PermissionRequest', tool_name, tool_input: { plan: 'Implement the canvas redesign in one PR' } })
+      bus.off('push', onPush)
+      expect(r).toEqual({})
+      expect(Date.now() - t).toBeLessThan(300)
+      expect(pushes).toEqual([])
+      expect(saved.size).toBe(before)
+    }
   })
 
   it('falls back to the terminal prompt when nobody decides in time', async () => {

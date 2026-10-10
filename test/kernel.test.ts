@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import type { ActivityEvent } from '../src/shared/types'
+import { PORT_BLOCK, type ActivityEvent } from '../src/shared/types'
 
 describe('Kernel orchestration (Claude session stubbed)', () => {
   it('adds a room, reads its team, creates and archives a worktree workspace', async () => {
@@ -28,6 +28,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const room = await k.addRoom(repo)
     const agents = await k.agents(room.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['rowan', true], ['kai', false]])
+    // The preview reads the room's saved list, or the patterns the user is typing (KERNEL-245).
+    expect(await k.handlers()['files.preview']({ roomId: room.id })).toEqual([{ path: '.env.local', size: 9 }])
+    expect(await k.handlers()['files.preview']({ roomId: room.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
 
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
     expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'kai' })
@@ -40,7 +43,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
 
     const second = await k.createWorkspace(room.id, { prompt: 'Another pass', agentId: 'kai', title: 'Invoice table' })
     expect(second.branch).toBe('feat/invoice-table-2')
-    expect(second.port).not.toBe(ws.port)
+    // Each workspace gets its own block of ports, $KERNEL_PORT to $KERNEL_PORT + 9 (KERNEL-244).
+    expect(second.port % PORT_BLOCK).toBe(0)
+    expect(Math.abs(second.port - ws.port)).toBeGreaterThanOrEqual(PORT_BLOCK)
 
     await k.archiveWorkspace(ws.id, true)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')

@@ -8,15 +8,16 @@ import * as pty from 'node-pty'
 import electronUpdater from 'electron-updater'
 import { bus } from './bus'
 import { Kernel } from './kernel'
-import { fixtureHandlers } from './fixtures'
+import { fixtureHandlers, fixturePush } from './fixtures'
 import { exec } from './services/exec'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
-import { insideRoots, isAppUrl, isSafeExternal } from './windowGuard'
+import { insideRoots, isAppUrl } from './windowGuard'
 import type { Channel, KernelApi } from '@shared/ipc'
 import type { Room, Workspace } from '@shared/types'
+import { isWebUrl } from '@shared/previewUrl'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
@@ -103,7 +104,9 @@ function createWindow() {
   const stay = (e: { url: string; preventDefault(): void }) => { if (!isAppUrl(e.url, appUrl)) e.preventDefault() }
   win.webContents.on('will-navigate', stay)
   win.webContents.on('will-redirect', stay)
-  win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternal(url)) void shell.openExternal(url); return { action: 'deny' } })
+  // A link with target="_blank" never opens a window. A web page goes to the browser, and anything else, like a file: link
+  // in an agent's message, goes nowhere (KERNEL-246).
+  win.webContents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) void shell.openExternal(url); return { action: 'deny' } })
   if (rendererUrl) void win.loadURL(rendererUrl)
   else void win.loadFile(join(here, '../renderer/index.html'))
 }
@@ -187,12 +190,13 @@ app.whenReady().then(async () => {
     const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] })
     return r.canceled ? null : r.filePaths[0]
   })
+  // Only web pages: a URL a run script printed or a room's settings name must not open a file or another app (KERNEL-246).
   handle('system.openExternal' satisfies Channel, async (_e, { url }: KernelApi['system.openExternal']['req']) => {
-    if (!isSafeExternal(url)) throw new Error('Kernel only opens https links.')
+    if (typeof url !== 'string' || !isWebUrl(url)) throw new Error('Kernel only opens http and https links')
     await shell.openExternal(url)
     return { ok: true }
   })
-  handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixture.push } : null))
+  handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
   handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
   // Never shell.openPath: on a tracked run.command or .terminal file it runs the file, and checkouts carry no quarantine
   // flag. Without the code command the file is shown in Finder instead.

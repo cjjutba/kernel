@@ -41,6 +41,15 @@ describe('notifications service', () => {
     expect(shown).toHaveLength(1)
   })
 
+  it('counts the questions in the heading when an agent asks more than one', async () => {
+    const { n } = await setup()
+    const q = (question: string) => ({ question, options: [] })
+    bus.push({ type: 'approval', approval: approval({ kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?'), q('Which region?'), q('Which plan?')] }) })
+    bus.push({ type: 'approval', approval: approval({ id: 'a2', kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?')] }) })
+    expect(n.list().find((x) => x.approvalId === 'a1')).toMatchObject({ title: 'Which store?', heading: 'Noor has 3 questions' })
+    expect(n.list().find((x) => x.approvalId === 'a2')?.heading).toBe('Noor has a question')
+  })
+
   it('plays no sound when Settings > Notifications sound is none', async () => {
     for (const [sound, expected] of [['none', true], ['subtle', false]] as const) {
       const { silent } = await setup({ sound })
@@ -232,7 +241,7 @@ describe('rows that are over (KERNEL-155)', () => {
     expect(store.approvals({ pendingOnly: true }).map((a) => a.id)).toEqual([live.approval.id])
   })
 
-  it("ends an archived workspace's approval that has a waiter, so a held hook gets the empty answer at once", async () => {
+  it("ends an archived workspace's approval that has a waiter, and leaves a held hook to its own session", async () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
     const port = 17950 + Math.floor(Math.random() * 40)
@@ -244,15 +253,19 @@ describe('rows that are over (KERNEL-155)', () => {
         body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: '/x', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm build' } })
       }).then((r) => r.json())
       while (!store.approvals({ pendingOnly: true }).length) await new Promise((r) => setTimeout(r, 10))
+      const hookId = store.approvals({ pendingOnly: true })[0].id
       const sdk = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'w', title: 'Run pnpm test' })
       const elsewhere = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'other', title: 'Run pnpm lint' })
 
-      expect(approvals.expireWorkspace('w').map((a) => a.status)).toEqual(['expired', 'expired'])
-      expect(await held).toEqual({})
-      expect(Date.now() - started).toBeLessThan(5000)
+      expect(approvals.expireWorkspace('w').map((a) => a.status)).toEqual(['expired'])
       expect(await sdk.decision).toBeNull()
       expect(approvals.isPending(elsewhere.approval.id)).toBe(true)
-      expect(store.approvals({ pendingOnly: true }).map((a) => a.id)).toEqual([elsewhere.approval.id])
+      // A session Kernel didn't start asks with its room only (KERNEL-285), so archiving a workspace leaves it waiting.
+      expect(approvals.isPending(hookId)).toBe(true)
+      expect(store.approvals({ pendingOnly: true }).map((a) => a.id).sort()).toEqual([hookId, elsewhere.approval.id].sort())
+      approvals.decide(hookId, { behavior: 'allow' })
+      expect(await held).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } })
+      expect(Date.now() - started).toBeLessThan(5000)
     } finally {
       await new Promise<void>((r) => server.close(() => r()))
     }
