@@ -79,6 +79,7 @@ class Component extends DCLogic {
         ['+', 'New room', 'NewRoom.dc.html', []]
       ] }
     ];
+    // CommandPalette.png draws 38px rows that flex-shrink to a 30px pitch. SearchShared has more rows, so it fixes the pitch at 30px instead of squeezing to 22px.
     var shared = '%%SHARED%%' === 'on';
     if (shared) G.splice(1, 0, { title: 'Shared', items: [
       ['◇', 'Invoice layout options', 'WorkspaceSharedHtml.dc.html', [], 'HTML · v3 · Noor · 2h'],
