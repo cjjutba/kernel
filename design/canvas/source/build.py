@@ -25,7 +25,7 @@ def sidebar(active, empty=False, menu=None):
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
     s=s.replace('%%ROOMSSHOW%%',' show' if menu=='rooms' else '').replace('%%ROOMSHOW%%',' show' if menu=='room' else '')
     # D-104 hid the floor and the Board: a room lists Team, its Lead and its workspaces. D-108 dropped Try.
-    for k in ['search','home','inbox','history','team','lead','ws']:
+    for k in ['search','home','inbox','issues','history','team','lead','ws']:
         on=k==active
         s=s.replace('%%'+k+'C%%',' aria-current="page"' if on else '')
         s=s.replace('%%'+k+'S%%','#d0d6e0' if on else '#8a8f98')
@@ -56,6 +56,8 @@ emit('AccountMenu', rd('Home.dc.html'), 'home', menu='acct')
 # were drawn with and are not rebuilt, so they still show the screens as they were. Board.dc.html and Main.dc.html stay as templates.
 ib=rd('Inbox.dc.html')
 for n,v in [('Inbox','none'),('InboxEmpty','empty')]: emit(n, ib.replace('%%INBOX%%',v), 'inbox')
+is_=rd('Issues.dc.html')
+for n,st in [('Issues','list'),('IssuesWorking','working'),('IssuesNoRoom','noroom'),('IssuesEmpty','empty'),('IssuesConnect','connect'),('IssuesError','error')]: emit(n, is_.replace('%%STATE%%',st), 'issues')
 tr=rd('_Try.dc.html')
 for n,mode,title in [('ConnectRepo','repo','Connect a repo'),('OpenFolder','folder','Open a folder'),('CheckHooks','hooks','Check hooks')]:
     emit(n, tr.replace('%%MODE%%',mode).replace('%%TITLE%%',title), None)
@@ -64,7 +66,7 @@ emit('SidebarRoomMenu', rd('Team.dc.html'), 'team', menu='room')
 emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
 WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
-    ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading')]
+    ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading'),('WorkspaceIssue','issue')]
 for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 emit('WorkspaceLight', ws.replace('%%SCENARIO%%','done'), 'ws', light=True)

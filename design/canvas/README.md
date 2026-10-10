@@ -1,6 +1,6 @@
 # Kernel design canvas backup
 
-Saved October 7, 2026. 119 screens in 18 sections.
+Saved October 7, 2026. 126 screens in 18 sections.
 
 project/            The canvas exactly as published: one .dc.html per screen plus canvas.json (layout, titles, section labels).
 source/templates/   The templates the screens are generated from (shared sidebar, footer, helmet CSS, floor, workspace...).
