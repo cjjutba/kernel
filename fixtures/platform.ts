@@ -155,13 +155,15 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
+  // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
   SettingsRoomScripts: roomPage('scripts', clientA({
     runScripts: [
       { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
       { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
       { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
     ],
-    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local' }
+    preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
+    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   })),
   SettingsRoomInstructions: roomPage('instructions', clientA()),
   SettingsRoomPermissions: scene((f) => ({
