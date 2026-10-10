@@ -24,6 +24,8 @@ const PIN_PX = 80
 
 /** What a new chat offers to start with, by who you're talking to (KERNEL-274): the Lead plans and checks on the team. */
 const LEAD_SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
+/** The PR state icons a note draws before its text, the same glyphs as the PR header (KERNEL-313). */
+const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>, IconName> = { merged: 'merged', closed: 'prClosed', cifail: 'pr' }
 const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
 
 /** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
@@ -245,7 +247,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
     case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
-    case 'note': return <div className="note inline"><span className="note-text">{item.text}</span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
+    case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text">{item.text}</span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
     // Result is folded into a meta row or an error card by buildThread.
