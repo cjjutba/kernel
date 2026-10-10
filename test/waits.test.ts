@@ -484,7 +484,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     await mergeOnGitHub(k, noor)
     await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
     await k.stop()
-  }, SLOW)
+  }, 20_000)
 
   it('names every blocker an open teammate is building, before its PR is open', async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-199'] })
@@ -495,7 +495,7 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
     expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-197 and KERNEL-199, which Noor is building. Kai starts now, and Kernel messages Kai when PR #164 and Noor's PR merge. Pass wait_for to hold the brief instead.`)
     expect(w.waitsFor).toEqual({ on: [one.id, two.id], held: false })
     await k.stop()
-  }, SLOW)
+  }, 20_000)
 
   it('ignores blockers with no open workspace, one that merged, one archived, or a review', async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-300', 'KERNEL-301', 'KERNEL-302'] })
@@ -528,6 +528,22 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
       }
     } finally { vi.unstubAllEnvs() }
   }, 20_000)
+
+  it("says the teammate starts once the brief goes out when the brief waits for a free slot", async () => {
+    const team = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
+    const noor = { id: 'w1', name: 'w1', agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
+    const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' }, waitsFor: { on: ['w1'], held: false } } as Workspace
+    let created = false
+    const deps: KernelToolDeps = {
+      // Kai's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
+      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => (created ? [noor, kai] : [noor]),
+      createWorkspace: async () => { created = true; return { ...kai, queued: 'capacity' as const } },
+      messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    }
+    const out = (await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }
+    expect(out.text).toBe("Created k1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts once the brief goes out, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.")
+  })
 
   it("keeps Rowan's wait_for, even one that merged already, and doesn't add Linear's blockers", async () => {
     const l = linear({ 'KERNEL-198': ['KERNEL-197'] })

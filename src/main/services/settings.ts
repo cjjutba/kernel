@@ -13,7 +13,7 @@ export type RepoSettings = RoomSettings
 export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
-  general: { homeView: 'home', openAtLogin: false, menuBar: true, sendWith: 'enter' },
+  general: { openTo: 'lastPlace', openAtLogin: false, menuBar: true, sendWith: 'enter' },
   floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
@@ -37,7 +37,15 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
   const defaults = DEFAULT_SETTINGS(home)
   try {
-    const s = deepMerge(defaults, JSON.parse(await readFile(file, 'utf8')))
+    const saved = JSON.parse(await readFile(file, 'utf8'))
+    const s = deepMerge(defaults, saved)
+    // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
+    // The check reads the file, since the merge above always fills openTo. Dropping homeView makes this run once.
+    const old = (s.general as { homeView?: string }).homeView
+    if (old !== undefined) {
+      if (saved?.general?.openTo === undefined) s.general.openTo = old === 'inbox' ? 'inbox' : 'lastPlace'
+      delete (s.general as { homeView?: string }).homeView
+    }
     // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
     delete (s.models as { maxConcurrent?: number }).maxConcurrent
     s.models.effortByModel = effortMemory(s.models.effortByModel)
@@ -83,7 +91,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
@@ -91,6 +99,33 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   const out: Record<string, unknown> = {}
   for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
   return out
+}
+
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
+
+/** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
+function runScriptsOf(table: unknown): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!table || typeof table !== 'object') return out
+  for (const [name, command] of Object.entries(table)) if (!isRunName(name) && RUN_SCRIPT_NAME.test(name) && typeof command === 'string' && command.trim()) out.set(name, command)
+  return out
+}
+
+/** A `[[preview.urls]]` list with the entries that have a name and an address. A blank name is kept, a blank address isn't (KERNEL-246). */
+export function previewUrlsOf(v: unknown): RoomSettings['preview']['urls'] {
+  if (!Array.isArray(v)) return []
+  return v.filter((e) => typeof e?.name === 'string' && typeof e?.url === 'string' && e.url.trim()).map((e) => ({ name: e.name, url: e.url }))
+}
+
+/** A patch value as the file stores it. A preview list with no entry left is unset, like `null` (KERNEL-246). */
+function stored(g: Group, v: unknown): unknown {
+  if (g !== 'preview' || !Array.isArray(v)) return v
+  const urls = previewUrlsOf(v)
+  return urls.length ? urls : null
 }
 
 /** One settings file's values by app-side name, with the same whitelist for both files. */
@@ -102,7 +137,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
-    pr: picked(doc.pr, PR_KEYS, isString)
+    pr: picked(doc.pr, PR_KEYS, isString),
+    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)]))
   }
 }
 
@@ -111,40 +147,60 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const shared = roomValues(await readToml(repoFile(repo, 'settings.toml')))
-  const local = roomValues(await readToml(repoFile(repo, 'settings.local.toml')))
+  const sharedDoc = await readToml(repoFile(repo, 'settings.toml'))
+  const localDoc = await readToml(repoFile(repo, 'settings.local.toml'))
+  const shared = roomValues(sharedDoc)
+  const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
   const sources: RoomSettings['sources'] = {}
   for (const g of GROUPS) {
     merged[g] = { ...shared[g], ...local[g] }
     for (const k of Object.keys(merged[g])) sources[`${g}.${k}`] = k in shared[g] && k in local[g] ? 'override' : k in local[g] ? 'local' : 'shared'
   }
-  const { scripts, files, workspace, disabled, linear, pr } = merged
+  // Named run scripts: the shared file's order, then names only the personal file has. `run` reads as `[scripts] run`.
+  const sharedRuns = runScriptsOf(sharedDoc.run_scripts)
+  const localRuns = runScriptsOf(localDoc.run_scripts)
+  const runs = new Map([...sharedRuns, ...localRuns])
+  for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
+  if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
+  const { scripts, files, workspace, disabled, linear, pr, preview } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
+    runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
     files: { copy: files.copy ?? ['.env', '.env.local'], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),
     ...(Object.keys(pr).length ? { pr } : {}),
+    preview: { urls: preview.urls ?? [] },
     sources
   }
 }
 
 /**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
- * A `null` or an empty string removes the key, so the other file or the app default applies again. The other file is left alone.
+ * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
+ * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
+ * `preview.urls` replaces the whole `[[preview.urls]]` list. A list with no entry that has an address removes the key, like
+ * `null`, so the shared file's URLs show again (KERNEL-246).
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
   const doc = await readToml(file)
   const set = (table: string, key: string, value: unknown) => {
     const t = (doc[table] ??= {}) as Record<string, unknown>
-    if (value === null || value === undefined || value === '') delete t[key]
+    // A blank text is unset, the way `prInstructions` reads it (KERNEL-244).
+    if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) delete t[key]
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
-  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), v)
+  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), stored(g, v))
+  for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
+    if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
+    // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).
+    if (isRunName(name)) set('scripts', 'run', command)
+    else set('run_scripts', name, command)
+  }
   // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).
   if (!shared && !Object.keys(doc).length) {
     await rm(file, { force: true })
@@ -166,6 +222,15 @@ export function prInstructions(app: PrInstructions, room?: Partial<PrInstruction
 /** The git remote a room fetches from and pushes to: the room's, then the app's, then `origin` (KERNEL-190). */
 export const remoteOf = (room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string =>
   room.workspace.remote?.trim() || app?.workspace.remote?.trim() || 'origin'
+
+/**
+ * The remote a room or the app names on purpose, else nothing. The app's `origin` is its default and can't be told apart from
+ * one nobody set, so it doesn't count. The branch list narrows to this remote only when there is one (KERNEL-244).
+ */
+export function configuredRemote(room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string | undefined {
+  const appRemote = app?.workspace.remote?.trim()
+  return room.workspace.remote?.trim() || (appRemote && appRemote !== 'origin' ? appRemote : undefined)
+}
 
 const LOCAL_SETTINGS = '.kernel/settings.local.toml'
 

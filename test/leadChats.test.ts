@@ -189,6 +189,25 @@ describe("create_workspace when the teammate's setup fails (KERNEL-126)", () => 
   })
 })
 
+describe('create_workspace when every agent slot is in use (KERNEL-272)', () => {
+  it("says Kai hasn't started after the Created prefix, while the brief waits in Kai's queue", async () => {
+    const { k, first, call, byTitle } = await setup()
+    // The real send, so the brief meets the agent limit. One slot, taken by another teammate's running turn.
+    delete (k.sessions as { send?: unknown }).send
+    k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 1 } }
+    const live = k.sessions['live'] as Map<string, unknown>
+    live.set('busy', { running: true, abort: new AbortController(), query: {} })
+    try {
+      const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Back and forward', brief: 'Build KERNEL-200' })
+      expect(said).toMatch(/^Created \S+ on \S+ for kai\. Every agent slot in Settings, Models is in use, so Kai hasn't started\. The brief goes out when a slot frees up\.$/)
+      expect(/^Created (\S+) on /.exec(said)?.[1]).toBe(byTitle('Back and forward').id)
+      const brief = k.chatTabs(byTitle('Back and forward').id).find((c) => c.kind !== 'terminal')!
+      expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build KERNEL-200' }]])
+      expect(k.sessions.isRunning(brief.id)).toBe(false)
+    } finally { live.delete('busy') }
+  })
+})
+
 describe('message_agent says what really happened (KERNEL-118)', () => {
   it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
     const { k, first, run, byTitle, sent } = await setup()
@@ -224,7 +243,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
       ['setup', "Setup failed in Kai's workspace, so the message waits until the user clicks Run again."],
       ['paused', 'The room is paused, so the message goes out when the user resumes it.'],
       ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
-      ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.']
+      ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when a slot frees up.']
     ]
     for (const [why, note] of said) {
       Object.assign(answer, { queued: true, why })
@@ -424,5 +443,94 @@ describe('Ask Rowan (KERNEL-145)', () => {
     expect(brief.id).not.toBe(drafting.id)
     expect(sent.map((s) => s.chatId)).toEqual([chatId, brief.id])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
+  })
+})
+
+describe('create_workspace when the task is already handed off (KERNEL-287)', () => {
+  it('refuses a second hand-off of the same issue from any Lead chat, and hands it off again once the first is archived', async () => {
+    const { k, room, first, icons, run } = await setup()
+    const made = await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    expect(made.text).toMatch(/^Created /)
+    const ws = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
+    const again = { isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` }
+    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual(again)
+    // Another title, another chat, the key in another case: still the same issue.
+    expect(await run(icons, 'create_workspace', { agent: 'kai', title: 'Build the issues list', brief: 'Go', issue: 'kernel-83' })).toEqual({ ...again, text: again.text.replace('KERNEL-83 is', 'kernel-83 is') })
+    expect(k.store.workspaces(room.id).filter((w) => w.title === 'Issues screen' || w.title === 'Build the issues list')).toHaveLength(1)
+    await k.archiveWorkspace(ws.id)
+    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
+  })
+
+  it('refuses the same agent and title from the same Lead chat, but not from another chat or for another agent', async () => {
+    const { k, room, first, icons, run } = await setup({ '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor.' })
+    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    const ws = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    expect(await run(first, 'create_workspace', { agent: 'kai', title: ' drafts per chat ', brief: 'Go again' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${ws.id}). Follow up with message_agent.` })
+    expect((await run(icons, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
+    expect(k.store.workspaces(room.id).filter((w) => w.title === 'Drafts per chat')).toHaveLength(3)
+  })
+
+  it('lets a task whose PR merged or closed be handed off again', async () => {
+    const { k, room, first, run } = await setup()
+    for (const [i, prState] of (['merged', 'closed'] as PrState[]).entries()) {
+      const issue = `KERNEL-${90 + i}`
+      expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
+      const ws = k.store.workspaces(room.id).find((w) => w.source?.kind === 'issue' && w.source.id === issue)!
+      k.store.saveWorkspace({ ...ws, prState })
+      expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Fix it', brief: 'Go', issue })).text).toMatch(/^Created /)
+    }
+  })
+
+  it('counts a task that waits for another PR as handed off', async () => {
+    const { k, room, first, run } = await setup()
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Base', brief: 'Go' })
+    const base = k.store.workspaces(room.id).find((w) => w.title === 'Base')!
+    k.store.saveWorkspace({ ...base, prState: 'open', prNumber: 164 })
+    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).text).toMatch(/^Created /)
+    const waiting = k.store.workspaces(room.id).find((w) => w.title === 'On top')!
+    expect(waiting.waitsFor?.on).toEqual([base.id])
+    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'On top', brief: 'Go', wait_for: [base.id] })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${waiting.id}). Follow up with message_agent.` })
+  })
+})
+
+describe('create_workspace when the handed-off task is a review, failed setup or older work (KERNEL-287)', () => {
+  const NOOR = { '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine engineer.\n---\nYou are Noor.' }
+
+  it('says when the task is handed off but its setup failed, with or without an issue key', async () => {
+    const { k, room, first, run } = await setup()
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const keyed = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
+    const plain = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    k.store.saveWorkspace({ ...keyed, status: 'failed' })
+    k.store.saveWorkspace({ ...plain, status: 'failed' })
+    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).toEqual({ isError: true, text: `Not created: KERNEL-83 is already handed off to Kai (workspace ${keyed.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
+    expect(await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).toEqual({ isError: true, text: `Not created: this task is already handed off to Kai (workspace ${plain.id}), and its setup failed. Tell the user to fix it and click Run again there.` })
+  })
+
+  it('never lets an open review block a hand-off with the same issue, or the same agent and title', async () => {
+    const { k, room, first, run } = await setup(NOOR)
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Base work', brief: 'Go' })
+    const base = k.store.workspaces(room.id).find((w) => w.title === 'Base work')!
+    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Review', issue: 'KERNEL-83', review_of: base.id })).text).toMatch(/^Created /)
+    expect(k.store.workspaces(room.id).find((w) => w.title === 'Review it')).toMatchObject({ reviewOf: base.id, source: { kind: 'issue', id: 'KERNEL-83' } })
+    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })).text).toMatch(/^Created /)
+    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review it', brief: 'Go' })).text).toMatch(/^Created /)
+  })
+
+  it('leaves a review to its own guard when open work has the same issue', async () => {
+    const { k, room, first, run } = await setup(NOOR)
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Issues screen', brief: 'Go', issue: 'KERNEL-83' })
+    const work = k.store.workspaces(room.id).find((w) => w.title === 'Issues screen')!
+    expect((await run(first, 'create_workspace', { agent: 'noor', title: 'Review issues screen', brief: 'Review', issue: 'KERNEL-83', review_of: work.id })).text).toMatch(/^Created /)
+  })
+
+  it('never refuses a task without an issue key because of a workspace from before Lead chats', async () => {
+    const { k, room, first, run } = await setup()
+    await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const old = k.store.workspaces(room.id).find((w) => w.title === 'Drafts per chat')!
+    k.store.saveWorkspace({ ...old, leadChatId: undefined })
+    expect((await run(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).text).toMatch(/^Created /)
   })
 })

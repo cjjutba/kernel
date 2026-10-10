@@ -1,6 +1,6 @@
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, Decision, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
 import { renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
@@ -16,8 +16,11 @@ export interface KernelToolDeps {
   chatTitle?: (chatId: string) => string | undefined
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
-  /** `setupFailed` says how setup failed, when it did ("exit code 1"), so the result can tell the Lead the teammate hasn't started. */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string }>
+  /**
+   * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
+   * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
+   */
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
@@ -45,6 +48,24 @@ export interface KernelToolDeps {
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
+const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
+  capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
+  paused: { because: 'The room is paused', until: 'when the user resumes it' },
+  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' }
+}
+
+/**
+ * What create_workspace and message_agent tell the Lead when the agent limit, a paused room or being offline holds what
+ * they sent, so both tools use the same words (KERNEL-272). A brief also says the teammate hasn't started. Nothing for
+ * other reasons, which each tool words itself.
+ */
+export function queuedNote(why: QueueReason | undefined, o: { name: string; brief?: boolean }): string | undefined {
+  const w = why && WAITS[why]
+  if (!w) return undefined
+  return o.brief ? `${w.because}, so ${o.name} hasn't started. The brief goes out ${w.until}.` : `${w.because}, so the message goes out ${w.until}.`
+}
 
 /** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176). */
 export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace. If their message already says to go ahead, hand it off now.'
@@ -111,7 +132,7 @@ export function kernelTools(d: KernelToolDeps) {
    * A hand-off Kernel made wait because Linear marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
    * messages it when the blocking PRs merge. Rowan's own wait_for always holds the brief, so a wait that doesn't is Linear's.
    */
-  const blocked = (ws: Workspace, team: AgentDef[], pick: AgentDef) => {
+  const blocked = (ws: Workspace, team: AgentDef[], pick: AgentDef, queued: boolean) => {
     const key = (w: Workspace | undefined) => (w?.source?.kind === 'issue' ? w.source.id : undefined)
     const issue = key(ws)
     if (!ws.waitsFor?.on.length || ws.waitsFor.held || !issue) return ''
@@ -121,7 +142,7 @@ export function kernelTools(d: KernelToolDeps) {
     const name = (t: Workspace) => team.find((a) => a.id === t.agentId)?.name ?? t.agentId
     const builders = [...new Set(on.map(name))]
     const prs = on.map((t) => (t.prNumber ? `PR #${t.prNumber}` : `${name(t)}'s PR`))
-    return ` Linear marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts now, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
+    return ` Linear marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
   }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
@@ -168,9 +189,23 @@ export function kernelTools(d: KernelToolDeps) {
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
+      // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
+      if (!review_of) {
+        const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+        const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
+          ? w.source?.kind === 'issue' && same(w.source.id, issue)
+          : !!d.chatId && w.leadChatId === d.chatId && w.agentId === pick.id && !!w.title && same(w.title, title)))
+        if (open) {
+          const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
+          const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
+          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+          return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
+        }
+      }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {
-        const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
         const target = d.workspaces().find((w) => w.id === review_of)
         if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)
@@ -196,7 +231,10 @@ export function kernelTools(d: KernelToolDeps) {
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${wait_for?.length ? '' : blocked(ws, team, pick)}`)
+      // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
+      // for a merge says so above instead.
+      const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
