@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import { isRunName, type AppSettings, type DeepPartial, type RoomSettings, type RoomSettingsPatch } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { remoteOf } from './remote'
@@ -54,6 +54,10 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
       out.runScripts = applyRunScripts(rs.runScripts ?? [], sources, (values ?? {}) as Record<string, string | null>)
       continue
     }
+    if (group === 'preview') {
+      out.preview = { urls: applyPreviewUrls(rs.preview?.urls ?? [], sources, (values as RoomSettingsPatch['preview'])?.urls) }
+      continue
+    }
     const next: Record<string, unknown> = { ...(rs as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
     for (const [k, v] of Object.entries(values ?? {})) {
       const path = `${group}.${k}`
@@ -79,7 +83,7 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
 export function applyRunScripts(list: RoomSettings['runScripts'], sources: RoomSettings['sources'], values: Record<string, string | null>): RoomSettings['runScripts'] {
   let next = [...list]
   for (const [key, v] of Object.entries(values)) {
-    const name = key.toLowerCase() === 'run' ? 'run' : key
+    const name = isRunName(key) ? 'run' : key
     const path = `runScripts.${name}`
     if (v === null || v === '') {
       if (sources[path] === 'override') sources[path] = 'shared'
@@ -90,6 +94,23 @@ export function applyRunScripts(list: RoomSettings['runScripts'], sources: RoomS
     }
   }
   return [...next.filter((r) => r.name === 'run'), ...next.filter((r) => r.name !== 'run')]
+}
+
+/**
+ * The preview URLs after a patch. The list is one value: a patch replaces all of it, and one with no address left, like `null`,
+ * stops the personal file setting it (an override falls back to settings.toml, whose list the saved settings bring back).
+ */
+export function applyPreviewUrls(list: RoomSettings['preview']['urls'], sources: RoomSettings['sources'], value: RoomSettings['preview']['urls'] | null | undefined): RoomSettings['preview']['urls'] {
+  if (value === undefined) return list
+  const urls = (value ?? []).filter((u) => u.url.trim())
+  const path = 'preview.urls'
+  if (!urls.length) {
+    if (sources[path] === 'override') sources[path] = 'shared'
+    else if (sources[path] !== 'shared') delete sources[path]
+    return sources[path] === 'shared' ? list : []
+  }
+  sources[path] = sources[path] === 'shared' || sources[path] === 'override' ? 'override' : 'local'
+  return urls
 }
 
 /** Save a change to a room's personal settings, `.kernel/settings.local.toml`. Rolls back and says so on a failure. */
