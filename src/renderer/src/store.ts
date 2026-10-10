@@ -82,6 +82,17 @@ function showing(panel: keyof typeof HIDDEN) {
 function keep(panel: keyof typeof HIDDEN, open: boolean) {
   try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
 }
+/** The Lead chats folded in the sidebar, by id, kept across launches like the panel toggles. localStorage may be missing or blocked, and its value may not be a list. */
+const FOLDED_CHATS = 'kernel.foldedChats'
+function foldedChats(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(FOLDED_CHATS) ?? '[]')
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : []
+  } catch { return [] }
+}
+function keepFoldedChats(ids: string[]) {
+  try { localStorage.setItem(FOLDED_CHATS, JSON.stringify(ids)) } catch { /* not remembered */ }
+}
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
 const folded = new Set<keyof typeof HIDDEN>()
 
@@ -95,7 +106,7 @@ let state: State = {
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
   quickAsk: {},
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
 
@@ -229,6 +240,13 @@ export const actions = {
     },
     /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
     setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
+    /** Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. */
+    foldChat: (chatId: string, fold: boolean) => {
+      const ids = getState().ui.foldedChats.filter((id) => id !== chatId)
+      const next = fold ? [...ids, chatId] : ids
+      setUi({ foldedChats: next })
+      keepFoldedChats(next)
+    },
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
     setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
