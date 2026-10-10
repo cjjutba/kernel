@@ -1,0 +1,4 @@
+# Design references, not app code. Keeps them out of GitHub's language bar.
+design/** linguist-documentation
+# Built from design/canvas/source/templates by build.py. Collapsed in PR diffs.
+design/canvas/project/** linguist-generated
