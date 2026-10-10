@@ -66,8 +66,9 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
 
 /**
  * One step of the agent's work: a button that opens in place to what it did (KERNEL-198). The chevron shows on hover and
- * focus and stays while open. A row whose preview is its own text (thinking, a message) drops the preview once open. With nothing to show the row is inert and has no chevron. Open state is local, so a
- * tool going from running to done keeps it. `compact` is the row inside the folded list: no icon, a right-hand note.
+ * focus and stays while open. A row whose preview is its own text (thinking, a message) drops the preview once open. With nothing to show the row is inert and
+ * its chevron stays hidden, but keeps its room so the right-hand notes line up. Open state is local, so a tool going from running
+ * to done keeps it. `compact` is the row inside the folded list: no icon, a right-hand note.
  */
 function StepRow({ icon, failed, label, detail, mono, meta, compact, children }: { icon?: IconName; failed?: boolean; label: string; detail?: string; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
   const [open, setOpen] = useState(false)
@@ -80,7 +81,7 @@ function StepRow({ icon, failed, label, detail, mono, meta, compact, children }:
         <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
         <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
-        {can && <span className="chev step-chev" data-open={open}><Icon name="right" size={12} /></span>}
+        <span className="chev step-chev" data-open={open} data-idle={can ? undefined : true} aria-hidden="true"><Icon name="right" size={12} /></span>
       </button>
       {open && can && <div id={panel} className="step-body" data-compact={compact || undefined}>{children}</div>}
     </div>
@@ -110,7 +111,7 @@ function inputView(item: Tool): ReactNode {
   const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
   const known = ((): ReactNode => {
     switch (item.name) {
-      case 'Bash': return text(i.command)
+      case 'Bash': return text(i.command) && `$ ${i.command}`
       case 'Edit': return typeof i.old_string === 'string' && typeof i.new_string === 'string' ? <EditDiff from={i.old_string} to={i.new_string} /> : undefined
       case 'Write': return text(i.file_path) && typeof i.content === 'string' ? lines(text(i.file_path), '', i.content) : undefined
       case 'Read': return text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined)

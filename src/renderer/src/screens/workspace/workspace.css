@@ -103,11 +103,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md-code { padding: 1px 5px; border-radius: 5px; background: var(--surface-3); font: 12.5px var(--mono); overflow-wrap: anywhere; }
 .md a { color: var(--ink); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.trow-btn { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; cursor: default; }
+.trow-btn { width: calc(100% + 8px); margin: -2px -4px; padding: 2px 4px; border: 0; background: transparent; text-align: left; cursor: default; }
 .trow-btn:not(:disabled) { cursor: pointer; }
-/* The chevron takes its room at rest, so a row never shifts when it appears. */
+/* The chevron takes its room at rest, so a row never shifts when it appears, and an inert row keeps it hidden so the notes line up.
+   The button's padding is cancelled by its margin, so the focus ring clears the icon and the row stays where it was. */
 .chev.step-chev { flex-shrink: 0; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
 .trow-btn:hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
+.step-chev[data-idle] { visibility: hidden; }
 /* An open row lines up under its label, past the 15px icon and the 10px gap. */
 .step-body { display: flex; flex-direction: column; gap: 4px; margin-left: 25px; }
 .step-body[data-compact] { margin-left: 0; }

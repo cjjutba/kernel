@@ -37,12 +37,15 @@ const withFixture = () => allDesigns().filter((n) => fixtureNames().has(n))
 
 // Screens that need a click to reach the state in the shot, such as a chat row opened in place. That state is local to the
 // component, so a fixture can't set it.
+async function openRows(page: Page, rows: string[]) {
+  for (const row of rows) await page.locator('.trow-btn', { hasText: row }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page) => Promise<void>> = {
-  WorkspaceRowsOpen: async (page) => {
-    for (const row of ['Thinking', 'Run unit tests', 'Edit table.tsx']) await page.locator('.trow-btn', { hasText: row }).click()
-    await page.mouse.move(0, 0)
-    await page.waitForTimeout(300)
-  }
+  WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
+  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
 }
 
 async function capture(name: string): Promise<boolean> {
