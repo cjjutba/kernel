@@ -273,3 +273,71 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     expect(next).toMatchObject({ prState: 'open', prNumber: 31 })
   })
 })
+
+describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
+  /** A pending approval with a live waiter and a "ready to merge" row, both for `workspaceId`. */
+  function seed(k: Kernel, workspaceId: string, roomId: string) {
+    const { approval, decision } = k.approvals.request({ kind: 'tool', source: 'sdk', roomId, workspaceId, agentId: 'kai', toolName: 'Bash', title: 'Run pnpm build' })
+    bus.push({ type: 'pr', workspaceId, state: 'ready' })
+    const rows = () => k.store.notifications().filter((n) => n.workspaceId === workspaceId)
+    expect(rows().map((n) => n.kind).sort()).toEqual(['approval', 'merge'])
+    const removed: string[] = []
+    const on = (e: PushEvent) => { if (e.type === 'notification.removed') removed.push(...e.ids) }
+    bus.on('push', on)
+    onTestFinished(() => { bus.off('push', on) })
+    const ids = rows().map((n) => n.id).sort()
+    return {
+      decision,
+      check: async () => {
+        expect(await decision).toBeNull()
+        expect(k.store.approvals({ workspaceId, pendingOnly: true })).toEqual([])
+        expect(k.store.approvals().find((a) => a.id === approval.id)?.status).toBe('expired')
+        expect(rows()).toEqual([])
+        expect(removed.sort()).toEqual(ids)
+        // History still has the workspace.
+        expect(k.store.workspace(workspaceId)?.status).toBe('archived')
+      }
+    }
+  }
+
+  it('by hand, from the sidebar or the archive dialog', async () => {
+    const { k, room } = await kernelRoom()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    const s = seed(k, ws.id, room.id)
+    await k.handlers()['workspaces.archive']({ workspaceId: ws.id })
+    await s.check()
+  })
+
+  it("through the Lead's archive_workspace", async () => {
+    const { k, room } = await kernelRoom()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'merged', prNumber: 3 })
+    const lead = await k.leadChat(room.id)
+    const agents = await k.agents(room.id)
+    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    // The PR merged on GitHub, but the "ready to merge" row never heard: the stale row this issue found.
+    const s = seed(k, ws.id, room.id)
+    const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
+    expect(((await tool.handler({ workspace_ids: [ws.id] } as never, {})).content[0] as { text: string }).text).toBe(`Archived ${ws.name}.`)
+    await s.check()
+  })
+
+  it('after the work a review looked at merged', async () => {
+    const { k, room } = await kernelRoom({ '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.' })
+    let state: 'ready' | 'merged' = 'ready'
+    k.github = { ...k.github, info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state, baseRef: 'main', checks: [], comments: [], conflicts: [] }) }
+    const lead = await k.leadChat(room.id)
+    const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+    await k.refreshPr(author.id)
+    const s = seed(k, review.id, room.id)
+    const archived = new Promise<void>((resolve) => {
+      const done = (e: PushEvent) => { if (e.type === 'notification.removed') { bus.off('push', done); resolve() } }
+      bus.on('push', done)
+    })
+    state = 'merged'
+    await k.refreshPr(author.id)
+    await archived
+    await s.check()
+  })
+})
