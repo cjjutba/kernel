@@ -37,7 +37,7 @@ export class Approvals {
 
   /** Change a saved approval and tell every window, for example to link a plan step to the workspace it was handed to. */
   update(id: string, patch: Partial<Approval>): Approval | undefined {
-    const prev = this.store?.approvals().find((x) => x.id === id)
+    const prev = this.store?.approval(id)
     if (!prev) return undefined
     const next = { ...prev, ...patch }
     this.store?.saveApproval(next)
@@ -75,7 +75,7 @@ export class Approvals {
     if (p.timer) clearTimeout(p.timer)
     this.pending.delete(id)
     p.resolve(decision)
-    const prev = this.store?.approvals().find((x) => x.id === id)
+    const prev = this.store?.approval(id)
     if (!prev) return undefined
     const next: Approval = { ...prev, status, answer: decision && decision.behavior === 'answer' ? decision.text : prev.answer }
     this.store?.saveApproval(next)
