@@ -1234,6 +1234,42 @@
       "w": 1440,
       "x": 25840,
       "y": 20800
+    },
+    "WorkspaceRunScripts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Run tab \u00b7 pick a run script",
+      "w": 1440,
+      "x": 13680,
+      "y": 11700
+    },
+    "WorkspacePreview.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Checks \u00b7 Open preview",
+      "w": 1440,
+      "x": 15200,
+      "y": 11700
+    },
+    "WorkspaceTerminalPresets.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "New tab menu \u00b7 terminal presets",
+      "w": 1440,
+      "x": 16720,
+      "y": 11700
+    },
+    "HomeRoomIcon.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Home \u00b7 room with a GitHub avatar",
+      "w": 1440,
+      "x": 7600,
+      "y": 3900
     }
   },
   "createdOnFiles": {
@@ -1335,7 +1371,7 @@
     },
     "row3": {
       "kind": "title1",
-      "maxW": 7520,
+      "maxW": 9040,
       "text": "4 \u00b7 Sidebar and footer menus",
       "w": 600,
       "x": 0,
@@ -1422,6 +1458,7 @@
     "AccountMenu.dc.html",
     "QuickAsk.dc.html",
     "UpdateReady.dc.html",
+    "HomeRoomIcon.dc.html",
     "Board.dc.html",
     "TaskDetail.dc.html",
     "BoardEmpty.dc.html",
@@ -1462,6 +1499,9 @@
     "WorkspaceTabMenu.dc.html",
     "WorkspaceTerminal.dc.html",
     "WorkspaceFocus.dc.html",
+    "WorkspaceRunScripts.dc.html",
+    "WorkspacePreview.dc.html",
+    "WorkspaceTerminalPresets.dc.html",
     "WorkspacePaste.dc.html",
     "WorkspaceMention.dc.html",
     "WorkspaceSlash.dc.html",
