@@ -3,6 +3,7 @@ const P = {
   home: 'M2.8 7 8 2.8 13.2 7v5.7a.5.5 0 0 1-.5.5H9.6V9.8H6.4v3.4H3.3a.5.5 0 0 1-.5-.5Z',
   inbox: 'M2.5 9 4.2 3.2h7.6L13.5 9v3.3a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9ZM2.5 9h3.1l.8 1.6h3.2l.8-1.6h3.1',
   issues: 'M4 2.5h8a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 12V4A1.5 1.5 0 0 1 4 2.5ZM5.5 6.5h5M5.5 9.5h3',
+  refresh: 'M13.2 8a5.2 5.2 0 1 1-1.5-3.7M13.2 3v2.6h-2.6',
   rooms: 'M2.5 2.5h4.6v4.6H2.5ZM8.9 2.5h4.6v4.6H8.9ZM2.5 8.9h4.6v4.6H2.5ZM8.9 8.9h4.6v4.6H8.9Z',
   history: 'M2.8 8a5.2 5.2 0 1 0 1.5-3.7M2.8 3v2.6h2.6M8 5.2V8l2 1.3',
   floor: 'M8 2.2 13.8 5.3 8 8.4 2.2 5.3ZM2.2 8.2 8 11.3l5.8-3.1M2.2 11 8 14.1l5.8-3.1',
@@ -91,3 +92,49 @@ export function Icon({ name, size = 16, stroke = 1.4 }: { name: IconName | (stri
 
 export type IconName = keyof typeof P
 export const iconNames = (): IconName[] => Object.keys(P) as IconName[]
+
+// Linear's states and priorities, copied from the ST and PR tables in design/canvas/source/templates/Issues.dc.html (KERNEL-160).
+// Monochrome: the state is said in words in the group header, and urgent is not colored. `tone` is a color token, never a hex.
+export type IssueStateShape = 'triage' | 'backlog' | 'todo' | 'started' | 'done' | 'canceled'
+interface StateDraw { label: string; dash?: string; inner?: string; fill?: boolean; tone: 'ink' | 'ink-2' | 'muted' }
+const ST: Record<IssueStateShape, StateDraw> = {
+  triage: { label: 'Triage', inner: 'M8 5.2v4.2M6.2 7.7 8 9.5l1.8-1.8', tone: 'ink-2' },
+  backlog: { label: 'Backlog', dash: '2 2.4', tone: 'muted' },
+  todo: { label: 'Todo', tone: 'ink-2' },
+  started: { label: 'In progress', inner: 'M8 4.6a3.4 3.4 0 0 1 0 6.8Z', fill: true, tone: 'ink' },
+  done: { label: 'Done', inner: 'm5.6 8.2 1.6 1.6 3.2-3.4', tone: 'muted' },
+  canceled: { label: 'Canceled', inner: 'M6.2 6.2l3.6 3.6M9.8 6.2l-3.6 3.6', tone: 'muted' }
+}
+export const issueStateLabel = (s: IssueStateShape) => ST[s].label
+
+/** A Linear state as a 16px circle: dashed for backlog, a half fill for in progress. */
+export function IssueState({ shape, size = 16 }: { shape: IssueStateShape; size?: number }) {
+  const d = ST[shape]
+  const color = `var(--${d.tone})`
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke={color} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="8" cy="8" r="5.6" strokeDasharray={d.dash} />
+      {d.inner && <path d={d.inner} fill={d.fill ? color : 'none'} stroke={d.fill ? 'none' : color} />}
+    </svg>
+  )
+}
+
+export const PRIORITIES = ['No priority', 'Urgent', 'High', 'Medium', 'Low'] as const
+// Bars lit by level, an outlined square with a mark for urgent, three dashes for none.
+const BARS: Record<number, [boolean, boolean, boolean]> = { 2: [true, true, true], 3: [true, true, false], 4: [true, false, false] }
+const PRIORITY_MARK: Record<number, string> = {
+  1: 'M4.3 2.5h7.4a1.8 1.8 0 0 1 1.8 1.8v7.4a1.8 1.8 0 0 1-1.8 1.8H4.3a1.8 1.8 0 0 1-1.8-1.8V4.3a1.8 1.8 0 0 1 1.8-1.8ZM8 5.3v3.4M8 10.8v.1',
+  0: 'M3 8h2M7 8h2M11 8h2'
+}
+
+/** Linear's priority: 0 none, 1 urgent, 2 high, 3 medium, 4 low. The name is the accessible name unless the caller says it in words beside it. */
+export function IssuePriority({ priority, size = 16, label }: { priority: number; size?: number; label?: boolean }) {
+  const bars = BARS[priority]
+  const name = PRIORITIES[priority] ?? PRIORITIES[0]
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" role={label ? undefined : 'img'} aria-hidden={label ? true : undefined} aria-label={label ? undefined : `${name} priority`} fill="none" stroke="var(--ink-2)" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round">
+      {bars && [[2.8, 10, 3], [6.8, 7, 6], [10.8, 4, 9]].map(([x, y, h], i) => <rect key={x} x={x} y={y} width="2.4" height={h} rx="0.8" fill={bars[i] ? 'var(--ink-2)' : 'var(--track)'} stroke="none" />)}
+      {PRIORITY_MARK[priority] && <path d={PRIORITY_MARK[priority]} />}
+    </svg>
+  )
+}

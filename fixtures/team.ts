@@ -1,4 +1,4 @@
-import type { ActivityEvent, AgentDef, AgentDraft, Approval, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { agent, at, ids, scene, team, withWorkspace } from './base'
 
@@ -274,6 +274,104 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+
+// ---------- Issues (KERNEL-160)
+
+const KERNEL = { id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }
+const linearScope: LinearScope = {
+  teams: [KERNEL],
+  projects: [
+    { id: 'proj-invoices', name: 'Invoices', teamIds: [KERNEL.id] },
+    { id: 'proj-accounts', name: 'Accounts', teamIds: [KERNEL.id] },
+    { id: 'proj-billing', name: 'Billing', teamIds: [KERNEL.id] }
+  ],
+  cycles: [{ id: 'cycle-12', number: 12, teamId: KERNEL.id, active: true }, { id: 'cycle-13', number: 13, teamId: KERNEL.id, active: false }]
+}
+
+const cj = { name: 'CJ Jutba', me: true }
+const maya = { name: 'Maya Chen', me: false }
+const states = {
+  triage: { id: 's-triage', name: 'Triage', type: 'triage' as const, position: 0 },
+  started: { id: 's-started', name: 'In progress', type: 'started' as const, position: 2 },
+  todo: { id: 's-todo', name: 'Todo', type: 'unstarted' as const, position: 1 },
+  backlog: { id: 's-backlog', name: 'Backlog', type: 'backlog' as const, position: 0 }
+}
+const projects = { invoices: linearScope.projects[0], accounts: linearScope.projects[1], billing: linearScope.projects[2] }
+
+/** Times are relative, so a row reads "2d" whatever day the shots run. */
+const issue = (n: number, title: string, state: keyof typeof states, priority: number, project: keyof typeof projects, age: number, extra: Partial<LinearIssueDetail> = {}): LinearIssueDetail => ({
+  id: `KERNEL-${n}`, uuid: `uuid-kernel-${n}`, title, url: `https://linear.app/cj-jutba/issue/KERNEL-${n}`, branchName: `feat/kernel-${n}`,
+  state: states[state], priority, assignee: cj, labels: [], team: KERNEL, project: projects[project], updatedAt: new Date(Date.now() - age).toISOString(),
+  description: '', comments: [], ...extra
+})
+const comment = (id: string, author: string, body: string, age: number) => ({ id, author, body, createdAt: new Date(Date.now() - age).toISOString() })
+
+/** Issues.png: nine assigned to CJ and twenty-nine to others, so the pills read Mine 9 and All 38. */
+const linearIssues = (): LinearIssueDetail[] => {
+  const mine = [
+    issue(24, 'Invoice table with sorting and empty states', 'started', 2, 'invoices', 3 * DAY, {
+      cycle: { id: 'cycle-12', number: 12 }, labels: ['Feature', 'Frontend'],
+      description: 'The invoice list needs a table that sorts and handles every state.\n\n## Scope\n\n- Sort by date, client and amount\n- Empty, loading and error states\n- Playwright coverage for each state',
+      comments: [comment('c24a', 'Maya Chen', 'Newest first by default, please.', 4 * DAY), comment('c24b', 'CJ Jutba', 'Reuse the empty state from the dashboard.', 2 * DAY)]
+    }),
+    issue(27, 'Rate limit the invite endpoint', 'started', 3, 'accounts', DAY),
+    issue(31, 'Export invoices as PDF', 'todo', 2, 'invoices', 2 * DAY, {
+      cycle: { id: 'cycle-12', number: 12 }, labels: ['Feature', 'Billing'],
+      description: 'Clients want a PDF copy of any invoice they can send to their accountant.\n\n## Acceptance criteria\n\n- A Download PDF action on every invoice row\n- The PDF matches the on-screen layout, on one page\n- Fonts are embedded, so it looks the same on every device',
+      comments: [comment('c31a', 'Maya Chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'CJ Jutba', 'Use the on-screen design as the layout. Rowan can split it once we agree on the scope.', DAY)]
+    }),
+    issue(33, 'Send a reminder for overdue invoices', 'todo', 3, 'billing', 3 * DAY),
+    issue(35, 'Show the invoice total in the page title', 'todo', 4, 'invoices', 4 * DAY),
+    issue(36, 'Invoice emails send twice', 'todo', 1, 'billing', 4 * DAY),
+    issue(40, 'Dark mode for the invoice PDF', 'backlog', 0, 'invoices', 7 * DAY),
+    issue(42, 'Import clients from a CSV file', 'backlog', 4, 'accounts', 7 * DAY),
+    issue(44, 'Add a tax breakdown to invoices', 'backlog', 3, 'billing', 14 * DAY)
+  ]
+  const others = [
+    issue(46, 'Clients cannot reset their password', 'triage', 2, 'accounts', 3 * HOUR, { assignee: maya }),
+    ...Array.from({ length: 28 }, (_, i) => issue(50 + i, [
+      'Paginate the client list', 'Audit log for invoice edits', 'Webhook retries for failed deliveries', 'Currency rounding on credit notes', 'Bulk archive for old invoices', 'Search clients by VAT number',
+      'Invite emails land in spam', 'Two factor sign in', 'Remember the last invoice filter', 'Print stylesheet for statements', 'Export clients as CSV', 'Show payment terms on the invoice',
+      'Fix the date picker on Safari', 'Reminder emails in the client language', 'Draft invoices autosave', 'Link payments to bank lines', 'Tidy the settings page copy', 'Role for read only accountants',
+      'Stripe webhook signature check', 'Slow query on the dashboard', 'Add a status filter to the client list', 'Credit note numbering', 'Rate limit the login endpoint', 'Keyboard shortcuts for the table',
+      'Empty state for new rooms', 'Archive clients instead of deleting', 'Per client invoice prefix', 'Timezone on due dates'
+    ][i], (['started', 'todo', 'todo', 'backlog', 'backlog'] as const)[i % 5], [3, 0, 2, 4, 3][i % 5], (['invoices', 'accounts', 'billing'] as const)[i % 3], (2 + i) * 6 * HOUR, { assignee: i % 4 === 0 ? undefined : maya }))
+  ]
+  return [...mine, ...others]
+}
+
+const linearIntegrations: Integration[] = [
+  { id: 'github', name: 'GitHub', connected: true, detail: 'Through the GitHub CLI as samrivera' },
+  { id: 'linear', name: 'Linear', connected: true, detail: 'Token saved. Create workspaces from issues' },
+  { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
+  { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
+]
+
+/** Everything the Issues screen reads. Client A's Linear team is KERNEL, unless `linkedRoom` is off (IssuesNoRoom.png). */
+const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; linkedRoom?: boolean; issues?: LinearIssueDetail[] } = {}): Partial<Fixture> => {
+  const { issueId = 'KERNEL-31', working = false, linkedRoom = true, issues = linearIssues() } = opts
+  const home = homeScene(f)
+  const fromIssue = (id: string, title: string) => ({ source: { kind: 'issue' as const, id, title, url: `https://linear.app/cj-jutba/issue/${id}` } })
+  // KERNEL-24 has Kai's PR. Working adds Ivy's tests and Noor on KERNEL-27, with their chats running.
+  const table = { ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states'), branch: 'feat/kernel-24-invoice-table', prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open' as const }
+  const links: Record<string, Partial<Workspace>> = linkedRoom || working ? { [ids.table]: table } : {}
+  if (working) links[ids.schema] = fromIssue('KERNEL-27', 'Rate limit the invite endpoint')
+  const tests: Workspace = {
+    id: 'ws-invoice-tests', roomId: ids.roomA, name: 'invoice-table-tests', branch: 'feat/kernel-24-invoice-tests', baseRef: 'origin/main', path: '/Users/you/kernel/worktrees/client-a/invoice-table-tests',
+    mode: 'worktree', agentId: 'ivy', port: 4315, status: 'ready', prState: 'none', createdAt: at(10, 6), ...fromIssue('KERNEL-24', 'Invoice table with sorting and empty states')
+  }
+  return {
+    ...home,
+    workspaces: [...(home.workspaces ?? f.workspaces).map((w) => ({ ...w, ...links[w.id] })), ...(working ? [tests] : [])],
+    chats: [...(home.chats ?? f.chats), ...(working ? [{ id: 'chat-invoice-tests', workspaceId: tests.id, title: 'Invoice table tests', kind: 'chat' as const, model: 'claude-sonnet-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(10, 6) }] : [])],
+    integrations: linearIntegrations,
+    linear: { issues, scope: linearScope },
+    roomSettings: { [ids.roomA]: { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {}, ...(linkedRoom ? { linear: { team: 'KERNEL' } } : {}) } },
+    push: working ? [{ type: 'chat.running', chatId: ids.schemaChat, running: true }, { type: 'chat.running', chatId: 'chat-invoice-tests', running: true }] : [],
+    ui: { route: { name: 'issues', issueId } }
+  }
+}
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
@@ -336,6 +434,14 @@ export const teamFixtures: Record<string, Fixture> = {
     push: [{ type: 'room.setup', roomId: clientC.id, steps: setupSteps }],
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
+  Issues: scene((f) => issuesScene(f)),
+  IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
+  IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),
+  // Nothing assigned to CJ, so the default Mine filter finds nothing.
+  IssuesEmpty: scene((f) => issuesScene(f, { issues: linearIssues().map((i) => ({ ...i, assignee: maya })) })),
+  IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
+  // Offline: the screen says Linear can't be reached whatever the last answer was.
+  IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),

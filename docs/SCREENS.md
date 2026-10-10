@@ -23,12 +23,12 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | Home | Home | [png](../design/screens/Home.png) | [dc.html](../design/canvas/project/Home.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | done |
 | Inbox | Inbox | [png](../design/screens/Inbox.png) | [dc.html](../design/canvas/project/Inbox.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
 | InboxEmpty | Inbox · all caught up | [png](../design/screens/InboxEmpty.png) | [dc.html](../design/canvas/project/InboxEmpty.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
-| Issues | Issues | [png](../design/screens/Issues.png) | [dc.html](../design/canvas/project/Issues.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
-| IssuesWorking | Issues · linked workspaces | [png](../design/screens/IssuesWorking.png) | [dc.html](../design/canvas/project/IssuesWorking.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
-| IssuesNoRoom | Issues · team not linked to a room | [png](../design/screens/IssuesNoRoom.png) | [dc.html](../design/canvas/project/IssuesNoRoom.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
-| IssuesEmpty | Issues · nothing matches | [png](../design/screens/IssuesEmpty.png) | [dc.html](../design/canvas/project/IssuesEmpty.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
-| IssuesConnect | Issues · connect Linear | [png](../design/screens/IssuesConnect.png) | [dc.html](../design/canvas/project/IssuesConnect.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
-| IssuesError | Issues · Linear unreachable | [png](../design/screens/IssuesError.png) | [dc.html](../design/canvas/project/IssuesError.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| Issues | Issues | [png](../design/screens/Issues.png) | [dc.html](../design/canvas/project/Issues.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
+| IssuesWorking | Issues · linked workspaces | [png](../design/screens/IssuesWorking.png) | [dc.html](../design/canvas/project/IssuesWorking.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
+| IssuesNoRoom | Issues · team not linked to a room | [png](../design/screens/IssuesNoRoom.png) | [dc.html](../design/canvas/project/IssuesNoRoom.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
+| IssuesEmpty | Issues · nothing matches | [png](../design/screens/IssuesEmpty.png) | [dc.html](../design/canvas/project/IssuesEmpty.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
+| IssuesConnect | Issues · connect Linear | [png](../design/screens/IssuesConnect.png) | [dc.html](../design/canvas/project/IssuesConnect.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
+| IssuesError | Issues · Linear unreachable | [png](../design/screens/IssuesError.png) | [dc.html](../design/canvas/project/IssuesError.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
 | CommandPalette | Search · ⌘K | [png](../design/screens/CommandPalette.png) | [dc.html](../design/canvas/project/CommandPalette.dc.html) | KERNEL-21 | Team | modal search | `screens/search/CommandPalette.tsx` | done |
 | Rooms | All rooms | [png](../design/screens/Rooms.png) | [dc.html](../design/canvas/project/Rooms.dc.html) | KERNEL-20 | Team | rooms | `screens/rooms/Rooms.tsx` | done |
 | NewRoom | New room | [png](../design/screens/NewRoom.png) | [dc.html](../design/canvas/project/NewRoom.dc.html) | KERNEL-20 | Team | modal newRoom | `screens/rooms/NewRoom.tsx` | done |
