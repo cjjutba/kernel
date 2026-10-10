@@ -780,8 +780,10 @@ export interface ClaudeAccount {
 // ---------- system
 
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'teams' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'teams' | 'git' | 'gh' | 'hooks'
   ok: boolean
+  /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
+  blocking: boolean
   title: string
   detail: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
