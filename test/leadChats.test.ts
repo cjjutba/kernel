@@ -8,7 +8,7 @@ import type { QueueReason } from '../src/main/services/sessions'
 import { Nudges } from '../src/main/services/nudges'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-105: with several chats open with the Lead, each workspace reports to the chat that handed it off.
 
@@ -44,6 +44,7 @@ async function setup(files: Record<string, string> = {}) {
   const answer: { queued: boolean; why?: QueueReason } = { queued: false }
   k.sessions.send = async (chatId: string, parts: ChatPart[], o?: { from?: string }) => { sent.push({ chatId, text: parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), from: o?.from }); return { ...answer } }
   const room = await k.addRoom(repo)
+  await trustRoom(k, room.id)
   const first = await k.leadChat(room.id)
   const icons = k.newChat(first.workspaceId, 'Chat icons sizing', { model: first.model, effort: first.effort, plan: false })
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef

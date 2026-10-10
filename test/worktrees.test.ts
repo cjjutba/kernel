@@ -1,10 +1,30 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
 import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, reviewBranch, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
+
+// Lets a test make the next N branch checks fail as if git couldn't start. Everything else runs for real.
+const spawnFailures = vi.hoisted(() => ({ left: 0 }))
+vi.mock('../src/main/services/exec', async (original) => {
+  const real = await original<typeof import('../src/main/services/exec')>()
+  return {
+    ...real,
+    exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
+      if (spawnFailures.left > 0 && args.includes('rev-parse') && args.includes('--verify')) {
+        spawnFailures.left--
+        return Promise.resolve({ code: 127, stdout: '', stderr: 'Error: spawn git ENOENT' })
+      }
+      return real.exec(cmd, args, opts)
+    },
+  }
+})
+function failNextBranchChecks(n: number) {
+  spawnFailures.left = n
+  onTestFinished(() => { spawnFailures.left = 0 })
+}
 
 describe('naming', () => {
   it('slugifies task titles', () => {
@@ -133,6 +153,43 @@ describe('worktrees', () => {
     await git(repo, 'branch', '-m', 'feat/taken', 'feat/old')
     const next = await createWorktree({ repo, root, branch: 'feat/taken', baseRef: 'main' })
     expect(basename(next)).toBe('feat-taken-3')
+  })
+
+  it('leaves no new branch behind when git cannot add the worktree (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-readonly-' + Date.now())
+    await createWorktree({ repo, root, branch: 'feat/first', baseRef: 'main' })
+    // git makes the branch, then fails to create the folder in a root it cannot write to.
+    await chmod(root, 0o555)
+    onTestFinished(() => chmod(root, 0o755))
+    await expect(createWorktree({ repo, root, branch: 'feat/second', baseRef: 'main' })).rejects.toThrow()
+    expect(await branchExists(repo, 'feat/second')).toBe(false)
+    // A branch that was already there stays when `-b` refuses it.
+    await chmod(root, 0o755)
+    await expect(createWorktree({ repo, root, branch: 'feat/first', baseRef: 'main' })).rejects.toThrow(/already exists/)
+    expect(await branchExists(repo, 'feat/first')).toBe(true)
+  })
+
+  it('keeps a branch that was already there when git could not say so before a failed add (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-unknown-' + Date.now())
+    await git(repo, 'branch', 'feat/kept')
+    // The check before the add can't start git, so it doesn't know feat/kept is there. `-b` then refuses it.
+    failNextBranchChecks(1)
+    await expect(createWorktree({ repo, root, branch: 'feat/kept', baseRef: 'main' })).rejects.toThrow(/already exists/)
+    expect(await branchExists(repo, 'feat/kept')).toBe(true)
+  })
+
+  it('never calls a branch name free when git cannot say whether it is taken (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    await git(repo, 'branch', 'feat/taken')
+    failNextBranchChecks(1)
+    await expect(freeBranch(repo, 'feat/taken')).rejects.toThrow(/couldn't check whether the branch feat\/taken exists/)
+    expect(await freeBranch(repo, 'feat/taken')).toBe('feat/taken-2')
+    // Outside a repo git exits 128, not 1, so that's unknown too.
+    const notRepo = await mkdtemp(join(tmpdir(), 'kernel-not-repo-'))
+    onTestFinished(() => rm(notRepo, { recursive: true, force: true }))
+    await expect(freeBranch(notRepo, 'feat/x')).rejects.toThrow(/couldn't check/)
   })
 
   it('still refuses a folder that exists but is not a worktree', async () => {

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, scriptKey, useStore, type State } from '../../store'
+import { actions, go, useStore, type State } from '../../store'
 import { Button, Icon, SegmentedControl, Tabs, useBusy } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
@@ -157,6 +157,18 @@ function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: str
   return (s.scripts[workspaceId] ?? []).some((l) => l.kind === 'setup') && s.scriptExit[workspaceId]?.setup === undefined
 }
 
+/** The log follows its end while the reader is within this many px of it. */
+const PIN_PX = 80
+
+/** A line keeps its key as older ones drop off the front of the capped log, so only new lines are drawn. */
+const lineIds = new WeakMap<ScriptLine, number>()
+let lineCount = 0
+const lineKey = (l: ScriptLine) => { let k = lineIds.get(l); if (k === undefined) lineIds.set(l, (k = ++lineCount)); return k }
+
+const LogLine = memo(function LogLine({ l }: { l: ScriptLine }) {
+  return <div style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>
+})
+
 export function BottomPanel({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)
   const rs = useRoomSettings(ws.roomId)
@@ -179,6 +191,12 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     await attempt(`Could not start ${kind === 'run' ? selected : kind}`, () => call('scripts.run', { workspaceId: ws.id, kind, ...(kind === 'run' && { name: selected }) }))
   })
   const stop = () => doing('stop', () => attempt(`Could not stop ${selected}`, () => call('scripts.stop', { workspaceId: ws.id, kind: 'run', name: selected })))
+  // The log follows new output while the reader is at its end. Scrolling up to read stops it, and a tab or workspace change starts it again.
+  const log = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const onLogScroll = () => { const el = log.current; if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX }
+  useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id])
+  useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id])
   const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const empty = bottom === 'run'
@@ -225,9 +243,9 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         </div>
       )}
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'}>
+      {bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={bottom === 'run' && names.length > 1 ? `${selected} output` : `${bottom} output`} data-empty={lines.length ? undefined : 'true'} onScroll={onLogScroll}>
         {lines.length
-          ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
+          ? lines.map((l) => <LogLine key={lineKey(l)} l={l} />)
           : empty}
       </div>}
     </div>
