@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, setState, useStore } from '../../store'
 import { Button, Icon, Tabs } from '../../ui'
@@ -148,6 +148,18 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Worksp
 
 // ---------- Setup, Run, Terminal
 
+/** The log follows its end while the reader is within this many px of it. */
+const PIN_PX = 80
+
+/** A line keeps its key as older ones drop off the front of the capped log, so only new lines are drawn. */
+const lineIds = new WeakMap<ScriptLine, number>()
+let lineCount = 0
+const lineKey = (l: ScriptLine) => { let k = lineIds.get(l); if (k === undefined) lineIds.set(l, (k = ++lineCount)); return k }
+
+const LogLine = memo(function LogLine({ l }: { l: ScriptLine }) {
+  return <div style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>
+})
+
 export function BottomPanel({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)
   const scriptKind = bottom === 'setup' ? 'setup' : 'run'
@@ -162,6 +174,12 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     setState((s) => ({ scriptExit: { ...s.scriptExit, [ws.id]: { ...s.scriptExit[ws.id], [scriptKind]: undefined } } }))
     void attempt(`Could not start ${scriptKind}`, () => call('scripts.run', { workspaceId: ws.id, kind: scriptKind }))
   }
+  // The log follows new output while the reader is at its end. Scrolling up to read stops it, and a tab or workspace change starts it again.
+  const log = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
+  const onLogScroll = () => { const el = log.current; if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX }
+  useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id])
+  useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id])
   return (
     <div className="bottom-panel">
       <div className="bottom-tabs">
@@ -173,9 +191,9 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         {bottom === 'setup' && !noSetup && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
       </div>
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`}>
+      {bottom !== 'terminal' && <div ref={log} className="log selectable mono" role="log" aria-label={`${bottom} output`} onScroll={onLogScroll}>
         {lines.length
-            ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
+            ? lines.map((l) => <LogLine key={lineKey(l)} l={l} />)
             : <span className="muted">{bottom === 'setup'
                 ? noSetup ? 'This room has no setup script. Add one and new workspaces run it before the agent starts.' : 'Setup output appears here.'
                 : `Start the run script to see output. It gets port ${ws.port}.`}</span>}
