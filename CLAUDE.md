@@ -28,7 +28,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do an issue, use `/issue KERNEL-N` or follow these steps:
 
-1. Fetch the issue with the Linear MCP, move it to In Progress, and use its `gitBranchName` for the branch.
+1. Fetch the issue with the Linear MCP and move it to In Progress. In a Kernel workspace, stay on the branch Kernel created. Otherwise name the branch `<type>/<key>-<a few words>`, with `fix` for the Bug label and `feat` otherwise, 60 characters at most (`fix/kernel-267-review-cant-start-reviewed-branch`).
 2. Open every PNG listed under Screens. Open the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value.
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
 4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds.
