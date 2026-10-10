@@ -3,7 +3,7 @@ import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, resolve } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
+import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
@@ -27,7 +27,9 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
-    resolveInstructions: '# Resolve conflicts\n1. Rebase on the base branch.\n2. Keep both sides where they do not overlap.\n3. Re-run tests and typecheck.\n4. Push and summarize what you changed.'
+    resolveInstructions: '# Resolve conflicts\n1. Rebase on the base branch.\n2. Keep both sides where they do not overlap.\n3. Re-run tests and typecheck.\n4. Push and summarize what you changed.',
+    fixChecksInstructions: '# Fix failing checks\n1. Run `gh pr checks` and read every failure.\n2. Reproduce it locally and fix the cause, not the test.\n3. Run the full suite, push, and summarize the fix.',
+    addressReviewInstructions: '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   experimental: { bigTerminal: true, bigTerminalWorktreeOnly: true, walking: true, floor3d: false, voice: false }
@@ -76,20 +78,60 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
-const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 /** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
 const DEFAULT_COPY = ['.env', '.env.local']
 
-export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const merged = deepMerge(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
+const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
+
+/** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr'] as const
+type Group = (typeof GROUPS)[number]
+
+/** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
+function picked(table: Record<string, any> | undefined, keys: readonly string[], ok: (v: unknown) => boolean = () => true): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
+  return out
+}
+
+/** One settings file's values by app-side name, with the same whitelist for both files. */
+function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
+  const isString = (v: unknown) => typeof v === 'string'
   return {
-    // Only strings, so what Kernel hashes for trust is exactly what it runs and copies (KERNEL-209).
-    scripts: { setup: text(merged.scripts?.setup), run: text(merged.scripts?.run), archive: text(merged.scripts?.archive), runMode: merged.scripts?.run_mode },
-    files: { copy: Array.isArray(merged.files?.copy) ? strings(merged.files.copy) : [...DEFAULT_COPY], symlinkNodeModules: merged.files?.symlink_node_modules },
-    workspace: workspaceKeys(merged.workspace),
-    disabled: { skills: strings(merged.disabled?.skills), mcp: strings(merged.disabled?.mcp) },
-    ...(typeof merged.linear?.team === 'string' ? { linear: { team: merged.linear.team } } : {})
+    // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
+    // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
+    scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
+    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
+    workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
+    disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
+    linear: picked(doc.linear, ['team'], isString),
+    pr: picked(doc.pr, PR_KEYS, isString)
+  }
+}
+
+/**
+ * The room's settings: the personal file, then `settings.toml`, key by key, with where each value came from (KERNEL-190).
+ * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
+ */
+export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
+  const shared = roomValues(await readToml(repoFile(repo, 'settings.toml')))
+  const local = roomValues(await readToml(repoFile(repo, 'settings.local.toml')))
+  const merged = {} as Record<Group, Record<string, any>>
+  const sources: RoomSettings['sources'] = {}
+  for (const g of GROUPS) {
+    merged[g] = { ...shared[g], ...local[g] }
+    for (const k of Object.keys(merged[g])) sources[`${g}.${k}`] = k in shared[g] && k in local[g] ? 'override' : k in local[g] ? 'local' : 'shared'
+  }
+  const { scripts, files, workspace, disabled, linear, pr } = merged
+  return {
+    scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
+    files: { copy: files.copy ?? [...DEFAULT_COPY], symlinkNodeModules: files.symlinkNodeModules },
+    workspace,
+    disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
+    ...(linear.team ? { linear: { team: linear.team } } : {}),
+    ...(Object.keys(pr).length ? { pr } : {}),
+    sources
   }
 }
 
@@ -97,16 +139,28 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
 export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'copy'>
 
 /**
- * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209). Undefined when there is
- * nothing: no script, and the copy list is Kernel's default.
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script and the
+ * files.copy list the room runs, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
+ * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
+ * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
  */
-export function scriptsToTrust(repo: RepoSettings): TrustSubject | undefined {
-  const given = (v: string | undefined) => (v?.trim() ? v : undefined)
-  const scripts = { setup: given(repo.scripts.setup), run: given(repo.scripts.run), archive: given(repo.scripts.archive) }
-  const copy = repo.files.copy
-  const defaultCopy = copy.length === DEFAULT_COPY.length && copy.every((f, i) => f === DEFAULT_COPY[i])
-  if (!scripts.setup && !scripts.run && !scripts.archive && defaultCopy) return undefined
-  return { scripts: Object.fromEntries(Object.entries(scripts).filter(([, v]) => v !== undefined)), copy }
+export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } = {}): TrustSubject | undefined {
+  const fromRepo = (key: string) => {
+    const source = repo.sources?.[key]
+    return !!source && (source === 'shared' || !o.localIsOwn)
+  }
+  const scripts: TrustSubject['scripts'] = {}
+  for (const k of ['setup', 'run', 'archive'] as const) if (repo.scripts[k]?.trim() && fromRepo(`scripts.${k}`)) scripts[k] = repo.scripts[k]
+  const isDefault = repo.files.copy.length === DEFAULT_COPY.length && repo.files.copy.every((f, i) => f === DEFAULT_COPY[i])
+  const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
+  if (!Object.keys(scripts).length && !copy.length) return undefined
+  return { scripts, copy }
+}
+
+/** Does git track the room's personal settings file? Then a commit brought it, and its text is the repo's (KERNEL-209). */
+export async function localSettingsTracked(repo: string): Promise<boolean> {
+  return (await exec('git', ['-C', repo, 'ls-files', '--error-unmatch', '--', LOCAL_SETTINGS])).code === 0
 }
 
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
@@ -163,22 +217,18 @@ export class ScriptTrustStore {
 
 /**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
- * A `null` or an empty script removes the key, so the app default applies again. The other file is left alone.
+ * A `null` or an empty string removes the key, so the other file or the app default applies again. The other file is left alone.
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
   const doc = await readToml(file)
   const set = (table: string, key: string, value: unknown) => {
     const t = (doc[table] ??= {}) as Record<string, unknown>
-    if (value === null || value === undefined || (table === 'scripts' && value === '')) delete t[key]
+    if (value === null || value === undefined || value === '') delete t[key]
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
-  for (const [k, v] of Object.entries(patch.scripts ?? {})) set('scripts', snake(k), v)
-  for (const [k, v] of Object.entries(patch.files ?? {})) set('files', snake(k), v)
-  for (const [k, v] of Object.entries(patch.workspace ?? {})) set('workspace', snake(k), v)
-  for (const [k, v] of Object.entries(patch.disabled ?? {})) set('disabled', k, v)
-  for (const [k, v] of Object.entries(patch.linear ?? {})) set('linear', k, v === '' ? null : v)
+  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), v)
   // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).
   if (!shared && !Object.keys(doc).length) {
     await rm(file, { force: true })
@@ -189,6 +239,17 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   if (!shared) await ignoreLocalSettings(repo)
   return loadRepoSettings(repo)
 }
+
+/** The PR instructions for a room: the room's text per action, else the app's, else the default (KERNEL-190). */
+export function prInstructions(app: PrInstructions, room?: Partial<PrInstructions>): PrInstructions {
+  const defaults = DEFAULT_SETTINGS('').pr
+  const pick = (k: keyof PrInstructions) => [room?.[k], app[k]].find((t) => t?.trim()) ?? defaults[k]
+  return { createInstructions: pick('createInstructions'), resolveInstructions: pick('resolveInstructions'), fixChecksInstructions: pick('fixChecksInstructions'), addressReviewInstructions: pick('addressReviewInstructions') }
+}
+
+/** The git remote a room fetches from and pushes to: the room's, then the app's, then `origin` (KERNEL-190). */
+export const remoteOf = (room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string =>
+  room.workspace.remote?.trim() || app?.workspace.remote?.trim() || 'origin'
 
 const LOCAL_SETTINGS = '.kernel/settings.local.toml'
 

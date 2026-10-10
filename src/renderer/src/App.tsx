@@ -137,6 +137,12 @@ export function App() {
       // Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
+      // ⌘N does the same, but not over a modal (it would reset the New chat prompt) or during onboarding.
+      if (e.key === 'n' && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+        e.preventDefault()
+        const s = getState()
+        if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() })
+      }
       // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
         e.preventDefault()

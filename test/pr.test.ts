@@ -8,6 +8,7 @@ import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
 import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { Kernel } from '../src/main/kernel'
+import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
 
 describe('checks from statusCheckRollup', () => {
   it('maps check runs and status contexts, with durations', () => {
@@ -57,19 +58,22 @@ describe('review comments', () => {
   })
 })
 
+const TEXTS = { resolveInstructions: '# Resolve conflicts', fixChecksInstructions: '# Fix checks', addressReviewInstructions: '# Address review' }
 const info = (o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: 'w', number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], ...o })
 
 describe('what Kernel tells the agent and the chat', () => {
   it('sends the review comments, failing checks or conflicting files with the instructions', () => {
-    const [name, text] = resolveFile('changes', '', info({ comments: [
+    const [name, text] = resolveFile('changes', TEXTS, info({ comments: [
       { id: '1', author: 'theo', path: 'src/table.tsx', line: 42, body: 'Use EmptyState.', resolved: false },
       { id: '2', author: 'theo', path: 'src/page.tsx', line: 1, body: 'Fixed already', resolved: true }
     ] }))
     expect(name).toBe('address-review.md')
     expect(text).toContain('- src/table.tsx:42 (theo): Use EmptyState.')
     expect(text).not.toContain('Fixed already')
-    expect(resolveFile('cifail', '', info({ checks: [{ name: 'playwright', state: 'fail', url: 'https://ci/1' }, { name: 'lint', state: 'pass' }] }))[1]).toContain('- playwright https://ci/1')
-    expect(resolveFile('conflict', '# Resolve conflicts', info({ conflicts: ['src/a.ts'] }))).toEqual(['resolve-conflicts.md', '# Resolve conflicts\n\nConflicting files:\n- src/a.ts'])
+    expect(resolveFile('cifail', TEXTS, info({ checks: [{ name: 'playwright', state: 'fail', url: 'https://ci/1' }, { name: 'lint', state: 'pass' }] }))[1]).toContain('- playwright https://ci/1')
+    expect(resolveFile('conflict', TEXTS, info({ conflicts: ['src/a.ts'] }))).toEqual(['resolve-conflicts.md', '# Resolve conflicts\n\nConflicting files:\n- src/a.ts'])
+    expect(resolveFile('cifail', TEXTS, info())[1]).toBe('# Fix checks')
+    expect(resolveFile('changes', TEXTS, info())[1]).toBe('# Address review')
   })
 
   it('notes merges, closes and failed checks', () => {
@@ -79,6 +83,20 @@ describe('what Kernel tells the agent and the chat', () => {
     expect(prNote({ ...ws, prState: 'closed' }, info())).toBe('PR #42 was closed without merging on GitHub.')
     expect(prNote({ ...ws, prState: 'cifail' }, info({ checks: [{ name: 'lint', state: 'fail' }, { name: 'playwright', state: 'fail' }] }))).toBe('lint and playwright failed on the PR.')
     expect(prNote({ ...ws, prState: 'ready' }, info())).toBeUndefined()
+    // The base names the room's remote (KERNEL-190).
+    expect(prNote({ ...ws, baseRef: 'upstream/main', prState: 'merged' }, { ...info(), baseRef: '' }, 'merge', 'upstream')).toBe('PR #42 was merged into main.')
+  })
+
+  it("picks each PR instruction from the room, then the app, then the default (KERNEL-190)", () => {
+    const defaults = DEFAULT_SETTINGS('').pr
+    const app = { ...defaults, createInstructions: '# App create', fixChecksInstructions: '' }
+    expect(prInstructions(app, { createInstructions: '# Room create', addressReviewInstructions: '  ' })).toEqual({
+      createInstructions: '# Room create', resolveInstructions: defaults.resolveInstructions,
+      fixChecksInstructions: defaults.fixChecksInstructions, addressReviewInstructions: defaults.addressReviewInstructions
+    })
+    expect(prInstructions(app).createInstructions).toBe('# App create')
+    expect(defaults.fixChecksInstructions).toMatch(/^# Fix failing checks/)
+    expect(defaults.addressReviewInstructions).toMatch(/^# Address review/)
   })
 })
 
@@ -222,6 +240,47 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('feat/invoice-table-2')
     expect(k.store.chats(ws.id)).toHaveLength(1)
     expect(notes().at(-1)).toBe('Continuing on feat/invoice-table-2 from main. The chat stays.')
+    await k.stop()
+  })
+})
+
+describe('PR instructions per room (KERNEL-190)', () => {
+  const app = { createInstructions: '# App create', resolveInstructions: '# App resolve', fixChecksInstructions: '# App fix', addressReviewInstructions: '# App review' }
+  const room = { createInstructions: '# Room create', resolveInstructions: '# Room resolve', fixChecksInstructions: '# Room fix', addressReviewInstructions: '# Room review' }
+
+  it.each(['room', 'app', 'default'] as const)('Create PR, Resolve conflicts, Fix checks and Address review send the %s instruction', async (from) => {
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(from === 'default' ? {} : { pr: app }) }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    const sent: ChatPart[] = []
+    k.sessions.send = async (_chatId, parts) => { sent.push(...parts); return { queued: false } }
+    k.sessions.isRunning = () => false
+    let pr: PrInfo | null = null
+    k.github = { info: async (_cwd, _ref, workspaceId) => (pr ? { ...pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
+    const r = await k.addRoom(repo)
+    if (from === 'room') await k.handlers()['settings.setRoom']({ roomId: r.id, patch: { pr: room } })
+    const want = from === 'room' ? room : from === 'app' ? app : DEFAULT_SETTINGS('').pr
+    const ws = await k.createWorkspace(r.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    const last = () => { const p = sent.at(-1)!; return p.type === 'file' ? [p.name, p.text] : [] }
+
+    await k.createPr(ws.id)
+    expect(last()).toEqual(['create-pr.md', want.createInstructions])
+    for (const [state, name, text, extra] of [
+      ['conflict', 'resolve-conflicts.md', want.resolveInstructions, { conflicts: ['src/a.ts'] }],
+      ['cifail', 'fix-checks.md', want.fixChecksInstructions, { checks: [{ name: 'lint', state: 'fail' }] }],
+      ['changes', 'address-review.md', want.addressReviewInstructions, { comments: [{ id: 'c', author: 'theo', body: 'Rename it.', resolved: false }] }]
+    ] as [PrInfo['state'], string, string, Partial<PrInfo>][]) {
+      pr = info({ state, ...extra })
+      await k.refreshPr(ws.id, { settle: true })
+      await k.resolvePr(ws.id)
+      const [n, t] = last()
+      expect(n).toBe(name)
+      expect(t?.startsWith(`${text}\n\n`)).toBe(true)
+    }
+    expect(last()[1]).toContain('- Review (theo): Rename it.')
     await k.stop()
   })
 })

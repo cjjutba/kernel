@@ -29,9 +29,9 @@ import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings } from './services/settings'
+import { applySettingsPatch, loadAppSettings, loadRepoSettings, localSettingsTracked, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
@@ -115,6 +115,8 @@ export class Kernel {
   private reviewsToArchive = new Set<string>()
   /** Archives under way, so a second call for the same workspace waits for the first. */
   private archiving = new Map<string, Promise<void>>()
+  /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
+  private roomRemotes = new Map<string, string | undefined>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
   private setupFailures = new Map<string, number | null>()
   /** The script text the user trusted, per room (KERNEL-209). */
@@ -295,6 +297,7 @@ export class Kernel {
       this.network.start()
     }
     this.tasks.attach()
+    for (const r of this.store.rooms()) void this.remoteFor(r.path)
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
@@ -539,7 +542,8 @@ export class Kernel {
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
     if (existing) return existing
-    const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path), defaultBranch: await defaultBranch(path).catch(() => 'main'), paused: false, createdAt: Date.now() }
+    const remote = await this.remoteFor(path)
+    const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
     this.store.saveRoom(room)
     await this.agents(room.id)
     return room
@@ -606,7 +610,8 @@ export class Kernel {
       if (req.source === 'repo') await cloneRepo(req.from, room.path)
       else if (req.source === 'scratch') await copyTemplate(req.from, room.path)
       else if (req.initGit && !(await inspectFolder(room.path, this.home)).git) await initGit(room.path)
-      const next: Room = { ...room, repo: room.repo ?? (await remoteRepo(room.path)), defaultBranch: req.baseBranch || (await defaultBranch(room.path).catch(() => 'main')) }
+      const remote = await this.remoteFor(room.path)
+      const next: Room = { ...room, repo: room.repo ?? (await remoteRepo(room.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(room.path, remote).catch(() => 'main')) }
       this.store.saveRoom(next)
       bus.push({ type: 'room', room: next })
     })
@@ -616,7 +621,7 @@ export class Kernel {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      if (await ensureRepoSettings(room.path) && !(await stat(join(room.path, '.kernel', 'settings.local.toml')).then(() => true, () => false))) await this.trustCurrent(room)
+      if (await ensureRepoSettings(room.path) && !(await localSettingsTracked(room.path))) await this.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
@@ -875,8 +880,11 @@ export class Kernel {
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
-    const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch)
-      : await resolveBaseRef(room.path, o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef, { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
+    const remote = await this.remoteFor(room.path, repo)
+    // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
+    const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch, remote)
+      : await resolveBaseRef(room.path, o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote), { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = await freePort(4300, taken)
 
@@ -1014,7 +1022,7 @@ export class Kernel {
    * nothing to trust (KERNEL-209).
    */
   private async untrusted(room: Room, repo?: RepoSettings): Promise<ScriptTrust | null> {
-    const subject = scriptsToTrust(repo ?? await loadRepoSettings(room.path))
+    const subject = await this.subjectOf(room, repo)
     if (!subject) return null
     const hash = trustHash(subject)
     if (await this.trusted.has(room.id, hash)) return null
@@ -1027,20 +1035,46 @@ export class Kernel {
     bus.push({ type: 'room.trust', roomId, trust: await this.untrusted(this.mustRoom(roomId)) })
   }
 
+  /**
+   * The repo's text the room would run and copy, from `settings.toml` and from a personal file only when a commit brought
+   * it (KERNEL-209, KERNEL-190). The user's own personal file needs no trusting.
+   */
+  private async subjectOf(room: Room, repo?: RepoSettings): Promise<TrustSubject | undefined> {
+    return scriptsToTrust(repo ?? await loadRepoSettings(room.path), { localIsOwn: !(await localSettingsTracked(room.path)) })
+  }
+
+  /** The repo's text as it is now, and whether the user trusts it. Nothing to trust counts as trusted. */
+  private async trustState(room: Room): Promise<{ subject?: TrustSubject; trusted: boolean }> {
+    const subject = await this.subjectOf(room)
+    return { subject, trusted: !subject || await this.trusted.has(room.id, trustHash(subject)) }
+  }
+
   /** Trust the room's current text without asking, for text the user wrote in Settings or Kernel wrote itself. */
   private async trustCurrent(room: Room, repo?: RepoSettings) {
-    const subject = scriptsToTrust(repo ?? await loadRepoSettings(room.path))
+    const subject = await this.subjectOf(room, repo)
     if (subject) await this.trusted.add(room.id, trustHash(subject))
   }
 
   /**
-   * Text the user saves in Settings, Scripts or Files counts as trusted, but only when the room had nothing waiting on
-   * the user before the save (KERNEL-209). A room already waiting keeps asking: no Settings page shows every script and
-   * the copy list, and the page may be showing text from before a pull, so a save there can't vouch for the rest.
+   * Text saved in Settings counts as trusted, as far as the save wrote it (KERNEL-209). Room pages write the personal
+   * file (KERNEL-190), whose text needs no trusting. A save into settings.toml, or into a personal file a commit brought,
+   * trusts the result only when the room's text was trusted before it, and every value of the repo's text the room now
+   * runs is either unchanged or one this save wrote into the file it now comes from. So no page vouches for text it
+   * doesn't show, and clearing an override can't wave through the repo's value it was hiding.
    */
-  private async trustSaved(room: Room, before: ScriptTrust | null, patch: RoomSettingsPatch, next: RepoSettings) {
-    const touched = ['setup', 'run', 'archive'].some((k) => k in (patch.scripts ?? {})) || 'copy' in (patch.files ?? {})
-    if (!touched || before) return
+  private async trustSaved(room: Room, before: { subject?: TrustSubject; trusted: boolean }, patch: RoomSettingsPatch, shared: boolean, next: RepoSettings) {
+    if (!before.trusted) return
+    const after = await this.subjectOf(room, next)
+    if (!after) return
+    const wrote = (group: 'scripts' | 'files', key: string) => {
+      const v = (patch[group] as Record<string, unknown> | undefined)?.[key]
+      if (v === undefined || v === null || v === '') return false
+      const source = next.sources[`${group}.${key}`]
+      return shared ? source === 'shared' : source === 'local' || source === 'override'
+    }
+    const scriptsOk = (['setup', 'run', 'archive'] as const).every((k) => after.scripts[k] === before.subject?.scripts[k] || wrote('scripts', k))
+    const copyOk = JSON.stringify(after.copy) === JSON.stringify(before.subject?.copy ?? []) || wrote('files', 'copy')
+    if (!scriptsOk || !copyOk) return
     await this.trustCurrent(room, next)
     await this.releaseHeld(room.id)
   }
@@ -1068,7 +1102,7 @@ export class Kernel {
    */
   async trustRoom(roomId: string, hash: string): Promise<void> {
     const room = this.mustRoom(roomId)
-    const subject = scriptsToTrust(await loadRepoSettings(room.path))
+    const subject = await this.subjectOf(room)
     if (subject && trustHash(subject) !== hash) {
       await this.askTrust(roomId)
       throw new Error("This room's scripts changed since you read them. Read them again before trusting them.")
@@ -1150,7 +1184,7 @@ export class Kernel {
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
     const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
-    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef) : 0
+    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     if (ws.mode === 'worktree' && !o.keepWorktree) await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
@@ -1171,8 +1205,8 @@ export class Kernel {
     if (ws.mode === 'worktree') {
       const path = await stat(ws.path).then(() => undefined, () => ws.path)
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
-      await restoreWorktree({ repo: room.path, path, branch: ws.branch })
       const repo = await loadRepoSettings(room.path)
+      await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote: await this.remoteFor(room.path, repo) })
       if (!(await this.untrusted(room, repo))) await this.copyFiles(ws, room, repo)
       else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -1195,7 +1229,7 @@ export class Kernel {
    * reads it from there.
    */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false, fresh: true })
+    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
     return { chatId: chat.id }
   }
 
@@ -1526,18 +1560,13 @@ export class Kernel {
   }
 
   /**
-   * The new workspace modal's prompt, sent to the Lead in a chat of its own (KERNEL-148). A chat nobody used yet is taken
-   * instead of adding another, so the first start leaves no empty "Lead" tab. The first message names the chat.
+   * A message to the Lead in a chat of its own (KERNEL-148). It always adds a tab, like the tab row's +: an unused tab may
+   * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). The first message names the chat.
    */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; fresh?: boolean }): Promise<Chat> {
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
     const pick = { model: o.model ?? this.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
-    // `fresh` always adds a tab: an unused one may hold a draft the engine can't see, since the composer keeps it (D-133).
-    const unused = o.fresh ? undefined : this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
-    // The default "Lead" title gives way to the first message's; a name the user gave stays.
-    const chat = unused
-      ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === LEAD_CHAT ? { title: NEW_CHAT } : {}) })
-      : this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
+    const chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
     return chat
@@ -1674,7 +1703,7 @@ export class Kernel {
       const ws = await this.syncBranch(id)
       if (ws.mode !== 'worktree') return false
       if (await folderGone(ws.path)) return false
-      return (await gitStatus(ws.path, ws.branch, ws.baseRef)).dirty.files ? 'dirty' : false
+      return (await gitStatus(ws.path, ws.branch, ws.baseRef, await this.remoteOfWs(ws))).dirty.files ? 'dirty' : false
     } catch { return 'unknown' }
   }
 
@@ -1737,9 +1766,9 @@ export class Kernel {
 
   // ---------- reviews (KERNEL-130)
 
-  /** Where a review worktree starts: the reviewed workspace's branch, or its copy on origin when the local one is gone. */
-  private async reviewBase(repo: string, branch: string): Promise<string> {
-    try { return await resolveBaseRef(repo, branch, { strict: true }) } catch { return resolveBaseRef(repo, `origin/${branch}`, { fetch: true, strict: true }) }
+  /** Where a review worktree starts: the reviewed workspace's branch, or its copy on the remote when the local one is gone. */
+  private async reviewBase(repo: string, branch: string, remote: string): Promise<string> {
+    try { return await resolveBaseRef(repo, branch, { strict: true, remote }) } catch { return resolveBaseRef(repo, `${remote}/${branch}`, { fetch: true, strict: true, remote }) }
   }
 
   /** The rule appended to a review workspace's prompt, naming the work it reviews. */
@@ -1748,9 +1777,11 @@ export class Kernel {
     if (!of) return undefined
     const author = this.agentsSync(ws.roomId).find((a) => a.id === of.agentId)?.name ?? of.agentId
     // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
-    // of the author's local branch, or origin's copy when the local one was gone (reviewBase).
-    const resetTo = of.prNumber ? `origin/${of.branch}` : ws.baseRef
-    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}) })
+    // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
+    const room = this.store.room(ws.roomId)
+    const remote = remoteOf({ workspace: { remote: room && this.roomRemotes.get(room.path) } }, this.settings)
+    const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
+    return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}) }, remote)
   }
 
   /**
@@ -1869,13 +1900,30 @@ export class Kernel {
     return next
   }
 
-  /** Sends `create-pr.md` (Settings > PRs) to the agent. The header shows Creating until its turn ends. */
+  /**
+   * The git remote a room fetches from and pushes to: the room's, then the app's, then origin (`remoteOf`, KERNEL-190).
+   * Pass `repo` when the room's settings are already loaded.
+   */
+  private async remoteFor(path: string, repo?: RepoSettings): Promise<string> {
+    const r = repo ?? await loadRepoSettings(path)
+    this.roomRemotes.set(path, r.workspace.remote)
+    return remoteOf(r, this.settings)
+  }
+
+  private remoteOfWs(ws: Workspace) { return this.remoteFor(this.mustRoom(ws.roomId).path) }
+
+  /** The PR instructions for a workspace: its room's, else Settings > Pull requests (KERNEL-190). */
+  private async prTexts(ws: Workspace) {
+    return prInstructions(this.settings.pr, (await loadRepoSettings(this.mustRoom(ws.roomId).path)).pr)
+  }
+
+  /** Sends `create-pr.md` (the room's or Settings > PRs) to the agent. The header shows Creating until its turn ends. */
   async createPr(id: string, draft = false) {
     const ws = this.mustWs(id)
     if (ws.prState !== 'none') throw new Error('This workspace already has a pull request.')
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
-    const text = this.settings.pr.createInstructions + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
+    const text = (await this.prTexts(ws)).createInstructions + (draft || this.settings.pr.draft ? '\nOpen as draft' : '')
     await this.sessions.send(chat.id, [{ type: 'file', name: 'create-pr.md', text }])
     return this.setPrState(ws, 'creating')
   }
@@ -1886,9 +1934,9 @@ export class Kernel {
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
-    const info = await this.github.info(ws.path, ws.branch, id)
+    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
     if (info) bus.push({ type: 'pr.info', info })
-    const [name, text] = resolveFile(ws.prState, this.settings.pr.resolveInstructions, info)
+    const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'file', name, text }])
     this.setPrState(ws, 'resolving')
@@ -1898,7 +1946,7 @@ export class Kernel {
   async getPr(id: string) {
     const ws = await this.syncBranch(id)
     if (!ws.prNumber) return null
-    const info = await this.github.info(ws.path, ws.branch, id)
+    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
     if (info) bus.push({ type: 'pr.info', info })
     return info
   }
@@ -1912,9 +1960,10 @@ export class Kernel {
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
+    const remote = await this.remoteOfWs(asked)
     const info = await folderGone(asked.path)
       ? await this.github.info(this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, id, { conflicts: false })
-      : await this.github.info(asked.path, asked.branch, id)
+      : await this.github.info(asked.path, asked.branch, id, { remote })
     if (info) bus.push({ type: 'pr.info', info })
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
@@ -1936,7 +1985,7 @@ export class Kernel {
     if (next.prState !== ws.prState) {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
-      const text = prNote(next, info, this.mergedWith.get(id))
+      const text = prNote(next, info, this.mergedWith.get(id), remote)
       if (text) this.note(id, text)
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
@@ -1965,7 +2014,7 @@ export class Kernel {
     const ws = await this.syncBranch(id)
     if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
     if (this.settings.pr.requireGreen) {
-      const info = await this.github.info(ws.path, ws.branch, id)
+      const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
       if (!info) throw new Error('Could not read the pull request from GitHub.')
       bus.push({ type: 'pr.info', info })
       if (!allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
@@ -2012,14 +2061,15 @@ export class Kernel {
     if (ws.prState !== 'merged' && ws.prState !== 'closed') throw new Error('Continue is for a merged or closed pull request.')
     if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
     const room = this.mustRoom(ws.roomId)
-    if (ws.baseRef.startsWith('origin/')) await exec('git', ['-C', ws.path, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+    const remote = await this.remoteFor(room.path)
+    if (ws.baseRef.startsWith(`${remote}/`)) await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
     await git(ws.path, 'checkout', '-b', branch, ws.baseRef)
     const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
-    this.note(id, `Continuing on ${branch} from ${ws.baseRef.replace(/^origin\//, '')}. The chat stays.`)
+    this.note(id, `Continuing on ${branch} from ${stripRemote(ws.baseRef, remote)}. The chat stays.`)
     return next
   }
 
@@ -2202,7 +2252,7 @@ export class Kernel {
       'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
       'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
+      'git.branches': async ({ roomId }) => { const { path } = this.mustRoom(roomId); return listBranches(path, await this.remoteFor(path)) },
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues(await this.linearKey(), query, this.linearFetch),
@@ -2211,7 +2261,7 @@ export class Kernel {
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),
       'linear.plan': async ({ id, roomId }) => {
         const issue = await getIssue(await this.linearKey(), id, this.linearFetch)
-        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true, fresh: true })
+        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
@@ -2224,11 +2274,11 @@ export class Kernel {
       'account.get': async () => this.readAccount(),
       'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
-        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch) }
+        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch, await this.remoteOfWs(ws)) }
         await this.archiveWorkspace(workspaceId, deleteBranch)
         return { ok: true }
       },
-      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef) },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef, await this.remoteOfWs(ws)) },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
       'usage.notifyOnReset': async ({ type }) => {
@@ -2324,9 +2374,10 @@ export class Kernel {
       'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path),
       'settings.setRoom': async ({ roomId, patch, shared }) => {
         const room = this.mustRoom(roomId)
-        const before = await this.untrusted(room)
+        const before = await this.trustState(room)
         const next = await saveRepoSettings(room.path, patch, shared)
-        await this.trustSaved(room, before, patch, next)
+        this.roomRemotes.set(room.path, next.workspace.remote)
+        await this.trustSaved(room, before, patch, !!shared, next)
         return next
       },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),

@@ -124,6 +124,11 @@ describe('the review rule (KERNEL-130)', () => {
     expect(rule).toContain('`git fetch origin feat/x && git reset --hard origin/feat/x`')
     expect(rule).toContain('`gh pr view feat/x`')
   })
+
+  it("fetches from the room's remote when it isn't origin (KERNEL-190)", () => {
+    const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', resetTo: 'upstream/feat/x', base: 'upstream/main' }, 'upstream')
+    expect(rule).toContain('`git fetch upstream feat/x && git reset --hard upstream/feat/x`')
+  })
 })
 
 describe('submit_review (KERNEL-130)', () => {
