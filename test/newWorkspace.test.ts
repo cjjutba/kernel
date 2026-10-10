@@ -13,13 +13,15 @@ import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screen
 import type { AgentDef, ChatPart } from '../src/shared/types'
 
 /** While `on`, every `git fetch` times out, the way exec reports it when its timer kills git (KERNEL-179). */
-const fetchTimesOut = vi.hoisted(() => ({ on: false }))
+const fetchTimesOut = vi.hoisted(() => ({ on: false, fetches: 0 }))
 vi.mock('../src/main/services/exec', async (importOriginal) => {
   const real = await importOriginal<typeof import('../src/main/services/exec')>()
   return {
     ...real,
-    exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) =>
-      fetchTimesOut.on && args.includes('fetch') ? Promise.resolve({ code: 1, stdout: '', stderr: '', timedOut: true }) : real.exec(cmd, args, opts)
+    exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
+      if (args.includes('fetch')) fetchTimesOut.fetches++
+      return fetchTimesOut.on && args.includes('fetch') ? Promise.resolve({ code: 1, stdout: '', stderr: '', timedOut: true }) : real.exec(cmd, args, opts)
+    }
   }
 })
 
@@ -204,12 +206,35 @@ describe('the base a workspace starts from', () => {
       await writeFile(join(remote, 'NEW.md'), 'merged\n')
       await git(remote, 'add', '-A')
       await git(remote, 'commit', '-q', '-m', 'merged')
-      expect(await fetchOrigin(repo)).toEqual({ ok: true })
+      expect(await fetchOrigin(await cloneOf(remote))).toEqual({ ok: true })
       const k = await kernel()
       const room = await k.addRoom(repo)
       const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
       expect(ws.fetchFailed).toBeUndefined()
+      // Create fetched: the commit merged after the clone is in the workspace.
       expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(remote, 'rev-parse', 'main'))
+      expect(warnings(k, room.id)).toEqual([])
+      expect(notes(k, ws.id)).toEqual([])
+      await k.stop()
+    })
+
+    it('shares one fetch between workspaces started together', async () => {
+      const repo = await cloneOf(await tempRepo(team))
+      const before = fetchTimesOut.fetches
+      expect(await Promise.all([fetchOrigin(repo), fetchOrigin(repo)])).toEqual([{ ok: true }, { ok: true }])
+      expect(fetchTimesOut.fetches - before).toBe(1)
+      await fetchOrigin(repo)
+      expect(fetchTimesOut.fetches - before).toBe(2)
+    })
+
+    it('says nothing when the base fell back to a local branch, which no fetch updates', async () => {
+      const repo = await tempRepo(team)
+      await git(repo, 'remote', 'add', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
+      const k = await kernel()
+      const room = await k.addRoom(repo)
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      expect(ws.baseRef).toBe('main')
+      expect(ws.fetchFailed).toBeUndefined()
       expect(warnings(k, room.id)).toEqual([])
       expect(notes(k, ws.id)).toEqual([])
       await k.stop()

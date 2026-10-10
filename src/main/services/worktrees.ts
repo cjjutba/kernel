@@ -57,11 +57,21 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
  * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
  * failed) gives no time.
  */
-export async function fetchOrigin(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
+export function fetchOrigin(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
+  // Two workspaces started together share one fetch. Two at once race for origin's ref locks, and the loser fails.
+  const running = fetching.get(repo)
+  if (running) return running
+  const next = fetchNow(repo).finally(() => fetching.delete(repo))
+  fetching.set(repo, next)
+  return next
+}
+const fetching = new Map<string, ReturnType<typeof fetchNow>>()
+
+async function fetchNow(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
   const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
   const lastFetch = head.code === 0 ? await stat(resolve(repo, head.stdout.trim())).then((s) => s.size > 0 ? s.mtimeMs : undefined, () => undefined) : undefined
   const r = await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
-  if (r.code === 0 && !r.timedOut) return { ok: true }
+  if (r.code === 0) return { ok: true }
   const error = r.timedOut ? 'timed out after 30 seconds' : r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? `git fetch exited with code ${r.code}`
   return { ok: false, error, ...(lastFetch === undefined ? {} : { lastFetch }) }
 }

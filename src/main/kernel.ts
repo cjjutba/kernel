@@ -839,7 +839,8 @@ export class Kernel {
       ? await fetchOrigin(room.path) : undefined
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch)
       : await resolveBaseRef(room.path, wanted, { strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
-    const stale = fetched?.ok === false ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
+    // A local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
+    const stale = fetched?.ok === false && baseRef.startsWith('origin/') ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = await freePort(4300, taken)
 
