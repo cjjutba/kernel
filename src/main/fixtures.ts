@@ -1,5 +1,7 @@
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
+import type { PushEvent } from '@shared/ipc'
+import { localUrlIn } from '@shared/previewUrl'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, isRunName } from './services/settings'
@@ -47,7 +49,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, sources: rs.sources ?? {} }
   }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
@@ -266,4 +268,26 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'app.openTerminal': async () => ok,
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) })
   }
+}
+
+/**
+ * The events a fixture replays, with the `script.url` events the engine would push among them: a run script's first local
+ * URL right after the line that prints it, and null when it exits (KERNEL-246). A fixture that pushes its own keeps it.
+ */
+export function fixturePush(f: Fixture): PushEvent[] {
+  const out: PushEvent[] = []
+  const found = new Set<string>()
+  for (const e of f.push) {
+    if (e.type === 'script.exit' && e.kind === 'run' && found.delete(JSON.stringify([e.workspaceId, e.name ?? 'run']))) {
+      out.push({ type: 'script.url', workspaceId: e.workspaceId, name: e.name ?? 'run', url: null })
+    }
+    out.push(e)
+    if (e.type === 'script.url' && e.url) found.add(JSON.stringify([e.workspaceId, e.name]))
+    if (e.type !== 'script.output' || e.kind !== 'run') continue
+    const name = e.name ?? 'run'
+    const k = JSON.stringify([e.workspaceId, name])
+    const url = found.has(k) ? null : localUrlIn(e.line)
+    if (url) { found.add(k); out.push({ type: 'script.url', workspaceId: e.workspaceId, name, url }) }
+  }
+  return out
 }

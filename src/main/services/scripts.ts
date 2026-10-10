@@ -6,7 +6,9 @@ import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
 import { resolveFilesToCopy } from './filesToCopy'
+import type { Readable } from 'node:stream'
 import { PORT_BLOCK } from '@shared/types'
+import { localUrlIn } from '@shared/previewUrl'
 
 const canBind = (p: number) => new Promise<boolean>((res) => {
   const srv = createServer()
@@ -72,6 +74,26 @@ export function loginShell(): string {
   return existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh'
 }
 
+/** The most a line can hold before it is shown anyway. A spinner writes `\r` and never a newline (KERNEL-246). */
+export const MAX_LINE = 64 * 1024
+
+/**
+ * Calls `onLine` with each whole line `stream` writes, however the chunks split it, and a character split across two
+ * chunks stays whole. Returns the flush for when the process closes, which hands over a last line with no newline.
+ */
+export function pipeLines(stream: Readable | null, onLine: (line: string) => void): () => void {
+  let buf = ''
+  stream?.setEncoding('utf8')
+  stream?.on('data', (d: string) => {
+    buf += d
+    const lines = buf.split(/\r?\n/)
+    buf = lines.pop()!
+    for (const line of lines) onLine(line)
+    if (buf.length >= MAX_LINE) { onLine(buf); buf = '' }
+  })
+  return () => { if (buf) onLine(buf); buf = '' }
+}
+
 type Kind = 'setup' | 'run' | 'archive'
 /** Every script still running, by workspace, kind and run script name. Setup and archive have no name. */
 const running = new Map<string, { workspaceId: string; kind: Kind; name?: string; child: ChildProcess }>()
@@ -92,16 +114,28 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       detached: true
     })
     running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })
-    bus.push({ type: 'script.output', ...tag, line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
-    const pipe = (stream: 'stdout' | 'stderr') => (d: Buffer) => {
-      for (const line of d.toString().split(/\r?\n/)) if (line) bus.push({ type: 'script.output', ...tag, line, stream })
+    const current = () => running.get(k)?.child === child
+    // A run script's URL starts empty. The first local URL it prints is its URL until it exits (KERNEL-246).
+    let url: string | null = null
+    if (name) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
+    const emit = (line: string, stream: 'stdout' | 'stderr') => {
+      if (!line) return
+      bus.push({ type: 'script.output', ...tag, line, stream })
+      // A process a restart replaced may still be printing. Its URL isn't the new run's.
+      if (name && !url && current()) {
+        url = localUrlIn(line)
+        if (url) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
+      }
     }
-    child.stdout?.on('data', pipe('stdout'))
-    child.stderr?.on('data', pipe('stderr'))
+    bus.push({ type: 'script.output', ...tag, line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
+    const flushes = (['stdout', 'stderr'] as const).map((stream) => pipeLines(child[stream], (line) => emit(line, stream)))
     child.on('error', (err) => { bus.push({ type: 'script.output', ...tag, line: String(err), stream: 'stderr' }) })
     child.on('close', (code) => {
-      // A restart already holds the slot with the new process.
-      if (running.get(k)?.child === child) running.delete(k)
+      for (const flush of flushes) flush()
+      // A restart already holds the slot with the new process, and its URL.
+      const replaced = running.has(k) && !current()
+      if (current()) running.delete(k)
+      if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
       bus.push({ type: 'script.exit', ...tag, code })
       resolve(code)
     })
