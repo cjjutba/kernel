@@ -18,7 +18,7 @@ import { tempRepo } from './helpers'
 
 // The SDK's server and tool keep their names and handlers, so the tools run against a real Kernel without a session.
 // `query` keeps the options each session started with and never answers.
-const sdk = vi.hoisted(() => ({ calls: [] as { cwd?: string; systemPrompt?: { append?: string } }[] }))
+const sdk = vi.hoisted(() => ({ calls: [] as { cwd?: string; systemPrompt?: { append?: string }; mcpServers?: Record<string, { name: string; tools: string[] }>; settings?: unknown }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: (o: { name: string; tools: { name: string }[] }) => ({ name: o.name, tools: o.tools.map((t) => t.name) }),
   tool: (name: string, description: string, inputSchema: unknown, handler: unknown) => ({ name, description, inputSchema, handler }),
@@ -70,6 +70,12 @@ async function setup(o: { sharing?: boolean; capture?: (f: SharedFile, v: number
 }
 
 const onlyFile = (k: Kernel) => { const [f] = k.store.sharedFiles(); return f }
+
+/** Starts the workspace's chat for real (setup stubs send) and returns the options its session got. */
+async function started(s: Awaited<ReturnType<typeof setup>>, ws: Workspace) {
+  await Sessions.prototype.send.call(s.k().sessions, s.chatOf(ws).id, [{ type: 'text', text: 'hi' }])
+  return vi.waitFor(() => { const c = sdk.calls.find((x) => x.cwd === ws.path); if (!c) throw new Error('no session yet'); return c })
+}
 
 describe('what a shared file is (KERNEL-302)', () => {
   it('takes the type from the extension and needs the first bytes to agree', () => {
@@ -299,6 +305,19 @@ describe('share_file (KERNEL-302)', () => {
 })
 
 describe('who gets share_file (KERNEL-302)', () => {
+  it("keeps Kernel's own server, share_file included, when the room switches off MCP servers named kernel (KERNEL-226)", async () => {
+    const s = await setup()
+    await mkdir(join(s.room.path, '.kernel'), { recursive: true })
+    await writeFile(join(s.room.path, '.kernel', 'settings.local.toml'), '[disabled]\nmcp = ["kernel", "chrome-devtools"]\n')
+    for (const [ws, id] of [[s.leadWs, 'rowan'], [s.review, 'theo'], [s.kai, 'kai']] as const) {
+      const c = await started(s, ws)
+      const tools = s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
+      expect(tools, id).toContain('share_file')
+      expect(c.mcpServers, id).toEqual({ kernel: { name: 'kernel', tools } })
+      expect(c.settings, id).toEqual({ deniedMcpServers: [{ serverName: 'chrome-devtools' }] })
+    }
+  })
+
   it('gives every agent share_file next to its own tools while sharing is on, and nothing new while it is off', async () => {
     const on = await setup()
     const names = (s: typeof on, ws: Workspace, id: string) => s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
@@ -317,18 +336,21 @@ describe('who gets share_file (KERNEL-302)', () => {
     expect(mcp(off, off.kai, 'kai')).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge'] } })
     expect(mcp(off, off.leadWs, 'rowan').kernel.tools).toEqual(lead.slice(0, -1))
 
-    // The Lead's prompt names shared files only while sharing is on. setup stubs send, so the real one starts the session.
-    const leadPrompt = async (s: typeof on) => {
-      await Sessions.prototype.send.call(s.k().sessions, s.lead.id, [{ type: 'text', text: 'hi' }])
-      const call = await vi.waitFor(() => { const c = sdk.calls.find((x) => x.cwd === s.leadWs.path); if (!c) throw new Error('no session yet'); return c })
-      return call.systemPrompt?.append ?? ''
-    }
-    const onPrompt = await leadPrompt(on)
+    // The Lead's prompt names shared files only while sharing is on. With it off, each session starts as on main: the
+    // same server and tools, and no word about sharing in any prompt.
+    const onPrompt = (await started(on, on.leadWs)).systemPrompt?.append ?? ''
     expect(onPrompt).toContain(LEAD_RULE)
     expect(onPrompt).toContain(LEAD_SHARING_RULE)
-    const offPrompt = await leadPrompt(off)
-    expect(offPrompt).toContain(LEAD_RULE)
-    expect(offPrompt).not.toContain(LEAD_SHARING_RULE)
-    expect(offPrompt).not.toMatch(/shared/i)
+    const offLead = await started(off, off.leadWs)
+    expect(offLead.systemPrompt?.append).toContain(LEAD_RULE)
+    expect(offLead.mcpServers).toEqual({ kernel: { name: 'kernel', tools: lead.slice(0, -1) } })
+    const offReview = await started(off, off.review)
+    expect(offReview.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['submit_review'] } })
+    const offKai = await started(off, off.kai)
+    expect(offKai.mcpServers).toEqual({ kernel: { name: 'kernel', tools: ['wait_for_merge'] } })
+    for (const c of [offLead, offReview, offKai]) {
+      expect(c.systemPrompt?.append).not.toContain(LEAD_SHARING_RULE)
+      expect(c.systemPrompt?.append).not.toMatch(/share_file|shared/i)
+    }
   })
 })
