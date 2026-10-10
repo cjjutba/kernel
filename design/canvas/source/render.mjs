@@ -4,18 +4,22 @@
 //   python3 design/canvas/source/build.py                 rebuild design/canvas/project from the templates
 //   node design/canvas/source/render.mjs Home Team        render those pages to design/screens
 //   node design/canvas/source/render.mjs --out /tmp/x Home
+//   node design/canvas/source/render.mjs --from design/proposals/grouped-chats/build --out design/proposals/grouped-chats GroupedTabs
 //
 // Text rasterizes a little differently from the PNGs made on claude.ai, so render only the pages whose markup changed.
 // CHROME_PATH picks the browser; the default is Google Chrome in /Applications.
 import { chromium } from 'playwright-core'
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 const root = join(import.meta.dirname, '..', '..', '..')
 const args = process.argv.slice(2)
 const outAt = args.indexOf('--out')
-const out = outAt >= 0 ? args[outAt + 1] : join(root, 'design', 'screens')
-const names = args.filter((a, i) => a !== '--out' && !(outAt >= 0 && i === outAt + 1))
+const out = outAt >= 0 ? resolve(args[outAt + 1]) : join(root, 'design', 'screens')
+// --from reads pages from another folder, for the proposals in design/proposals, so they never touch design/canvas/project.
+const fromAt = args.indexOf('--from')
+const from = fromAt >= 0 ? resolve(args[fromAt + 1]) : join(root, 'design', 'canvas', 'project')
+const names = args.filter((a, i) => a !== '--out' && a !== '--from' && !(outAt >= 0 && i === outAt + 1) && !(fromAt >= 0 && i === fromAt + 1))
 if (!names.length) throw new Error('Name the pages to render, for example: node design/canvas/source/render.mjs Home Team')
 mkdirSync(out, { recursive: true })
 
@@ -57,7 +61,7 @@ const context = await browser.newContext({ viewport: { width: 1440, height: 900 
 await context.route('**/support.js', (r) => r.fulfill({ body: '', contentType: 'text/javascript' }))
 for (const name of names) {
   const page = await context.newPage()
-  await page.goto('file://' + join(root, 'design', 'canvas', 'project', `${name}.dc.html`))
+  await page.goto('file://' + join(from, `${name}.dc.html`))
   await page.evaluate(expand)
   await page.evaluate(() => document.fonts.ready)
   await page.waitForTimeout(150)
