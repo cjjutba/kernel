@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
+import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, scriptKey, useStore } from '../../store'
+import { actions, go, scriptKey, useStore, type State } from '../../store'
 import { Button, Icon, SegmentedControl, Tabs, useBusy } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
+import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
 
@@ -151,23 +152,23 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Worksp
 
 // ---------- Setup, Run, Terminal
 
-/** A script is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
-function isRunning(s: { scripts: Record<string, ScriptLine[]>; scriptExit: Record<string, Record<string, number | null | undefined>> }, workspaceId: string, kind: 'setup' | 'run', name?: string) {
-  return (s.scripts[workspaceId] ?? []).some((l) => l.kind === kind && l.name === name) && s.scriptExit[workspaceId]?.[scriptKey(kind, name)] === undefined
+/** Setup is running from its first line until it exits. A new start clears the exit, so the lines of its last run don't count as a stop. */
+function setupRunning(s: Pick<State, 'scripts' | 'scriptExit'>, workspaceId: string) {
+  return (s.scripts[workspaceId] ?? []).some((l) => l.kind === 'setup') && s.scriptExit[workspaceId]?.setup === undefined
 }
 
 export function BottomPanel({ ws }: { ws: Workspace }) {
   const bottom = useStore((s) => s.ui.workspace.bottom)
   const rs = useRoomSettings(ws.roomId)
-  const names = (rs?.runScripts ?? []).map((r) => r.name)
+  // A script that is running stays in the picker, so it can be stopped, even after Settings renamed or removed it or before they load.
+  const runningNames = useStore((s) => runningRuns(s, ws.id).join('\n')).split('\n').filter(Boolean)
+  const names = pickerNames((rs?.runScripts ?? []).map((r) => r.name), runningNames)
   // The Run tab shows one run script at a time. Each keeps its own output and exit (KERNEL-249).
   const [picked, setPicked] = useState<Record<string, string>>({})
-  // The picker shows a spinner on every script that is running, and the strip's Run or Stop is about the selected one.
-  const runningNames = useStore((s) => names.filter((n) => isRunning(s, ws.id, 'run', n)).join('\n')).split('\n')
   // Until one is picked, the tab shows a script that is running, else the first.
   const selected = names.includes(picked[ws.id]) ? picked[ws.id] : names.find((n) => runningNames.includes(n)) ?? names[0] ?? 'run'
   const lines = useStore((s) => (s.scripts[ws.id] ?? []).filter((l) => (bottom === 'setup' ? l.kind === 'setup' : l.kind === 'run' && l.name === selected)))
-  const setupRunning = useStore((s) => isRunning(s, ws.id, 'setup'))
+  const setupBusy = useStore((s) => setupRunning(s, ws.id))
   const selectedRunning = runningNames.includes(selected)
   // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const noSetup = !!rs && !rs.scripts.setup
@@ -204,7 +205,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       <div className="script-empty">
         <span className="ink2">No setup output yet</span>
         <span>Setup output appears here after it runs.</span>
-        <Button icon="play" busy={busy === 'setup'} busyLabel="Starting" disabled={setupRunning || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
+        <Button icon="play" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>
       </div>
     )
   return (
@@ -212,7 +213,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
       <div className="bottom-tabs">
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
-        {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={setupRunning || busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
+        {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
         {/* Run and Stop are about the script picked on the Run tab. Off it, Stop names the script, so it can't read as stopping setup. */}
         {selectedRunning
           ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{bottom === 'run' ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>

@@ -30,14 +30,14 @@ export function RunScripts({ roomId, rs }: { roomId: string; rs: RoomSettings | 
       >
         {scripts.length === 0 && <div className="set-empty">No run scripts. Add one to start the app from a workspace.</div>}
         {scripts.map((s) => {
-          // Only the personal file is written, so a script that settings.toml alone defines can be changed here but not removed.
-          const mine = isOverride(rs, path(s.name))
+          // Only the personal file is written. A script settings.toml defines can be edited here, and Reset drops the personal edit. Remove is for a script only this Mac has.
+          const source = rs?.sources?.[path(s.name)]
           return (
             <Row key={s.name} label={s.name} source={sourceLine(rs, path(s.name))} desc={<span className="set-cmd">{s.command}</span>}>
               <div className="set-entry-actions">
-                {mine && sourceLine(rs, path(s.name)) && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
+                {source === 'override' && <Button variant="ghost" aria-label={`Reset ${s.name}`} onClick={() => drop(s.name)}>Reset</Button>}
                 <Button variant="ghost" aria-label={`Edit ${s.name}`} onClick={() => setEditing(s)}>Edit</Button>
-                {mine && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
+                {source === 'local' && <Button variant="ghost" aria-label={`Remove ${s.name}`} onClick={() => drop(s.name)}>Remove</Button>}
               </div>
             </Row>
           )
@@ -86,8 +86,8 @@ function RunScriptForm({ roomId, rs, script, onClose }: { roomId: string; rs: Ro
         <Button variant="primary" type="submit" form="run-script-form" busy={busy === 'save'} busyLabel="Saving">Save</Button>
       </>}
     >
-      <form id="run-script-form" className="modal-body col" style={{ gap: 16 }} onSubmit={submit} noValidate>
-        <p style={{ margin: 0, color: 'var(--muted)' }}>Saved in settings.local.toml, so it stays on your Mac. A workspace starts it from the Run tab.</p>
+      <form id="run-script-form" className="modal-body set-form" onSubmit={submit} noValidate>
+        <p className="set-help">Saved in settings.local.toml, so it stays on your Mac. A workspace starts it from the Run tab.</p>
         <div className="set-field">
           <label htmlFor="run-script-name">Name</label>
           <input id="run-script-name" className="input" autoComplete="off" spellCheck={false} placeholder="frontend" value={fixed ? script!.name : name} disabled={fixed} aria-invalid={shown && !!problem} aria-describedby="run-script-name-note" onChange={(e) => setName(e.target.value)} />

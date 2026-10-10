@@ -76,7 +76,7 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
  * The run scripts after a patch, by name. `run` stays first. Removing an override keeps the command on screen (settings.toml's
  * is not known here), and the saved settings replace it a moment later.
  */
-function applyRunScripts(list: RoomSettings['runScripts'], sources: RoomSettings['sources'], values: Record<string, string | null>): RoomSettings['runScripts'] {
+export function applyRunScripts(list: RoomSettings['runScripts'], sources: RoomSettings['sources'], values: Record<string, string | null>): RoomSettings['runScripts'] {
   let next = [...list]
   for (const [key, v] of Object.entries(values)) {
     const name = key.toLowerCase() === 'run' ? 'run' : key
