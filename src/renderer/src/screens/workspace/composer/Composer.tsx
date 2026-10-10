@@ -36,6 +36,7 @@ type MenuName = 'model' | 'context' | PlusPanel
 export function Composer({ chat, agent, blocked, running, prefill, banner }: { chat: Chat; agent?: AgentDef; blocked: boolean; running: boolean; prefill?: { text: string; n: number }; /** A failure banner, drawn right above the box (KERNEL-28). */ banner?: ReactNode }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
+  const queueWhy = useStore((s) => s.queueWhy[chat.id])
   const forced = useStore((s) => s.ui.workspace.composer)
   // Fixtures open the context popover for a shot.
   const contextForced = useStore((s) => s.ui.workspace.contextOpen)
@@ -62,8 +63,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const rows = mention ? files : slashRows
   const roomId = ws?.roomId
 
-  // The queue is also pushed as events; this reads what was queued before the screen opened.
-  useEffect(() => { void call('chats.queue', { chatId: chat.id }).then((q) => actions.chats.setQueue(chat.id, q)).catch(() => undefined) }, [chat.id])
+  // The queue and what it waits for are also pushed as events; this reads what was queued before the screen opened.
+  // No reason comes back for an empty queue, so a null answer says nothing and leaves a pushed one alone.
+  useEffect(() => {
+    void call('chats.queue', { chatId: chat.id }).then((q) => actions.chats.setQueue(chat.id, q)).catch(() => undefined)
+    void call('chats.queueReason', { chatId: chat.id }).then((why) => { if (why) actions.chats.setQueueWhy(chat.id, why) }).catch(() => undefined)
+  }, [chat.id])
   useEffect(() => { if (roomId) void call('skills.list', { roomId }).then(setSkills).catch(() => setSkills([])) }, [roomId])
   useEffect(() => { void call('commands.list', undefined).then(setCommands).catch(() => setCommands([])) }, [])
 
@@ -197,6 +202,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
         <QueueList
           queue={queue}
+          why={queueWhy}
           onEdit={editQueued}
           onNow={(q) => void attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id })))}
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}
