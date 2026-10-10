@@ -6,7 +6,7 @@ import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
 import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -44,6 +44,19 @@ describe('repo settings files', () => {
     expect(await discoverMcp(repo, repo, next.disabled!.mcp)).toEqual([
       { name: 'Figma', source: 'project', enabled: false }, { name: 'Linear', source: 'project', enabled: true }
     ])
+  })
+
+  it('reads what the room switched off at once, from both files, so a toggle reaches the next session (KERNEL-226)', async () => {
+    const repo = await tempRepo()
+    expect(disabledInRoom(repo)).toEqual({ skills: [], mcp: [] })
+    await saveRepoSettings(repo, { disabled: { skills: ['plan'], mcp: ['Figma'] } }, true)
+    await saveRepoSettings(repo, { disabled: { mcp: ['Linear'] } })
+    // The personal list replaces the shared one, as loadRepoSettings reads it.
+    expect(disabledInRoom(repo)).toEqual({ skills: ['plan'], mcp: ['Linear'] })
+    expect(disabledInRoom(repo)).toEqual((await loadRepoSettings(repo)).disabled)
+    // Switched back on.
+    await saveRepoSettings(repo, { disabled: { skills: [] } }, true)
+    expect(disabledInRoom(repo).skills).toEqual([])
   })
 
   it("reads and writes the room's Linear team as a [linear] table", async () => {

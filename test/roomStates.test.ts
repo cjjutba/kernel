@@ -408,3 +408,50 @@ describe('room pause and team templates', () => {
     await k.stop()
   })
 })
+
+describe('switched-off skills and MCP servers (KERNEL-226)', () => {
+  const agents = {
+    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou lead.',
+    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.',
+    '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
+  }
+  const started = async (cwd: string) => {
+    for (let i = 0; i < 200 && !sdk.calls.some((c) => c.options.cwd === cwd); i++) await flush()
+    return sdk.calls.filter((c) => c.options.cwd === cwd).at(-1)!.options as Options
+  }
+
+  it("keeps a Lead's and a reviewer's Kernel tools when the room switches a server named kernel off, and leaves out the rest", async () => {
+    const k = await kernel()
+    const h = k.handlers()
+    const room = await k.addRoom(await tempRepo(agents))
+    await h['settings.setRoom']({ roomId: room.id, patch: { disabled: { skills: ['impeccable'], mcp: ['chrome-devtools', 'kernel'] } } })
+    const off = { skillOverrides: { impeccable: 'off' }, deniedMcpServers: [{ serverName: 'chrome-devtools' }] }
+    const lead = await k.leadChat(room.id)
+    await k.sessions.send(lead.id, text('plan the invoices page'))
+    const leadOptions = await started(k.store.workspace(lead.workspaceId)!.path)
+    expect(Object.keys(leadOptions.mcpServers ?? {})).toEqual(['kernel'])
+    expect(leadOptions.settings).toEqual(off)
+    const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
+    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
+    const reviewOptions = await started(review.path)
+    expect(Object.keys(reviewOptions.mcpServers ?? {})).toEqual(['kernel'])
+    expect(reviewOptions.settings).toEqual(off)
+    await k.stop()
+  })
+
+  it('starts the next session with a server switched back on', async () => {
+    const k = await kernel()
+    const h = k.handlers()
+    const room = await k.addRoom(await tempRepo(agents))
+    await h['settings.setRoom']({ roomId: room.id, patch: { disabled: { mcp: ['chrome-devtools'] } } })
+    const lead = await k.leadChat(room.id)
+    await k.sessions.send(lead.id, text('one'))
+    const cwd = k.store.workspace(lead.workspaceId)!.path
+    expect((await started(cwd)).settings).toEqual({ deniedMcpServers: [{ serverName: 'chrome-devtools' }] })
+    await h['settings.setRoom']({ roomId: room.id, patch: { disabled: { mcp: [] } } })
+    k.sessions.stop(lead.id)
+    await k.sessions.send(lead.id, text('two'))
+    expect((await started(cwd)).settings).toBeUndefined()
+    await k.stop()
+  })
+})

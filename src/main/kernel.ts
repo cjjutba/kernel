@@ -34,7 +34,7 @@ import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
@@ -225,6 +225,7 @@ export class Kernel {
         : agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
         : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
         : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
+      disabledFor: (ws) => { const room = this.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
       // The Lead's rule is LEAD_RULE, which agentPrompt adds itself. Sharing adds a line after it, only while on (KERNEL-302).
       rulesFor: (ws, agent) => (agent?.lead ? (this.sharing ? LEAD_SHARING_RULE : undefined) : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
@@ -2340,10 +2341,11 @@ export class Kernel {
     }
   }
 
-  private note(workspaceId: string, text: string) {
+  /** `pr` is the PR state the note is about, which draws that state's icon before the text. */
+  private note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') {
     const chat = this.prChat(workspaceId)
     if (!chat) return
-    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text }
+    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}) }
     this.store.saveItem(chat.id, item)
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
@@ -2441,7 +2443,7 @@ export class Kernel {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
       const text = prNote(next, info, this.mergedWith.get(id), remote)
-      if (text) this.note(id, text)
+      if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
     return next
