@@ -76,6 +76,7 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 /** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
 const DEFAULT_COPY = ['.env', '.env.local']
@@ -83,8 +84,9 @@ const DEFAULT_COPY = ['.env', '.env.local']
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const merged = deepMerge(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
   return {
-    scripts: { setup: merged.scripts?.setup, run: merged.scripts?.run, archive: merged.scripts?.archive, runMode: merged.scripts?.run_mode },
-    files: { copy: merged.files?.copy ?? DEFAULT_COPY, symlinkNodeModules: merged.files?.symlink_node_modules },
+    // Only strings, so what Kernel hashes for trust is exactly what it runs and copies (KERNEL-209).
+    scripts: { setup: text(merged.scripts?.setup), run: text(merged.scripts?.run), archive: text(merged.scripts?.archive), runMode: merged.scripts?.run_mode },
+    files: { copy: Array.isArray(merged.files?.copy) ? strings(merged.files.copy) : [...DEFAULT_COPY], symlinkNodeModules: merged.files?.symlink_node_modules },
     workspace: workspaceKeys(merged.workspace),
     disabled: { skills: strings(merged.disabled?.skills), mcp: strings(merged.disabled?.mcp) },
     ...(typeof merged.linear?.team === 'string' ? { linear: { team: merged.linear.team } } : {})
@@ -99,10 +101,9 @@ export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'copy'>
  * nothing: no script, and the copy list is Kernel's default.
  */
 export function scriptsToTrust(repo: RepoSettings): TrustSubject | undefined {
-  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined)
-  const scripts = { setup: text(repo.scripts.setup), run: text(repo.scripts.run), archive: text(repo.scripts.archive) }
-  // A list with something that isn't a string is still shown and hashed as written, so nothing in it slips past.
-  const copy = Array.isArray(repo.files.copy) ? repo.files.copy.map(String) : []
+  const given = (v: string | undefined) => (v?.trim() ? v : undefined)
+  const scripts = { setup: given(repo.scripts.setup), run: given(repo.scripts.run), archive: given(repo.scripts.archive) }
+  const copy = repo.files.copy
   const defaultCopy = copy.length === DEFAULT_COPY.length && copy.every((f, i) => f === DEFAULT_COPY[i])
   if (!scripts.setup && !scripts.run && !scripts.archive && defaultCopy) return undefined
   return { scripts: Object.fromEntries(Object.entries(scripts).filter(([, v]) => v !== undefined)), copy }

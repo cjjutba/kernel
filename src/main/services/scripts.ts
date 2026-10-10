@@ -92,6 +92,8 @@ const key = (workspaceId: string, kind: Kind) => `${workspaceId}:${kind}`
 /** Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. */
 export function runScript(o: { workspaceId: string; kind: Kind; script: string; cwd: string; port: number; root: string }): Promise<number | null> {
   stopScript(o.workspaceId, o.kind)
+  // Settings read from a repo are checked as text before they get here; anything else never reaches the shell (KERNEL-209).
+  if (typeof o.script !== 'string') return Promise.resolve(null)
   return new Promise((resolve) => {
     const child = spawn(loginShell(), ['-lc', o.script], {
       cwd: o.cwd,

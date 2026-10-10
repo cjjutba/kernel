@@ -281,7 +281,9 @@ export class Kernel {
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {})
+    const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], held)
+    this.recoverTrust(held)
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
@@ -595,7 +597,8 @@ export class Kernel {
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
-      if (await ensureRepoSettings(room.path)) await this.trustCurrent(room)
+      // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
+      if (await ensureRepoSettings(room.path) && !(await stat(join(room.path, '.kernel', 'settings.local.toml')).then(() => true, () => false))) await this.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
@@ -880,9 +883,7 @@ export class Kernel {
     if (pending) {
       this.sessions.hold(chat.id, parts, { from })
       await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
-      const held = this.updateWs(ws.id, { status: 'trust' })
-      if (held.status !== 'archived') await this.askTrust(room.id)
-      return held
+      return this.holdForTrust(ws.id)
     }
     let ready: boolean
     try { ready = await this.prepare(ws, room, repo) } catch (e) { this.setSetup(ws.id, undefined); throw e }
@@ -937,11 +938,7 @@ export class Kernel {
     const repo = await loadRepoSettings(room.path)
     const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
     // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
-    if (await this.untrusted(room, repo)) {
-      const held = this.updateWs(ws.id, { status: 'trust' })
-      await this.askTrust(room.id)
-      return held
-    }
+    if (await this.untrusted(room, repo)) return this.holdForTrust(ws.id)
     if (repo.scripts.setup) {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
       if (!this.setupPassed(ws, code)) {
@@ -994,20 +991,31 @@ export class Kernel {
   }
 
   /**
-   * Text saved in Settings counts as trusted, but only as far as the user could see it (KERNEL-209). Settings, Scripts
-   * shows the three scripts and Settings, Files the copy list. When the room already waited on text, a save trusts the
-   * result only if the part the page doesn't show has nothing to trust, so editing one script can't wave through a
-   * copy list the user never read.
+   * Text the user saves in Settings, Scripts or Files counts as trusted, but only when the room had nothing waiting on
+   * the user before the save (KERNEL-209). A room already waiting keeps asking: no Settings page shows every script and
+   * the copy list, and the page may be showing text from before a pull, so a save there can't vouch for the rest.
    */
   private async trustSaved(room: Room, before: ScriptTrust | null, patch: RoomSettingsPatch, next: RepoSettings) {
-    const scripts = ['setup', 'run', 'archive'].some((k) => k in (patch.scripts ?? {}))
-    const copy = 'copy' in (patch.files ?? {})
-    if (!scripts && !copy) return
-    const after = scriptsToTrust(next)
-    if (!after) return
-    const unseenScripts = !scripts && Object.keys(after.scripts).length > 0
-    const unseenCopy = !copy && !!scriptsToTrust({ ...next, scripts: {} })
-    if (!before || (!unseenScripts && !unseenCopy)) await this.trustCurrent(room, next)
+    const touched = ['setup', 'run', 'archive'].some((k) => k in (patch.scripts ?? {})) || 'copy' in (patch.files ?? {})
+    if (!touched || before) return
+    await this.trustCurrent(room, next)
+    await this.releaseHeld(room.id)
+  }
+
+  /** Put a workspace in `trust` and ask, or carry on at once when the text was trusted while it got here. */
+  private async holdForTrust(workspaceId: string): Promise<Workspace> {
+    const held = this.updateWs(workspaceId, { status: 'trust' })
+    if (held.status === 'archived') return held
+    const room = this.mustRoom(held.roomId)
+    if (await this.untrusted(room)) await this.askTrust(room.id)
+    else void this.releaseTrust(held.id).catch(() => undefined)
+    return held
+  }
+
+  /** The room's text is trusted now: clear the prompt and release every workspace waiting on it. */
+  private async releaseHeld(roomId: string) {
+    bus.push({ type: 'room.trust', roomId, trust: null })
+    for (const ws of this.store.workspaces(roomId)) if (ws.status === 'trust') void this.releaseTrust(ws.id).catch(() => undefined)
   }
 
   /**
@@ -1023,8 +1031,7 @@ export class Kernel {
       throw new Error("This room's scripts changed since you read them. Read them again before trusting them.")
     }
     if (subject) await this.trusted.add(roomId, hash)
-    bus.push({ type: 'room.trust', roomId, trust: null })
-    for (const ws of this.store.workspaces(roomId)) if (ws.status === 'trust') void this.releaseTrust(ws.id).catch(() => undefined)
+    await this.releaseHeld(roomId)
   }
 
   /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
@@ -1038,7 +1045,8 @@ export class Kernel {
       const repo = await loadRepoSettings(room.path)
       // The text changed again between trusting and now: it waits for another yes.
       if (await this.untrusted(room, repo)) { await this.askTrust(room.id); return }
-      this.updateWs(workspaceId, { status: 'setup' })
+      // Archived while the settings were read: nothing runs in it.
+      if (this.updateWs(workspaceId, { status: 'setup' }).status !== 'setup') return
       const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
       const ready = await this.prepare(ws, room, repo)
       if (this.mustWs(ws.id).status === 'archived') return
@@ -1123,6 +1131,7 @@ export class Kernel {
       await restoreWorktree({ repo: room.path, path, branch: ws.branch })
       const repo = await loadRepoSettings(room.path)
       if (!(await this.untrusted(room, repo))) await this.copyFiles(ws, room, repo)
+      else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
@@ -1701,6 +1710,18 @@ export class Kernel {
     this.saveSetups()
   }
 
+  /**
+   * Sessions brings back only the queues of workspaces whose setup failed. One waiting for trust holds its brief, and the
+   * Lead's messages after it, the same way, so trusting after a restart still sends them in order (KERNEL-209).
+   */
+  private recoverTrust(held: Record<string, QueuedMessage[]>) {
+    for (const [chatId, queue] of Object.entries(held)) {
+      const chat = this.store.chat(chatId)
+      if (!chat || this.store.workspace(chat.workspaceId)?.status !== 'trust' || !Array.isArray(queue)) continue
+      for (const m of queue) this.sessions.hold(chatId, m.parts, { ...(m.from ? { from: m.from } : {}), ...(m.update ? { update: m.update } : {}) })
+    }
+  }
+
   private note(workspaceId: string, text: string) {
     const chat = this.prChat(workspaceId)
     if (!chat) return
@@ -2152,6 +2173,8 @@ export class Kernel {
         if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
         if (await this.untrusted(room, repo)) { await this.askTrust(room.id); throw new Error("Trust this room's scripts before running them.") }
+        // Trusted since it was held: it sets up the way trusting releases it, brief and all.
+        if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
         return { ok: true }
       },
