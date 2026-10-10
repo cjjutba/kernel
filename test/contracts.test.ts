@@ -90,8 +90,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 127 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(127)
+  it('lists all 131 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(131)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
@@ -116,6 +116,18 @@ describe('renderer store', () => {
     expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Copied'])
     actions.ui.dismissToast(id)
     expect(getState().ui.toasts).toEqual([])
+  })
+
+  it('foldChat adds and removes the id, and an unfold leaves no empty entry', () => {
+    actions.ui.foldChat('c1', true)
+    actions.ui.foldChat('c2', true)
+    actions.ui.foldChat('c1', true)
+    expect(getState().ui.foldedChats).toEqual(['c2', 'c1'])
+    actions.ui.foldChat('c1', false)
+    actions.ui.foldChat('c3', false)
+    expect(getState().ui.foldedChats).toEqual(['c2'])
+    actions.ui.foldChat('c2', false)
+    expect(getState().ui.foldedChats).toEqual([])
   })
 
   it('applies push events to their slices', () => {
