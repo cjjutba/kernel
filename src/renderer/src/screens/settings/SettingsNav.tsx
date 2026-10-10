@@ -21,7 +21,8 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
   ] },
   { title: 'System', items: [
     { page: 'hooks', label: 'Hooks', icon: 'plug' }, { page: 'integrations', label: 'Integrations', icon: 'link' },
-    { page: 'experimental', label: 'Experimental', icon: 'flask' }, { page: 'about', label: 'About', icon: 'info' }
+    { page: 'experimental', label: 'Experimental', icon: 'flask' }, { page: 'bigterm', label: 'Big terminal', icon: 'bigterm' },
+    { page: 'about', label: 'About', icon: 'info' }
   ] }
 ]
 

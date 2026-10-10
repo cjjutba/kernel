@@ -15,6 +15,7 @@ import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
+import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
@@ -182,7 +183,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
                   : chat?.kind === 'terminal'
-                    ? <TerminalView id={chat.id} label="Big terminal" />
+                    ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
                     ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onForked={select} />
                     : <div className="grow" />}

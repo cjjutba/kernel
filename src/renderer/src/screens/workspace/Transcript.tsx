@@ -335,7 +335,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll}>
       {empty && (
         <div className="chat-empty">
-          <h2>{chat.kind === 'terminal' ? 'Big terminal' : `New chat with ${agentName}`}</h2>
+          <h2>{chat.kind === 'terminal' ? chat.title : `New chat with ${agentName}`}</h2>
           <span className="muted">Same worktree and branch, fresh context.</span>
           <div className="chat-suggest">
             {(isLead ? LEAD_SUGGESTIONS : SUGGESTIONS).map(({ text, icon }) => (

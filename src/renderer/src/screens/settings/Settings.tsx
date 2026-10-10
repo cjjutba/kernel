@@ -5,6 +5,7 @@ import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { Account } from './pages/Account'
 import { Appearance } from './pages/Appearance'
+import { BigTerminal } from './pages/BigTerminal'
 import { Experimental } from './pages/Experimental'
 import { General } from './pages/General'
 import { Models } from './pages/Models'
@@ -41,6 +42,7 @@ export function Settings({ page, roomId, section }: { page: SettingsPage; roomId
   else if (page === 'models') body = <Models s={settings} />
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'experimental') body = <Experimental s={settings} />
+  else if (page === 'bigterm') body = <BigTerminal s={settings} />
   else if (page === 'git') body = <Git s={settings} />
   else if (page === 'scripts') body = <Scripts s={settings} />
   else if (page === 'prs') body = <PRs s={settings} />

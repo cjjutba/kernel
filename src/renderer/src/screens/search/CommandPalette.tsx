@@ -3,6 +3,7 @@ import type { Approval } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { openLead, openRoom } from '../../lead'
+import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { Icon, Kbd, Modal } from '../../ui'
 import { buildItems, visibleItems, type PaletteItem } from './model'
@@ -31,14 +32,17 @@ export function CommandPalette() {
   const workspaces = useStore((s) => s.workspaces)
   const approvals = useStore((s) => s.approvals)
   const agents = useStore((s) => s.agents)
+  const terminalSettings = useStore((s) => s.settings?.terminal)
+  const presets = useTerminalPresets()
+  const terminal = useMemo(() => terminalSettings && { enabled: terminalSettings.enabled, preset: presets ? selectedPreset(presets, terminalSettings)?.name : undefined }, [terminalSettings, presets])
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const list = useRef<HTMLDivElement>(null)
 
   const { items, more } = useMemo(() => buildItems({
-    route, rooms, workspaces, approvals, agents,
+    route, rooms, workspaces, approvals, agents, terminal,
     act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId) }
-  }), [route, rooms, workspaces, approvals, agents])
+  }), [route, rooms, workspaces, approvals, agents, terminal])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)
   const cur = Math.min(at, Math.max(0, flat.length - 1))

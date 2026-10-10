@@ -1,0 +1,5 @@
+**A custom command's id is its name as a slug with a `custom-` prefix, and the Big terminal page never shows it.** Main drops a custom command whose id a built-in or a known CLI uses, and says nothing, so the page can't show an engine error for a clash. The prefix keeps a generated id clear of `claude`, `shell`, `codex` and the rest, and a number is added when two names make the same slug. After a save the form reads the saved settings back, and says so if the command is missing. KERNEL-251.
+
+**⌘⇧T sends no preset, and the + menu sends the id of the row you picked.** With no preset main runs the settings' choice, and Claude when that one is gone, so the shortcut keeps working after a CLI is uninstalled. A menu row names its preset, and one that vanished since the menu opened fails with main's message (KERNEL-248). KERNEL-251.
+
+**A tab that ran without `--dangerously-skip-permissions` says so above the terminal.** The tab compares the command main stored with its preset's, as the KERNEL-248 decision describes, so the line shows only when the flag was dropped and goes away with the preset. KERNEL-251.
