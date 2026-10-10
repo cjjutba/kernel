@@ -3,7 +3,8 @@ import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
-import { Icon, IconButton, Menu } from '../../ui'
+import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
+import { Icon, IconButton, Menu, MENU_SEPARATOR } from '../../ui'
 import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
 import { focusComposerWhenOpen } from './composer/bus'
@@ -15,7 +16,7 @@ const base = (path: string) => path.split('/').pop() ?? path
 
 /**
  * The row of chat, terminal, file, diff, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
- * a close button on hover and the Checkpoints button.
+ * a close button on hover and the Checkpoints button. The new tab menu lists a New chat row, then every terminal preset (Settings, Big terminal).
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
 export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseImage, onCloseText }: {
@@ -29,11 +30,16 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
   const approvals = useStore((s) => s.approvals)
   const running = useStore((s) => s.running)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const terminal = useStore((s) => s.settings?.terminal)
+  // Main refuses a terminal tab while the big terminal is off, so neither the menu nor ⌘⇧T offers one then.
+  const terminalOn = terminal?.enabled === true
+  const presets = useTerminalPresets(menu === 'newTab')
   const closeMenu = () => actions.ui.closeMenu()
 
-  const create = (kind: 'chat' | 'terminal') => attempt('Could not open a tab', async () => {
+  /** `preset` is a menu row's id. ⌘⇧T sends none, so main opens the settings' preset, or Claude when that one is gone. */
+  const create = (kind: 'chat' | 'terminal', preset?: string) => attempt('Could not open a tab', async () => {
     closeMenu()
-    const c = await call('chats.create', { workspaceId, kind })
+    const c = await call('chats.create', { workspaceId, kind, ...(preset ? { preset } : {}) })
     await loadWorkspace(workspaceId)
     if (kind === 'chat') focusComposerWhenOpen(c.id)
     onSelect(c.id)
@@ -65,8 +71,8 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
 
   // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats })
-  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats }
+  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats, terminalOn })
+  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats, terminalOn }
   useEffect(() => {
     const closeActive = () => {
       const { active: a, chats: cs, close: c, onCloseFile: f, onCloseDiff: dif, onCloseImage: img, onCloseText: txt } = latest.current
@@ -80,7 +86,11 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey || e.altKey || e.ctrlKey) return
       const k = e.key.toLowerCase()
-      if (k === 't') { e.preventDefault(); void latest.current.create(e.shiftKey ? 'terminal' : 'chat') }
+      if (k === 't') {
+        e.preventDefault()
+        if (!e.shiftKey) void latest.current.create('chat')
+        else if (latest.current.terminalOn) void latest.current.create('terminal')
+      }
       else if (k === 'w' && !e.shiftKey) { e.preventDefault(); closeActive() }
     }
     window.addEventListener('keydown', onKey)
@@ -155,9 +165,9 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
       <span ref={newAnchor} style={{ position: 'relative', alignSelf: 'center', marginLeft: 4 }}>
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
-          <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 220 }} items={[
+          <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 282 }} items={[
             { id: 'chat', label: 'New chat', shortcut: '⌘T', onSelect: () => void create('chat') },
-            { id: 'term', label: 'Big terminal', shortcut: '⌘⇧T', onSelect: () => void create('terminal') }
+            ...(terminalOn && presets && terminal ? [MENU_SEPARATOR, ...presets.map((p) => ({ id: `preset:${p.id}`, label: p.name, shortcut: p.id === selectedPreset(presets, terminal)?.id ? '⌘⇧T' : undefined, onSelect: () => void create('terminal', p.id) }))] : [])
           ]} />
         )}
       </span>

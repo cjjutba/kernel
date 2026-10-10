@@ -24,12 +24,25 @@ describe('command palette', () => {
     const home = buildItems({ ...input, route: { name: 'home' } })
     expect(home.items.filter((i) => i.section === 'Suggested').map((i) => i.label)).toEqual(['New chat in Client A', 'Create PR for invoice-table'])
     expect(home.items.filter((i) => i.section === 'Rooms').map((i) => i.label)).toEqual(['Client A', 'Client B', 'New room'])
-    const inWs = buildItems({ ...input, route: { name: 'workspace', workspaceId: 'invoice-table' } })
+    const inWs = buildItems({ ...input, terminal: { enabled: true }, route: { name: 'workspace', workspaceId: 'invoice-table' } })
     expect(inWs.items.map((i) => i.label)).toContain('Big terminal tab')
     // Typing searches the longer list, one ranked group.
     const found = visibleItems(inWs.items, inWs.more, 'appear')
     expect(found).toHaveLength(1)
     expect(found[0].list.map((i) => i.label)).toEqual(['Settings: Appearance'])
+  })
+
+  it('offers a big terminal tab that names the preset, and only while the big terminal is on', () => {
+    const rooms = [room('a', 'Client A')]
+    const workspaces = [ws('invoice-table')]
+    const route = { name: 'workspace', workspaceId: 'invoice-table' } as const
+    const entry = (terminal?: { enabled: boolean; preset?: string }) =>
+      buildItems({ rooms, workspaces, approvals: [], agents: {}, act, route, terminal }).items.find((i) => i.id === 'terminal')?.label
+    expect(entry({ enabled: true, preset: 'Codex' })).toBe('Big terminal tab: Codex')
+    expect(entry({ enabled: true })).toBe('Big terminal tab')
+    // Off, or settings that haven't loaded yet: main would refuse the tab.
+    expect(entry({ enabled: false, preset: 'Codex' })).toBeUndefined()
+    expect(entry()).toBeUndefined()
   })
 
   it('suggests Create PR only for a workspace with changes', () => {

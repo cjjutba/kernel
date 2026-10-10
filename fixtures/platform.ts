@@ -1,4 +1,4 @@
-import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, SettingsPage, Skill } from '@shared/types'
+import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
@@ -142,6 +142,13 @@ const whatsNewCurrent: Fixture = {
   ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
 }
 
+/** KERNEL-251: Codex is on the PATH and one custom command is saved, as SettingsBigTerminal.png and WorkspaceTerminalPresets.png draw them. */
+const codex: TerminalPreset = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+const bigTerminal: Partial<Fixture> = {
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), terminal: { ...DEFAULT_SETTINGS('/Users/you').terminal, custom: [{ id: 'custom-dev-server-logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } },
+  terminalClis: [codex]
+}
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
@@ -158,6 +165,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsModels: settingsPage('models'),
   SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/you'), permissions: { ...DEFAULT_SETTINGS('/Users/you').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
+  SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),

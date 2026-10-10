@@ -122,3 +122,10 @@ html[data-reduce-motion='true'] *, html[data-reduce-motion='true'] *::before, ht
 .set-env-row { outline: none; }
 .set-reveal { display: flex; align-items: center; gap: 10px; min-height: 30px; margin: -6px 0 0 -10px; }
 .set-reveal .set-env-value { min-width: 0; }
+
+/* Big terminal (KERNEL-251): the New tab preset radio list. The ring is the radio, and a command sits at the right in mono */
+.set-preset { flex-wrap: nowrap; }
+.set-preset .set-text { flex-basis: 120px; cursor: default; }
+.set-radio { width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid var(--line-4); background: transparent; color: var(--on-ink); }
+.set-radio[aria-checked='true'] { border-color: var(--ink); background: var(--ink); }
+.set-preset-cmd { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px/1.6 var(--mono); color: var(--ink-3); }

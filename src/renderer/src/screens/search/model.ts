@@ -24,7 +24,7 @@ export const settingsPages: [SettingsPage, string][] = [
   ['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Keyboard shortcuts'],
   ['models', 'Models'], ['permissions', 'Permissions'],
   ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'],
-  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['about', 'About']
+  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['about', 'About']
 ]
 
 /**
@@ -66,6 +66,8 @@ export interface PaletteInput {
   approvals: Approval[]
   /** By room id. */
   agents: Record<string, AgentDef[]>
+  /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
+  terminal?: { enabled: boolean; preset?: string }
   act: {
     go: (route: Route) => void
     newWorkspace: (roomId?: string) => void
@@ -113,7 +115,8 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
       item('new-chat', 'Suggested', '+', 'New chat tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
-      item('terminal', 'Suggested', '>', 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell' })
+      // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
+      ...(i.terminal?.enabled ? [item('terminal', 'Suggested', '>', i.terminal?.preset ? `Big terminal tab: ${i.terminal.preset}` : 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell terminal' })] : [])
     ] : [])
   ]
 

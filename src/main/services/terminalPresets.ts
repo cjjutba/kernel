@@ -1,11 +1,11 @@
 import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
-import type { AppSettings, Chat, TerminalPreset, WorkspaceMode } from '@shared/types'
+import { KNOWN_CLIS, SKIP_FLAG, type AppSettings, type Chat, type TerminalPreset, type WorkspaceMode } from '@shared/types'
 
 type TerminalSettings = AppSettings['terminal']
 
-export const SKIP_FLAG = '--dangerously-skip-permissions'
+export { KNOWN_CLIS, SKIP_FLAG }
 /**
  * The flag as the shell hands it to `claude`: quoted, after a backslash, with `=value`, or next to `;`, `|`, `&`, `<` and `>`.
  * `--dangerously-skip-permissions-x` is another word and is left alone. A variable or an alias can't be caught (KERNEL-248).
@@ -16,15 +16,6 @@ export const BUILTIN_PRESETS: readonly TerminalPreset[] = [
   { id: 'claude', name: 'Claude', command: 'claude', builtin: true, skipsPermissions: false },
   { id: 'claude-skip', name: 'Claude without permission prompts', command: `claude ${SKIP_FLAG}`, builtin: true, skipsPermissions: true },
   { id: 'shell', name: 'Shell', command: null, builtin: true, skipsPermissions: false }
-]
-
-/** Other agent CLIs, listed when found on the PATH. Each runs its plain command; flags go in a custom command. */
-export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
-  { id: 'codex', name: 'Codex' },
-  { id: 'opencode', name: 'OpenCode' },
-  { id: 'amp', name: 'Amp' },
-  { id: 'copilot', name: 'Copilot' },
-  { id: 'gemini', name: 'Gemini' }
 ]
 
 export const skipsPermissions = (command: string) => new RegExp(SKIP_WORD.source).test(command)
