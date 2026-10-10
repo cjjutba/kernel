@@ -1200,7 +1200,9 @@ export class Kernel {
     }
     const scriptsOk = (['setup', 'run', 'archive'] as const).every((k) => after.scripts[k] === before.subject?.scripts[k] || wrote('scripts', k))
     const copyOk = JSON.stringify(after.copy) === JSON.stringify(before.subject?.copy ?? []) || wrote('files', 'copy')
-    if (!scriptsOk || !copyOk) return
+    // A named run script the save changed in the repo's text waits for the dialog (KERNEL-244).
+    const runsOk = JSON.stringify(after.runScripts ?? []) === JSON.stringify(before.subject?.runScripts ?? [])
+    if (!scriptsOk || !copyOk || !runsOk) return
     await this.trustCurrent(room, next)
     await this.releaseHeld(room.id)
   }
@@ -2704,14 +2706,16 @@ export class Kernel {
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
       'scripts.run': async ({ workspaceId, kind, name }) => {
         const ws = this.mustWs(workspaceId); const room = this.mustRoom(ws.roomId); const repo = await loadRepoSettings(room.path)
-        if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
-        const script = repo.scripts[kind]
-        if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
+        const script = kind === 'run' ? undefined : repo.scripts[kind]
+        if (kind !== 'run' && !script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
+        // Run again checks trust itself, and holds the workspace for it when the text changed.
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
+        // Every kind waits for trust, a named run script included (KERNEL-209, KERNEL-244).
         if (await this.untrusted(room, repo)) { await this.askTrust(room.id); throw new Error("Trust this room's scripts before running them.") }
         // Trusted since it was held: it sets up the way trusting releases it, brief and all.
         if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
-        void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
+        if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
+        void runScript({ workspaceId, kind, script: script!, cwd: ws.path, port: ws.port, root: room.path })
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },

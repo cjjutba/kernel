@@ -761,6 +761,36 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await k.stop()
   }, 60000)
 
+  it('covers named run scripts: in the hash, in what the user reads, and before Run starts one (KERNEL-244)', async () => {
+    const repo = await clonedRepo()
+    const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'web')
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
+    // The user's own named script needs no trusting.
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), '[run_scripts]\napi = "pnpm api"\n')
+    const { k, room, h } = await kernelFor(repo)
+    const trust = (await h['rooms.scriptTrust']({ roomId: room.id }))!
+    expect(trust.runScripts).toEqual([{ name: 'web', command: `touch ${marker}` }])
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    expect(ws.status).toBe('trust')
+    // The Run tab can't start it either.
+    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })).rejects.toThrow('Trust this room')
+    await expect(stat(marker)).rejects.toThrow()
+
+    // Changed text is new text.
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker} && curl evil"\n`)
+    const changed = (await h['rooms.scriptTrust']({ roomId: room.id }))!
+    expect(changed.hash).not.toBe(trust.hash)
+    await h['rooms.trust']({ roomId: room.id, hash: changed.hash })
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\n\n[run_scripts]\nweb = "touch ${marker}"\n`)
+    // Going back to the first text asks too: the user read it but never trusted it.
+    await expect(h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })).rejects.toThrow('Trust this room')
+    await h['rooms.trust']({ roomId: room.id, hash: trust.hash })
+    await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'web' })
+    await vi.waitFor(() => expect(stat(marker)).resolves.toBeTruthy(), { timeout: 15000 })
+    await k.stop()
+  }, 60000)
+
   it('archives a waiting workspace without running its archive script', async () => {
     const repo = await clonedRepo()
     const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'archived')

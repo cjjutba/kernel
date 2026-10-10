@@ -161,7 +161,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
 }
 
 /** The text a room runs or copies on its own: the three scripts and the files.copy list, as the room reads them. */
-export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'copy'>
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy'>
 
 /**
  * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script and the
@@ -179,8 +179,10 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
   for (const k of ['setup', 'run', 'archive'] as const) if (repo.scripts[k]?.trim() && fromRepo(`scripts.${k}`)) scripts[k] = repo.scripts[k]
   const isDefault = repo.files.copy.length === DEFAULT_COPY.length && repo.files.copy.every((f, i) => f === DEFAULT_COPY[i])
   const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
-  if (!Object.keys(scripts).length && !copy.length) return undefined
-  return { scripts, copy }
+  // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
+  const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
+  if (!Object.keys(scripts).length && !runScripts.length && !copy.length) return undefined
+  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy }
 }
 
 /**
@@ -237,7 +239,8 @@ export async function localSettingsOwn(repo: string): Promise<boolean> {
 
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
 export function trustHash(s: TrustSubject): string {
-  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy])).digest('hex')
+  const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs])).digest('hex')
 }
 
 /** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
