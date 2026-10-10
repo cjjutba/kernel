@@ -202,6 +202,9 @@ subscribe(() => {
   savedTabs = state.ui.tabs
   savePlace()
 })
+/** The workspaces whose whole chat list has been read. `chats[id]` alone can't say: a pushed chat creates the entry with just itself. Drafts use it (KERNEL-201). */
+const loadedChats = new Set<string>()
+export const chatsLoaded = (workspaceId: string) => loadedChats.has(workspaceId)
 /** Back and forward: the places you left, newest last, and the ones Back stepped over. Module level like `returnTo`, so a restart starts empty. */
 const HISTORY_LIMIT = 50
 let past: Place[] = []
@@ -385,7 +388,7 @@ export const actions = {
     })
   },
   chats: {
-    set: (workspaceId: string, list: Chat[]) => setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })),
+    set: (workspaceId: string, list: Chat[]) => { loadedChats.add(workspaceId); setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })) },
     upsert: (chat: Chat) => setState((s) => ({ chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) } })),
     setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
