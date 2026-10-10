@@ -1189,6 +1189,51 @@
       "w": 1440,
       "x": 10640,
       "y": 14300
+    },
+    "SettingsEnvironment.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Environment",
+      "w": 1440,
+      "x": 19760,
+      "y": 20800
+    },
+    "SettingsRoomEnvironment.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Environment",
+      "w": 1440,
+      "x": 21280,
+      "y": 20800
+    },
+    "SettingsEnvironmentAdd.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Environment \u00b7 add variable",
+      "w": 1440,
+      "x": 22800,
+      "y": 20800
+    },
+    "SettingsBigTerminal.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Big terminal",
+      "w": 1440,
+      "x": 24320,
+      "y": 20800
+    },
+    "SettingsRoomIcon.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 General \u00b7 icon picker",
+      "w": 1440,
+      "x": 25840,
+      "y": 20800
     }
   },
   "createdOnFiles": {
@@ -1266,7 +1311,7 @@
     },
     "row16": {
       "kind": "title1",
-      "maxW": 19680,
+      "maxW": 27280,
       "text": "17 \u00b7 Settings \u00b7 workspaces, system and rooms",
       "w": 600,
       "x": 0,
@@ -1476,6 +1521,11 @@
     "SettingsRoomScripts.dc.html",
     "SettingsRoomInstructions.dc.html",
     "SettingsRoomPermissions.dc.html",
+    "SettingsEnvironment.dc.html",
+    "SettingsRoomEnvironment.dc.html",
+    "SettingsEnvironmentAdd.dc.html",
+    "SettingsBigTerminal.dc.html",
+    "SettingsRoomIcon.dc.html",
     "HomeLight.dc.html",
     "WorkspaceLight.dc.html"
   ],

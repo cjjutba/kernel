@@ -32,7 +32,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { resolveFilesToCopy } from './services/filesToCopy'
@@ -882,7 +882,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; waitFor?: string[] }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; labels?: string[]; waitFor?: string[] }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -906,9 +906,14 @@ export class Kernel {
 
     let path: string, branch: string, baselineRef: string | undefined
     if (mode === 'worktree') {
-      // The Lead can name the branch, for a repo that names branches after its issues (KERNEL-68). A taken name gets a suffix.
-      if (o.branch && !reviewed && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
-      branch = reviewed ? await freeBranch(room.path, `${reviewed.branch}-review`) : await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
+      // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
+      // 60 characters (KERNEL-275). A taken name gets a suffix.
+      const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
+      if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
+      const issue = o.source?.kind === 'issue' ? o.source : undefined
+      const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
+      branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+        : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
       await copyLocalFiles(room.path, path, repo.files.copy)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -1519,11 +1524,11 @@ export class Kernel {
       createWorkspace: async ({ issue, ...o }) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
-        // The issue the task builds (D-140). Linear's branch name unless the Lead named one.
+        // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
         const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
-        const branch = o.branch || linked?.branchName
+        const branch = o.branch
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
-        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         if (ws.status !== 'failed') return ws
         const code = this.setupFailures.get(ws.id)
@@ -2141,8 +2146,8 @@ export class Kernel {
   async reopenPr(id: string) { const ws = await this.syncBranch(id); await this.github.reopen(ws.path, ws.branch); return this.refreshPr(id) }
 
   /**
-   * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, often
-   * to use the issue's branch name, and PRs, merge, push, archive and restore must use the branch the work is on
+   * Follows the branch a worktree workspace is really on. An agent may switch or create branches in its worktree, for
+   * example to a name the repo's own rules ask for, and PRs, merge, push, archive and restore must use the branch the work is on
    * (KERNEL-68). A PR belongs to its branch, so a switch drops the old branch's PR; the next refresh finds the new one.
    * A detached HEAD, or a folder git can't read, changes nothing.
    */
@@ -2280,13 +2285,27 @@ export class Kernel {
     }
   }
 
-  /** create_workspace's `issue`: the source to save and Linear's branch name, or the task title when Linear doesn't answer. */
-  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; branchName?: string }> {
-    if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title } }
+  /**
+   * create_workspace's `issue`: the source to save and the issue's labels, which pick the branch type, or the task title
+   * and no labels when Linear doesn't answer.
+   */
+  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[] }> {
+    if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title }, labels: [] }
     try {
       const issue = await getIssue(await this.linearKey(), key, this.linearFetch)
-      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, branchName: issue.branchName }
-    } catch { return { source: { kind: 'issue', id: key, title } } }
+      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels }
+    } catch { return { source: { kind: 'issue', id: key, title }, labels: [] } }
+  }
+
+  /**
+   * A Linear issue's labels, for a workspace started from it in the New workspace modal. Linear gets 5 seconds, and no
+   * answer means no labels, so the branch starts with feat and Linear never holds a workspace up (KERNEL-275).
+   */
+  private async issueLabels(key: string): Promise<string[]> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
+    const read = this.linearKey().then((token) => getIssue(token, key, this.linearFetch)).then((i) => i.labels, () => [])
+    try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
   }
 
   private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }

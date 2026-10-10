@@ -4,7 +4,7 @@ import { TOKEN_HEADER } from '@shared/hookEntry'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent } from '@shared/types'
 import { bus } from '../bus'
-import { describeTool, type Approvals } from './approvals'
+import { describeTool, needsUser, type Approvals } from './approvals'
 import { firstLine } from './text'
 
 export interface HookContext { roomId?: string; workspaceId?: string; agentId?: string }
@@ -57,11 +57,14 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (ev.hook_event_name === 'PermissionRequest') {
       // A session outside every room asks in its own window, as if Kernel weren't installed (D-138).
       if (!ctx.roomId) return json(res, 200, permissionResponse(null))
+      // A plan or a question belongs to the app that started the session, which answers it in its own window (KERNEL-285).
+      if (needsUser(ev.tool_name)) return json(res, 200, permissionResponse(null))
       // Claude Code stops waiting when the user answers in the terminal or the session ends, so the approval ends too.
       const closed = new AbortController()
       res.on('close', () => { if (!res.writableFinished) closed.abort() })
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
+      // Room only: Kernel can't tell which chat an outside session belongs to, so it asks in Inbox and Home, never in a workspace's chats.
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', roomId: ctx.roomId, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))
