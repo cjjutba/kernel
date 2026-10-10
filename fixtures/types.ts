@@ -56,8 +56,11 @@ export interface Fixture {
   /** What the Issues screen reads (KERNEL-159). Issues carry their detail, so the issue pane needs nothing else. */
   linear?: { issues?: LinearIssueDetail[]; scope?: LinearScope }
   settings?: AppSettings
-  /** By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources'> & Partial<Pick<RoomSettings, 'sources'>>>
+  /**
+   * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
+   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set.
+   */
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts'>>>
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */

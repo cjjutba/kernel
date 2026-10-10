@@ -29,11 +29,11 @@ import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
+import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
-import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -119,6 +119,8 @@ export class Kernel {
   private archiving = new Map<string, Promise<void>>()
   /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
   private roomRemotes = new Map<string, string | undefined>()
+  /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
+  private reservedPorts = new Set<number>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
   private setupFailures = new Map<string, number | null>()
   readonly tasks: Tasks
@@ -898,33 +900,34 @@ export class Kernel {
     const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch, remote)
       : await resolveBaseRef(room.path, o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote), { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
-    const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
-    const port = await freePort(4300, taken)
+    // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
+    const ws: Workspace = await this.withPort(async (port) => {
+      let path: string, branch: string, baselineRef: string | undefined
+      if (mode === 'worktree') {
+        // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
+        // 60 characters (KERNEL-275). A taken name gets a suffix.
+        const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
+        if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
+        const issue = o.source?.kind === 'issue' ? o.source : undefined
+        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
+        branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+          : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
+        await copyLocalFiles(room.path, path, repo.files.copy)
+        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
+      } else {
+        if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+          throw new Error('Another workspace is already working on the current branch in this room.')
+        path = room.path
+        branch = await currentBranch(room.path)
+        if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
+      }
 
-    let path: string, branch: string, baselineRef: string | undefined
-    if (mode === 'worktree') {
-      // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
-      // 60 characters (KERNEL-275). A taken name gets a suffix.
-      const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
-      if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
-      const issue = o.source?.kind === 'issue' ? o.source : undefined
-      const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
-      branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
-        : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
-      path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
-      await copyLocalFiles(room.path, path, repo.files.copy)
-      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
-    } else {
-      if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
-        throw new Error('Another workspace is already working on the current branch in this room.')
-      path = room.path
-      branch = await currentBranch(room.path)
-      if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
-    }
-
-    // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
-    this.store.saveWorkspace(ws)
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      this.store.saveWorkspace(w)
+      return w
+    })
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
     this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
@@ -1000,9 +1003,33 @@ export class Kernel {
     const done = this.updateWs(ws.id, { status: 'ready' })
     if (done.status === 'archived') return done
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
-    if (this.settings.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
+    if (this.settings.scripts.runAfterSetup && repo.scripts.run) this.startRun(done, room, repo)
     await start()
     return done
+  }
+
+  /** The first port of every open workspace's block. */
+  private openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port) }
+
+  /**
+   * The one way a workspace gets ports: a free block (`portBlock`), held in memory while `use` runs, through its awaits,
+   * until it has stored the workspace that uses it, so a second hand-off in the same turn can't pick it too (KERNEL-244).
+   * The block goes back if `use` throws.
+   */
+  private async withPort<T>(use: (port: number) => T | Promise<T>): Promise<T> {
+    const port = await portBlock(() => this.openPorts(), this.reservedPorts)
+    try { return await use(port) } finally { this.reservedPorts.delete(port) }
+  }
+
+  /**
+   * Start one of the room's run scripts (`run` when unnamed). With the room's run mode at One at a time, the run scripts in
+   * the room's other open workspaces stop first (KERNEL-244).
+   */
+  private startRun(ws: Workspace, room: Room, repo: RepoSettings, name = 'run') {
+    const script = repo.runScripts.find((r) => r.name === name)?.command
+    if (!script) throw new Error(name === 'run' ? 'No run script in .kernel/settings.toml' : `No run script named ${name} in .kernel/settings.toml`)
+    if (repo.scripts.runMode === 'single') for (const other of this.store.workspaces(room.id)) if (other.id !== ws.id && other.status !== 'archived') stopRuns(other.id)
+    void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, port: ws.port, root: room.path })
   }
 
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
@@ -1102,7 +1129,7 @@ export class Kernel {
     const room = this.mustRoom(ws.roomId)
     this.sessions.stopWorkspace(id)
     this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
-    stopScript(id, 'run')
+    stopRuns(id)
     // A setup still running would finish after the archive and report on a workspace that is gone.
     stopScript(id, 'setup')
     const repo = await loadRepoSettings(room.path)
@@ -1145,10 +1172,10 @@ export class Kernel {
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
     }
-    // Another workspace may have taken this port while it was archived.
-    const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
-    const port = taken.has(ws.port) ? await freePort(4300, taken) : ws.port
-    const back = this.updateWs(id, { archivedAt: undefined, port, status: 'ready' }, { archived: true })
+    // It keeps its port, unless another workspace took a port in its block while it was archived.
+    const clash = [...this.openPorts(), ...this.reservedPorts].some((p) => blocksOverlap(p, ws.port))
+    const back = clash ? await this.withPort((port) => this.updateWs(id, { archivedAt: undefined, port, status: 'ready' }, { archived: true }))
+      : this.updateWs(id, { archivedAt: undefined, status: 'ready' }, { archived: true })
     // A review the user brings back stays, even though the work it reviewed is done (KERNEL-136).
     this.unmarkReviews(id)
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
@@ -1480,7 +1507,8 @@ export class Kernel {
     let ws = this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
     if (!ws) {
       const room = this.mustRoom(roomId)
-      ws = this.saveWs({ id: newId(), roomId, name: 'lead', branch: await currentBranch(room.path), baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port: await freePort(4300), status: 'ready', prState: 'none', createdAt: Date.now() })
+      const branch = await currentBranch(room.path)
+      ws = await this.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', branch, baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
     }
     return { ws, lead }
   }
@@ -2374,7 +2402,12 @@ export class Kernel {
       'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
       'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'git.branches': async ({ roomId }) => { const { path } = this.mustRoom(roomId); return listBranches(path, await this.remoteFor(path)) },
+      'git.branches': async ({ roomId }) => {
+        const { path } = this.mustRoom(roomId)
+        const repo = await loadRepoSettings(path)
+        this.roomRemotes.set(path, repo.workspace.remote)
+        return listBranches(path, configuredRemote(repo, this.settings))
+      },
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ query }) => searchIssues(await this.linearKey(), query, this.linearFetch),
@@ -2474,15 +2507,16 @@ export class Kernel {
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
-      'scripts.run': async ({ workspaceId, kind }) => {
+      'scripts.run': async ({ workspaceId, kind, name }) => {
         const ws = this.mustWs(workspaceId); const room = this.mustRoom(ws.roomId); const repo = await loadRepoSettings(room.path)
+        if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
         const script = repo.scripts[kind]
         if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
         void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
         return { ok: true }
       },
-      'scripts.stop': async ({ workspaceId }) => { stopScript(workspaceId, 'run'); return { ok: true } },
+      'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
       'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
       'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
       'rooms.lastActivity': async ({ roomId }) => this.store.lastActivity(roomId),
@@ -2491,7 +2525,13 @@ export class Kernel {
       'settings.set': async ({ patch }) => this.setSettings(patch),
       'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
       'app.exportLogs': async () => this.exportLogs(),
-      'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path),
+      'settings.room': async ({ roomId }) => {
+        const { path } = this.mustRoom(roomId)
+        const rs = await loadRepoSettings(path)
+        // A read refreshes the room's remote as a save does, so a file edited outside Kernel takes effect (KERNEL-244).
+        this.roomRemotes.set(path, rs.workspace.remote)
+        return rs
+      },
       'settings.setRoom': async ({ roomId, patch, shared }) => {
         const { path } = this.mustRoom(roomId)
         const next = await saveRepoSettings(path, patch, shared)

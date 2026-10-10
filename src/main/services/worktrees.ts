@@ -70,12 +70,13 @@ export const stripRemote = (ref: string, remote = 'origin') => (ref.startsWith(`
 export const onRemote = (ref: string, remote = 'origin') => (remote !== 'origin' && ref.startsWith('origin/') ? `${remote}/${ref.slice('origin/'.length)}` : ref)
 
 /**
- * Local branches and the room remote's, newest first, for the From popover and the target branch menu. `<remote>/HEAD`
- * is left out.
+ * Local branches and remote branches, newest first, for the From popover and the target branch menu. With `remote`, only that
+ * remote's branches are listed; without one, every remote's, as before KERNEL-190 (KERNEL-244). `<remote>/HEAD` is left out.
  */
-export async function listBranches(repo: string, remote = 'origin'): Promise<string[]> {
-  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', `refs/remotes/${remote}`)
-  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== remote && !l.endsWith('/HEAD'))
+export async function listBranches(repo: string, remote?: string): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', remote ? `refs/remotes/${remote}` : 'refs/remotes')
+  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && !l.endsWith('/HEAD'))
+    .map((l) => l.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, ''))
   return [...new Set(names)]
 }
 
