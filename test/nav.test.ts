@@ -284,3 +284,36 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
     expect(launchRoute()).toEqual({ name: 'home' })
   })
 })
+
+// KERNEL-191 put each room's settings under the room, as a section of the room page. KERNEL-201 must keep them working.
+describe('a room Settings page with a section', () => {
+  const page: Route = { name: 'settings', page: 'room', roomId: 'r2', section: 'git' }
+
+  it('⌘, reopens it with its section, and Back to app returns to where Settings was opened from', () => {
+    actions.ui.go(at('lead'))
+    actions.ui.go(page)
+    actions.ui.leaveSettings()
+    expect(route()).toEqual(at('lead'))
+    actions.ui.openSettings()
+    expect(route()).toEqual(page)
+  })
+  it('falls back to General when its room is removed', () => {
+    actions.ui.go(page)
+    actions.ui.leaveSettings()
+    actions.rooms.remove('r2')
+    actions.ui.openSettings()
+    expect(route()).toEqual({ name: 'settings', page: 'general' })
+  })
+  it('saves the place it was opened from, never the room page, for the page and for moving between pages', () => {
+    actions.ui.go(at('lead'))
+    actions.ui.openTab('lead', 'c2')
+    actions.ui.go(page)
+    expect(placeToSave(getState(), { route: at('lead') })?.route).toEqual(at('lead'))
+    actions.ui.go({ ...page, section: 'scripts' } as Route)
+    expect(placeToSave(getState(), { route: at('lead') })?.route).toEqual(at('lead'))
+    expect(placeToSave(getState(), { route: at('lead') })?.tabs.lead.tab).toBe('c2')
+  })
+  it('is never restored: a saved room page opens nothing', () => {
+    expect(restorePlace(JSON.stringify({ v: 1, route: page, tabs: {} }), getState())).toBeUndefined()
+  })
+})

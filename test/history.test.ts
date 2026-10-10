@@ -342,6 +342,15 @@ describe('the saved place', () => {
     actions.ui.openTab('lead', 'file:a.ts')
     expect(saved().route).toEqual(at('lead'))
   })
+  it('saves the place a room Settings page was opened from, and keeps it across its sections', () => {
+    go(at('lead'))
+    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'git' })
+    expect(saved().route).toEqual(at('lead'))
+    go({ name: 'settings', page: 'room', roomId: 'r1', section: 'scripts' })
+    expect(saved().route).toEqual(at('lead'))
+    actions.ui.leaveSettings()
+    expect(saved().route).toEqual(at('lead'))
+  })
   it('saves an image or text tab as the chat you were last on', () => {
     go(at('lead'))
     actions.ui.openTab('lead', 'c2')
