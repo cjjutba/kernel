@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LinearIssue, LinearScope, Workspace } from '../src/shared/types'
-import { describeFilter, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
+import { clearedFilter, describeFilter, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -126,6 +126,12 @@ describe('filters', () => {
   it('chooses the only team', () => {
     expect(fitFilter({ mine: true }, { ...scope, teams: [scope.teams[0]] }).teamId).toBe('t1')
     expect(fitFilter({ mine: true }, scope).teamId).toBeUndefined()
+  })
+
+  it('clears every narrowing, Mine included', () => {
+    expect(clearedFilter(scope)).toEqual({ mine: false, teamId: undefined, projectId: undefined, cycleId: undefined })
+    expect(clearedFilter({ ...scope, teams: [scope.teams[0]] }).teamId).toBe('t1')
+    expect(clearedFilter({ ...scope, teams: [scope.teams[0]] }).mine).toBe(false)
   })
 
   it('says what nothing matched', () => {

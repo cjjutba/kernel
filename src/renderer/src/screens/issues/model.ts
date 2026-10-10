@@ -3,7 +3,7 @@ import type { IssueStateShape } from '../../icons'
 
 /**
  * The groups, top to bottom. Triage comes first as Linear shows it: those issues wait on a decision (IssuesWorking.png). The list holds
- * open issues only (D-141), so there are no Done or Canceled groups.
+ * open issues only (KERNEL-160), so there are no Done or Canceled groups.
  */
 export const GROUP_ORDER: LinearStateType[] = ['triage', 'started', 'unstarted', 'backlog']
 const rank = (t: LinearStateType) => { const i = GROUP_ORDER.indexOf(t); return i < 0 ? GROUP_ORDER.length : i }
@@ -136,6 +136,9 @@ export function fitFilter(f: SavedFilter, scope: LinearScope): SavedFilter {
     cycleId: cycle && (!teamId || cycle.teamId === teamId) ? cycle.id : undefined
   }
 }
+
+/** Clear filters: every narrowing off. Mine becomes All, and search, team, project and cycle are dropped. With one team in the workspace that team stays, as it narrows nothing. */
+export const clearedFilter = (scope: LinearScope): SavedFilter => fitFilter({ mine: false }, scope)
 
 /** The projects and cycles offered for the chosen team, or for every team when none is chosen. */
 export const projectsFor = (scope: LinearScope, teamId?: string) => scope.projects.filter((p) => !teamId || p.teamIds.includes(teamId))

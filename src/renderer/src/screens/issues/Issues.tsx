@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { LinearIssue, LinearScope } from '@shared/types'
 import { call } from '../../api'
-import { go, useStore } from '../../store'
+import { getState, go, useStore } from '../../store'
 import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
 import { SidebarToggle } from '../../components/PanelToggles'
 import { IssueDetail } from './IssueDetail'
 import {
-  cyclesFor, cycleLabel, describeFilter, DEFAULT_FILTER, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
+  clearedFilter, cyclesFor, cycleLabel, describeFilter, DEFAULT_FILTER, fitFilter, FILTER_KEY, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces,
   parseFilter, projectsFor, rowStatus, serializeFilter, stateShape, workspaceSlug, type SavedFilter
 } from './model'
 import './issues.css'
@@ -149,33 +149,25 @@ export function Issues({ issueId }: { issueId?: string }) {
     return new Map(flat.map((i) => [i.id, rowStatus(linkedWorkspaces(i.id, workspaces), agents, runningOf)]))
   }, [flat, workspaces, agents, chats, running])
 
-  // Up and down move through the list, Enter hands focus to the issue's buttons. Typing in a field is left alone.
-  const keys = useRef({ flat, selId })
-  keys.current = { flat, selId }
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || typing(t)) return
-      const { flat, selId } = keys.current
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        if (!flat.length) return
-        e.preventDefault()
-        const at = flat.findIndex((i) => i.id === selId)
-        const next = flat[Math.max(0, Math.min(flat.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))]
-        setSel(next.id)
-        const row = document.getElementById(`is-${next.id}`)
-        row?.focus()
-        row?.scrollIntoView({ block: 'nearest' })
-      } else if (e.key === 'Enter' && t?.closest('.is-list')) {
-        const id = t.closest('.is-row')?.id.replace(/^is-/, '')
-        if (id) setSel(id)
-        e.preventDefault()
-        detail.current?.querySelector<HTMLElement>('.is-actions a, .is-actions button')?.focus()
-      }
+  // Up and down move through the list, Enter hands focus to the issue's buttons. It listens on the list, so a modal or a field elsewhere never moves the selection.
+  const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || typing(e.target as HTMLElement) || getState().ui.modal) return
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!flat.length) return
+      e.preventDefault()
+      const at = flat.findIndex((i) => i.id === selId)
+      const next = flat[Math.max(0, Math.min(flat.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))]
+      setSel(next.id)
+      const row = document.getElementById(`is-${next.id}`)
+      row?.focus()
+      row?.scrollIntoView({ block: 'nearest' })
+    } else if (e.key === 'Enter') {
+      const id = (e.target as HTMLElement).closest('.is-row')?.id.replace(/^is-/, '')
+      if (id) setSel(id)
+      e.preventDefault()
+      detail.current?.querySelector<HTMLElement>('.is-actions a, .is-actions button')?.focus()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }
 
   const shown: View = !online && (view.kind === 'ready' || view.kind === 'error') ? UNREACHABLE : view
   const ready = shown.kind === 'ready' && scope
@@ -237,14 +229,14 @@ export function Issues({ issueId }: { issueId?: string }) {
           <div className="is-center is-state">
             <h2>{none ? 'No open issues' : 'No issues match'}</h2>
             <p>{none ? `Nothing is open in ${d.where}.` : `Nothing in ${d.where} fits ${joinFits(d.fits)}. ${filter.mine ? 'Try All instead of Mine, or clear the filters.' : 'Try clearing the filters.'}`}</p>
-            {!none && <Button size="lg" onClick={() => { setQuery(''); set({ projectId: undefined, cycleId: undefined }) }}>Clear filters</Button>}
+            {!none && <Button size="lg" onClick={() => { setQuery(''); setFilter(clearedFilter(scope)) }}>Clear filters</Button>}
           </div>
         )
       })()}
 
       {ready && flat.length > 0 && (
         <div className="is-body">
-          <div className="is-list" aria-label="Issues">
+          <div className="is-list" aria-label="Issues" onKeyDown={onListKey}>
             {groups.map((g) => (
               <section key={`${g.type}:${g.name}`} aria-label={g.name}>
                 <h3 className="is-group"><span className="is-slot"><IssueState shape={stateShape(g.type)} /></span><span>{g.name}</span><span className="muted">{g.issues.length}</span></h3>
