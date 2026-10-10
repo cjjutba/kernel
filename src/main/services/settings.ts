@@ -93,6 +93,20 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   return out
 }
 
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
+
+/** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
+function runScriptsOf(table: unknown): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!table || typeof table !== 'object') return out
+  for (const [name, command] of Object.entries(table)) if (!isRunName(name) && RUN_SCRIPT_NAME.test(name) && typeof command === 'string' && command.trim()) out.set(name, command)
+  return out
+}
+
 /** One settings file's values by app-side name, with the same whitelist for both files. */
 function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
@@ -111,17 +125,26 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const shared = roomValues(await readToml(repoFile(repo, 'settings.toml')))
-  const local = roomValues(await readToml(repoFile(repo, 'settings.local.toml')))
+  const sharedDoc = await readToml(repoFile(repo, 'settings.toml'))
+  const localDoc = await readToml(repoFile(repo, 'settings.local.toml'))
+  const shared = roomValues(sharedDoc)
+  const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
   const sources: RoomSettings['sources'] = {}
   for (const g of GROUPS) {
     merged[g] = { ...shared[g], ...local[g] }
     for (const k of Object.keys(merged[g])) sources[`${g}.${k}`] = k in shared[g] && k in local[g] ? 'override' : k in local[g] ? 'local' : 'shared'
   }
+  // Named run scripts: the shared file's order, then names only the personal file has. `run` reads as `[scripts] run`.
+  const sharedRuns = runScriptsOf(sharedDoc.run_scripts)
+  const localRuns = runScriptsOf(localDoc.run_scripts)
+  const runs = new Map([...sharedRuns, ...localRuns])
+  for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
+  if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
   const { scripts, files, workspace, disabled, linear, pr } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
+    runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
     files: { copy: files.copy ?? ['.env', '.env.local'], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
@@ -133,18 +156,26 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
 
 /**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
- * A `null` or an empty string removes the key, so the other file or the app default applies again. The other file is left alone.
+ * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
+ * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
   const doc = await readToml(file)
   const set = (table: string, key: string, value: unknown) => {
     const t = (doc[table] ??= {}) as Record<string, unknown>
-    if (value === null || value === undefined || value === '') delete t[key]
+    // A blank text is unset, the way `prInstructions` reads it (KERNEL-244).
+    if (value === null || value === undefined || (typeof value === 'string' && !value.trim())) delete t[key]
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
   for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), v)
+  for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
+    if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
+    // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).
+    if (isRunName(name)) set('scripts', 'run', command)
+    else set('run_scripts', name, command)
+  }
   // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).
   if (!shared && !Object.keys(doc).length) {
     await rm(file, { force: true })
@@ -166,6 +197,15 @@ export function prInstructions(app: PrInstructions, room?: Partial<PrInstruction
 /** The git remote a room fetches from and pushes to: the room's, then the app's, then `origin` (KERNEL-190). */
 export const remoteOf = (room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string =>
   room.workspace.remote?.trim() || app?.workspace.remote?.trim() || 'origin'
+
+/**
+ * The remote a room or the app names on purpose, else nothing. The app's `origin` is its default and can't be told apart from
+ * one nobody set, so it doesn't count. The branch list narrows to this remote only when there is one (KERNEL-244).
+ */
+export function configuredRemote(room: Pick<RoomSettings, 'workspace'>, app: Pick<AppSettings, 'workspace'> | undefined): string | undefined {
+  const appRemote = app?.workspace.remote?.trim()
+  return room.workspace.remote?.trim() || (appRemote && appRemote !== 'origin' ? appRemote : undefined)
+}
 
 const LOCAL_SETTINGS = '.kernel/settings.local.toml'
 

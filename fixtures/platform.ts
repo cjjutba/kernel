@@ -60,6 +60,7 @@ const accountUsage: RateLimit[] = [
 // `sources` says which file set what: both files are there, so the settings files button offers both.
 const kernelFiles: RoomSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
+  runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
   workspace: { baseRef: 'origin/dev' },
   disabled: { skills: [], mcp: ['Figma'] },
