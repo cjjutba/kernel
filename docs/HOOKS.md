@@ -40,8 +40,12 @@ Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, s
 
 ## Permission requests
 
-The server holds a `PermissionRequest` open and creates an approval in the Inbox. When the user decides, it answers with `hookSpecificOutput.decision` (`allow`, or `deny` with a message). If nobody decides within the approval timeout (Settings > Permissions, 300s default), it answers `{}` and Claude Code falls back to its normal prompt in the terminal. curl prints the answer to stdout, where Claude Code reads it. curl's `-m` is the approval timeout plus 20s and the hook's `timeout` is plus 30s, so the server always answers first and curl exits before Claude Code would kill it.
+Kernel only asks about sessions inside one of its rooms (D-137). A `PermissionRequest` whose `cwd` maps to no room gets `{}` at once and opens no approval, so Superset, Conductor and terminal sessions elsewhere on the Mac ask in their own window as if Kernel weren't installed.
+
+For a session in a room, the server holds the `PermissionRequest` open and creates an approval in the Inbox. When the user decides, it answers with `hookSpecificOutput.decision` (`allow`, or `deny` with a message). If nobody decides within the approval timeout (Settings > Permissions, 300s default), it answers `{}` and Claude Code falls back to its normal prompt in the terminal. curl prints the answer to stdout, where Claude Code reads it. curl's `-m` is the approval timeout plus 20s and the hook's `timeout` is plus 30s, so the server always answers first and curl exits before Claude Code would kill it.
+
+When Claude Code stops waiting first (the user answers in the terminal, the session ends, or curl's `-m` runs out), the request closes. The server aborts the approval, which turns `expired` and leaves Needs you.
 
 ## Mapping a session to a room
 
-The hook body's `cwd` is matched against open workspace paths (longest match first), then room paths. Sessions Kernel started are skipped, because their in-process hooks already report.
+Kernel matches the hook body's `cwd` against open workspace paths (longest match first), then room paths. A workspace's worktree can sit outside its room's folder and still maps to that room. Sessions Kernel started are skipped, because their in-process hooks already report.
