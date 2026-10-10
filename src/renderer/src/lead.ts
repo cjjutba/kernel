@@ -53,7 +53,8 @@ export async function openRoom(roomId: string): Promise<void> {
 
 /**
  * Opens one of the Lead's chats: the Lead's workspace with that chat's tab selected. The workspace screen clears the tab when the
- * workspace changes, so the tab is set after the navigation, and only if the Lead's workspace is the one on screen (`openLead`
+ * workspace changes. `openLead` navigates before it returns, so the screen has cleared the tab by the time the `await` resumes and
+ * the tab set here survives; setting it in the same tick as `go` would lose it. The tab is set only if the Lead's workspace is the one on screen (`openLead`
  * swallows its errors). When it is on screen already, the tab is set at once.
  */
 export async function openLeadChat(roomId: string, chatId: string): Promise<void> {

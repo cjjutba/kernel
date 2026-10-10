@@ -15,7 +15,7 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
-import { leadHomeOf, liveWorkspaces, openLeadChats, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { leadHomeOf, liveWorkspaces, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -102,12 +102,12 @@ function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: R
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.chatId === chat.id && a.status === 'pending'), [approvals, chat.id])
   const running = useStore((s) => !!s.running[chat.id])
-  // A workspace with no tab chosen opens on its first chat.
+  // A workspace with no tab chosen opens on its first tab that isn't closed, as the workspace screen does.
   const current = useStore((s) => {
     const r = s.ui.route
     if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
     const tab = s.ui.workspace.tab
-    return tab ? tab === chat.id : openLeadChats(s.rooms.find((x) => x.id === roomId)!, s.agents, s.workspaces, s.chats)[0]?.id === chat.id
+    return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
   })
   const g = chatGlyph({ waiting, running })
   return (

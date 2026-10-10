@@ -39,9 +39,17 @@ describe('sidebar rows', () => {
   it('numbers the same rows top to bottom and stops at nine', () => {
     const many = Array.from({ length: 12 }, (_, i) => ws(`w${i}`, { leadChatId: i < 6 ? 'c1' : undefined }))
     const chats = { home: [chat('c1'), chat('c2')] }
-    expect(keys(slotsFor(room, agents, [home, ...many], chats))).toEqual(keys(sidebarRows(room, agents, [home, ...many], chats)).slice(0, 9))
-    expect(slotsFor(room, agents, [home, ...many], chats)).toHaveLength(9)
+    expect(keys(slotsFor(room, agents, [home, ...many], chats))).toEqual([
+      'chat:c1', 'workspace:w0', 'workspace:w1', 'workspace:w2', 'workspace:w3', 'workspace:w4', 'workspace:w5', 'chat:c2', 'workspace:w6'
+    ])
     // A room with only the Lead row numbers it first.
     expect(keys(slotsFor(room, agents, [], {}))).toEqual(['lead'])
+  })
+
+  it('draws a workspace as unowned when its chat is archived with it or no chat is open', () => {
+    const rows = sidebarRows(room, agents, [home, ws('w1', { leadChatId: 'c1', status: 'archived' }), ws('w2', { leadChatId: 'c1' })], { home: [chat('c1')] })
+    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w2'])
+    const noChat = sidebarRows(room, agents, [ws('w3', { leadChatId: 'c1' })], {})
+    expect(noChat.map((r) => r.kind === 'workspace' && r.nested)).toEqual([false, false])
   })
 })
