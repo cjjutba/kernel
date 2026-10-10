@@ -486,7 +486,7 @@ export interface Approval {
 
 export type Decision =
   | { behavior: 'allow'; always?: boolean }
-  /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-133). */
+  /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-134). */
   | { behavior: 'deny'; message?: string; images?: { name: string; dataUrl: string }[] }
   | { behavior: 'answer'; text: string }
 

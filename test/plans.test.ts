@@ -49,7 +49,7 @@ describe('saved plans', () => {
   })
 })
 
-// D-133: images sent with a change request are saved in the workspace, out of git, and named in the denial.
+// D-134: images sent with a change request are saved in the workspace, out of git, and named in the denial.
 
 const png = (bytes: string) => `data:image/png;base64,${Buffer.from(bytes).toString('base64')}`
 

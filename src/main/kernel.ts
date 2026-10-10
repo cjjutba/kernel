@@ -1063,7 +1063,7 @@ export class Kernel {
   }
 
   /**
-   * A plan's change request with images: saves them in the workspace and names their paths in the message (D-133).
+   * A plan's change request with images: saves them in the workspace and names their paths in the message (D-134).
    * A plan is ExitPlanMode or the Lead's `request_plan_approval`, the same test as the composer's `isPlanApproval`.
    */
   async withAttachments(id: string, decision: Decision): Promise<Decision> {
