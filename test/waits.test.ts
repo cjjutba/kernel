@@ -53,8 +53,8 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   const gh = { prs: new Map<string, PrInfo>() }
   const fake = (k: Kernel) => {
-    // A start with work to carry on reads the account (KERNEL-215). The real one runs `claude auth status`.
-    k.accountReader = async () => ({ signedIn: true })
+    // A start with work to carry on checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
+    k.signedInReader = async () => true
     k.github = {
       info: async (_cwd, ref, workspaceId) => { const pr = gh.prs.get(ref); return pr ? { ...pr, workspaceId } : null },
       merge: async (_cwd, ref) => { const pr = gh.prs.get(ref); if (pr) { await land(origin, `pr-${pr.number}.txt`); gh.prs.set(ref, { ...pr, state: 'merged' }) } },

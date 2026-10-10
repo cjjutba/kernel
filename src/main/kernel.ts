@@ -35,7 +35,7 @@ import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
-import { readAccount, signOut } from './services/account'
+import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
@@ -360,12 +360,21 @@ export class Kernel {
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
     const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
-    // Offline or signed out, what carries on must wait instead of spending its turn on the failure. Nothing has run yet to
-    // notice either, so ask once: the probe the network monitor just started, and the account.
+    // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
+    // to notice either. Every room waits on 'launch' while the network probe and a sign-in read run in the background, so
+    // the window and the rest of start don't wait for them. Only the carried-on chats and sends do, for those seconds.
     if (this.sessions.wasWorking() || Object.keys(cutOff).length) {
-      await this.network?.check()
-      const account = await this.readAccount().catch(() => undefined)
-      if (account && !account.signedIn) this.signedOut()
+      this.sessions.holdAll('launch')
+      void (async () => {
+        try {
+          await this.network?.check()
+          const signedIn = await this.signedInReader().catch(() => true)
+          if (!signedIn && !this.stopped) this.signedOut()
+        } finally {
+          // A stopped Kernel's database is closed, and releasing would send what waited.
+          if (!this.stopped) this.sessions.releaseAll('launch')
+        }
+      })()
     }
     const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
     this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], cutOff, held, { clean })
@@ -465,6 +474,8 @@ export class Kernel {
 
   /** Reads `claude auth status`. Tests swap it for a stub. */
   accountReader: () => Promise<ClaudeAccount> = readAccount
+  /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
+  signedInReader: () => Promise<boolean> = claudeSignedIn
   private authTimer?: NodeJS.Timeout
 
   /**

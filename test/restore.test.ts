@@ -117,11 +117,13 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     return { k, where, room, lead, leadWs, ws, kai }
   }
 
-  async function relaunch(where: { dataDir: string; home: string }, o: { signedIn?: boolean } = {}) {
+  async function relaunch(where: { dataDir: string; home: string }, o: { signedIn?: () => Promise<boolean> } = {}) {
     const before = sdk.calls.length
     const k = new Kernel(where)
-    k.accountReader = async () => ({ signedIn: o.signedIn ?? true })
+    k.signedInReader = o.signedIn ?? (async () => true)
     await k.start()
+    // Carried-on chats wait for the launch check, which runs in the background after start().
+    await flush()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     return { k, before }
   }
@@ -182,11 +184,25 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     } finally { sdk.onQuery = undefined }
   }, 30000)
 
+  it('carries on once the launch check finishes, and lets go of every room even when the check throws', async () => {
+    const { k, where, kai } = await working()
+    await k.stop()
+    const { k: k2 } = await relaunch(where, { signedIn: async () => { throw new Error('claude is not installed') } })
+    expect(k2.sessions.heldFor()).toEqual([])
+    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+  }, 30000)
+
   it('waits for sign-in when Claude Code is signed out at launch, then carries on', async () => {
     const { k, where, lead, kai } = await working()
     await k.stop()
-    const { k: k2, before } = await relaunch(where, { signedIn: false })
-    // Nothing started: the notes are there and both chats wait for the sign-in.
+    // The sign-in read is slow, as `claude auth status` can be. start() doesn't wait for it.
+    let answer!: (signedIn: boolean) => void
+    const { k: k2, before } = await relaunch(where, { signedIn: () => new Promise((r) => { answer = r }) })
+    expect(k2.sessions.heldFor()).toEqual(['launch'])
+    expect(sdk.calls.length).toBe(before)
+    // Signed out: the launch hold becomes a sign-in hold. Nothing started, the notes are there and both chats wait.
+    answer(false)
+    await flush()
     expect(sdk.calls.length).toBe(before)
     expect(k2.sessions.heldFor()).toEqual(['auth'])
     expect(k2.sessions.isRunning(kai.id)).toBe(false)
