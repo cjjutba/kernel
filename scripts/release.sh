@@ -44,7 +44,7 @@ node scripts/release-notes.ts --app "$version" > "$tmp/app-notes.md"
 echo "release: building Kernel $version"
 rm -rf dist
 pnpm exec electron-vite build
-# The same notes ship inside the app, for What's new when no update is ready (D-136). The file is named after the
+# The same notes ship inside the app, for What's new when no update is ready (D-137). The file is named after the
 # version, so a later local build never shows an older release's notes.
 rm -rf out/release-notes && mkdir -p out/release-notes
 cp "$tmp/app-notes.md" "out/release-notes/$version.md"
