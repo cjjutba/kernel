@@ -385,6 +385,8 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
+  terminal?: { preset: string; command: string | null }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
   createdAt: number
@@ -876,7 +878,21 @@ export interface AppSettings {
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
+  experimental: { walking: boolean; floor3d: boolean; voice: boolean }
+}
+
+/**
+ * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).
+ * `command` is typed into the login shell, null for a plain shell. `builtin` is false for custom commands only.
+ */
+export interface TerminalPreset {
+  id: string
+  name: string
+  command: string | null
+  builtin: boolean
+  skipsPermissions: boolean
 }
 
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
