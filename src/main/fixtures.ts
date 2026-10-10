@@ -2,7 +2,7 @@ import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, 
 import type { Fixture } from '../../fixtures'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, isRunName } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 
@@ -220,6 +220,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       const file = shared ? 'shared' : 'local'
       const other = shared ? 'local' : 'shared'
       const runs = new Map(cur.runScripts.map((r) => [r.name, r.command]))
+      // `RUN` and `Run` are `run`, as in the engine.
+      if (patch.runScripts) patch = { ...patch, runScripts: Object.fromEntries(Object.entries(patch.runScripts).map(([k, v]) => [isRunName(k) ? 'run' : k, v])) }
       for (const [group, values] of Object.entries(patch)) {
         const g = group === 'runScripts' ? Object.fromEntries(runs) : { ...(cur as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
         for (const [k, v] of Object.entries(values ?? {})) {

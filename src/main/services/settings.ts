@@ -96,11 +96,14 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
 /** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
 export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
 
-/** The `[run_scripts]` table's scripts in file order. A bad name, `run` or a value that isn't a command is left out. */
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
+
+/** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
 function runScriptsOf(table: unknown): Map<string, string> {
   const out = new Map<string, string>()
   if (!table || typeof table !== 'object') return out
-  for (const [name, command] of Object.entries(table)) if (name !== 'run' && RUN_SCRIPT_NAME.test(name) && typeof command === 'string' && command.trim()) out.set(name, command)
+  for (const [name, command] of Object.entries(table)) if (!isRunName(name) && RUN_SCRIPT_NAME.test(name) && typeof command === 'string' && command.trim()) out.set(name, command)
   return out
 }
 
@@ -170,7 +173,7 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
     if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
     // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).
-    if (name === 'run') set('scripts', 'run', command)
+    if (isRunName(name)) set('scripts', 'run', command)
     else set('run_scripts', name, command)
   }
   // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).

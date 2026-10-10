@@ -900,29 +900,30 @@ export class Kernel {
     const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch, remote)
       : await resolveBaseRef(room.path, o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote), { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
-    let path: string, branch: string, baselineRef: string | undefined
-    if (mode === 'worktree') {
-      // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
-      // 60 characters (KERNEL-275). A taken name gets a suffix.
-      const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
-      if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
-      const issue = o.source?.kind === 'issue' ? o.source : undefined
-      const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
-      branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
-        : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
-      path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
-      await copyLocalFiles(room.path, path, repo.files.copy)
-      if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
-    } else {
-      if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
-        throw new Error('Another workspace is already working on the current branch in this room.')
-      path = room.path
-      branch = await currentBranch(room.path)
-      if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
-    }
+    // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
+    const ws: Workspace = await this.withPort(async (port) => {
+      let path: string, branch: string, baselineRef: string | undefined
+      if (mode === 'worktree') {
+        // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
+        // 60 characters (KERNEL-275). A taken name gets a suffix.
+        const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
+        if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
+        const issue = o.source?.kind === 'issue' ? o.source : undefined
+        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
+        branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+          : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
+        await copyLocalFiles(room.path, path, repo.files.copy)
+        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
+      } else {
+        if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
+          throw new Error('Another workspace is already working on the current branch in this room.')
+        path = room.path
+        branch = await currentBranch(room.path)
+        if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
+      }
 
-    // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-    const ws: Workspace = await this.withPort((port) => {
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
       const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
@@ -1011,12 +1012,13 @@ export class Kernel {
   private openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port) }
 
   /**
-   * The one way a workspace gets ports: a free block (`portBlock`), held in memory until `save` has stored the workspace
-   * that uses it, so a second hand-off in the same turn can't pick it too (KERNEL-244).
+   * The one way a workspace gets ports: a free block (`portBlock`), held in memory while `use` runs, through its awaits,
+   * until it has stored the workspace that uses it, so a second hand-off in the same turn can't pick it too (KERNEL-244).
+   * The block goes back if `use` throws.
    */
-  private async withPort<T>(save: (port: number) => T): Promise<T> {
+  private async withPort<T>(use: (port: number) => T | Promise<T>): Promise<T> {
     const port = await portBlock(() => this.openPorts(), this.reservedPorts)
-    try { return save(port) } finally { this.reservedPorts.delete(port) }
+    try { return await use(port) } finally { this.reservedPorts.delete(port) }
   }
 
   /**

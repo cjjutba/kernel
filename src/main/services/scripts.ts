@@ -112,10 +112,13 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
 const STOP_GRACE_MS = 3000
 
 /** Kill the whole process group so dev servers started by the script die too. A run script without a name is `run`. */
-export function stopScript(workspaceId: string, kind: Kind, name?: string) {
+export function stopScript(workspaceId: string, kind: Kind, name?: string, o: { now?: boolean } = {}) {
   const k = key(workspaceId, kind, nameOf(kind, name))
   const child = running.get(k)?.child
-  if (child?.pid) {
+  if (child?.pid && o.now) {
+    // Kernel is quitting and no timer would outlive it, so the group dies now.
+    try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+  } else if (child?.pid) {
     const group = -child.pid
     try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
     // A server that ignores SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the
@@ -134,4 +137,5 @@ export const runningRuns = (workspaceId: string): string[] =>
 /** Stop every run script in a workspace (KERNEL-244). */
 export function stopRuns(workspaceId: string) { for (const name of runningRuns(workspaceId)) stopScript(workspaceId, 'run', name) }
 
-export function stopAllScripts() { for (const r of [...running.values()]) stopScript(r.workspaceId, r.kind, r.name) }
+/** On quit: every script's process group gets SIGKILL at once, so a server that ignores SIGTERM doesn't outlive Kernel. */
+export function stopAllScripts() { for (const r of [...running.values()]) stopScript(r.workspaceId, r.kind, r.name, { now: true }) }

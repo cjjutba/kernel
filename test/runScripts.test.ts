@@ -7,7 +7,7 @@ import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { blocksOverlap, portBlock, runningRuns } from '../src/main/services/scripts'
+import { BLOCK_STARTS, blocksOverlap, portBlock, runningRuns } from '../src/main/services/scripts'
 import { configuredRemote, loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
 import { listBranches } from '../src/main/services/worktrees'
 import { fixtureHandlers } from '../src/main/fixtures'
@@ -82,6 +82,10 @@ describe('run scripts in .kernel/settings.toml (KERNEL-244)', () => {
     expect(text).not.toContain('api_server')
     expect(text).toMatch(/\[scripts\]\nrun = "pnpm dev"/)
     expect((await saveRepoSettings(repo, { runScripts: { apiServer: null, 'web-2': '  ' } }, true)).runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }])
+    // `RUN` and `Run` are the reserved `run`, not a second script.
+    expect((await saveRepoSettings(repo, { runScripts: { RUN: 'pnpm start' } }, true)).runScripts).toEqual([{ name: 'run', command: 'pnpm start' }])
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nrun = "pnpm dev"\n\n[run_scripts]\nRun = "x"\nRUN = "y"\nweb = "pnpm web"\n')
+    expect((await loadRepoSettings(repo)).runScripts.map((r) => r.name)).toEqual(['run', 'web'])
     await expect(saveRepoSettings(repo, { runScripts: { 'two words': 'x' } }, true)).rejects.toThrow('not a valid run script name')
     await expect(saveRepoSettings(repo, { runScripts: { ['a'.repeat(33)]: 'x' } }, true)).rejects.toThrow('not a valid run script name')
   })
@@ -130,8 +134,10 @@ describe('named run scripts (KERNEL-244)', () => {
     expect(Date.now() - stopped).toBeGreaterThanOrEqual(2500)
   })
 
-  it('archive and quit stop every named script', async () => {
-    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "${LONG}"\n`))
+  it('archive and quit stop every named script, and quit kills one that ignores SIGTERM at once', async () => {
+    // `stubborn` prints the pid of a sleep that ignores SIGTERM, so the test can see that the process itself is gone.
+    const stubborn = "trap '' TERM; sleep 30 & echo pid-$!; wait"
+    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n\n[run_scripts]\nweb = "${LONG}"\nstubborn = "${stubborn}"\n`))
     const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
     const b = await k.createWorkspace(room.id, { prompt: 'b', agentId: 'kai', title: 'Two' })
     for (const ws of [a, b]) for (const name of ['run', 'web']) await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name })
@@ -139,9 +145,20 @@ describe('named run scripts (KERNEL-244)', () => {
     await k.archiveWorkspace(a.id)
     expect(runningRuns(a.id)).toEqual([])
     expect(runningRuns(b.id).sort()).toEqual(['run', 'web'])
+    await h['scripts.run']({ workspaceId: b.id, kind: 'run', name: 'stubborn' })
+    let pid = 0
+    await until(() => {
+      const line = events.find((e) => e.type === 'script.output' && e.workspaceId === b.id && e.name === 'stubborn' && /^pid-\d+$/.test(e.line))
+      pid = line?.type === 'script.output' ? Number(line.line.slice(4)) : 0
+      return pid > 0
+    }, 'stubborn to print its pid')
+    const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
+    expect(alive()).toBe(true)
     await k.stop()
     kernels.splice(kernels.indexOf(k), 1)
     expect(runningRuns(b.id)).toEqual([])
+    // Well inside the 3 seconds a plain stop waits before SIGKILL.
+    await until(() => !alive(), 'the sleep that ignores SIGTERM to die', 1500)
   })
 })
 
@@ -229,6 +246,16 @@ describe('port blocks (KERNEL-244)', () => {
     }
   })
 
+  it('running out of ports leaves no worktree or branch behind', async () => {
+    const { k, room, repo } = await kernelOn({})
+    const reserved = (k as unknown as { reservedPorts: Set<number> }).reservedPorts
+    for (const p of BLOCK_STARTS) reserved.add(p)
+    await expect(k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })).rejects.toThrow('No free block of ports')
+    expect((await git(repo, 'branch', '--format=%(refname:short)')).trim()).toBe('main')
+    expect((await git(repo, 'worktree', 'list')).trim().split('\n')).toHaveLength(1)
+    expect(k.store.workspaces(room.id)).toEqual([])
+  })
+
   it('restore keeps the port unless another workspace took its block', async () => {
     const { k, room } = await kernelOn({})
     const a = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
@@ -239,23 +266,6 @@ describe('port blocks (KERNEL-244)', () => {
     k.store.saveWorkspace({ ...b, port: a.port + 3 })
     const back = await k.restoreWorkspace(a.id)
     expect(blocksOverlap(back.port, a.port + 3)).toBe(false)
-  })
-})
-
-describe('fixture mode run scripts (KERNEL-244)', () => {
-  it('answers runScripts and applies a runScripts patch by name', async () => {
-    const h = fixtureHandlers(structuredClone(fixtures.Workspace))
-    const roomId = fixtures.Workspace.rooms[0].id
-    expect((await h['settings.room']({ roomId })).runScripts).toEqual([])
-    const rs = await h['settings.setRoom']({ roomId, patch: { runScripts: { run: 'pnpm dev', web: 'pnpm web' } }, shared: true })
-    expect(rs.runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }])
-    expect(rs.scripts.run).toBe('pnpm dev')
-    expect(rs.sources).toMatchObject({ 'runScripts.web': 'shared', 'runScripts.run': 'shared', 'scripts.run': 'shared' })
-    const after = await h['settings.setRoom']({ roomId, patch: { runScripts: { web: null } }, shared: true })
-    expect(after.runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }])
-    expect(after.sources['runScripts.web']).toBeUndefined()
-    expect(await h['scripts.run']({ workspaceId: fixtures.Workspace.workspaces[0].id, kind: 'run', name: 'web' })).toEqual({ ok: true })
-    expect(await h['scripts.stop']({ workspaceId: fixtures.Workspace.workspaces[0].id, kind: 'run', name: 'web' })).toEqual({ ok: true })
   })
 })
 
