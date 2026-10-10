@@ -96,6 +96,18 @@ describe('renderer store', () => {
     expect(getState().ui.toasts).toEqual([])
   })
 
+  it('foldChat adds and removes the id, and an unfold leaves no empty entry', () => {
+    actions.ui.foldChat('c1', true)
+    actions.ui.foldChat('c2', true)
+    actions.ui.foldChat('c1', true)
+    expect(getState().ui.foldedChats).toEqual(['c2', 'c1'])
+    actions.ui.foldChat('c1', false)
+    actions.ui.foldChat('c3', false)
+    expect(getState().ui.foldedChats).toEqual(['c2'])
+    actions.ui.foldChat('c2', false)
+    expect(getState().ui.foldedChats).toEqual([])
+  })
+
   it('applies push events to their slices', () => {
     const ws = fixtures.Workspace.workspaces[1]
     apply({ type: 'workspace', workspace: ws })

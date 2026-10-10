@@ -922,6 +922,8 @@ export interface UiState {
   workspace: WorkspaceView
   /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
   tabs: Record<string, WorkspaceTabs>
+  /** Ids of the Lead chats folded by hand in the sidebar, which hides the workspaces they started. Only folded chats are listed; kept across launches. */
+  foldedChats: string[]
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */
