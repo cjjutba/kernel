@@ -1,6 +1,6 @@
 # Screens
 
-All 126 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
+All 128 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
 
 Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src/shared/types.ts` that shows the screen: `team` is `{ name: 'team', roomId }`, `modal newRoom` is `{ name: 'newRoom' }`, `+ menu pr` sets `ui.menu` to `'pr'`. Component is the file under `src/renderer/src/` that draws it. The lane that owns the row creates or replaces that file, and nobody else edits it. Files that exist today are placeholders or re-export the prototype in `screens/Pages.tsx`, `Floor.tsx`, `Workspace.tsx` or `Modals.tsx` (KERNEL-8). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
@@ -99,6 +99,8 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | WorkspacePlan | Plan mode | [png](../design/screens/WorkspacePlan.png) | [dc.html](../design/canvas/project/WorkspacePlan.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | done |
 | WorkspacePerm | Permission request | [png](../design/screens/WorkspacePerm.png) | [dc.html](../design/canvas/project/WorkspacePerm.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | done |
 | WorkspaceQuestion | Agent asks a question | [png](../design/screens/WorkspaceQuestion.png) | [dc.html](../design/canvas/project/WorkspaceQuestion.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | done |
+| WorkspaceQuestionSteps | Agent asks several questions, one at a time | [png](../design/screens/WorkspaceQuestionSteps.png) | [dc.html](../design/canvas/project/WorkspaceQuestionSteps.dc.html) | KERNEL-238 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | todo |
+| WorkspaceQuestionAnswers | Several questions answered | [png](../design/screens/WorkspaceQuestionAnswers.png) | [dc.html](../design/canvas/project/WorkspaceQuestionAnswers.dc.html) | KERNEL-238 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | todo |
 | WorkspaceInterrupted | Interrupted by you | [png](../design/screens/WorkspaceInterrupted.png) | [dc.html](../design/canvas/project/WorkspaceInterrupted.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/Transcript.tsx` | done |
 | WorkspaceError | Tests failed | [png](../design/screens/WorkspaceError.png) | [dc.html](../design/canvas/project/WorkspaceError.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ErrorCard.tsx` | done |
 | WorkspaceSessionLimit | 5-hour limit reached | [png](../design/screens/WorkspaceSessionLimit.png) | [dc.html](../design/canvas/project/WorkspaceSessionLimit.dc.html) | KERNEL-28 | Platform | workspace, banner limit | `screens/workspace/banners/Banners.tsx` | done |
