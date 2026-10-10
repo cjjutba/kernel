@@ -189,8 +189,11 @@ export interface KernelApi {
   // app (KERNEL-25, 30)
   'update.get': { req: void; res: AppUpdate }
   'update.check': { req: void; res: AppUpdate }
-  /** Restart into the downloaded version. Running agents pause first. */
-  'update.install': { req: void; res: Ok }
+  /**
+   * Restart into the downloaded version. With agents working Kernel asks first, and `canceled` says the user chose
+   * Cancel, so Kernel keeps running (KERNEL-214). Without it Kernel is quitting.
+   */
+  'update.install': { req: void; res: Ok & { canceled?: true } }
   /** Writes the activity log to a file in the data folder and returns where (Settings > About). */
   'app.exportLogs': { req: void; res: { path: string } }
   /** What Settings > About shows: Kernel's version and where its data lives. */
