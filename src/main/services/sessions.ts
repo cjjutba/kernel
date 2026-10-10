@@ -797,10 +797,13 @@ export class Sessions {
       if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
-      // Answers go back in the tool's own `answers` field, one per question. A text-only answer is the first question's.
+      // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
+      // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
       if (result.behavior === 'answer') {
-        const answers = result.answers ?? (questions?.[0] ? { [questions[0].question]: result.text } : undefined)
+        const given = result.answers && Object.keys(result.answers).length ? result.answers : undefined
+        const answers = given ?? (questions?.length === 1 ? { [questions[0].question]: result.text } : undefined)
         if (isQuestion && answers) return { behavior: 'allow', updatedInput: { ...input, answers } }
+        if (questions && questions.length > 1) return { behavior: 'deny', message: `The user saw and answered only your first question, "${questions[0].question}": ${result.text}. Ask the other ${questions.length - 1} again.` }
         return { behavior: 'deny', message: `The user answered: ${result.text}` }
       }
       return { behavior: 'deny', message: result.message ?? 'Denied in Kernel.' }

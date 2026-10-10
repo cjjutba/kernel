@@ -132,12 +132,29 @@ describe('questions to the user', () => {
     expect(store.approvals().find((a) => a.id === id)).toMatchObject({ status: 'answered', answer: 'Postgres · EU, US · No', answers })
   })
 
-  it('gives a text-only answer to the first question', async () => {
+  it('tells the model a text-only answer to several questions covered only the first, so it asks the rest again', async () => {
     const { options, approvals, store } = await setup()
     const result = ask(options, 'q3')
     await flush()
     approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
-    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...asked, answers: { 'Which store?': 'Use whatever is cheapest' } } })
+    expect(await result).toEqual({ behavior: 'deny', message: 'The user saw and answered only your first question, "Which store?": Use whatever is cheapest. Ask the other 2 again.' })
+  })
+
+  it('treats an empty answers map as a text-only answer', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q4')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Postgres', answers: {} })
+    expect(await result).toMatchObject({ behavior: 'deny', message: expect.stringContaining('Ask the other 2 again.') })
+  })
+
+  it('gives a text-only answer to a lone question', async () => {
+    const { options, approvals, store } = await setup()
+    const one = { questions: [asked.questions[0]] }
+    const result = (options.canUseTool as CanUseTool)('AskUserQuestion', one, { signal: new AbortController().signal, toolUseID: 'q5', requestId: 'r-q5' })
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...one, answers: { 'Which store?': 'Use whatever is cheapest' } } })
   })
 
   it('still lets bypass answer an ordinary tool', async () => {

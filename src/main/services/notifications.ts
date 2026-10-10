@@ -188,11 +188,12 @@ export class Notifications {
     const room = a.roomId ? this.d.store.room(a.roomId) : undefined
     const who = this.d.agentName(a.roomId, a.agentId) ?? 'An agent'
     const plan = a.kind === 'plan' || a.toolName === 'ExitPlanMode'
+    const count = a.questions?.length ?? 0
     const n: Notification = {
       id, kind: 'approval', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, approvalId: a.id,
       title: plan ? `Plan ready: ${a.title.replace(/^Plan (for|to) /i, '')}` : a.kind === 'question' ? a.title : `Wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
       sub: `${kindLabel(a)}${room ? ` · ${room.name}` : ''}`,
-      heading: plan ? `${who} has a plan for you to review` : a.kind === 'question' ? ((a.questions?.length ?? 0) > 1 ? `${who} has ${a.questions!.length} questions` : `${who} has a question`) : `${who} wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
+      heading: plan ? `${who} has a plan for you to review` : a.kind === 'question' ? (count > 1 ? `${who} has ${count} questions` : `${who} has a question`) : `${who} wants to ${a.title.charAt(0).toLowerCase()}${a.title.slice(1)}`,
       needsYou: true, read: false, createdAt: a.createdAt
     }
     this.save(n)

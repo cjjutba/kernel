@@ -1,5 +1,5 @@
 ---
-type: internal
+type: improved
 issue: KERNEL-236
 ---
-Questions from an agent keep every question it asked, and each answer goes back to the agent with its own question.
+Notifications say how many questions an agent is asking, and every answer goes back with its question.
