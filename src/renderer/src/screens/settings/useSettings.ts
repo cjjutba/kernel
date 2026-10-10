@@ -50,6 +50,10 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
   const out: Record<string, unknown> = { ...rs }
   const sources = { ...rs.sources }
   for (const [group, values] of Object.entries(patch) as [string, Record<string, unknown> | undefined][]) {
+    if (group === 'runScripts') {
+      out.runScripts = applyRunScripts(rs.runScripts ?? [], sources, (values ?? {}) as Record<string, string | null>)
+      continue
+    }
     const next: Record<string, unknown> = { ...(rs as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
     for (const [k, v] of Object.entries(values ?? {})) {
       const path = `${group}.${k}`
@@ -66,6 +70,26 @@ export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): Room
     if (Object.keys(next).length || group in rs) out[group] = next
   }
   return { ...(out as unknown as RoomSettings), sources }
+}
+
+/**
+ * The run scripts after a patch, by name. `run` stays first. Removing an override keeps the command on screen (settings.toml's
+ * is not known here), and the saved settings replace it a moment later.
+ */
+function applyRunScripts(list: RoomSettings['runScripts'], sources: RoomSettings['sources'], values: Record<string, string | null>): RoomSettings['runScripts'] {
+  let next = [...list]
+  for (const [key, v] of Object.entries(values)) {
+    const name = key.toLowerCase() === 'run' ? 'run' : key
+    const path = `runScripts.${name}`
+    if (v === null || v === '') {
+      if (sources[path] === 'override') sources[path] = 'shared'
+      else if (sources[path] !== 'shared') { next = next.filter((r) => r.name !== name); delete sources[path] }
+    } else {
+      next = next.some((r) => r.name === name) ? next.map((r) => (r.name === name ? { name, command: v } : r)) : [...next, { name, command: v }]
+      sources[path] = sources[path] === 'shared' || sources[path] === 'override' ? 'override' : 'local'
+    }
+  }
+  return [...next.filter((r) => r.name === 'run'), ...next.filter((r) => r.name !== 'run')]
 }
 
 /** Save a change to a room's personal settings, `.kernel/settings.local.toml`. Rolls back and says so on a failure. */

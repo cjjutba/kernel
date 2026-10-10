@@ -20,6 +20,7 @@
 /* segmented control */
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); }
 .segmented button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12.5px; }
+.segmented button:has(.spin) { display: inline-flex; align-items: center; gap: 6px; }
 .segmented button[aria-checked='true'] { background: var(--surface-3); color: var(--ink); font-weight: 500; }
 
 /* menu */
