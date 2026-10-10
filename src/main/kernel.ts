@@ -264,6 +264,9 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
+    // No waiter outlives a restart, so nothing can answer an approval from the last run. It ends before the inbox
+    // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-137).
+    this.approvals.expireStale()
     this.notifications.attach()
     this.backfillLeadChats()
     this.leadUpdates.attach()
@@ -980,6 +983,9 @@ export class Kernel {
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     // Only once it is archived: an archive that fails keeps the brief for Run again.
     this.sessions.dropHeld(id)
+    // Nothing in an archived workspace can still be answered or merged from the inbox (D-137).
+    this.approvals.expireWorkspace(id)
+    this.notifications.forgetWorkspace(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
@@ -1293,7 +1299,7 @@ export class Kernel {
       createWorkspace: async ({ issue, ...o }) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
-        // The issue the task builds (D-137). Linear's branch name unless the Lead named one.
+        // The issue the task builds (D-138). Linear's branch name unless the Lead named one.
         const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch || linked?.branchName
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
@@ -1828,7 +1834,7 @@ export class Kernel {
   private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
 
   /**
-   * A workspace started on a Linear issue: move the issue to In Progress (D-137). Nobody waits for it, and a failure is
+   * A workspace started on a Linear issue: move the issue to In Progress (D-138). Nobody waits for it, and a failure is
    * one note in the log, never a failed workspace. Without a token there is nothing to do.
    */
   private async startIssue(ws: Workspace, key: string) {
