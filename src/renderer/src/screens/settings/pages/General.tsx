@@ -10,7 +10,7 @@ export function General({ s }: { s: AppSettings }) {
     <Page title="General">
       <Section title="General">
         <Row label="Default home view" desc="What opens when you launch Kernel">
-          <Select label="Default home view" value={g.homeView} onChange={(e) => void patchSettings({ general: { homeView: e.target.value as AppSettings['general']['homeView'] } })} options={[{ value: 'home', label: 'Home' }, { value: 'inbox', label: 'Inbox' }, { value: 'lastRoom', label: 'Last room' }]} />
+          <Select label="Default home view" value={g.openTo} onChange={(e) => void patchSettings({ general: { openTo: e.target.value as AppSettings['general']['openTo'] } })} options={[{ value: 'lastPlace', label: 'Where I left off' }, { value: 'home', label: 'Home' }, { value: 'inbox', label: 'Inbox' }]} />
         </Row>
         <Row label="Open at login"><Toggle label="Open at login" checked={g.openAtLogin} onChange={(v) => void patchSettings({ general: { openAtLogin: v } })} /></Row>
         <Row label="Show in menu bar" desc="Approve requests and brief the Lead without opening the window"><Toggle label="Show in menu bar" checked={g.menuBar} onChange={(v) => void patchSettings({ general: { menuBar: v } })} /></Row>

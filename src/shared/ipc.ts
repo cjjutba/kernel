@@ -246,6 +246,8 @@ export type PushEvent =
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
   | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; line: string; stream: 'stdout' | 'stderr' }
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
+  /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
+  | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }

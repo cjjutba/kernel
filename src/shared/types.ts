@@ -511,6 +511,14 @@ export interface PlanStep {
   workspaceId?: string
 }
 
+/** One question of an AskUserQuestion call. A call can carry several. */
+export interface AskedQuestion {
+  question: string
+  header?: string
+  options: { label: string; description?: string }[]
+  multiSelect?: boolean
+}
+
 export interface Approval {
   id: string
   kind: ApprovalKind
@@ -524,6 +532,10 @@ export interface Approval {
   title: string
   detail?: string
   options?: string[]
+  /** Question approvals: every question the agent asked. `title` and `options` stay the first one's. */
+  questions?: AskedQuestion[]
+  /** Question approvals: the answer to each question, keyed by its text. */
+  answers?: Record<string, string>
   /** Plan approvals. */
   steps?: PlanStep[]
   /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
@@ -539,7 +551,8 @@ export type Decision =
   | { behavior: 'allow'; always?: boolean }
   /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-134). */
   | { behavior: 'deny'; message?: string; images?: { name: string; dataUrl: string }[] }
-  | { behavior: 'answer'; text: string }
+  /** `answers` maps each question's text to its answer; `text` is them joined for display. A text-only answer goes to the first question. */
+  | { behavior: 'answer'; text: string; answers?: Record<string, string> }
 
 // ---------- board
 
@@ -821,7 +834,7 @@ export type SettingsPage =
 export interface AppSettings {
   hookPort: number
   worktreeRoot: string
-  general: { homeView: 'home' | 'inbox' | 'lastRoom'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
+  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
   floor: { style: 'isometric' | 'plan' | 'list'; nameTags: boolean; animate: boolean }
   appearance: { theme: Theme | 'system'; fontSize: 'default' | 'small' | 'large'; density: 'comfortable' | 'compact'; pointerCursors: boolean; reduceMotion: boolean }
   notifications: {
@@ -865,6 +878,11 @@ export interface RoomSettings {
   linear?: { team?: string }
   /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
   pr?: Partial<PrInstructions>
+  /**
+   * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
+   * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
+   */
+  preview: { urls: { name: string; url: string }[] }
   /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).

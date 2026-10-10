@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { PreflightCheck } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, useStore } from '../../store'
+import { actions, go, launchRoute, useStore } from '../../store'
 import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
 import { FirstRoom } from './FirstRoom'
 import './onboarding.css'
@@ -59,7 +59,8 @@ export function Checks() {
     // A first run with no hooks installed goes through Check hooks before the first room.
     const hooks = await call('hooks.status', undefined).catch(() => null)
     if (hooks && !hooks.installed) { actions.ui.openModal({ name: 'checkHooks' }); return }
-    if (rooms.length) go({ name: 'home' }); else setReady(true)
+    // The place the app opens at launch, so Continue after a failed check doesn't land on Home over the place you left.
+    if (rooms.length) go(launchRoute(), { history: 'replace' }); else setReady(true)
   }
 
   return (

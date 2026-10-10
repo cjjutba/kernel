@@ -65,6 +65,7 @@ const kernelFiles: RoomSettings = {
   workspace: { baseRef: 'origin/dev' },
   disabled: { skills: [], mcp: ['Figma'] },
   pr: { createInstructions: '# Create a pull request\n1. Rebase on origin/dev and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk\n4. Link the Linear issue in the description' },
+  preview: { urls: [] },
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
@@ -131,7 +132,7 @@ export const platformFixtures: Record<string, Fixture> = {
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
-  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openAtLogin: true } } }),
+  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),
@@ -203,11 +204,15 @@ export const platformFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'retry', chatId: ids.tableChat, retry: { attempt: 2, of: 5, nextAt: Date.now() + 14_000 } }],
     ui: open
   })),
-  WorkspaceOffline: scene((f) => ({
-    queue: { [ids.tableChat]: [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text', text: 'Also add a loading skeleton.' }], ts: at(10, 40) }] },
-    push: [...f.push, { type: 'online', online: false }],
-    ui: open
-  })),
+  WorkspaceOffline: scene((f) => {
+    const queue = [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Also add a loading skeleton.' }], ts: at(10, 40) }]
+    // The queue's note comes from the reason the engine pushes with it (KERNEL-273).
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'online', online: false }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({
