@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path'
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -16,8 +16,11 @@ import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
-import { reviewMcpServer, type ReviewInput } from './services/reviewMcp'
-import { teammateMcpServer, type TeammateToolDeps } from './services/teammateMcp'
+import { reviewMcpServer, reviewTools, type ReviewInput } from './services/reviewMcp'
+import { teammateMcpServer, teammateTools, type TeammateToolDeps } from './services/teammateMcp'
+import { kernelServer } from './services/kernelServer'
+import { SharedFiles, type ShareRequest } from './services/sharedFiles'
+import { sharedTools } from './services/sharedMcp'
 import { reviewRule, TEAMMATE_RULE } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
@@ -26,7 +29,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, kernelTools, LEAD_INSTRUCTIONS, queuedNote, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
@@ -135,6 +138,8 @@ export class Kernel {
   readonly overlaps: Overlaps
   readonly ptys = new Ptys()
   readonly roomIcons: RoomIcons
+  /** Copies of the files agents shared, and their checks (KERNEL-302). */
+  readonly shared: SharedFiles
   /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
   avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
@@ -184,9 +189,17 @@ export class Kernel {
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
     /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
     fetch?: typeof fetch
+    /**
+     * Draws a PNG thumbnail of a shared file's version for its card, or null when it can't (KERNEL-302). The app passes the
+     * preview host (KERNEL-303); tests pass a stub or leave it out, and a file then has no thumbnail.
+     */
+    capture?: { thumbnail(f: SharedFile, version: number): Promise<Buffer | null> }
+    /** Shows a file in Finder, for a shared file's Show in Finder. Left out, it does nothing. */
+    reveal?: (path: string) => void
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.roomIcons = new RoomIcons(o.dataDir)
+    this.shared = new SharedFiles({ dataDir: o.dataDir, store: this.store })
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
     this.notifications = new Notifications({
@@ -201,7 +214,9 @@ export class Kernel {
       approvals: this.approvals,
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
-      mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
+      // With sharing on, every agent's server adds share_file (KERNEL-302). Off, each gets exactly the server it had before.
+      mcpFor: (ws, agent, chat) => (this.sharing ? { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
+        : agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
         : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
         : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
       // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
@@ -297,6 +312,8 @@ export class Kernel {
   }
 
   private get home() { return this.o.home ?? homedir() }
+  /** Whether agents get share_file. `experimental.sharing` in settings.json, with no page in Settings until KERNEL-308. */
+  private get sharing() { return this.settings?.experimental.sharing === true }
   private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   async start() {
@@ -783,8 +800,10 @@ export class Kernel {
     }
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
+    const shared = this.store.sharedFiles({ roomId }).map((f) => f.id)
     this.store.deleteRoom(roomId)
     await this.roomIcons.remove(room.icon)
+    await this.shared.remove(shared)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
@@ -1952,6 +1971,44 @@ export class Kernel {
     return next
   }
 
+  // ---------- shared files (KERNEL-302)
+
+  /**
+   * The tools in an agent's `kernel` server: the Lead's, a reviewer's or a teammate's own, and share_file for all three
+   * while sharing is on.
+   */
+  toolsFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
+    const own = agent?.lead ? kernelTools(this.leadToolDeps(ws.roomId, agent, chat))
+      : ws.reviewOf ? reviewTools({ submit: (review) => this.submitReview(ws.id, review) })
+      : teammateTools(this.teammateToolDeps(ws.id))
+    return this.sharing ? [...own, ...sharedTools({ share: (o) => this.shareFile(ws.id, chat.id, o) })] : own
+  }
+
+  /**
+   * share_file for a chat: keeps the version, puts its card in the chat, tells the room and the Lead, then asks for a
+   * thumbnail. A file with the same bytes as its newest version does none of that. Throws Refused.
+   */
+  async shareFile(workspaceId: string, chatId: string, o: ShareRequest) {
+    const ws = this.mustWs(workspaceId)
+    const r = await this.shared.share(ws, { ...o, chatId })
+    if (r.status === 'same') return r
+    this.sessions.placeShared(chatId, r.file.id, r.version.n)
+    bus.push({ type: 'shared', file: r.file })
+    this.leadUpdates.shared(ws, r.file, r.version)
+    void this.captureThumb(r.file, r.version.n).catch(() => undefined)
+    return r
+  }
+
+  private async captureThumb(file: SharedFile, n: number) {
+    const png = await this.o.capture?.thumbnail(file, n)
+    if (!png) return
+    const saved = await this.shared.saveThumb(file.id, n, png)
+    if (saved) bus.push({ type: 'shared', file: saved })
+  }
+
+  /** A shared file's version and the path of Kernel's copy, for the preview host. Undefined when Kernel doesn't have it. */
+  sharedFile(id: string, version: number) { return this.shared.get(id, version) }
+
   /** What a teammate's wait_for_merge reads and calls (KERNEL-262). */
   private teammateToolDeps(id: string): TeammateToolDeps {
     return {
@@ -2596,6 +2653,14 @@ export class Kernel {
         const room = roomId ? this.mustRoom(roomId) : undefined
         const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []
         return discoverMcp(room?.path ?? this.home, this.home, off)
+      },
+      'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
+      'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
+      'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),
+      'shared.reveal': async ({ sharedId, version }) => {
+        const ws = this.store.workspace(this.store.sharedFile(sharedId)?.workspaceId ?? '')
+        this.o.reveal?.(await this.shared.revealPath(sharedId, version, ws))
+        return { ok: true }
       },
       'integrations.list': async () => this.integrations(),
       'integrations.connect': async ({ id, token }) => {
