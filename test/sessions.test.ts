@@ -224,15 +224,15 @@ describe('idle stop (KERNEL-183)', () => {
     expect(sessions.isManaged(sid)).toBe(true)
   })
 
-  it('resumes the same conversation on the next message, with the model and effort the chat has now', async () => {
+  it('resumes the same conversation on the next message, with the model, effort and plan mode the chat has now', async () => {
     const { sessions, turn, store, sid } = await setup()
     await turn()
     await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
-    await sessions.configure('chat', { model: 'claude-opus-5-5', effort: 'high' })
+    await sessions.configure('chat', { model: 'claude-opus-5-5', effort: 'high', plan: true })
 
     const next = await turn()
     expect(sdk.calls.at(-1)).toBe(next)
-    expect(next.options).toMatchObject({ resume: sid, model: 'claude-opus-5-5', effort: 'high' })
+    expect(next.options).toMatchObject({ resume: sid, model: 'claude-opus-5-5', effort: 'high', permissionMode: 'plan' })
     expect(next.options.sessionId).toBeUndefined()
 
     // The reply streams into the transcript as before.
@@ -302,12 +302,29 @@ describe('idle stop (KERNEL-183)', () => {
     expect(stopped(call)).toBe(true)
   })
 
-  it('keeps the process of a chat held for setup', async () => {
+  it('keeps the process of a chat held for setup, even once its brief is removed', async () => {
     const { sessions, turn, stopped } = await setup()
     const call = await turn()
     sessions.hold('chat', [{ type: 'text', text: 'The brief' }])
+    // The user removes the held brief in the composer, so only the hold for setup keeps the process.
+    sessions.unqueue('chat', sessions.queued('chat')[0].id)
+    expect(sessions.queued('chat')).toEqual([])
     await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
     expect(stopped(call)).toBe(false)
+    sessions.release('chat')
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+  })
+
+  it('keeps the process while every room is held, offline or signed out, and stops it once the hold lifts', async () => {
+    const { sessions, turn, stopped } = await setup()
+    const call = await turn()
+    sessions.holdAll('offline')
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+    sessions.releaseAll('offline')
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
   })
 
   it('keeps the process while the room is paused, and stops it after the room resumes', async () => {
