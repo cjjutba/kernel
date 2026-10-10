@@ -1,9 +1,10 @@
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
-import { join } from 'node:path'
+import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
+import { isPattern } from './services/filesToCopy'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
@@ -42,7 +43,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount
-  const roomSettings = (roomId: string) => f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+  const roomSettings = (roomId: string): RoomSettings => {
+    const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+    return { ...rs, disabled: { skills: [], mcp: [], ...rs.disabled }, sources: rs.sources ?? {} }
+  }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
@@ -59,6 +63,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.add': async ({ path, name }) => f.rooms.find((r) => r.path === path) ?? { id: 'fixture-room', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
     'rooms.create': async ({ name, desc, source, from }) => ({ id: 'fixture-room', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
     'rooms.update': async ({ roomId, patch }) => ({ ...room(roomId), ...patch }),
+    'rooms.setIcon': async ({ roomId, icon }) => {
+      const { icon: _old, ...r } = room(roomId)
+      return icon.kind === 'letter' ? r : { ...r, icon: { kind: icon.kind, file: `${roomId}-fixture.png`, at: Date.now() } }
+    },
+    'rooms.icon': async ({ roomId }) => (room(roomId).icon ? f.roomIcons?.[roomId] ?? null : null),
     'rooms.remove': async () => ok,
     'rooms.setPaused': async ({ roomId, paused }) => ({ ...room(roomId), paused }),
     'rooms.brief': async ({ roomId, agentId }) => {
@@ -139,6 +148,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.compact': async () => ok,
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
+    'chats.queueReason': async () => null,
     'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
@@ -198,13 +208,30 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
-    'settings.setRoom': async ({ roomId, patch }) => {
-      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing.
-      const cur = roomSettings(roomId) as unknown as Record<string, Record<string, unknown>>
-      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled }, linear: { ...cur.linear } }
-      for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
+    'settings.setRoom': async ({ roomId, patch, shared }) => {
+      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
+      // the patch names is applied the same way, and the sources follow the file it was written to.
+      const cur = roomSettings(roomId)
+      const next: Record<string, unknown> = { ...cur }
+      const sources = { ...cur.sources }
+      for (const [group, values] of Object.entries(patch)) {
+        const g = { ...(cur as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
+        for (const [k, v] of Object.entries(values ?? {})) {
+          const path = `${group}.${k}`
+          if (v === null) { delete g[k]; delete sources[path] } else {
+            g[k] = v
+            sources[path] = sources[path] && sources[path] !== (shared ? 'shared' : 'local') ? 'override' : shared ? 'shared' : 'local'
+          }
+        }
+        next[group] = g
+      }
+      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
       return roomSettings(roomId)
+    },
+    'files.preview': async ({ roomId, patterns }) => {
+      const entries = patterns ?? roomSettings(roomId).files.copy
+      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+        .sort((a, b) => a.path.localeCompare(b.path))
     },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],

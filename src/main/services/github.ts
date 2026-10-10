@@ -1,5 +1,6 @@
 import { exec, run } from './exec'
-import type { IssueSummary, PrCheck, PrInfo, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import type { IssueSummary, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import { stripRemote } from './worktrees'
 
 // Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
 
@@ -109,9 +110,9 @@ export async function prReviews(cwd: string, number: number): Promise<ReviewComm
 }
 
 /** Files that conflict with the base, from a merge that touches neither the index nor the worktree (git 2.38+). */
-export async function conflictFiles(cwd: string, base: string): Promise<string[]> {
-  await exec('git', ['-C', cwd, 'fetch', '--quiet', 'origin', base], { timeoutMs: 20000 })
-  const r = await exec('git', ['-C', cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', `origin/${base}`])
+export async function conflictFiles(cwd: string, base: string, remote = 'origin'): Promise<string[]> {
+  await exec('git', ['-C', cwd, 'fetch', '--quiet', remote, base], { timeoutMs: 20000 })
+  const r = await exec('git', ['-C', cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', `${remote}/${base}`])
   if (r.code !== 1) return []
   return r.stdout.split('\n').slice(1).map((l) => l.trim()).filter(Boolean)
 }
@@ -133,20 +134,20 @@ export function infoOf(workspaceId: string, view: PrView, comments: ReviewCommen
  * The PR for `ref` with its checks, review comments and conflicting files. `conflicts: false` is for a cwd that isn't the
  * PR's checkout (the room, when the worktree is gone): `conflictFiles` merges against cwd's HEAD, which would be main.
  */
-export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean } = {}): Promise<PrInfo | null> {
+export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean; remote?: string } = {}): Promise<PrInfo | null> {
   const view = await prView(cwd, ref)
   if (!view) return null
   const open = view.state === 'OPEN'
   const [comments, conflicts] = await Promise.all([
     open ? prReviews(cwd, view.number) : Promise.resolve([]),
-    open && o.conflicts !== false && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName) : Promise.resolve([])
+    open && o.conflicts !== false && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName, o.remote) : Promise.resolve([])
   ])
   return infoOf(workspaceId, view, comments, conflicts)
 }
 
-export async function prCreate(cwd: string, o: { title: string; body: string; base: string; draft?: boolean }): Promise<PrView | null> {
-  await run('git', ['-C', cwd, 'push', '-u', 'origin', 'HEAD'])
-  await run('gh', ['pr', 'create', '--title', o.title, '--body', o.body, '--base', o.base.replace(/^origin\//, ''), ...(o.draft ? ['--draft'] : [])], { cwd, timeoutMs: 60000 })
+export async function prCreate(cwd: string, o: { title: string; body: string; base: string; draft?: boolean }, remote = 'origin'): Promise<PrView | null> {
+  await run('git', ['-C', cwd, 'push', '-u', remote, 'HEAD'])
+  await run('gh', ['pr', 'create', '--title', o.title, '--body', o.body, '--base', stripRemote(o.base, remote), ...(o.draft ? ['--draft'] : [])], { cwd, timeoutMs: 60000 })
   return prView(cwd)
 }
 
@@ -159,7 +160,7 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
 
 /** The GitHub calls Kernel makes for a workspace's PR. Tests swap it for a stub. */
 export interface GitHub {
-  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean }) => Promise<PrInfo | null>
+  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string }) => Promise<PrInfo | null>
   merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
   ready: (cwd: string, ref: string) => Promise<void>
   reopen: (cwd: string, ref: string) => Promise<void>
@@ -174,29 +175,29 @@ export const gh: GitHub = {
 
 // ---------- what Kernel tells the agent and the chat
 
-const FIX_CHECKS = '# Fix failing checks\n1. Run `gh pr checks` and read every failure.\n2. Reproduce it locally and fix the cause, not the test.\n3. Run the full suite, push, and summarize the fix.'
-const ADDRESS_REVIEW = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
-
-/** The instruction file the agent gets for a conflict, failing checks or a review, with what GitHub reported. */
-export function resolveFile(state: 'conflict' | 'cifail' | 'changes', resolveInstructions: string, info: PrInfo | null): [string, string] {
+/**
+ * The instruction file the agent gets for a conflict, failing checks or a review, with what GitHub reported. The texts come
+ * from Settings > Pull requests or the room's own (`prInstructions`, KERNEL-190).
+ */
+export function resolveFile(state: 'conflict' | 'cifail' | 'changes', texts: Pick<PrInstructions, 'resolveInstructions' | 'fixChecksInstructions' | 'addressReviewInstructions'>, info: PrInfo | null): [string, string] {
   if (state === 'conflict') {
     const files = info?.conflicts ?? []
-    return ['resolve-conflicts.md', resolveInstructions + (files.length ? `\n\nConflicting files:\n${files.map((f) => `- ${f}`).join('\n')}` : '')]
+    return ['resolve-conflicts.md', texts.resolveInstructions + (files.length ? `\n\nConflicting files:\n${files.map((f) => `- ${f}`).join('\n')}` : '')]
   }
   if (state === 'cifail') {
     const failed = (info?.checks ?? []).filter((c) => c.state === 'fail')
-    return ['fix-checks.md', FIX_CHECKS + (failed.length ? `\n\nFailing checks:\n${failed.map((c) => `- ${c.name}${c.url ? ` ${c.url}` : ''}`).join('\n')}` : '')]
+    return ['fix-checks.md', texts.fixChecksInstructions + (failed.length ? `\n\nFailing checks:\n${failed.map((c) => `- ${c.name}${c.url ? ` ${c.url}` : ''}`).join('\n')}` : '')]
   }
   const open = (info?.comments ?? []).filter((c) => !c.resolved)
-  return ['address-review.md', ADDRESS_REVIEW + (open.length ? `\n\nReview comments:\n${open.map((c) => `- ${c.path ? `${c.path}${c.line ? `:${c.line}` : ''}` : 'Review'} (${c.author}): ${c.body.replace(/\s+/g, ' ')}`).join('\n')}` : '')]
+  return ['address-review.md', texts.addressReviewInstructions + (open.length ? `\n\nReview comments:\n${open.map((c) => `- ${c.path ? `${c.path}${c.line ? `:${c.line}` : ''}` : 'Review'} (${c.author}): ${c.body.replace(/\s+/g, ' ')}`).join('\n')}` : '')]
 }
 
 const LANDED: Record<'squash' | 'merge' | 'rebase', string> = { squash: 'squashed into', merge: 'merged into', rebase: 'rebased onto' }
 
 /** The note a PR state change leaves in the chat, or nothing. `method` is set when Kernel ran the merge. */
-export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | 'merge' | 'rebase'): string | undefined {
+export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | 'merge' | 'rebase', remote = 'origin'): string | undefined {
   const n = ws.prNumber ? `PR #${ws.prNumber}` : 'The PR'
-  const base = (info?.baseRef || ws.baseRef).replace(/^origin\//, '')
+  const base = stripRemote(info?.baseRef || ws.baseRef, remote)
   if (ws.prState === 'merged') return method ? `${n} was ${LANDED[method]} ${base}.` : `${n} was merged on GitHub.`
   if (ws.prState === 'closed') return `${n} was closed without merging on GitHub.`
   if (ws.prState === 'cifail') {

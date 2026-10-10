@@ -1,8 +1,8 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -32,6 +32,10 @@ export interface KernelApi {
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
   'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
+  /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
+  'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
+  /** The room icon as a data URL, or null for the letter. */
+  'rooms.icon': { req: { roomId: string }; res: string | null }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
   /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
@@ -108,6 +112,8 @@ export interface KernelApi {
   /** Start a crashed session again (FloorOffline "Restart session"). */
   'chats.restart': { req: { chatId: string }; res: Ok }
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
+  /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
+  'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
@@ -173,6 +179,8 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
+  'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
@@ -194,6 +202,8 @@ export interface KernelApi {
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
+  /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
+  'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
   /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
@@ -212,7 +222,11 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
-  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[] }
+  /**
+   * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
+   * and is absent once it is empty (KERNEL-271).
+   */
+  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
   | { type: 'terminal.data'; chatId: string; data: string }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }

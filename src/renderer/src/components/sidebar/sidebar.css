@@ -14,6 +14,15 @@
 .room-chev[data-open='true'] svg { transform: rotate(90deg); }
 .room-row:hover .room-letter, .room-row:has(:focus-visible) .room-letter { display: none; }
 .room-row:hover .room-chev, .room-row:has(:focus-visible) .room-chev { display: inline-flex; }
+/* A chat row that started workspaces folds like a room. Its chevron sits over the 16px icon slot, a sibling of the title button so no
+   button holds another, and replaces the icon on hover or keyboard focus. It is transparent, not display: none, so Tab can reach it. */
+.chat-row { position: relative; }
+.chat-row:hover > .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
+.chat-chev { position: absolute; left: 20px; top: 50%; width: 16px; height: 16px; margin-top: -8px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; opacity: 0; }
+.chat-chev:hover { color: var(--ink); }
+.chat-chev[aria-expanded='true'] svg { transform: rotate(90deg); }
+.chat-row:hover .chat-chev, .chat-row:has(:focus-visible) .chat-chev { opacity: 1; }
+.chat-row:hover .nav-glyph[data-owned], .chat-row:has(:focus-visible) .nav-glyph[data-owned] { visibility: hidden; }
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }
@@ -69,6 +78,5 @@
 .hc-status[data-accent='merged'] { --tone: var(--merged); --tint: var(--tint-merged); }
 /* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
-/* A workspace under the chat that started it sits one level in, under the chat's title rather than its icon: the sub row's 30px
-   plus the 16px icon and 10px gap. Chat rows keep the sub row's padding. */
-.nav-item.nav-nested { padding-left: 56px; }
+/* A workspace under the chat that started it sits one level in, 12px past the chat's icon: the sub row's 20px plus 12px. Chat rows keep the sub row's padding. */
+.nav-item.nav-nested { padding-left: 32px; }

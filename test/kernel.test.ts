@@ -28,6 +28,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const room = await k.addRoom(repo)
     const agents = await k.agents(room.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['rowan', true], ['kai', false]])
+    // The preview reads the room's saved list, or the patterns the user is typing (KERNEL-245).
+    expect(await k.handlers()['files.preview']({ roomId: room.id })).toEqual([{ path: '.env.local', size: 9 }])
+    expect(await k.handlers()['files.preview']({ roomId: room.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
 
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
     expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'kai' })
@@ -117,18 +120,19 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(k.store.chat(second.id)).toMatchObject({ model: 'claude-sonnet-5-5', effort: 'low', plan: false })
     expect(sent[1]).toEqual({ chatId: second.id, text: 'Look at the flaky test' })
 
-    // A chat nobody used yet is taken, not duplicated, and takes the request's settings.
+    // A chat nobody used yet is left alone, since its composer may hold a draft. The brief gets a tab of its own (KERNEL-242).
     const blank = await k.handlers()['chats.create']({ workspaceId: ws.id })
     const third = await start({ roomId: room.id, prompt: 'Plan the export', effort: 'xhigh' })
-    expect(third.id).toBe(blank.id)
-    expect(chats(ws.id)).toHaveLength(3)
-    expect(k.store.chat(blank.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh', plan: true })
-    expect(sent[2]).toEqual({ chatId: blank.id, text: 'Plan the export' })
+    expect(third.id).not.toBe(blank.id)
+    expect(chats(ws.id).map((c) => c.id)).toEqual([first.id, second.id, blank.id, third.id])
+    expect(k.store.chat(third.id)).toMatchObject({ model: 'claude-opus-5-5', effort: 'xhigh', plan: true })
+    expect(k.store.chat(blank.id)).toEqual(blank)
+    expect(sent[2]).toEqual({ chatId: third.id, text: 'Plan the export' })
     bus.off('push', onPush)
     await k.stop()
   })
 
-  it('lead.start takes the empty "Lead" chat lead.open made, and the first message names it (KERNEL-148)', async () => {
+  it('lead.start leaves the empty "Lead" chat lead.open made and opens its own (KERNEL-242)', async () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -138,13 +142,35 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     k.sessions.send = async () => ({ queued: false })
     const room = await k.addRoom(repo)
 
+    // Opening the room shows the "Lead" tab, so the user may be typing in it.
     const ws = await k.handlers()['lead.open']({ roomId: room.id })
     const [opened] = k.store.chats(ws.id)
     expect(opened.title).toBe('Lead')
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
-    expect(chat.id).toBe(opened.id)
-    expect(k.store.chats(ws.id)).toHaveLength(1)
-    expect(chat).toMatchObject({ title: 'New chat', model: 'claude-opus-5-5', effort: 'high', plan: true })
+    expect(chat.id).not.toBe(opened.id)
+    expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([opened.id, chat.id])
+    expect(k.store.chat(opened.id)).toEqual(opened)
+    expect(chat).toMatchObject({ workspaceId: ws.id, title: 'New chat', model: 'claude-opus-5-5', effort: 'high', plan: true })
+    await k.stop()
+  })
+
+  it('lead.start in a room with no Lead workspace leaves exactly one Lead tab, holding the brief (KERNEL-242)', async () => {
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    k.sessions.send = async (chatId, parts) => { k.store.saveItem(chatId, { kind: 'user', id: 'u1', ts: Date.now(), parts }); return { queued: false } }
+    const room = await k.addRoom(repo)
+    expect(k.store.workspaces(room.id)).toEqual([])
+
+    const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
+    // The modal then lands on the chat through lead.open, which must find the brief's tab rather than add a "Lead" one.
+    const ws = await k.handlers()['lead.open']({ roomId: room.id })
+    expect(ws.id).toBe(chat.workspaceId)
+    expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([chat.id])
+    expect(k.store.items(chat.id)).toHaveLength(1)
     await k.stop()
   })
 })

@@ -81,9 +81,8 @@ export class Notifications {
     bus.on('push', on)
     this.off = () => bus.off('push', on)
     // A row whose approval ended while no one listened, as the ones `Approvals.expireStale` ends at start, settles now.
-    const byId = new Map(this.d.store.approvals().map((a) => [a.id, a]))
     for (const n of this.d.store.openApprovalNotifications()) {
-      const a = byId.get(n.approvalId!)
+      const a = this.d.store.approval(n.approvalId!)
       if (a && a.status !== 'pending') this.onApproval(a)
     }
     // Approvals that were pending before this run (or before notifications existed) still need a row.

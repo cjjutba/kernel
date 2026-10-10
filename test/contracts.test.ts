@@ -49,6 +49,22 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
+  it('fixture mode answers the room icon channels, with Portfolio showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.Workspace)
+    expect(await h['rooms.icon']({ roomId: 'room-portfolio' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['rooms.icon']({ roomId: 'room-a' })).toBeNull()
+    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['rooms.setIcon']({ roomId: 'room-portfolio', icon: { kind: 'letter' } })).icon).toBeUndefined()
+  })
+
+  it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
+    expect(await fixtureHandlers(fixtures.Workspace)['files.preview']({ roomId: 'room-a' })).toEqual([])
+    const localFiles = { 'room-a': [{ path: 'apps/web/.env', size: 64 }, { path: '.env.local', size: 48 }, { path: '.env', size: 120 }, { path: 'notes.txt', size: 3 }] }
+    const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
+    expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
+    expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -59,7 +75,21 @@ describe('IPC contract', () => {
     expect((await h['settings.get']()).experimental.floor3d).toBe(false)
     const room = await k.addRoom(repo)
     expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
+    expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })
     await k.stop()
+  })
+
+  it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
+    const h = fixtureHandlers(fixtures.Workspace)
+    const roomId = fixtures.Workspace.rooms[0].id
+    expect((await h['settings.room']({ roomId })).sources).toEqual({})
+    const rs = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: '# Mine' }, workspace: { remote: 'upstream' } } })
+    expect(rs.pr).toEqual({ createInstructions: '# Mine' })
+    expect(rs.sources).toEqual({ 'pr.createInstructions': 'local', 'workspace.remote': 'local' })
+    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } }, shared: true })).sources['workspace.remote']).toBe('override')
+    const after = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: null } } })
+    expect(after.pr).toEqual({})
+    expect(after.sources).toEqual({ 'workspace.remote': 'override' })
   })
 })
 
@@ -68,8 +98,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 127 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(127)
+  it('lists all 133 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(133)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
@@ -94,6 +124,18 @@ describe('renderer store', () => {
     expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Copied'])
     actions.ui.dismissToast(id)
     expect(getState().ui.toasts).toEqual([])
+  })
+
+  it('foldChat adds and removes the id, and an unfold leaves no empty entry', () => {
+    actions.ui.foldChat('c1', true)
+    actions.ui.foldChat('c2', true)
+    actions.ui.foldChat('c1', true)
+    expect(getState().ui.foldedChats).toEqual(['c2', 'c1'])
+    actions.ui.foldChat('c1', false)
+    actions.ui.foldChat('c3', false)
+    expect(getState().ui.foldedChats).toEqual(['c2'])
+    actions.ui.foldChat('c2', false)
+    expect(getState().ui.foldedChats).toEqual([])
   })
 
   it('applies push events to their slices', () => {

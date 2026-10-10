@@ -419,7 +419,10 @@ describe('Ask Rowan (KERNEL-145)', () => {
     expect(chatId).not.toBe(drafting.id)
     expect(sent.map((s) => s.chatId)).toEqual([chatId])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
-    // The New chat modal still takes it.
-    expect((await k.startLeadChat(room.id, { prompt: 'Add PDF export' })).id).toBe(drafting.id)
+    // The New chat modal leaves it too (KERNEL-242).
+    const brief = await k.startLeadChat(room.id, { prompt: 'Add PDF export' })
+    expect(brief.id).not.toBe(drafting.id)
+    expect(sent.map((s) => s.chatId)).toEqual([chatId, brief.id])
+    expect(k.store.chat(drafting.id)).toEqual(drafting)
   })
 })
