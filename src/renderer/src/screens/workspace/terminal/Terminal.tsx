@@ -60,8 +60,9 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
         void navigator.clipboard.writeText(term.getSelection())
         return false
       }
-      // The app's own tab shortcuts are not for the shell.
+      // The app's own tab shortcuts are not for the shell. ⌘L goes to the composer.
       if (e.metaKey && ['t', 'w'].includes(e.key.toLowerCase())) return false
+      if (e.metaKey && !e.shiftKey && e.code === 'KeyL') return false
       return true
     })
     const ro = new ResizeObserver(() => requestAnimationFrame(resize))

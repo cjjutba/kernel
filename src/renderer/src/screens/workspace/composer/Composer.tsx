@@ -8,7 +8,7 @@ import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
-import { onAddToComposer, onComposerCommand } from './bus'
+import { onAddToComposer, onComposerCommand, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
@@ -82,6 +82,13 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   useEffect(() => { if (prefill && prefill.n > appliedPrefill) { appliedPrefill = prefill.n; d.setText(prefill.text) } }, [prefill])
   useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
+  // A chat that was just created takes the caret. The frame lets a closing dialog hand focus back to its trigger first.
+  useEffect(() => {
+    if (blocked || !takeComposerFocus(chat.id)) return
+    const f = requestAnimationFrame(() => d.focus())
+    return () => cancelAnimationFrame(f)
+  }, [chat.id])
+
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
   const pickRow = (i: number, run: boolean) => {
     if (mention) { const f = files[i]; if (f) d.insert({ type: 'file', name: baseName(f.path), path: f.path }, mention.query.length + 1) }
@@ -154,11 +161,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
 
   // ^⌘1 to 4 pick a model (at the effort it last ran at) and ⌘⇧/ cycles the effort, with the picker open or not.
-  // The open picker handles them itself and marks the event handled.
+  // The open picker handles them itself and marks the event handled. ⌘L puts the caret in the box. ⌘⇧L is the Lead chat (App.tsx).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || getState().ui.modal) return
-      if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) {
+      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.code === 'KeyL') {
+        if (blocked) return
+        e.preventDefault()
+        d.focus()
+      } else if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) {
         const m = MODELS[Number(e.key) - 1]
         if (!m) return
         e.preventDefault()

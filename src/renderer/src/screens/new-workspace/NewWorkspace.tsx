@@ -14,6 +14,7 @@ import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
 import { FromPopover } from './FromPopover'
 import { briefParts, leadMessage, pickedLines } from './brief'
+import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
 
@@ -121,6 +122,8 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
       actions.chats.upsert(chat)
       await loadWorkspace(chat.workspaceId)
     } catch { actions.chats.upsert(chat) }
+    // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
+    focusComposerWhenOpen(chat.id)
     go({ name: 'workspace', workspaceId: chat.workspaceId })
     actions.ui.setWorkspaceView({ tab: chat.id })
   }

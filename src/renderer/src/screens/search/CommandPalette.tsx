@@ -3,6 +3,7 @@ import type { Approval } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { openLead, openRoom } from '../../lead'
+import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { Icon, Kbd, Modal } from '../../ui'
 import { buildItems, visibleItems, type PaletteItem } from './model'
 import './search.css'
@@ -18,6 +19,7 @@ function newChat(workspaceId: string, kind?: 'terminal') {
   void call('chats.create', { workspaceId, kind }).then((chat) => {
     actions.chats.upsert(chat)
     go({ name: 'workspace', workspaceId })
+    if (chat.kind !== 'terminal') focusComposerWhenOpen(chat.id)
     actions.ui.setWorkspaceView({ tab: chat.id })
   }).catch(fail('Could not open the tab'))
 }

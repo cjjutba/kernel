@@ -11,6 +11,24 @@ export function onAddToComposer(listener: Listener) {
   return () => { listeners.delete(listener) }
 }
 
+/** How long a request to focus a new chat's composer stays good. A chat that never opens must not take focus later. */
+const FOCUS_TTL = 5000
+let pendingFocus: { chatId: string; at: number } | null = null
+
+/**
+ * Ask for the caret in this chat's composer once the chat opens. The composer renders a frame or two after the create
+ * call returns, so this is a flag the composer takes when its chat changes, not an event that could arrive too early.
+ */
+export function focusComposerWhenOpen(chatId: string) { pendingFocus = { chatId, at: Date.now() } }
+
+/** True once for the chat that was asked for, so only a newly created chat takes focus and not every tab switch. */
+export function takeComposerFocus(chatId: string) {
+  if (!pendingFocus || pendingFocus.chatId !== chatId) return false
+  const fresh = Date.now() - pendingFocus.at < FOCUS_TTL
+  pendingFocus = null
+  return fresh
+}
+
 /** What a banner can ask the open composer to do: send (or queue) what is typed, or open the model picker. */
 export type ComposerCommand = 'send' | 'model'
 const commands = new Set<(c: ComposerCommand) => void>()

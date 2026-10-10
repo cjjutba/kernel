@@ -6,6 +6,7 @@ import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { Icon, IconButton, Menu } from '../../ui'
 import { closeChats } from './ConfirmCloseChats'
 import { attempt } from './MessageActions'
+import { focusComposerWhenOpen } from './composer/bus'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -34,6 +35,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
     closeMenu()
     const c = await call('chats.create', { workspaceId, kind })
     await loadWorkspace(workspaceId)
+    if (kind === 'chat') focusComposerWhenOpen(c.id)
     onSelect(c.id)
   })
   // Closing stops the chat's session, so a chat that is still running asks first (ConfirmCloseChats.tsx).
@@ -51,6 +53,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
     closeMenu()
     const c = await call('chats.fork', { chatId: id })
     await loadWorkspace(workspaceId)
+    focusComposerWhenOpen(c.id)
     onSelect(c.id)
   })
   const rename = (id: string, title: string) => {
