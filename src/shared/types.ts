@@ -929,7 +929,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
