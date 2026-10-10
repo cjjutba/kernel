@@ -35,7 +35,7 @@ export function openLeadChats(room: Room, agents: Record<string, AgentDef[]>, wo
 }
 
 /**
- * Every row under a room, top to bottom (D-136). Each open Lead chat is followed by the workspaces it started, then come the
+ * Every row under a room, top to bottom (D-137). Each open Lead chat is followed by the workspaces it started, then come the
  * workspaces with no open owning chat. A room whose Lead has no open chat keeps one Lead row; a room with no Lead has only
  * workspaces. The sidebar draws these and the shortcuts count them, so the two can't disagree.
  */

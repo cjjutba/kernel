@@ -183,7 +183,7 @@ function useChatLists(workspaceIds: string[]) {
 
 /**
  * A room in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it, then the workspaces
- * no open chat owns (D-136; D-104 hid Floor and Board). Pressing the row folds or unfolds it, as in Conductor, and hovering it
+ * no open chat owns (D-137; D-104 hid Floor and Board). Pressing the row folds or unfolds it, as in Conductor, and hovering it
  * swaps the room's letter for a chevron and shows the menu button.
  */
 const NO_KEYS: string[] = []
