@@ -24,8 +24,9 @@ def sidebar(active, empty=False, menu=None):
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
     s=s.replace('%%ROOMSSHOW%%',' show' if menu=='rooms' else '').replace('%%ROOMSHOW%%',' show' if menu=='room' else '')
-    # D-104 hid the floor and the Board: a room lists Team, its Lead and its workspaces. D-108 dropped Try.
-    for k in ['search','home','inbox','history','team','lead','ws']:
+    # D-104 hid the floor and the Board and D-108 dropped Try. D-139 lists the Lead's open chats under a room, each with its workspaces,
+    # and moves Team into the room menu, so no row is Team's: 'lead' marks the Lead's current chat and 'ws' the current workspace.
+    for k in ['search','home','inbox','history','lead','ws']:
         on=k==active
         s=s.replace('%%'+k+'C%%',' aria-current="page"' if on else '')
         s=s.replace('%%'+k+'S%%','#d0d6e0' if on else '#8a8f98')
