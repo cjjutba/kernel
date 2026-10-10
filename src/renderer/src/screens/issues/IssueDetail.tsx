@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, useStore } from '../../store'
+import { actions, go, lastRoom, useStore } from '../../store'
 import { Button, Icon, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
-import { useProjectRoom } from '../settings/useSettings'
 import { Markdown } from '../workspace/markdown'
 import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
 
@@ -37,7 +36,8 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   const roomSettings = useStore((s) => s.roomSettings)
   const agents = useStore((s) => s.agents)
   const workspaces = useStore((s) => s.workspaces)
-  const projectRoom = useProjectRoom()
+  // The room opened last, read once. A store selector runs on every change and must not touch localStorage.
+  const [lastRoomId] = useState(lastRoom)
 
   // The description and comments come from `linear.issue`. The list already has the rest, so the header shows at once.
   useEffect(() => {
@@ -61,7 +61,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
 
   const team = issue?.team.key
   const linkedRoom = team ? choices.find((r) => roomSettings[r.id]?.linear?.team?.toUpperCase() === team.toUpperCase()) : undefined
-  const room = choices.find((r) => r.id === (picked?.issue === id ? picked.room : undefined)) ?? linkedRoom ?? choices.find((r) => r.id === projectRoom?.id) ?? choices[0]
+  const room = choices.find((r) => r.id === (picked?.issue === id ? picked.room : undefined)) ?? linkedRoom ?? choices.find((r) => r.id === lastRoomId) ?? choices[0]
   const lead = (room && agents[room.id]?.find((a) => a.lead)?.name) || 'Rowan'
   const linked = linkedWorkspaces(id, workspaces)
   const unlinked = !!issue && settled && !linkedRoom && !!room
