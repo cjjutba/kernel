@@ -398,9 +398,12 @@ export const actions = {
     appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
       const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
       const next = [...(s.scripts[workspaceId] ?? []), named]
-      const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
-      // A chatty script drops its own oldest line, so it can't push another script's output out.
-      if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
+      // A chatty script drops its own oldest line, so it can't push another script's output out. The lines that stay are the
+      // same objects, so the log's rows keep their keys and only new lines are drawn (KERNEL-211).
+      if (next.length > SCRIPT_LINES) {
+        const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
+        if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
+      }
       return { scripts: { ...s.scripts, [workspaceId]: next } }
     }),
     scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
