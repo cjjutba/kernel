@@ -1,6 +1,6 @@
 # Screens
 
-All 127 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
+All 129 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
 
 Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src/shared/types.ts` that shows the screen: `team` is `{ name: 'team', roomId }`, `modal newRoom` is `{ name: 'newRoom' }`, `+ menu pr` sets `ui.menu` to `'pr'`. Component is the file under `src/renderer/src/` that draws it. The lane that owns the row creates or replaces that file, and nobody else edits it. Files that exist today are placeholders or re-export the prototype in `screens/Pages.tsx`, `Floor.tsx`, `Workspace.tsx` or `Modals.tsx` (KERNEL-8). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
