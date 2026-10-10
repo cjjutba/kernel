@@ -16,23 +16,28 @@ export function roomOf(route: Route, s: State): string | undefined {
   return 'roomId' in route ? route.roomId : undefined
 }
 
-/**
- * The tab a workspace shows. The stored tab while it still exists (an open chat, or a file or diff in the workspace's lists),
- * else the last chat if it is still open, else the first open chat. Image and text tabs live in the screen, which checks them itself.
- */
+/** Is `tab` open in the workspace: an open chat, or a file or diff in its lists. Image and text tabs live in the screen, which checks them itself. */
+export function hasTab(s: State, workspaceId: string, tab: string): boolean {
+  const t = s.ui.tabs[workspaceId]
+  if ((s.chats[workspaceId] ?? []).some((c) => c.id === tab && !c.closed)) return true
+  if (tab.startsWith('file:')) return !!t?.files.includes(tab.slice(5))
+  if (tab.startsWith('diff:')) return !!t?.diffs.includes(tab.slice(5))
+  return tab.startsWith('image:') || tab.startsWith('text:')
+}
+
+/** The tab a workspace shows. The stored tab while it is still open, else the last chat if it is still open, else the first open chat. */
 export function tabOf(s: State, workspaceId: string): string | undefined {
   const t = s.ui.tabs[workspaceId]
-  const open = (s.chats[workspaceId] ?? []).filter((c) => !c.closed)
-  const isChat = (id: string | undefined) => !!id && open.some((c) => c.id === id)
-  const tab = t?.tab
-  if (tab) {
-    if (isChat(tab)) return tab
-    if (tab.startsWith('file:') && t.files.includes(tab.slice(5))) return tab
-    if (tab.startsWith('diff:') && t.diffs.includes(tab.slice(5))) return tab
-    if (tab.startsWith('image:') || tab.startsWith('text:')) return tab
-  }
-  return isChat(t?.lastChat) ? t?.lastChat : open[0]?.id
+  if (t?.tab && hasTab(s, workspaceId, t.tab)) return t.tab
+  if (t?.lastChat && hasTab(s, workspaceId, t.lastChat)) return t.lastChat
+  return (s.chats[workspaceId] ?? []).find((c) => !c.closed)?.id
 }
+
+/** A tab of the chat kind, as opposed to a file, diff, image or text tab. */
+export const isChatTab = (tab: string) => !/^(file|diff|image|text):/.test(tab)
+
+/** The same route and the same tab. */
+export const samePlace = (a: Place, b: Place) => a.tab === b.tab && JSON.stringify(a.route) === JSON.stringify(b.route)
 
 /** Is the route still somewhere to go? Not an archived workspace, a hidden or archived room, or a Settings page of a room that is gone. */
 export function stillThere(route: Route, s: State): boolean {
