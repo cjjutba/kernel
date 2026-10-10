@@ -112,6 +112,8 @@ const whatsNewCurrent: Fixture = {
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
+  // The update card in the light theme (KERNEL-164). UpdateReady shows it in dark; no PNG draws it.
+  UpdateReadyLight: light(teamFixtures.UpdateReady),
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
