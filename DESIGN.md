@@ -78,6 +78,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 14px radius, 1px border.
 - Hover actions: message actions (copy, retry, edit, fork) and sidebar `...` menus appear on hover and on keyboard focus.
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
+- Each level under a room steps in 12px: chat icons sit 20px in and nested workspace icons 32px in. A chat that started workspaces folds like a room and shows the question icon when a hidden workspace needs you.
 - Sidebar hover cards: a workspace or Lead row shows a card after a short hover or on keyboard focus. Surface-2, 1px line-3 border, 10px radius, no shadow. The status word sits on a pill filled with its `--tint-*` token, at 4.5:1 or better, the one place status takes color beyond the diff and merged colors (D-084).
 - Banners for failures: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner). Never red backgrounds.
 - Toasts: bottom right, auto-dismiss after 2.6s.
