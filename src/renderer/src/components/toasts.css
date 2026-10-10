@@ -2,7 +2,7 @@
 .app-toasts .toast-stack { right: 26px; bottom: 58px; }
 .app-toasts .toast-action { text-decoration: underline; text-underline-offset: 2px; }
 
-/* The update card (KERNEL-164, D-137): a toast's surface and hairline, the close button on its top left corner like Conductor's. */
+/* The update card (KERNEL-164, D-138): a toast's surface and hairline, the close button on its top left corner like Conductor's. */
 .update-card { position: relative; display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-3); }
 .update-card-title { font-weight: 500; }
 .update-card-actions { display: flex; gap: 8px; }

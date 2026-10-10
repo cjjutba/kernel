@@ -4,7 +4,7 @@ import { actions, useStore } from '../store'
 import { Button, Icon } from '../ui'
 
 /**
- * The card a downloaded update shows in the bottom right, like Conductor's (KERNEL-164, D-137). The footer's Update ready
+ * The card a downloaded update shows in the bottom right, like Conductor's (KERNEL-164, D-138). The footer's Update ready
  * pill (UpdateReady.png) stays as the way back once the card is closed. It sits last in the toast stack, so toasts
  * stack above it instead of covering it, and it steps aside while a modal or onboarding is up.
  */
