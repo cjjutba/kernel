@@ -61,12 +61,17 @@ codesign --verify --deep --strict --verbose=2 "$app"
 spctl --assess --type execute --verbose=2 "$app" 2>&1 | tee /dev/stderr | grep -q "Notarized Developer ID" || fail "Gatekeeper does not see a notarized Developer ID app."
 xcrun stapler validate "$app"
 # The package ships only the build/Release binaries of the native modules (D-052), so a build that skipped the
-# Electron rebuild packages cleanly. Load both with the app's own Electron, the way the app does, before anything ships.
-ELECTRON_RUN_AS_NODE=1 "$app/Contents/MacOS/Kernel" -e '
-  const modules = process.argv[1] + "/Contents/Resources/app.asar/node_modules/";
-  new (require(modules + "better-sqlite3"))(":memory:").close();
-  require(modules + "node-pty");
-' "$PWD/$app" || fail "the packaged app can't load better-sqlite3 or node-pty. Run pnpm install and release again."
+# Electron rebuild packages cleanly. The app loads both and prints ok when started with --kernel-smoke-test, before it
+# opens a window, takes the single-instance lock or touches the database. A broken module shows Electron's error box,
+# so the run gets a time limit instead of hanging the release.
+smoke() {
+  local out
+  out=$(KERNEL_HEADLESS=1 perl -e 'alarm 60; exec @ARGV' "$app/Contents/MacOS/Kernel" "$@" --kernel-smoke-test 2>/dev/null) || return 1
+  grep -qx ok <<<"$out"
+}
+smoke || fail "the packaged app can't load better-sqlite3 or node-pty. Run pnpm install and release again."
+# The RunAsNode fuse is off (KERNEL-208). If it were on, this would run the -e script and print node instead of ok.
+ELECTRON_RUN_AS_NODE=1 smoke -e 'console.log("node")' || fail "the packaged app still runs as Node with ELECTRON_RUN_AS_NODE. Check electronFuses in electron-builder.yml."
 
 if $dry; then
   node scripts/release-notes.ts --github "$version" > dist/release-body.md
