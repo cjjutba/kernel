@@ -203,11 +203,15 @@ export const platformFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'retry', chatId: ids.tableChat, retry: { attempt: 2, of: 5, nextAt: Date.now() + 14_000 } }],
     ui: open
   })),
-  WorkspaceOffline: scene((f) => ({
-    queue: { [ids.tableChat]: [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text', text: 'Also add a loading skeleton.' }], ts: at(10, 40) }] },
-    push: [...f.push, { type: 'online', online: false }],
-    ui: open
-  })),
+  WorkspaceOffline: scene((f) => {
+    const queue = [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Also add a loading skeleton.' }], ts: at(10, 40) }]
+    // The queue's note comes from the reason the engine pushes with it (KERNEL-273).
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'online', online: false }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({
