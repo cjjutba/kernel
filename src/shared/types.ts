@@ -633,6 +633,62 @@ export interface IssueSummary {
   source?: 'linear' | 'github'
 }
 
+// ---------- Linear (KERNEL-159)
+
+/** Linear's workflow state types. Open issues are the first four. */
+export type LinearStateType = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
+
+export interface LinearIssue {
+  /** The identifier, "KERNEL-83". */
+  id: string
+  uuid: string
+  title: string
+  url: string
+  /** Linear's suggested git branch name. */
+  branchName: string
+  state: { id: string; name: string; type: LinearStateType; position: number }
+  /** 0 none, 1 urgent, 2 high, 3 medium, 4 low. */
+  priority: number
+  /** `me` is true when the issue is assigned to the token's user. */
+  assignee?: { name: string; me: boolean }
+  labels: string[]
+  team: { id: string; key: string; name: string }
+  project?: { id: string; name: string }
+  cycle?: { id: string; number: number; name?: string }
+  updatedAt: string
+}
+
+export interface LinearComment {
+  id: string
+  body: string
+  author?: string
+  createdAt: string
+}
+
+export interface LinearIssueDetail extends LinearIssue {
+  /** Markdown, empty when the issue has none. */
+  description: string
+  /** Oldest first, up to 50. */
+  comments: LinearComment[]
+}
+
+/** What the Issues screen lists. Every set field narrows the list. `query` matches the title or the number. */
+export interface LinearFilter {
+  mine: boolean
+  teamId?: string
+  projectId?: string
+  cycleId?: string
+  query?: string
+}
+
+/** The teams, projects and cycles the Issues screen filters by. */
+export interface LinearScope {
+  teams: { id: string; key: string; name: string }[]
+  projects: { id: string; name: string; teamIds: string[] }[]
+  /** Active and upcoming cycles. */
+  cycles: { id: string; number: number; name?: string; teamId: string; active: boolean }[]
+}
+
 // ---------- usage and account
 
 export interface RateLimit {
@@ -745,6 +801,8 @@ export interface RoomSettings {
   workspace: Partial<AppSettings['workspace']>
   /** Skills and MCP servers switched off for this room, by name. */
   disabled?: { skills: string[]; mcp: string[] }
+  /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
+  linear?: { team?: string }
 }
 
 /** A patch to a room's settings file. `null` removes the key so the app default applies again. */
@@ -769,6 +827,8 @@ export type Route =
   | { name: 'floor'; roomId: string } | { name: 'board'; roomId: string } | { name: 'task'; roomId: string; taskId: string }
   | { name: 'team'; roomId: string } | { name: 'agent'; roomId: string; agentId: string }
   | { name: 'workspace'; workspaceId: string }
+  /** Linear issues. `issueId` is the identifier of the open issue. */
+  | { name: 'issues'; issueId?: string }
   | { name: 'settings'; page: SettingsPage; roomId?: string }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }

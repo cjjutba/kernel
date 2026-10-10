@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
-  Integration, IssueSummary, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
   PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -81,6 +81,15 @@ export interface KernelApi {
   /** + > Link issue, GitHub tab: the room's open issues through gh. */
   'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
+
+  // Linear issues (KERNEL-159)
+  /** Open issues, newest first, up to 100. */
+  'linear.issues': { req: { filter: LinearFilter }; res: LinearIssue[] }
+  /** One issue by identifier, with its description and comments. */
+  'linear.issue': { req: { id: string }; res: LinearIssueDetail }
+  'linear.scope': { req: void; res: LinearScope }
+  /** Plan with Rowan: a fresh Lead chat in plan mode, briefed with the issue. */
+  'linear.plan': { req: { id: string; roomId: string }; res: { chatId: string; workspaceId: string } }
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
