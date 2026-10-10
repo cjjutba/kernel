@@ -2149,6 +2149,7 @@ export class Kernel {
       },
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
+      'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {

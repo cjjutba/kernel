@@ -763,3 +763,89 @@ describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
     expect(multi.edits[0].new_string).toBe('r')
   })
 })
+
+describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', () => {
+  const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+
+  /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same room, idle. */
+  async function busy() {
+    const s = await setup('acceptEdits', { models: { agentLimit: 1 } })
+    s.store.saveWorkspace({ id: 'ws2', roomId: 'room', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2', title: 'PDF export' })
+    const why: Record<string, (string | undefined)[]> = {}
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') (why[e.chatId] ??= []).push(e.why) }
+    bus.on('push', onPush)
+    return { ...s, why, done: () => bus.off('push', onPush) }
+  }
+
+  it('queues a second chat for a slot, and Send now starts it over the limit', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      expect(await sessions.send('other', text('Export the invoice'))).toEqual({ queued: true, why: 'capacity' })
+      expect(sessions.queueReason('other')).toBe('capacity')
+      await flush()
+      expect(why.other).toEqual(['capacity'])
+      const before = sdk.calls.length
+      expect(await sessions.sendNow('other', sessions.queued('other')[0].id)).toEqual([])
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sdk.calls).toHaveLength(before + 1)
+      // The running chat goes on: Send now in one chat never stops another.
+      expect(sessions.isRunning('chat')).toBe(true)
+      expect(call.interrupts).toBe(0)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      await flush()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('tells the renderer when what a queue waits for changes', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      await sessions.send('other', text('Export the invoice'))
+      await sessions.send('chat', text('Then add a test'))
+      await flush()
+      expect(why.chat).toEqual(['running'])
+      sessions.pause('room')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      expect(why.chat.at(-1)).toBe('running')
+      sessions.holdAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('offline')
+      sessions.releaseAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      // The turn ends while the room is paused: the chat's own queue now waits for the pause, not the turn.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('chat')).toBe(false)
+      expect(why.chat.at(-1)).toBe('paused')
+      // Resuming sends the chat's own message first, which takes the slot again.
+      sessions.resume('room')
+      expect(sessions.isRunning('chat')).toBe(true)
+      await flush()
+      expect(why.other.at(-1)).toBe('capacity')
+      // The running turn ends and the slot frees: the second chat's message goes out.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('keeps a user pause: Send now waits for Resume', async () => {
+    const { sessions, call, done } = await busy()
+    try {
+      call.feed(result)
+      await flush()
+      sessions.pause('room')
+      await sessions.send('other', text('Export the invoice'))
+      expect(sessions.queueReason('other')).toBe('paused')
+      await sessions.sendNow('other', sessions.queued('other')[0].id)
+      expect(sessions.isRunning('other')).toBe(false)
+      expect(sessions.queued('other')).toHaveLength(1)
+    } finally { done() }
+  })
+})
