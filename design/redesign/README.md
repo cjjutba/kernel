@@ -40,6 +40,5 @@ The canvas draws a few things KERNEL-274 left out on purpose. Don't treat them a
 - The collapse arrow and the + for more terminals in the bottom panel.
 - The close button in the Ask Rowan header. Escape and clicking outside close it.
 - The centered composer on `NewChat`. The composer stays at the bottom, and only the title, subtitle and suggestions are redesigned.
-- The PR icon before a Kernel note. A note doesn't carry a kind, so the app shows the text and the hairline only.
 - The plan strip's checklist icon. The app uses the clipboard (`plan`) icon the sidebar already shows for a plan to review.
 - Sample copy on the canvas, such as chat text, issue titles and the Kernel notes for PR states the engine doesn't send.

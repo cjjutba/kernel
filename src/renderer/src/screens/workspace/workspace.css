@@ -47,6 +47,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* transcript */
 .ws-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 16px 32px 8px; }
 .thread { width: 100%; max-width: 760px; margin: auto auto 0; display: flex; flex-direction: column; gap: 12px; }
+/* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. */
+.thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 10px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
 .bubble { padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
@@ -134,6 +136,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
 .note.inline .note-text { min-width: 0; }
+.note.inline { gap: 8px; }
+.note.inline > svg { flex-shrink: 0; }
+.note.inline[data-pr='merged'] > svg { color: var(--pr-merged-text); }
+.note.inline[data-pr='cifail'] > svg { color: var(--pr-fail-text); }
+.note.inline[data-pr='closed'] > svg { color: var(--ink-3); }
 .note.inline .note-rule { flex: 1; min-width: 24px; height: 1px; background: var(--line); }
 
 /* right panel */
@@ -160,6 +167,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
+.run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }
 
@@ -189,6 +197,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* terminals */
 .term { flex: 1; min-height: 0; display: flex; background: var(--code-bg); padding: 12px 0 8px 18px; }
 .term-compact { padding: 8px 0 4px 12px; }
+.term-notice { margin: 0; padding: 8px 18px; border-bottom: 1px solid var(--line-2); font-size: 12.5px; color: var(--muted); }
 .term-host { flex: 1; min-width: 0; min-height: 0; }
 .term .xterm { height: 100%; }
 .term .xterm-viewport { background-color: transparent !important; }
@@ -206,3 +215,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
   .cp-label { display: none; }
   .ws-scroll { padding: 16px 16px 8px; }
 }
+
+/* Open, the split button by the Port row on the Checks tab (WorkspacePreview.png, KERNEL-250) */
+.open-split { display: inline-flex; align-items: center; }
+.open-caret-anchor { position: relative; display: inline-flex; margin-left: -1px; }
+.open-main, .open-caret { display: inline-flex; align-items: center; height: 24px; background: var(--surface); border: 1px solid var(--line-3); color: var(--ink-2); font-size: 12px; }
+.open-main { padding: 0 10px; border-radius: 6px 0 0 6px; }
+.open-caret { padding: 0 6px; border-radius: 0 6px 6px 0; color: var(--muted); }
+.open-main:hover:not(:disabled), .open-caret:hover { background: var(--surface-3); }
+.open-main:disabled { color: var(--faint); cursor: default; }
+.open-caret[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }

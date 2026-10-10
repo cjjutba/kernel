@@ -4,6 +4,7 @@ import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Select, useBusy } from '../../../ui'
 import { sourceOf } from '../../rooms/roomInfo'
+import { RoomIconRow } from './RoomIconRow'
 import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
@@ -37,6 +38,7 @@ export function Room({ roomId }: { roomId?: string }) {
   return (
     <RoomPage room={room} rs={rs} title="General" intro={`How ${room.name} is set up in Kernel.`}>
       <Section title="Room">
+        <RoomIconRow room={room} />
         <Row label="Repository"><span className="set-value">{room.repo ?? sourceOf(room)}</span></Row>
         <Row label="Local path"><span className="set-value">{home(room.path)}</span></Row>
         <Row label="Team"><span className="set-value">{agents?.filter((a) => !a.retired).map((a) => a.role).join(', ') || 'No agents yet'}</span></Row>

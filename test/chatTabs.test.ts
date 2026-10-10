@@ -6,6 +6,7 @@ import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { Ptys } from '../src/main/services/pty'
+import { hookToken } from '../src/main/services/hookToken'
 import { appended } from '../src/renderer/src/screens/workspace/terminal/buffer'
 import type { ChatItem } from '../src/shared/types'
 
@@ -96,7 +97,7 @@ describe('chat tabs', () => {
     const statuses: string[] = []
     const onPush = (e: any) => { if (e.type === 'agent.status' && e.agentId === 'kai') statuses.push(e.status) }
     bus.on('push', onPush)
-    const hook = (name: string, extra: object = {}) => fetch(`http://127.0.0.1:${hookPort}/hooks`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ session_id: 'big-terminal', transcript_path: '/t', cwd: ws.path, hook_event_name: name, ...extra }) })
+    const hook = (name: string, extra: object = {}) => fetch(`http://127.0.0.1:${hookPort}/hooks`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(dataDir) }, body: JSON.stringify({ session_id: 'big-terminal', transcript_path: '/t', cwd: ws.path, hook_event_name: name, ...extra }) })
     await hook('UserPromptSubmit', { prompt: 'go' })
     await hook('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' }, tool_use_id: 't1' })
     await hook('Stop')

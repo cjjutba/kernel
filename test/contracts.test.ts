@@ -49,12 +49,15 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
-  it('fixture mode answers the room icon channels, with Portfolio showing a small PNG', async () => {
-    const h = fixtureHandlers(fixtures.Workspace)
-    expect(await h['rooms.icon']({ roomId: 'room-portfolio' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
-    expect(await h['rooms.icon']({ roomId: 'room-a' })).toBeNull()
-    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'github' } })).icon?.kind).toBe('github')
-    expect((await h['rooms.setIcon']({ roomId: 'room-portfolio', icon: { kind: 'letter' } })).icon).toBeUndefined()
+  it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.SettingsRoomIcon)
+    expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['rooms.icon']({ roomId: 'room-b' })).toBeNull()
+    expect((await h['rooms.setIcon']({ roomId: 'room-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
+    expect(await fixtureHandlers(fixtures.HomeRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
+    // The other screens draw letters, so no base fixture room carries an icon.
+    expect(await fixtureHandlers(fixtures.Workspace)['rooms.icon']({ roomId: 'room-portfolio' })).toBeNull()
   })
 
   it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
@@ -63,6 +66,27 @@ describe('IPC contract', () => {
     const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
     expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
     expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  })
+
+  it('fixture mode answers env names and files only, with no value to reveal (KERNEL-247)', async () => {
+    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], rooms: { 'room-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
+    expect(await h['env.get']({})).toEqual({ names: ['A', 'B'], files: [] })
+    expect(await h['env.get']({ roomId: 'room-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
+    await expect(h['env.reveal']({ roomId: 'room-a', name: 'TOKEN' })).rejects.toThrow('no values')
+    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
+  })
+
+  it('fixture mode answers terminal.presets and opens a terminal tab with a preset (KERNEL-248)', async () => {
+    const codex = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+    expect((await fixtureHandlers(fixtures.Workspace)['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell'])
+    const h = fixtureHandlers({ ...fixtures.Workspace, terminalClis: [codex] })
+    await h['settings.set']({ patch: { terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } } })
+    expect((await h['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell', 'codex', 'logs'])
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect(await h['chats.create']({ workspaceId, kind: 'terminal', preset: 'codex' })).toMatchObject({ kind: 'terminal', title: 'Terminal (codex)', terminal: { preset: 'codex', command: 'codex' } })
+    expect((await h['chats.create']({ workspaceId })).terminal).toBeUndefined()
+    await h['settings.set']({ patch: { terminal: { enabled: false } } })
+    await expect(h['chats.create']({ workspaceId, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
   })
 
   it('serves app and room settings', async () => {

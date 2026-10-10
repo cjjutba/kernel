@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, memo, useMemo, type ReactNode } from 'react'
 import { CodeBlock, Icon } from '../../ui'
 import { parseBlocks, type Block, type ListItem } from './mdParse'
 
@@ -52,7 +52,8 @@ function BlockView({ block: b }: { block: Block }) {
   }
 }
 
-/** Renders `text`, or `blocks` already parsed from it (a plan card parses once to find its title). */
-export function Markdown({ text, blocks, className }: { text?: string; blocks?: Block[]; className?: string }) {
-  return <div className={['md', className].filter(Boolean).join(' ')}><Blocks blocks={blocks ?? parseBlocks(text ?? '')} /></div>
-}
+/** Renders `text`, or `blocks` already parsed from it (a plan card parses once to find its title). Parsed once per text. */
+export const Markdown = memo(function Markdown({ text, blocks, className }: { text?: string; blocks?: Block[]; className?: string }) {
+  const parsed = useMemo(() => blocks ?? parseBlocks(text ?? ''), [blocks, text])
+  return <div className={['md', className].filter(Boolean).join(' ')}><Blocks blocks={parsed} /></div>
+})

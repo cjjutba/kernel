@@ -1,9 +1,12 @@
-import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname, resolve } from 'node:path'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
+import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
+import { terminalSettingsOf } from './terminalPresets'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
@@ -31,7 +34,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
     addressReviewInstructions: '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  experimental: { bigTerminal: true, bigTerminalWorktreeOnly: true, walking: true, floor3d: false, voice: false }
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
+  experimental: { walking: true, floor3d: false, voice: false }
 })
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
@@ -51,6 +55,13 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
     s.models.effortByModel = effortMemory(s.models.effortByModel)
     // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
     if (s.workspace.branchPattern === 'feat/{slug}') s.workspace.branchPattern = defaults.workspace.branchPattern
+    // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
+    const exp = s.experimental as { bigTerminal?: unknown; bigTerminalWorktreeOnly?: unknown }
+    if (typeof exp.bigTerminal === 'boolean' && saved?.terminal?.enabled === undefined) s.terminal.enabled = exp.bigTerminal
+    if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && saved?.terminal?.onlyInWorktrees === undefined) s.terminal.onlyInWorktrees = exp.bigTerminalWorktreeOnly
+    delete exp.bigTerminal
+    delete exp.bigTerminalWorktreeOnly
+    s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
     return s
   } catch { return defaults }
 }
@@ -67,6 +78,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
+  next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   return next
 }
 
@@ -76,6 +88,10 @@ const repoFile = (repo: string, name: string) => join(repo, '.kernel', name)
 
 async function readToml(file: string): Promise<Record<string, any>> {
   try { return parseToml(await readFile(file, 'utf8')) as Record<string, any> } catch { return {} }
+}
+
+function readTomlSync(file: string): Record<string, any> {
+  try { return parseToml(readFileSync(file, 'utf8')) as Record<string, any> } catch { return {} }
 }
 
 /** The room's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
@@ -88,10 +104,13 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
+/** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
+const DEFAULT_COPY = ['.env', '.env.local']
+
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
@@ -100,12 +119,6 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
   return out
 }
-
-/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
-export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
-
-/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
-export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 /** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
 function runScriptsOf(table: unknown): Map<string, string> {
@@ -132,13 +145,16 @@ function stored(g: Group, v: unknown): unknown {
 function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
   return {
-    scripts: picked(doc.scripts, ['setup', 'run', 'archive', 'runMode']),
-    files: picked(doc.files, ['copy', 'symlinkNodeModules']),
+    // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
+    // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
+    scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
+    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
     pr: picked(doc.pr, PR_KEYS, isString),
-    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)]))
+    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
+    env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)]))
   }
 }
 
@@ -147,8 +163,15 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const sharedDoc = await readToml(repoFile(repo, 'settings.toml'))
-  const localDoc = await readToml(repoFile(repo, 'settings.local.toml'))
+  return repoSettingsOf(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
+}
+
+/** The same, read synchronously, for a session that starts synchronously and needs the room's env files (KERNEL-247). */
+export function loadRepoSettingsSync(repo: string): RepoSettings {
+  return repoSettingsOf(readTomlSync(repoFile(repo, 'settings.toml')), readTomlSync(repoFile(repo, 'settings.local.toml')))
+}
+
+function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string, any>): RepoSettings {
   const shared = roomValues(sharedDoc)
   const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
@@ -163,18 +186,163 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
-    files: { copy: files.copy ?? ['.env', '.env.local'], symlinkNodeModules: files.symlinkNodeModules },
+    files: { copy: files.copy ?? [...DEFAULT_COPY], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),
     ...(Object.keys(pr).length ? { pr } : {}),
     preview: { urls: preview.urls ?? [] },
+    env: { files: env.files ?? [] },
     sources
   }
+}
+
+/** The text a room runs or copies on its own: the scripts, the files.copy list and the env files list, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles'>
+
+/**
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the
+ * files.copy list and the env files list (KERNEL-247) the room uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
+ * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
+ * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
+ */
+export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } = {}): TrustSubject | undefined {
+  const fromRepo = (key: string) => {
+    const source = repo.sources?.[key]
+    return !!source && (source === 'shared' || !o.localIsOwn)
+  }
+  const scripts: TrustSubject['scripts'] = {}
+  for (const k of ['setup', 'run', 'archive'] as const) if (repo.scripts[k]?.trim() && fromRepo(`scripts.${k}`)) scripts[k] = repo.scripts[k]
+  const isDefault = repo.files.copy.length === DEFAULT_COPY.length && repo.files.copy.every((f, i) => f === DEFAULT_COPY[i])
+  const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
+  // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
+  const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
+  // An env file can set ZDOTDIR or BASH_ENV, which makes every shell Kernel starts run repo code (KERNEL-247).
+  const envFiles = fromRepo('env.files') ? repo.env.files : []
+  if (!Object.keys(scripts).length && !runScripts.length && !copy.length && !envFiles.length) return undefined
+  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy, ...(envFiles.length ? { envFiles } : {}) }
+}
+
+/**
+ * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
+ * check below passes. Anything else, a git error included, means no, and its text needs trusting like the repo's.
+ * - No link on the way: `.kernel` and the file are not symlinks, and the file's real path is this path.
+ * - `.kernel` belongs to the room's own repo: git run inside it names the room as its top level, so a submodule or a
+ *   repo nested there fails.
+ * - Neither the index nor HEAD has an entry at `.kernel` itself (a gitlink, file or link), a gitlink anywhere under it,
+ *   or the personal file, compared without case. A case-insensitive disk reads a committed `.Kernel/Settings.local.toml`
+ *   as this file. Skip-worktree entries are in the index, so they count. Committed files beside it, like
+ *   `settings.toml`, are fine.
+ */
+export async function localSettingsOwn(repo: string): Promise<boolean> {
+  const KERNEL = '.kernel'
+  const target = LOCAL_SETTINGS.toLowerCase()
+  const lower = (p: string) => p.toLowerCase()
+  const root = await realpath(repo).catch(() => undefined)
+  if (!root) return false
+
+  for (const part of [KERNEL, LOCAL_SETTINGS]) if ((await lstat(join(repo, part)).catch(() => undefined))?.isSymbolicLink()) return false
+  const real = await realpath(join(repo, LOCAL_SETTINGS)).catch(() => undefined)
+  if (real && lower(relative(root, real).split(sep).join('/')) !== target) return false
+
+  if (await lstat(join(repo, KERNEL)).then(() => true, () => false)) {
+    const top = await exec('git', ['-C', join(repo, KERNEL), 'rev-parse', '--show-toplevel'])
+    if (top.code !== 0 || await realpath(top.stdout.trim()).catch(() => undefined) !== root) return false
+  }
+
+  /** An entry that makes the personal file someone else's: `.kernel` itself, a gitlink under it, or the file. */
+  const foreign = (mode: string, path: string) => lower(path) === KERNEL || mode === '160000' || lower(path) === target
+  // `<mode> <object> <stage>\t<path>`, NUL-separated.
+  const index = await exec('git', ['-C', repo, 'ls-files', '-s', '-z', '--', `:(icase)${KERNEL}`])
+  if (index.code !== 0) return false
+  for (const rec of index.stdout.split('\0').filter(Boolean)) {
+    const [meta, path] = [rec.slice(0, rec.indexOf('\t')), rec.slice(rec.indexOf('\t') + 1)]
+    if (foreign(meta.split(' ')[0], path)) return false
+  }
+
+  const head = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', 'HEAD'])
+  // No commit yet: nothing can have brought the file. Any other failure is an error.
+  if (head.code === 1 && !head.stdout.trim() && !head.stderr.trim()) return true
+  if (head.code !== 0) return false
+  // `<mode> <type> <object>\t<path>`, NUL-separated.
+  const entries = (out: string) => out.split('\0').filter(Boolean).map((rec) => ({ mode: rec.split(' ')[0], path: rec.slice(rec.indexOf('\t') + 1) }))
+  const top = await exec('git', ['-C', repo, 'ls-tree', '-z', 'HEAD'])
+  if (top.code !== 0) return false
+  const dirs = entries(top.stdout).filter((e) => lower(e.path) === KERNEL)
+  if (!dirs.length) return true
+  // Recursive, so `.kernel` as a gitlink, file or link is listed under its own path, and so is a gitlink below it.
+  const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', 'HEAD', '--', ...dirs.map((e) => e.path)])
+  return tree.code === 0 && !entries(tree.stdout).some((e) => foreign(e.mode, e.path))
+}
+
+/** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
+export function trustHash(s: TrustSubject): string {
+  const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
+  // Tagged and only when set, so a room without repo env files keeps the hash the user already trusted (KERNEL-247).
+  const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env])).digest('hex')
+}
+
+/** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
+const TRUSTED_PER_ROOM = 20
+
+/**
+ * The hashes the user trusted, per room, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
+ * trust itself (KERNEL-209).
+ */
+export class ScriptTrustStore {
+  private rooms?: Record<string, string[]>
+  private writing = Promise.resolve()
+
+  constructor(private file: string) {}
+
+  private async load(): Promise<Record<string, string[]>> {
+    if (this.rooms) return this.rooms
+    let saved: unknown
+    try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
+    const rooms: Record<string, string[]> = {}
+    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) rooms[id] = strings(list)
+    return (this.rooms ??= rooms)
+  }
+
+  async has(roomId: string, hash: string): Promise<boolean> { return (await this.load())[roomId]?.includes(hash) ?? false }
+
+  async add(roomId: string, hash: string): Promise<void> {
+    const rooms = await this.load()
+    rooms[roomId] = [hash, ...(rooms[roomId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_ROOM)
+    await this.save()
+  }
+
+  async forget(roomId: string): Promise<void> {
+    const rooms = await this.load()
+    if (!(roomId in rooms)) return
+    delete rooms[roomId]
+    await this.save()
+  }
+
+  /** One write at a time, each with the whole map as it is then. */
+  private save() {
+    this.writing = this.writing.catch(() => undefined).then(async () => {
+      await mkdir(dirname(this.file), { recursive: true })
+      await writeFile(this.file, JSON.stringify(this.rooms ?? {}, null, 2))
+    })
+    return this.writing
+  }
+}
+
+/**
+ * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
+ */
+export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
 
 /**

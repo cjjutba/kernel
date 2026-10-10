@@ -1,6 +1,6 @@
 import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
-import { agent, at, ids, scene, team, withWorkspace } from './base'
+import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
@@ -406,6 +406,16 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
 
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
+  // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
+  HomeRoomIcon: scene((f) => {
+    const home = homeScene(f)
+    return {
+      ...home,
+      rooms: home.rooms!.map((r) => (r.id === ids.roomB ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomB}-1.png`, at: at(9, 0) } } : r)),
+      roomIcons: { [ids.roomB]: invaderIcon },
+      ui: { route: { name: 'home' } }
+    }
+  }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 import { git } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
@@ -39,7 +39,10 @@ async function kernelOn(files: Record<string, string>, app: object = {}) {
   await k.start()
   kernels.push(k)
   k.sessions.send = async () => ({ queued: false })
-  return { k, h: k.handlers(), room: await k.addRoom(repo), repo }
+  const room = await k.addRoom(repo)
+  // The repo brings its run scripts, which the user trusts before they run (KERNEL-209).
+  await trustRoom(k, room.id)
+  return { k, h: k.handlers(), room, repo }
 }
 
 const until = async (ok: () => boolean, what: string, ms = 15000) => {

@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
-  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -58,9 +58,17 @@ export interface Fixture {
   settings?: AppSettings
   /**
    * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
-   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs.
+   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs,
+   * and `env`, which reads as no env files.
    */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview'>>>
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview' | 'env'>>>
+  /**
+   * Variables by name only, never values: `app` for the app's, `rooms` by room id. A room's `files` are its env files
+   * with whether each is missing (KERNEL-247).
+   */
+  env?: { app?: string[]; rooms?: Record<string, { names?: string[]; files?: { path: string; missing: boolean }[] }> }
+  /** The CLIs `terminal.presets` lists as found on the PATH, after the built-ins and before the custom ones. None when unset (KERNEL-248). */
+  terminalClis?: TerminalPreset[]
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */

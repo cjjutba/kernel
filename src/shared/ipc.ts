@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, Skill, Task, TeamTemplate, TerminalPreset,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -45,6 +45,10 @@ export interface KernelApi {
   'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
   /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
+  /** What the room's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
+  'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
+  /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
+  'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
   'rooms.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
@@ -97,7 +101,8 @@ export interface KernelApi {
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal' }; res: Chat }
+  /** `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
@@ -122,6 +127,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
+  'terminal.presets': { req: void; res: TerminalPreset[] }
 
   // checkpoints (KERNEL-13)
   'checkpoints.list': { req: { workspaceId: string }; res: Checkpoint[] }
@@ -183,6 +190,12 @@ export interface KernelApi {
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
+  // main through `env.reveal`.
+  'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
+  /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
+  'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
+  'env.reveal': { req: { roomId?: string; name: string }; res: string }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
@@ -233,6 +246,8 @@ export type PushEvent =
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
+  /** The room's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
+  | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
   | { type: 'workspace'; workspace: Workspace }

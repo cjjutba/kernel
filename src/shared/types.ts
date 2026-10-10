@@ -178,7 +178,8 @@ export interface Overlap {
 // ---------- workspaces
 
 export type WorkspaceMode = 'worktree' | 'current'
-export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
+/** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
+export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
  * the rest come from `gh pr view` (github.ts prStateOf).
@@ -308,8 +309,35 @@ export interface Checkpoint {
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
 
+/**
+ * A room's scripts and files.copy list as Kernel would run them, after merging settings.toml and settings.local.toml,
+ * waiting for the user to trust that exact text (KERNEL-209).
+ */
+export interface ScriptTrust {
+  roomId: string
+  /** What `rooms.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
+  hash: string
+  scripts: { setup?: string; run?: string; archive?: string }
+  /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
+  runScripts?: { name: string; command: string }[]
+  copy: string[]
+  /**
+   * The repo's `[env] files` list. A file can set ZDOTDIR or BASH_ENV, which makes a shell run repo code, so the list waits
+   * for trust like a script (KERNEL-247). Left out when the repo sets none.
+   */
+  envFiles?: string[]
+  /** Open workspaces held in `trust` until the room is trusted. */
+  workspaceIds: string[]
+}
+
 /** Each workspace gets this many ports, `$KERNEL_PORT` to `$KERNEL_PORT + 9` (KERNEL-244). */
 export const PORT_BLOCK = 10
+
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 export interface ScriptLine {
   kind: ScriptKind
@@ -357,6 +385,8 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
+  terminal?: { preset: string; command: string | null }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
   createdAt: number
@@ -372,7 +402,8 @@ export type ChatItem =
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
   /** End of a turn. `files` is the "Changed" chip row under the reply. */
   | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
-  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string } }
+  /** `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none. */
+  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail' }
   | { kind: 'interrupted'; id: string; ts: number }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
@@ -763,8 +794,10 @@ export interface ClaudeAccount {
 // ---------- system
 
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'teams' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'teams' | 'git' | 'gh' | 'hooks'
   ok: boolean
+  /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
+  blocking: boolean
   title: string
   detail: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
@@ -779,6 +812,10 @@ export interface HookStatus {
   /** All hook entries are present in ~/.claude/settings.json. */
   installed: boolean
   events: { name: string; installed: boolean; lastSeen?: number }[]
+  /** The secret the hook command sends, so the Settings > Hooks snippet matches what Install writes (KERNEL-206). */
+  token?: string
+  /** Kernel couldn't bring its out-of-date entries up to date at start, so outside sessions don't report until Install. */
+  needsInstall?: boolean
 }
 
 /** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
@@ -807,9 +844,9 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'permissions'
+  | 'models' | 'permissions' | 'env'
   | 'git' | 'scripts' | 'prs'
-  | 'hooks' | 'integrations' | 'experimental' | 'about'
+  | 'hooks' | 'integrations' | 'experimental' | 'bigterm' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
@@ -841,8 +878,34 @@ export interface AppSettings {
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
+  experimental: { walking: boolean; floor3d: boolean; voice: boolean }
 }
+
+/**
+ * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).
+ * `command` is typed into the login shell, null for a plain shell. `builtin` is false for custom commands only.
+ */
+export interface TerminalPreset {
+  id: string
+  name: string
+  command: string | null
+  builtin: boolean
+  skipsPermissions: boolean
+}
+
+/** The flag Only in worktrees takes out of a command on a current-branch workspace (KERNEL-248). */
+export const SKIP_FLAG = '--dangerously-skip-permissions'
+
+/** Other agent CLIs the big terminal lists when they are on the PATH. Settings checks a custom command's name against these (KERNEL-248, KERNEL-251). */
+export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
+  { id: 'codex', name: 'Codex' },
+  { id: 'opencode', name: 'OpenCode' },
+  { id: 'amp', name: 'Amp' },
+  { id: 'copilot', name: 'Copilot' },
+  { id: 'gemini', name: 'Gemini' }
+]
 
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
@@ -866,6 +929,11 @@ export interface RoomSettings {
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
    */
   preview: { urls: { name: string; url: string }[] }
+  /**
+   * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
+   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247).
+   */
+  env: { files: string[] }
   /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
@@ -932,6 +1000,8 @@ export type Modal =
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
+  /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
+  | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
@@ -947,7 +1017,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'

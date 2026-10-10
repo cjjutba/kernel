@@ -128,6 +128,22 @@ export function kernelTools(d: KernelToolDeps) {
   }
   /** "PR #164 by Noor" for each target, joined. */
   const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
+  /**
+   * A hand-off Kernel made wait because Linear marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
+   * messages it when the blocking PRs merge. Rowan's own wait_for always holds the brief, so a wait that doesn't is Linear's.
+   */
+  const blocked = (ws: Workspace, team: AgentDef[], pick: AgentDef, queued: boolean) => {
+    const key = (w: Workspace | undefined) => (w?.source?.kind === 'issue' ? w.source.id : undefined)
+    const issue = key(ws)
+    if (!ws.waitsFor?.on.length || ws.waitsFor.held || !issue) return ''
+    const all = d.workspaces()
+    const on = ws.waitsFor.on.map((id) => all.find((w) => w.id === id)).filter((t): t is Workspace => !!key(t))
+    if (!on.length) return ''
+    const name = (t: Workspace) => team.find((a) => a.id === t.agentId)?.name ?? t.agentId
+    const builders = [...new Set(on.map(name))]
+    const prs = on.map((t) => (t.prNumber ? `PR #${t.prNumber}` : `${name(t)}'s PR`))
+    return ` Linear marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
+  }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
       const agents = await d.agents()
@@ -209,16 +225,16 @@ export function kernelTools(d: KernelToolDeps) {
         if (why) return { ...text(`Not created: ${why}`), isError: true }
         targets = waitTargets(all, wait_for).filter((t) => !isMerged(t))
       }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}), ...(targets.length ? { waitFor: targets.map((t) => t.id) } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
-      const waiting = ws.waitsFor?.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
+      const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
       // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
       // for a merge says so above instead.
       const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${queued ? ` ${queued}` : ''}`)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),

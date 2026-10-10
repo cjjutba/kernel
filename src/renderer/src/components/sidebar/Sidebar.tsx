@@ -7,7 +7,7 @@ import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
 import { tabOf } from '../../nav'
-import { roomLetter } from '../../screens/rooms/roomInfo'
+import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
@@ -20,7 +20,13 @@ import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsF
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
-const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
+/** Routes hold only strings, so equal fields mean the same page. An unset field and a missing one are the same. */
+const same = (a: Route, b: Route) => {
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>
+  for (const k in x) if (x[k] !== y[k]) return false
+  for (const k in y) if (!(k in x) && y[k] !== undefined) return false
+  return true
+}
 
 /** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
 const HINT_DELAY = 400
@@ -226,7 +232,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
           <span className="room-mark">
-            <span className="room-letter" data-current={current || undefined}>{roomLetter(room.name)}</span>
+            <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
           </span>
           <span className="grow ellipsis">{room.name}</span>
@@ -274,7 +280,12 @@ const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDE
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps)).filter(needsYou).length)
+  // The count reads these four slices and nothing else, so terminal chunks and script lines leave it alone.
+  const notifications = useStore((s) => s.notifications)
+  const approvals = useStore((s) => s.approvals)
+  const allRooms = useStore((s) => s.rooms)
+  const overlaps = useStore((s) => s.overlaps)
+  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou).length, [notifications, approvals, allRooms, overlaps])
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()

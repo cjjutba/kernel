@@ -1,0 +1,39 @@
+name: Test
+
+# Typecheck and the full test suite, once per PR (KERNEL-296). Agents run only the affected tests locally.
+# No path filter, so it can become a required check on main later, like Release note (see release-note.yml).
+# macOS because the tests are written there and need the macOS builds of better-sqlite3 and node-pty.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      KERNEL_HEADLESS: '1'
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22.18'
+          cache: pnpm
+
+      # The postinstall script rebuilds better-sqlite3 and node-pty for Electron.
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test

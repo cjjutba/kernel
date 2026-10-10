@@ -18,14 +18,12 @@ import { briefParts, leadMessage, pickedLines } from './brief'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
+import { RoomIcon } from '../../components/RoomIcon'
 
 const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
   { id: 'worktree', label: 'New worktree', hint: 'An isolated copy on its own branch, named from your task.' },
   { id: 'current', label: 'Current branch', hint: 'Works in your checkout. Changes already there are kept and left out of the diff.' }
 ]
-
-/** "Client A" is A, "Own app" is O. */
-const letter = (name = '') => { const w = name.trim().split(/\s+/); const l = w[w.length - 1]; return (l.length === 1 ? l : w[0]).charAt(0).toUpperCase() || '?' }
 
 const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -151,7 +149,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
-              <span className="nw-letter" aria-hidden="true">{letter(current?.name)}</span>{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
+              <RoomIcon room={current} className="nw-letter" fallback="?" />{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
             </Button>
             {roomMenu && (
               <Menu label="Room" anchorRef={roomAnchor} onClose={() => setRoomMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}

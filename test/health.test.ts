@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
@@ -315,6 +315,7 @@ async function kernel(files: Record<string, string> = {}) {
   const k = new Kernel({ dataDir, home })
   await k.start()
   const room = await k.addRoom(repo)
+  await trustRoom(k, room.id)
   return { k, room, repo }
 }
 
@@ -328,6 +329,7 @@ describe('kernel recovery paths', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     const room = await k.addRoom(repo)
+    await trustRoom(k, room.id)
     const again = async () => { const next = new Kernel({ dataDir, home }); await next.start(); return next }
     return { k, room, again }
   }

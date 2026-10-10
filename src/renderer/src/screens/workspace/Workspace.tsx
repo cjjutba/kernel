@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
@@ -7,7 +7,7 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
 import { tabOf } from '../../nav'
-import { roomLetter } from '../rooms/roomInfo'
+import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
@@ -15,6 +15,7 @@ import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
+import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
@@ -24,6 +25,7 @@ import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
 const NO_TABS: string[] = []
+const NO_CHANGES: ChangedFile[] = []
 const PANEL_MIN = 320
 const PANEL_MAX = 720
 const PANEL_KEY = 'kernel.rightPanelWidth'
@@ -52,7 +54,11 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const stored = useStore((s) => tabOf(s, workspaceId))
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
   const panels = useStore((s) => s.ui.rightPanel)
-  const [changes, setChanges] = useState<ChangedFile[]>([])
+  // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
+  const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
+  const changes = fetched.workspaceId === workspaceId ? fetched.files : NO_CHANGES
+  const shown = useRef({ workspaceId, request: 0 })
+  shown.current.workspaceId = workspaceId
   const [images, setImages] = useState<OpenedImage[]>([])
   const [texts, setTexts] = useState<OpenedText[]>([])
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
@@ -86,18 +92,26 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   }, [workspaceId])
 
   useEffect(() => { void loadWorkspace(workspaceId) }, [workspaceId])
-  const refresh = () => call('workspaces.changes', { workspaceId }).then(setChanges).catch(() => setChanges([]))
-  useEffect(() => { void refresh() }, [workspaceId])
+  // An answer counts only if it is for the workspace on screen and the latest asked for.
+  const refresh = useCallback(() => {
+    const request = ++shown.current.request
+    return call('workspaces.changes', { workspaceId }).catch((): ChangedFile[] => NO_CHANGES).then((files) => {
+      if (shown.current.workspaceId === workspaceId && shown.current.request === request) setFetched({ workspaceId, files })
+    })
+  }, [workspaceId])
+  useEffect(() => { setFetched((c) => (c.workspaceId === workspaceId ? c : { workspaceId, files: NO_CHANGES })); void refresh() }, [refresh])
   useEffect(() => { if (!running) void refresh() }, [running])
-  useEffect(() => onRefreshChanges((id) => { if (id === workspaceId) void refresh() }), [workspaceId])
+  useEffect(() => onRefreshChanges((id) => { if (id === workspaceId) void refresh() }), [workspaceId, refresh])
+  // Stable, so the memoized transcript stays put while the screen redraws.
+  const edit = useCallback((text: string) => setPrefill({ text, n: Date.now() }), [])
+  const select = useCallback((id: string) => {
+    if (id) actions.ui.openTab(workspaceId, id)
+  }, [workspaceId])
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
-  const select = (id: string) => {
-    if (id) actions.ui.openTab(workspaceId, id)
-  }
   const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
     actions.ui.setTabs(workspaceId, { files: files.filter((x) => x !== path) })
@@ -139,7 +153,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     <div className="panel ws-panel">
       <header className="header">
         <SidebarToggle />
-        <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
+        <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
@@ -169,9 +183,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
                   : chat?.kind === 'terminal'
-                    ? <TerminalView id={chat.id} label="Big terminal" />
+                    ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
-                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onForked={select} />
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}

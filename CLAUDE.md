@@ -6,7 +6,8 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 - `pnpm install` installs and rebuilds native modules for Electron
 - `pnpm dev` runs the app with hot reload
-- `pnpm test` runs vitest on Electron's Node (engine tests use real git repos in temp folders). One file: `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fails, see D-013
+- `pnpm test:changed` runs only the test files your changes (committed or not) affect, compared with `origin/main`. Use this one while you work. It runs everything if you touched `package.json` or the vitest config
+- `pnpm test` runs the full suite on Electron's Node (engine tests use real git repos in temp folders). CI runs it on every PR, so run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fails, see D-013
 - `pnpm typecheck` checks main, preload and renderer
 - `pnpm build` builds all three bundles
 - `pnpm shots <Screen> [...]` builds, renders each fixture in a hidden Electron window at 1440x900 and saves `shots/<Screen>.png`. `--all` captures every fixture with a PNG, `--no-build` reuses the last build
@@ -32,7 +33,7 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 2. Open every PNG listed under Screens. Open the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value.
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
 4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds.
-5. Verify: `pnpm test`, `pnpm typecheck`, then `pnpm shots <Screen> ...` and `pnpm shots:compare <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice.
+5. Verify: `pnpm test:changed`, `pnpm typecheck`, then `pnpm shots <Screen> ...` and `pnpm shots:compare <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice. The PR's Test check runs the full suite, so don't run `pnpm test` yourself unless you are reproducing a CI failure or changed the test setup.
 6. Write the release-note fragment (see Release notes below).
 7. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
 8. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review. Update the status column in `docs/SCREENS.md`.

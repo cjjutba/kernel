@@ -27,6 +27,11 @@
       "Write(~/.claude/settings.json)"
     ]
   },
+  "deniedMcpServers": [{ "serverName": "chrome-devtools" }],
+  "enabledPlugins": {
+    "paper-desktop@paper": false,
+    "context7@claude-plugins-official": false
+  },
   "hooks": {
     "PreToolUse": [
       {
