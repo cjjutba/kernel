@@ -32,7 +32,7 @@ A release compiles the fragments into `site/content/releases/<version>.md` and m
 
 - **The website.** `site/content/changelog.ts` reads every release file at build time. A minor version is a titled entry; its patches show inside it as "New in x.y.z", oldest first. The newest version sets the hero pill and the Latest badge.
 - **The GitHub release.** `scripts/release.sh` publishes the notes as the release body, then adds GitHub's generated list of merged PRs under "Full list of changes".
-- **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read a new version's notes from there. The script also writes them into the build as `out/release-notes/<version>.md`, so the app can show its own version's notes (D-136).
+- **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read a new version's notes from there. The script also writes them into the build as `out/release-notes/<version>.md`, so the app can show its own version's notes (D-137).
 
 ## Cutting a release
 
