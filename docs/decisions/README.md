@@ -2,7 +2,7 @@
 
 Add a decision when you make a choice someone might later "fix". Each one is its own file in this folder, so two PRs never edit the same file and never pick the same name.
 
-D-001 to D-139 live in `docs/DECISIONS.md` and stay there as written. When you look for a decision, grep both places.
+D-001 to D-140 live in `docs/DECISIONS.md` and stay there as written. When you look for a decision, grep both places.
 
 ## The file
 
