@@ -27,6 +27,7 @@ import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
+import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
@@ -303,6 +304,7 @@ export class Kernel {
     try {
       this.hookServer = await startHookServer({
         port,
+        token: this.hookToken,
         approvals: this.approvals,
         approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
@@ -329,7 +331,7 @@ export class Kernel {
       this.settings = { ...this.settings, hookPort: port }
       await saveAppSettings(this.settingsFile, this.settings)
     }
-    if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec)
+    if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken)
     return this.pushHooks()
   }
 
@@ -345,7 +347,7 @@ export class Kernel {
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec)
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken)
     return this.settings
   }
 
@@ -493,12 +495,13 @@ export class Kernel {
   }
 
   private async hooksStatus(): Promise<HookStatus> {
-    const installed = new Set(await hookStatus(this.claudeSettings).catch(() => [] as string[]))
+    const installed = new Set(await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[]))
     return {
       port: this.settings.hookPort,
       listening: !!this.hookServer?.listening,
       installed: KERNEL_HOOK_EVENTS.every((e) => installed.has(e)),
-      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) }))
+      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) })),
+      token: this.hookToken
     }
   }
 
@@ -1982,7 +1985,7 @@ export class Kernel {
         return this.hooksStatus()
       },
       'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
-      'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),
+      'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken) }),
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
       'rooms.create': async (req) => this.createRoom(req),
@@ -2168,5 +2171,6 @@ export class Kernel {
     return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
   }
 
+  private get hookToken() { return hookToken(this.o.dataDir) }
   private get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }
 }
