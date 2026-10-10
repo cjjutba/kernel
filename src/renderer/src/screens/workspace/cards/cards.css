@@ -18,6 +18,26 @@
 .opt:disabled { opacity: 0.55; cursor: default; }
 .opt[aria-busy='true'] { opacity: 1; background: var(--surface-3); }
 .opt .n { color: var(--muted); font-size: 12px; }
+.tcard h3 .step { margin-left: auto; color: var(--muted); font-size: 12.5px; font-weight: 400; }
+.qrows { display: flex; flex-direction: column; gap: 6px; }
+.qrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
+.qrow[data-desc='true'] { align-items: flex-start; padding: 10px 12px; }
+.qrow:hover { background: var(--surface-3); }
+.qrow:disabled { opacity: 0.55; cursor: default; }
+.qrow[aria-busy='true'] { opacity: 1; background: var(--surface-3); }
+.qrow[aria-checked='true'], .qrow[aria-pressed='true'], .qrow[aria-expanded='true'] { border-color: var(--line-4); }
+.qrow .n { color: var(--muted); font-size: 12px; }
+.qrow[data-desc='true'] .spin { margin-top: 3px; }
+.qrow .qbox { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; box-sizing: border-box; border-radius: 4px; border: 1px solid var(--faint); color: var(--on-ink); }
+.qrow[aria-checked='true'] .qbox { border-color: var(--ink); background: var(--ink); }
+.qrow[data-desc='true'] .qbox { margin-top: 1px; }
+.qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qdesc { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.qans { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.qans li { display: flex; gap: 10px; }
+.qans .n { flex-shrink: 0; width: 16px; color: var(--muted); font-size: 12px; line-height: 19.5px; }
+.qans .qans-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.qans .qans-q { color: var(--muted); font-size: 12.5px; }
 .tcard .done-line { color: var(--muted); font-size: 12.5px; }
 .pcard-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pcard-row h3 { flex: 1; min-width: 0; }

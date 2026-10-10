@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { go, useStore } from '../../../store'
@@ -7,7 +7,7 @@ import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt } from '../MessageActions'
 import { PlanInline, planCopyText, stepLine, useCopy } from './plan'
-import { isPlanApproval, isStepList, outcome, planSteps, planText } from './steps'
+import { answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, isStepped, outcome, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -42,7 +42,8 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
   )
 }
 
-function QuestionCard({ a, who }: { a: Approval; who: string }) {
+/** One single-select question: one click on a row sends the answer (WorkspaceQuestion.png). */
+function OneQuestion({ a, who }: { a: Approval; who: string }) {
   const [other, setOther] = useState(false)
   const [text, setText] = useState('')
   const [busy, run] = useBusy()
@@ -70,6 +71,112 @@ function QuestionCard({ a, who }: { a: Approval; who: string }) {
       ) : <Result a={a} />}
     </section>
   )
+}
+
+/** Several questions answered, each with what you said (WorkspaceQuestionAnswers.png). */
+function AnsweredQuestions({ who, list }: { who: string; list: { question: string; answer: string }[] }) {
+  const title = `You answered ${who}\u2019s ${list.length} questions`
+  return (
+    <section aria-label={title} className="card tcard">
+      <h3>{title}</h3>
+      <ol className="qans">
+        {list.map((r, i) => (
+          <li key={i}>
+            <span className="n mono">{i + 1}</span>
+            <span className="qans-text"><span className="qans-q">{r.question}</span><span>{r.answer}</span></span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/**
+ * Several questions, or one that takes more than one answer, one at a time (WorkspaceQuestionSteps.png). A single-select
+ * row moves on; a multi-select one ticks rows, then Next. Every answer goes back in one decision from the last step.
+ */
+function QuestionSteps({ a, who }: { a: Approval; who: string }) {
+  const qs = a.questions ?? []
+  const [step, setStep] = useState(0)
+  const [picks, setPicks] = useState<Picked[]>(() => qs.map(emptyPick))
+  const [busy, run] = useBusy()
+  const group = useRef<HTMLDivElement>(null)
+  const shown = useRef(step)
+  // Each new question puts focus on its first option, so the keyboard carries on from where the last answer left off.
+  useEffect(() => {
+    if (shown.current === step) return
+    shown.current = step
+    group.current?.querySelector<HTMLElement>('button')?.focus()
+  }, [step])
+
+  const q = qs[step]
+  if (!q) return null
+  const p = picks[step] ?? emptyPick()
+  const many = qs.length > 1
+  const multi = !!q.multiSelect
+  const last = step === qs.length - 1
+  const change = (patch: Partial<Picked>, from = picks) => from.map((x, i) => (i === step ? { ...x, ...patch } : x))
+  const submit = (key: string, from: Picked[]) => void run(key, () => decide(a, answerDecision(qs, from)))
+  const next = () => (last ? submit('send', picks) : setStep(step + 1))
+  const choose = (label: string, i: number) => {
+    if (multi) return setPicks(change({ sel: p.sel.includes(label) ? p.sel.filter((l) => l !== label) : [...p.sel, label] }))
+    const ps = change({ sel: [label], other: false })
+    setPicks(ps)
+    if (last) submit(String(i), ps)
+    else setStep(step + 1)
+  }
+  const toggleOther = () => setPicks(change(multi ? { other: !p.other } : { other: true, sel: [] }))
+  const title = many ? `${who} has ${qs.length} questions` : `${who} has a question`
+  const rows = q.options.length
+  const showNext = multi || p.other
+
+  return (
+    <section aria-label={title} className="card tcard">
+      <h3>{title}{many && <span className="step">{step + 1} of {qs.length}</span>}</h3>
+      <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
+      <div ref={group} role="group" aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
+        {q.options.map((o, i) => {
+          const on = p.sel.includes(o.label)
+          const body = (
+            <span className="qtext"><span>{o.label}</span>{o.description && <span className="qdesc">{o.description}</span>}</span>
+          )
+          return multi ? (
+            <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
+              <span className="qbox" aria-hidden="true">{on && <Icon name="check" size={11} />}</span>{body}
+            </button>
+          ) : (
+            <button key={o.label} type="button" aria-pressed={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} aria-busy={busy === String(i) || undefined} onClick={() => choose(o.label, i)}>
+              {busy === String(i) ? <span className="spin" aria-hidden="true" /> : <span className="n mono">{i + 1}</span>}{body}
+            </button>
+          )
+        })}
+        {multi ? (
+          <button type="button" role="checkbox" aria-checked={p.other} className="qrow" disabled={busy !== null} onClick={toggleOther}>
+            <span className="qbox" aria-hidden="true">{p.other && <Icon name="check" size={11} />}</span><span className="qtext"><span>Something else</span></span>
+          </button>
+        ) : (
+          <button type="button" aria-expanded={p.other} className="qrow" disabled={busy !== null} onClick={toggleOther}>
+            <span className="n mono">{rows + 1}</span><span className="qtext"><span>Something else</span></span>
+          </button>
+        )}
+        {p.other && (
+          <input className="grow-input" aria-label="Your answer" placeholder="Type your answer" autoFocus value={p.text} disabled={busy !== null} onChange={(e) => setPicks(change({ text: e.target.value }))} onKeyDown={(e) => e.key === 'Enter' && pickReady(p) && next()} />
+        )}
+      </div>
+      {(step > 0 || showNext) && (
+        <div className="acts">
+          {step > 0 && <Button disabled={busy !== null} onClick={() => setStep(step - 1)}>Back</Button>}
+          {showNext && <Button variant="primary" busy={busy === 'send'} busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={next}>{last ? 'Send' : 'Next'}</Button>}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function QuestionCard({ a, who }: { a: Approval; who: string }) {
+  const list = answeredList(a)
+  if (a.status !== 'pending' && list) return <AnsweredQuestions who={who} list={list} />
+  return a.status === 'pending' && isStepped(a) ? <QuestionSteps a={a} who={who} /> : <OneQuestion a={a} who={who} />
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */
