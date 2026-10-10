@@ -108,11 +108,22 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
   })
 }
 
+/** How long a stopped script's processes get to exit on SIGTERM before they get SIGKILL. */
+const STOP_GRACE_MS = 3000
+
 /** Kill the whole process group so dev servers started by the script die too. A run script without a name is `run`. */
 export function stopScript(workspaceId: string, kind: Kind, name?: string) {
   const k = key(workspaceId, kind, nameOf(kind, name))
   const child = running.get(k)?.child
-  if (child?.pid) { try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') } }
+  if (child?.pid) {
+    const group = -child.pid
+    try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
+    // A server that ignores SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the
+    // output open, so the script would never report its exit. The group gets SIGKILL if it hasn't closed by then.
+    const force = setTimeout(() => { try { process.kill(group, 'SIGKILL') } catch { /* already gone */ } }, STOP_GRACE_MS)
+    force.unref()
+    child.once('close', () => clearTimeout(force))
+  }
   running.delete(k)
 }
 

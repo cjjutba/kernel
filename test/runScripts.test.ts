@@ -15,6 +15,9 @@ import { fixtures } from '../fixtures'
 import type { PushEvent } from '../src/shared/ipc'
 import { PORT_BLOCK, type Workspace } from '../src/shared/types'
 
+// A plain sh starts fast. A login zsh with a full profile, several at once, slows the other suites' timing (KERNEL-244).
+process.env.SHELL = '/bin/sh'
+
 const kai = { 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' }
 
 /** Every `script.output` and `script.exit` while the test runs. */
@@ -114,6 +117,17 @@ describe('named run scripts (KERNEL-244)', () => {
     await until(() => runningRuns(ws.id).length === 2, 'web to start again')
     await h['scripts.stop']({ workspaceId: ws.id, kind: 'run' })
     await until(() => runningRuns(ws.id).length === 0, 'every run script to stop')
+  })
+
+  it('a script that ignores SIGTERM still stops and reports its exit', async () => {
+    const { k, h, room } = await kernelOn(scripts(`[run_scripts]\nstubborn = "trap '' TERM; echo ready; sleep 30"\n`))
+    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name: 'stubborn' })
+    await until(() => printed(ws, 'stubborn', 'ready'), 'stubborn to start')
+    const stopped = Date.now()
+    await h['scripts.stop']({ workspaceId: ws.id, kind: 'run', name: 'stubborn' })
+    await until(() => exited(ws, 'stubborn'), 'stubborn to exit')
+    expect(Date.now() - stopped).toBeGreaterThanOrEqual(2500)
   })
 
   it('archive and quit stop every named script', async () => {
