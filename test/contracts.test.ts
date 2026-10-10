@@ -57,6 +57,14 @@ describe('IPC contract', () => {
     expect((await h['rooms.setIcon']({ roomId: 'room-portfolio', icon: { kind: 'letter' } })).icon).toBeUndefined()
   })
 
+  it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
+    expect(await fixtureHandlers(fixtures.Workspace)['files.preview']({ roomId: 'room-a' })).toEqual([])
+    const localFiles = { 'room-a': [{ path: '.env', size: 120 }, { path: '.env.local', size: 48 }, { path: 'apps/web/.env', size: 64 }, { path: 'notes.txt', size: 3 }] }
+    const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
+    expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
+    expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))

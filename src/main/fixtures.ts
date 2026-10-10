@@ -1,9 +1,10 @@
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
-import { join } from 'node:path'
+import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
+import { isPattern } from './services/filesToCopy'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
@@ -210,6 +211,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
       for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
       f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
       return roomSettings(roomId)
+    },
+    'files.preview': async ({ roomId, patterns }) => {
+      const entries = patterns ?? roomSettings(roomId).files.copy
+      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
     },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],

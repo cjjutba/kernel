@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -60,6 +60,8 @@ export interface Fixture {
   roomSettings?: Record<string, RoomSettings>
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
+  /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
+  localFiles?: Record<string, FileToCopy[]>
   account?: ClaudeAccount
   hooks?: HookStatus
   /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */
