@@ -34,6 +34,8 @@ export interface State {
   scripts: Record<string, ScriptLine[]>
   /** By workspace id, then `scriptKey`. Exit code of the last run of each script. */
   scriptExit: Record<string, Record<string, number | null | undefined>>
+  /** By workspace id, then run script name. The first local URL the script printed, while it runs (`script.url`, KERNEL-246). */
+  scriptUrl: Record<string, Record<string, string>>
   /** By workspace id. */
   checkpoints: Record<string, Checkpoint[]>
   // chats
@@ -101,7 +103,7 @@ const folded = new Set<keyof typeof HIDDEN>()
 let state: State = {
   rooms: [], roomSetup: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
-  workspaces: [], scripts: {}, scriptExit: {}, checkpoints: {},
+  workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
@@ -407,6 +409,11 @@ export const actions = {
       return { scripts: { ...s.scripts, [workspaceId]: next } }
     }),
     scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
+    /** The URL a run script printed, or null when the push says the run started again or exited. */
+    setScriptUrl: (workspaceId: string, name: string, url: string | null) => setState((s) => {
+      const { [name]: _gone, ...rest } = s.scriptUrl[workspaceId] ?? {}
+      return { scriptUrl: { ...s.scriptUrl, [workspaceId]: url ? { ...rest, [name]: url } : rest } }
+    }),
     /** A new run starts clean, so the last exit code no longer says it stopped. */
     clearScriptExit: (workspaceId: string, kind: ScriptKind, name?: string) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: undefined } } })),
     setCheckpoints: (workspaceId: string, list: Checkpoint[]) => setState((s) => ({ checkpoints: { ...s.checkpoints, [workspaceId]: list } })),
@@ -514,6 +521,7 @@ export function apply(e: PushEvent) {
     case 'workspace': return actions.workspaces.upsert(e.workspace)
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
+    case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)

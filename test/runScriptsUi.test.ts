@@ -4,14 +4,14 @@ import type { RoomSettings } from '@shared/types'
 // KERNEL-249: run scripts in the renderer. Each script keeps its own lines and exit, the Run tab lists what is running, and a save shows at once.
 
 vi.mock('../src/renderer/src/api', () => ({ call: vi.fn() }))
-const { actions, getState, scriptKey, setState } = await import('../src/renderer/src/store')
+const { actions, apply, getState, scriptKey, setState } = await import('../src/renderer/src/store')
 const { applyRunScripts } = await import('../src/renderer/src/screens/settings/useSettings')
 const { pickerNames, runningRuns } = await import('../src/renderer/src/screens/workspace/runScripts')
 
 const line = (name: string | undefined, text: string, kind: 'run' | 'setup' = 'run') => ({ kind, name, line: text, stream: 'stdout' as const })
 const out = (name: string) => getState().scripts.w1.filter((l) => l.name === name).map((l) => l.line)
 
-beforeEach(() => setState({ scripts: {}, scriptExit: {} }))
+beforeEach(() => setState({ scripts: {}, scriptExit: {}, scriptUrl: {} }))
 
 describe('scriptKey', () => {
   it('keeps setup and archive under their kind, the default run script under run and the others under run:<name>', () => {
@@ -30,6 +30,17 @@ describe('scriptKey', () => {
     expect(getState().scriptExit.w1).toEqual({ 'run:setup': 0, setup: 1 })
     actions.workspaces.clearScriptExit('w1', 'run', 'setup')
     expect(getState().scriptExit.w1).toEqual({ 'run:setup': undefined, setup: 1 })
+  })
+})
+
+describe('script.url', () => {
+  it('keeps the URL each run script printed per workspace, and drops it when the push says null', () => {
+    apply({ type: 'script.url', workspaceId: 'w1', name: 'run', url: 'http://localhost:4305' })
+    apply({ type: 'script.url', workspaceId: 'w1', name: 'frontend', url: 'http://localhost:4306' })
+    apply({ type: 'script.url', workspaceId: 'w2', name: 'run', url: 'http://localhost:4315' })
+    expect(getState().scriptUrl).toEqual({ w1: { run: 'http://localhost:4305', frontend: 'http://localhost:4306' }, w2: { run: 'http://localhost:4315' } })
+    apply({ type: 'script.url', workspaceId: 'w1', name: 'run', url: null })
+    expect(getState().scriptUrl.w1).toEqual({ frontend: 'http://localhost:4306' })
   })
 })
 
