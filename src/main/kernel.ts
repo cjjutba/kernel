@@ -24,7 +24,7 @@ import type { ReviewState } from './services/leadUpdates'
 import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer } from './services/kernelMcp'
+import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
@@ -38,7 +38,7 @@ import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
 import { allGreen, gh, ghUser as ghUserName, openIssues, openPrs, prNote, resolveFile, type GitHub } from './services/github'
-import { linearToken, searchIssues } from './services/linear'
+import { getIssue, getScope, linearToken, listIssues, moveToStarted, planParts, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
@@ -148,6 +148,8 @@ export class Kernel {
     onSettings?: (s: AppSettings) => void
     /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
+    /** What Linear calls go through. Tests pass a stub; the app leaves it out. */
+    fetch?: typeof fetch
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.approvals = new Approvals(this.store)
@@ -262,6 +264,9 @@ export class Kernel {
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
+    // No waiter outlives a restart, so nothing can answer an approval from the last run. It ends before the inbox
+    // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-137).
+    this.approvals.expireStale()
     this.notifications.attach()
     this.backfillLeadChats()
     this.leadUpdates.attach()
@@ -847,6 +852,8 @@ export class Kernel {
     this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
+    if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.startIssue(ws, o.source.id)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
@@ -976,6 +983,9 @@ export class Kernel {
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     // Only once it is archived: an archive that fails keeps the brief for Run again.
     this.sessions.dropHeld(id)
+    // Nothing in an archived workspace can still be answered or merged from the inbox (D-137).
+    this.approvals.expireWorkspace(id)
+    this.notifications.forgetWorkspace(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
@@ -1275,17 +1285,25 @@ export class Kernel {
   }
 
   private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
-    return kernelMcpServer({
+    return kernelMcpServer(this.leadToolDeps(roomId, lead, chat))
+  }
+
+  /** What the Lead's tools call, apart from the server so tests can run the tools against a real Kernel. */
+  private leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps {
+    return {
       roomId, lead,
       agents: () => this.agents(roomId),
       workspaces: () => this.store.workspaces(roomId),
       chatId: chat.id,
       chatTitle: (id) => this.store.chat(id)?.title,
-      createWorkspace: async (o) => {
+      createWorkspace: async ({ issue, ...o }) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
+        // The issue the task builds (D-140). Linear's branch name unless the Lead named one.
+        const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
+        const branch = o.branch || linked?.branchName
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
-        const ws = await this.createWorkspace(roomId, { ...o, mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         if (ws.status !== 'failed') return ws
         const code = this.setupFailures.get(ws.id)
@@ -1317,7 +1335,7 @@ export class Kernel {
         this.announceTeam(roomId, await this.agents(roomId), was)
         return file
       }
-    })
+    }
   }
 
   /**
@@ -1811,6 +1829,32 @@ export class Kernel {
     if (cur.status === 'archived' && !o.archived) return cur
     return this.saveWs({ ...cur, ...patch })
   }
+  /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY. */
+  private async linearKey() { return (await storedLinearToken(this.o.dataDir)) ?? linearToken() }
+  private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
+
+  /**
+   * A workspace started on a Linear issue: move the issue to In Progress (D-140). Nobody waits for it, and a failure is
+   * one note in the log, never a failed workspace. Without a token there is nothing to do.
+   */
+  private async startIssue(ws: Workspace, key: string) {
+    try {
+      const token = await this.linearKey()
+      if (token) await moveToStarted(token, key, this.linearFetch)
+    } catch (e) {
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
+    }
+  }
+
+  /** create_workspace's `issue`: the source to save and Linear's branch name, or the task title when Linear doesn't answer. */
+  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; branchName?: string }> {
+    if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title } }
+    try {
+      const issue = await getIssue(await this.linearKey(), key, this.linearFetch)
+      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, branchName: issue.branchName }
+    } catch { return { source: { kind: 'issue', id: key, title } } }
+  }
+
   private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }
   private mustWs(id: string) { const w = this.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
   private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
@@ -1881,7 +1925,15 @@ export class Kernel {
       'git.branches': async ({ roomId }) => listBranches(this.mustRoom(roomId).path),
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
-      'issues.list': async ({ query }) => searchIssues((await storedLinearToken(this.o.dataDir)) ?? linearToken(), query),
+      'issues.list': async ({ query }) => searchIssues(await this.linearKey(), query, this.linearFetch),
+      'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
+      'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
+      'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),
+      'linear.plan': async ({ id, roomId }) => {
+        const issue = await getIssue(await this.linearKey(), id, this.linearFetch)
+        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true, fresh: true })
+        return { chatId: chat.id, workspaceId: chat.workspaceId }
+      },
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
@@ -1997,7 +2049,7 @@ export class Kernel {
       'integrations.connect': async ({ id, token }) => {
         if (id === 'linear') {
           const clean = (token ?? '').trim()
-          if (clean) await searchIssues(clean, '')
+          if (clean) await searchIssues(clean, '', this.linearFetch)
           await saveLinearToken(this.o.dataDir, clean)
         } else if (id === 'github') throw new Error('GitHub signs in through the GitHub CLI. Run gh auth login in a terminal.')
         else throw new Error(`${id === 'vercel' ? 'Vercel' : 'Remote Control'} is not available yet.`)
@@ -2007,8 +2059,8 @@ export class Kernel {
   }
 
   private async integrations() {
-    const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), storedLinearToken(this.o.dataDir)])
-    return integrationRows({ ghUser, linear: !!(linear ?? linearToken()) })
+    const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), this.linearKey()])
+    return integrationRows({ ghUser, linear: !!linear })
   }
 
   private async preflight() {

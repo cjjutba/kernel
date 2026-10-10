@@ -34,6 +34,21 @@ describe('IPC contract', () => {
     k.store.db.close()
   })
 
+  it('fixture mode answers the Linear channels from the fixture, empty without one', async () => {
+    const empty = fixtureHandlers(fixtures.Workspace)
+    expect(await empty['linear.issues']({ filter: { mine: false } })).toEqual([])
+    expect(await empty['linear.scope']()).toEqual({ teams: [], projects: [], cycles: [] })
+    const issue = {
+      id: 'KERNEL-83', uuid: 'u', title: 'Issues screen', url: 'https://linear.app/x', branchName: 'cj/kernel-83', priority: 2, labels: [], updatedAt: '2026-10-09T10:00:00.000Z',
+      state: { id: 's', name: 'Todo', type: 'unstarted' as const, position: 1 }, team: { id: 't', key: 'KERNEL', name: 'Kernel' }, assignee: { name: 'CJ', me: true },
+      description: 'Build it.', comments: []
+    }
+    const h = fixtureHandlers({ ...fixtures.Workspace, linear: { issues: [issue, { ...issue, id: 'KERNEL-84', assignee: undefined }] } })
+    expect((await h['linear.issues']({ filter: { mine: true } })).map((i) => i.id)).toEqual(['KERNEL-83'])
+    expect(await h['linear.issues']({ filter: { mine: false, query: '84' } })).not.toContainEqual(expect.objectContaining({ description: expect.anything() }))
+    expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))

@@ -82,7 +82,8 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
     scripts: { setup: merged.scripts?.setup, run: merged.scripts?.run, archive: merged.scripts?.archive, runMode: merged.scripts?.run_mode },
     files: { copy: merged.files?.copy ?? ['.env', '.env.local'], symlinkNodeModules: merged.files?.symlink_node_modules },
     workspace: workspaceKeys(merged.workspace),
-    disabled: { skills: strings(merged.disabled?.skills), mcp: strings(merged.disabled?.mcp) }
+    disabled: { skills: strings(merged.disabled?.skills), mcp: strings(merged.disabled?.mcp) },
+    ...(typeof merged.linear?.team === 'string' ? { linear: { team: merged.linear.team } } : {})
   }
 }
 
@@ -103,6 +104,7 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
   for (const [k, v] of Object.entries(patch.files ?? {})) set('files', snake(k), v)
   for (const [k, v] of Object.entries(patch.workspace ?? {})) set('workspace', snake(k), v)
   for (const [k, v] of Object.entries(patch.disabled ?? {})) set('disabled', k, v)
+  for (const [k, v] of Object.entries(patch.linear ?? {})) set('linear', k, v === '' ? null : v)
   // Nothing left to override locally: no file, rather than an empty one that shows up as a change (KERNEL-69).
   if (!shared && !Object.keys(doc).length) {
     await rm(file, { force: true })

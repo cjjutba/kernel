@@ -45,6 +45,30 @@ export class Approvals {
     return next
   }
 
+  /**
+   * At start: every approval saved as pending belongs to an earlier run, whose waiter is gone, so nobody can answer it
+   * (D-137). Each one is marked expired. Call before `Notifications.attach()`, which then settles their rows.
+   */
+  expireStale(): Approval[] {
+    return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id)).map((a) => this.expire(a))
+  }
+
+  /**
+   * An archived workspace's pending approvals end (D-137). One with a waiter resolves null, so its session or hook falls
+   * back instead of waiting on a workspace that is gone.
+   */
+  expireWorkspace(workspaceId: string): Approval[] {
+    return (this.store?.approvals({ workspaceId, pendingOnly: true }) ?? []).map((a) => this.finish(a.id, null, 'expired') ?? this.expire(a))
+  }
+
+  private expire(a: Approval): Approval {
+    const next: Approval = { ...a, status: 'expired' }
+    this.store?.saveApproval(next)
+    bus.push({ type: 'approval', approval: next })
+    bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `expired ${next.title}`, object: next.toolName })
+    return next
+  }
+
   private finish(id: string, decision: Decision | null, status: Approval['status']): Approval | undefined {
     const p = this.pending.get(id)
     if (!p) return undefined

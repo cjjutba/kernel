@@ -50,3 +50,19 @@ export async function openRoom(roomId: string): Promise<void> {
     go({ name: 'team', roomId })
   }
 }
+
+/**
+ * Opens one of the Lead's chats: the Lead's workspace with that chat's tab selected. The workspace screen clears the tab when the
+ * workspace changes, so set it after `openLead` has navigated. `openLead` swallows its errors, so the tab is set only if the Lead's
+ * workspace is on screen. When it already is, the tab is set at once.
+ */
+export async function openLeadChat(roomId: string, chatId: string): Promise<void> {
+  const shownLead = () => {
+    const s = getState()
+    const lead = leadOf(s.agents, roomId)
+    const shown = s.ui.route.name === 'workspace' ? s.workspaces.find((w) => w.id === (s.ui.route as { workspaceId: string }).workspaceId) : undefined
+    return !!shown && isLeadWorkspace(shown, roomId, lead?.id)
+  }
+  if (!shownLead()) await openLead(roomId)
+  if (shownLead()) actions.ui.setWorkspaceView({ tab: chatId })
+}

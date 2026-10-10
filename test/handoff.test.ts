@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AgentDef, Decision, Workspace } from '@shared/types'
-import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs } from '../src/main/services/handoff'
+import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 /** The Lead's tools with a user who answers every card with `answer`. */
@@ -36,6 +36,24 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
     const t = leadTools(null)
     expect(await t.call('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for noor.')
     expect(t.handedOff).toHaveBeenCalledOnce()
+  })
+})
+
+describe('create_workspace with issue (KERNEL-163)', () => {
+  it('passes the issue key through, and the rule tells the Lead to', async () => {
+    const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
+    const deps: KernelToolDeps = {
+      roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
+      createWorkspace: async (o) => { asked.push(o); return { id: 'ws-1', branch: 'cj/kernel-83-issues', agentId: 'noor' } as Workspace },
+      messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    }
+    const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
+    await tool.handler({ agent: 'noor', title: 'Issues screen', brief: 'Goal', issue: 'KERNEL-83' } as never, {})
+    await tool.handler({ agent: 'noor', title: 'Other', brief: 'Goal' } as never, {})
+    expect(asked[0]).toMatchObject({ agentId: 'noor', title: 'Issues screen', issue: 'KERNEL-83' })
+    expect(asked[1]).not.toHaveProperty('issue')
+    expect(LEAD_RULE).toContain('When a task builds a Linear issue, pass its key as issue to create_workspace.')
   })
 })
 
