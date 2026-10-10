@@ -2707,6 +2707,8 @@ export class Kernel {
       // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
       'update.install': async () => {
         if (!this.o.updater) throw new Error('No update to install')
+        // Checked before asking: a confirmed restart stops Kernel, and an install that can't happen would leave it stopped.
+        if (this.o.updater.get().status !== 'ready') throw new Error('No update is ready')
         if (this.o.confirmQuit && !(await this.o.confirmQuit('update'))) return { ok: true, canceled: true }
         this.o.updater.install()
         return { ok: true }
