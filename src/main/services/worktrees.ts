@@ -1,4 +1,4 @@
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, realpath, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
@@ -86,11 +86,36 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
 
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
 
-/** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
+/**
+ * A folder under `root` for `branch` that is neither on disk nor still registered with git: the branch slug, else
+ * -2, -3... with the slug cut shorter so the suffix fits in 80 characters. A review branch is the reviewed branch
+ * plus `-review`, so the 80-character cut alone gave it the author's folder (KERNEL-178).
+ */
+async function freeFolder(repo: string, root: string, branch: string): Promise<string> {
+  const real = await realpath(root)
+  const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
+  for (let i = 1; ; i++) {
+    const suffix = i === 1 ? '' : `-${i}`
+    const name = slugify(branch.replace(/\//g, '-'), 80 - suffix.length) + suffix
+    if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
+  }
+}
+
+/**
+ * Creates a free folder under root (see `freeFolder`) on a new branch from baseRef (see `resolveBaseRef`). Returns the
+ * worktree path. `worktree add -b` makes the branch before it checks the folder, so a failed add deletes the branch it
+ * made, never one that was already there.
+ */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
-  const path = join(o.root, slugify(o.branch.replace(/\//g, '-'), 80))
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  const path = await freeFolder(o.repo, o.root, o.branch)
+  const existed = await branchExists(o.repo, o.branch)
+  try {
+    await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  } catch (e) {
+    if (!existed && await branchExists(o.repo, o.branch)) await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
+    throw e
+  }
   return path
 }
 
