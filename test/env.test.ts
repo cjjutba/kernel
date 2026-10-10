@@ -146,7 +146,7 @@ describe('Kernel env', () => {
   it('gives scripts, big terminals and sessions the room\'s variables and env files, and keeps values out of logs', async () => {
     const repo = await tempRepo({
       'README.md': '# env\n',
-      '.env.shared': 'FROM_FILE=one\nOVERRIDDEN=file\nANTHROPIC_BASE_URL=https://proxy.example\nCLAUDE_CODE_USE_BEDROCK=1\n',
+      '.env.shared': 'FROM_FILE=one\nOVERRIDDEN=file\nANTHROPIC_BASE_URL=https://proxy.example\nCLAUDE_CODE_USE_BEDROCK=1\nCLAUDE_CODE_AUTO_COMPACT_WINDOW=50000\n',
       '.env.later': 'OVERRIDDEN=later-file\n',
       '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
       '.kernel/settings.toml': [
@@ -212,6 +212,8 @@ describe('Kernel env', () => {
       expect(own.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('mac')
       expect(sessionEnv(k.envFor(ws), {}, { agentTeams: true }).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1')
       expect(sessionEnv(k.envFor(ws), {}, { agentTeams: false }).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBeUndefined()
+      // A project's compact window doesn't override Kernel's 200k one (KERNEL-226). Only the Mac's would.
+      expect(sessionEnv(k.envFor(ws), {}, { compact: true }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? '200000')
       expect(k.envFor(ws, { script: true })).toMatchObject({ ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_OAUTH_TOKEN: 'other-account' })
     } finally {
       for (const [k2, v] of [['ANTHROPIC_BASE_URL', mac.base], ['CLAUDE_CODE_USE_BEDROCK', mac.bedrock], ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', mac.teams]] as const) {

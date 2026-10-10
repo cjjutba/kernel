@@ -328,6 +328,16 @@ export class ScriptTrustStore {
 }
 
 /**
+ * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
+ */
+export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
+}
+
+/**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).

@@ -31,7 +31,7 @@ import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
@@ -220,6 +220,7 @@ export class Kernel {
       mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
         : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
         : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
+      disabledFor: (ws) => { const room = this.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
       // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
       rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
