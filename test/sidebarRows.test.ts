@@ -54,6 +54,45 @@ describe('sidebar rows', () => {
   })
 })
 
+describe('folded chats', () => {
+  const workspaces = [home, ws('w1', { leadChatId: 'c1' }), ws('w2', { leadChatId: 'c1' }), ws('loose'), ws('w3', { leadChatId: 'c2' })]
+  const lists = { home: [chat('c1'), chat('c2'), chat('c3')] }
+
+  it('hides the workspaces of a folded chat, and the chat carries them with its folded flag', () => {
+    const rows = sidebarRows(room, agents, workspaces, lists, ['c1'])
+    expect(keys(rows)).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
+    const c1 = rows[0]
+    expect(c1.kind === 'chat' && { folded: c1.folded, owned: c1.owned.map((w) => w.id) }).toEqual({ folded: true, owned: ['w1', 'w2'] })
+    const c2 = rows[1]
+    expect(c2.kind === 'chat' && { folded: c2.folded, owned: c2.owned.map((w) => w.id) }).toEqual({ folded: false, owned: ['w3'] })
+  })
+
+  it('still reports the owned workspaces of a chat that is not folded', () => {
+    const rows = sidebarRows(room, agents, workspaces, lists)
+    const c1 = rows[0]
+    expect(c1.kind === 'chat' && c1.owned.map((w) => w.id)).toEqual(['w1', 'w2'])
+    expect(keys(rows)).toEqual(['chat:c1', 'workspace:w1', 'workspace:w2', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
+  })
+
+  it('lists a folded chat with no workspaces like an unfolded one', () => {
+    const rows = sidebarRows(room, agents, workspaces, lists, ['c3'])
+    expect(keys(rows)).toEqual(keys(sidebarRows(room, agents, workspaces, lists)))
+    const c3 = rows.find((r) => r.kind === 'chat' && r.chat.id === 'c3')
+    expect(c3?.kind === 'chat' && { folded: c3.folded, owned: c3.owned }).toEqual({ folded: false, owned: [] })
+  })
+
+  it('leaves unowned workspaces alone, and ignores ids that are not open chats', () => {
+    const rows = sidebarRows(room, agents, workspaces, lists, ['c1', 'c2', 'gone'])
+    expect(keys(rows)).toEqual(['chat:c1', 'chat:c2', 'chat:c3', 'workspace:loose'])
+    expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([false])
+  })
+
+  it('numbers only the rows you can see, so the chat after a folded one takes the next number', () => {
+    expect(slotsFor(room, agents, workspaces, lists, ['c1']).map(slotKey)).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
+    expect(slotsFor(room, agents, workspaces, lists).map(slotKey).slice(0, 3)).toEqual(['chat:c1', 'workspace:w1', 'workspace:w2'])
+  })
+})
+
 describe('chat lists that arrive while a push already made one', () => {
   it('holds the Lead row back until the Lead\'s list has loaded', () => {
     expect(keys(sidebarRows(room, agents, [home, ws('w1')], {}))).toEqual(['workspace:w1'])

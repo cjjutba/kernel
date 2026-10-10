@@ -254,12 +254,15 @@ const navMemory = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/** An open chat of the Lead's workspace, for the sidebar fixtures. */
+const leadChatRow = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
+
 /**
  * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
  * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Rooms fill in the rest of the sidebar.
  */
 const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
-  const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
+  const chat = leadChatRow
   const ownedBy = (leadChatId: string) => ({ leadChatId })
   const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'theo', port: 4315, prNumber: undefined }
   const rooms = roomsScene(f)
@@ -284,6 +287,25 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats. The first waits on a plan, the second is running and
+ * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon. org-invites has no chat.
+ */
+const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
+  const home = homeScene(f)
+  const owner = 'chat-lead-table'
+  return {
+    ...home,
+    chats: [
+      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
+      leadChatRow('chat-lead-export', 'Export invoices as PDF', 5), leadChatRow(owner, 'Invoice table and empty states', 6), leadChatRow('chat-lead-login', 'Client portal login', 7)
+    ],
+    workspaces: home.workspaces!.map((w) => (w.id === ids.table || w.id === ids.schema ? { ...w, leadChatId: owner } : w)),
+    approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: 'chat-lead-export' } : a)),
+    push: [{ type: 'chat.running', chatId: owner, running: true }],
+    ui: { route: { name: 'home' }, foldedChats: [owner] }
+  }
+}
 
 // ---------- Issues (KERNEL-160)
 
@@ -456,6 +478,7 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
+  SidebarChatFolded: scene(sidebarChatFolded),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }
