@@ -15,7 +15,7 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
-import { leadHomeOf, liveWorkspaces, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -167,16 +167,23 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
   )
 }
 
+/** The workspaces whose chat list `useChatLists` has asked for. The store can't say: a `chat` push makes a one-chat list before any fetch. */
+const fetched = new Set<string>()
+
 /**
  * Chat lists for the Lead's workspace and the workspace rows, which load only when a workspace opens. With them a chat row
  * lists at launch and a workspace row shows it is working before you open it; chat pushes keep them current after that.
+ * A list is fetched once per workspace whatever the store holds, then merged with any chats pushed meanwhile.
  */
 function useChatLists(workspaceIds: string[]) {
   const key = workspaceIds.join()
   useEffect(() => {
     for (const id of workspaceIds) {
-      if (getState().chats[id]) continue
-      void call('chats.list', { workspaceId: id }).then((list) => { if (!getState().chats[id]) actions.chats.set(id, list) }).catch(() => undefined)
+      if (fetched.has(id)) continue
+      fetched.add(id)
+      void call('chats.list', { workspaceId: id })
+        .then((list) => actions.chats.set(id, mergeChatList(list, getState().chats[id])))
+        .catch(() => { fetched.delete(id) })
     }
   }, [key])
 }
@@ -199,7 +206,8 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
   const leadHome = leadHomeOf(room, agents, workspaces)
-  useChatLists(expanded ? [...(leadHome ? [leadHome] : []), ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : [])
+  // A folded room in view still loads the Lead's chats, since ⌘1 to ⌘9 count them.
+  useChatLists(expanded ? [...(leadHome ? [leadHome] : []), ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : numbered && leadHome ? [leadHome] : [])
   return (
     <div className="nav-list">
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>

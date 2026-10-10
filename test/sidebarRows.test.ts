@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { slotKey, slotsFor, sidebarRows } from '../src/renderer/src/components/sidebar/slots'
+import { mergeChatList, slotKey, slotsFor, sidebarRows } from '../src/renderer/src/components/sidebar/slots'
 import type { AgentDef, Chat, Room, Workspace } from '../src/shared/types'
 
 const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'main', paused: false, createdAt: 0 }
@@ -51,5 +51,27 @@ describe('sidebar rows', () => {
     expect(keys(rows)).toEqual(['chat:c1', 'workspace:w2'])
     const noChat = sidebarRows(room, agents, [ws('w3', { leadChatId: 'c1' })], {})
     expect(noChat.map((r) => r.kind === 'workspace' && r.nested)).toEqual([false, false])
+  })
+})
+
+describe('chat lists that arrive while a push already made one', () => {
+  it('holds the Lead row back until the Lead\'s list has loaded', () => {
+    expect(keys(sidebarRows(room, agents, [home, ws('w1')], {}))).toEqual(['workspace:w1'])
+    expect(keys(sidebarRows(room, agents, [home, ws('w1')], { home: [] }))).toEqual(['lead', 'workspace:w1'])
+  })
+
+  it('returns the fetched list when nothing was pushed', () => {
+    const fetched = [chat('c1'), chat('c2')]
+    expect(mergeChatList(fetched, undefined)).toBe(fetched)
+    expect(mergeChatList(fetched, [])).toBe(fetched)
+  })
+
+  it('keeps every fetched chat when a push made a one-chat list first', () => {
+    expect(mergeChatList([chat('c1'), chat('c2'), chat('c3')], [chat('c2')]).map((c) => c.id)).toEqual(['c1', 'c2', 'c3'])
+  })
+
+  it('lets a pushed chat win over its fetched copy, and keeps a chat only the push knows', () => {
+    const merged = mergeChatList([chat('c1', { title: 'old' }), chat('c2')], [chat('c1', { title: 'renamed' }), chat('c9')])
+    expect(merged.map((c) => [c.id, c.title])).toEqual([['c1', 'renamed'], ['c2', 'c2'], ['c9', 'c9']])
   })
 })

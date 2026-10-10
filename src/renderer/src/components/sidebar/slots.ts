@@ -42,9 +42,11 @@ export function openLeadChats(room: Room, agents: Record<string, AgentDef[]>, wo
 export function sidebarRows(room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>): Slot[] {
   const live = liveWorkspaces(workspaces, room.id)
   const open = openLeadChats(room, agents, workspaces, chats)
+  const home = leadHomeOf(room, agents, workspaces)
   const rows: Slot[] = []
   if (!open.length) {
-    if (leadOf(agents, room.id)) rows.push({ kind: 'lead' })
+    // The Lead row stands in for a chat list that came back empty, or for a Lead with no workspace yet. While the list loads, no row flashes in its place.
+    if (leadOf(agents, room.id) && (!home || chats[home])) rows.push({ kind: 'lead' })
     return [...rows, ...live.map((ws) => ({ kind: 'workspace' as const, ws, nested: false }))]
   }
   const owned = new Set<string>()
@@ -54,6 +56,17 @@ export function sidebarRows(room: Room, agents: Record<string, AgentDef[]>, work
   }
   for (const ws of live) if (!owned.has(ws.id)) rows.push({ kind: 'workspace', ws, nested: false })
   return rows
+}
+
+/**
+ * A chat list that came back from `chats.list`, merged with what the store holds by then. A `chat` push can create a one-chat list
+ * before the fetch lands, so the pushed copy wins over the fetched one and a chat only the push knows about is kept.
+ */
+export function mergeChatList(fetched: Chat[], current: Chat[] | undefined): Chat[] {
+  if (!current?.length) return fetched
+  const pushed = new Map(current.map((c) => [c.id, c]))
+  const known = new Set(fetched.map((c) => c.id))
+  return [...fetched.map((c) => pushed.get(c.id) ?? c), ...current.filter((c) => !known.has(c.id))]
 }
 
 /** The rows the ⌘1 to ⌘9 shortcuts reach. */
