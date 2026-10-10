@@ -85,6 +85,8 @@ export interface SessionDeps {
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
+  /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
+  onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
   /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy }) => void
   /**
@@ -670,6 +672,7 @@ export class Sessions {
         live.agentModels.clear()
         if (msg.trigger === 'clear') live.cleared = true
         bus.push({ type: 'chat.cleared', chatId })
+        this.d.onReset?.(ws, chat, msg.trigger)
         return
       }
       case 'assistant': {
