@@ -1,10 +1,11 @@
+import { isRunName } from '@shared/types'
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS, isRunName, previewUrlsOf } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 
@@ -49,7 +50,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
   }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
@@ -276,6 +277,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
     'shared.reveal': async () => ok,
+    // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
+    'env.get': async ({ roomId }) => {
+      const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
+      return { names: [...(scope?.names ?? [])].sort(), files: roomId ? scope?.files ?? roomSettings(roomId).env.files.map((path) => ({ path, missing: false })) : [] }
+    },
+    'env.set': async () => ok,
+    'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),

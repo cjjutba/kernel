@@ -321,12 +321,23 @@ export interface ScriptTrust {
   /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
   runScripts?: { name: string; command: string }[]
   copy: string[]
+  /**
+   * The repo's `[env] files` list. A file can set ZDOTDIR or BASH_ENV, which makes a shell run repo code, so the list waits
+   * for trust like a script (KERNEL-247). Left out when the repo sets none.
+   */
+  envFiles?: string[]
   /** Open workspaces held in `trust` until the room is trusted. */
   workspaceIds: string[]
 }
 
 /** Each workspace gets this many ports, `$KERNEL_PORT` to `$KERNEL_PORT + 9` (KERNEL-244). */
 export const PORT_BLOCK = 10
+
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 export interface ScriptLine {
   kind: ScriptKind
@@ -909,6 +920,11 @@ export interface RoomSettings {
    */
   preview: { urls: { name: string; url: string }[] }
   /**
+   * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
+   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247).
+   */
+  env: { files: string[] }
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
@@ -989,7 +1005,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'

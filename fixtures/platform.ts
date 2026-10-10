@@ -66,6 +66,7 @@ const kernelFiles: RoomSettings = {
   disabled: { skills: [], mcp: ['Figma'] },
   pr: { createInstructions: '# Create a pull request\n1. Rebase on origin/dev and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk\n4. Link the Linear issue in the description' },
   preview: { urls: [] },
+  env: { files: [] },
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
@@ -154,7 +155,17 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
-  SettingsRoomScripts: roomPage('scripts', clientA()),
+  // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
+  // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
+  SettingsRoomScripts: roomPage('scripts', clientA({
+    runScripts: [
+      { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+      { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+      { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+    ],
+    preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
+    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
+  })),
   SettingsRoomInstructions: roomPage('instructions', clientA()),
   SettingsRoomPermissions: scene((f) => ({
     ...clientA(),

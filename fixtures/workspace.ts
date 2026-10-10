@@ -1,3 +1,4 @@
+import type { PushEvent } from '@shared/ipc'
 import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -29,6 +30,54 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     ...extra,
     ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false }, ...extra.ui }
   }))
+
+/** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
+function runScripts(): Fixture {
+  const open = prScene('open', [], { prs: prInfo('open') })
+  const frontend = ['$ pnpm --filter web dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4312', 'Studio ready on http://localhost:4314', 'Compiled /invoices', 'GET /invoices 200 in 84ms', 'GET /api/invoices 200 in 31ms']
+  return {
+    ...open,
+    roomSettings: { [ids.roomA]: {
+      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
+      runScripts: [
+        { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+        { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+        { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+      ],
+      files: { copy: [] }, workspace: {}
+    } },
+    // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
+    push: [
+      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', line, stream: 'stdout' }))
+    ]
+  }
+}
+
+/**
+ * KERNEL-250: the Checks tab of an open PR with the Open menu showing. The room has two preview URLs and `run` printed a third, so
+ * the menu lists the named ones, a hairline and Detected. The workspace's first port is 4312 and `run` prints 4314.
+ */
+function preview(): Fixture {
+  const open = prScene('open', [], {
+    prs: prInfo('open', { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'pass', meta: '2m 4s' }] })
+  }, 'checks')
+  const run = ['$ pnpm dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4314', 'Compiled /inbox', 'GET /inbox 200 in 84ms', 'GET /api/requests 200 in 31ms']
+  return {
+    ...open,
+    roomSettings: { [ids.roomA]: {
+      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
+      runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
+      files: { copy: [] }, workspace: {},
+      preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] }
+    } },
+    push: [
+      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', line, stream: 'stdout' }))
+    ],
+    ui: { ...open.ui, menu: 'preview' }
+  }
+}
 
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
@@ -489,6 +538,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRNone: prScene('none', []),
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
+  WorkspaceRunScripts: runScripts(),
+  WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
   WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),

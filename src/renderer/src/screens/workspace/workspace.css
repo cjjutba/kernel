@@ -167,6 +167,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
+.run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }
 
@@ -213,3 +214,13 @@ button.msg-chip:hover { border-color: var(--line-4); }
   .cp-label { display: none; }
   .ws-scroll { padding: 16px 16px 8px; }
 }
+
+/* Open, the split button by the Port row on the Checks tab (WorkspacePreview.png, KERNEL-250) */
+.open-split { display: inline-flex; align-items: center; }
+.open-caret-anchor { position: relative; display: inline-flex; margin-left: -1px; }
+.open-main, .open-caret { display: inline-flex; align-items: center; height: 24px; background: var(--surface); border: 1px solid var(--line-3); color: var(--ink-2); font-size: 12px; }
+.open-main { padding: 0 10px; border-radius: 6px 0 0 6px; }
+.open-caret { padding: 0 6px; border-radius: 0 6px 6px 0; color: var(--muted); }
+.open-main:hover:not(:disabled), .open-caret:hover { background: var(--surface-3); }
+.open-main:disabled { color: var(--faint); cursor: default; }
+.open-caret[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
