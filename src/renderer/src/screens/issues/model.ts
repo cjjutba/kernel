@@ -8,8 +8,18 @@ import type { IssueStateShape } from '../../icons'
 export const GROUP_ORDER: LinearStateType[] = ['triage', 'started', 'unstarted', 'backlog']
 const rank = (t: LinearStateType) => { const i = GROUP_ORDER.indexOf(t); return i < 0 ? GROUP_ORDER.length : i }
 
-/** The shape and word for a state. Linear calls the unstarted type "Todo" in most teams, and the canvas draws it that way. */
-export const stateShape = (t: LinearStateType): IssueStateShape => (t === 'unstarted' ? 'todo' : t === 'completed' ? 'done' : t === 'canceled' ? 'canceled' : t)
+/**
+ * The shape for a state type. Linear calls the unstarted type "Todo" in most teams, and the canvas draws it that way. Any type this
+ * doesn't know, such as Linear's `duplicate` (an issue opened by key can be one), is drawn as canceled. The status word is the state's own name.
+ */
+export function stateShape(type: string): IssueStateShape {
+  switch (type) {
+    case 'triage': case 'backlog': case 'started': return type
+    case 'unstarted': return 'todo'
+    case 'completed': return 'done'
+    default: return 'canceled'
+  }
+}
 
 export interface IssueGroup {
   /** The state's name as the team spells it, "In progress". */

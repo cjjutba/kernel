@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LinearIssue, LinearScope, Workspace } from '../src/shared/types'
-import { describeFilter, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
+import { describeFilter, stateShape, fitFilter, flatIssues, groupIssues, initials, issueAge, joinFits, linkedWorkspaces, parseFilter, rowStatus, workspaceSlug, workspaceState } from '../src/renderer/src/screens/issues/model'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const ago = (ms: number) => new Date(NOW - ms).toISOString()
@@ -51,6 +51,13 @@ describe('groupIssues', () => {
     const list = [issue('b', 'backlog', 'Backlog', 0, 0, ago(D)), issue('s', 'started', 'In progress', 1, 0, ago(D))]
     groupIssues(list)
     expect(list.map((i) => i.id)).toEqual(['b', 's'])
+  })
+})
+
+describe('stateShape', () => {
+  it('draws Linear\'s state types, and anything unknown as canceled', () => {
+    expect(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled'].map(stateShape)).toEqual(['triage', 'backlog', 'todo', 'started', 'done', 'canceled'])
+    expect(stateShape('duplicate')).toBe('canceled')
   })
 })
 
