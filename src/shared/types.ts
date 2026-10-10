@@ -774,9 +774,10 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'agents' | 'permissions' | 'skills'
-  | 'git' | 'scripts' | 'prs' | 'files'
+  | 'models' | 'permissions'
+  | 'git' | 'scripts' | 'prs'
   | 'hooks' | 'integrations' | 'experimental' | 'about'
+  /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */

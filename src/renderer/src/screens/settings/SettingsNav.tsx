@@ -12,12 +12,11 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
     { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' }
   ] },
   { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'agents', label: 'Agents', icon: 'team' },
-    { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'skills', label: 'Skills and MCP', icon: 'sparkle' }
+    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }
   ] },
   { title: 'Workspaces', items: [
     { page: 'git', label: 'Git and worktrees', icon: 'branch' }, { page: 'scripts', label: 'Scripts', icon: 'term' },
-    { page: 'prs', label: 'Pull requests', icon: 'pr' }, { page: 'files', label: 'Files to copy', icon: 'copy' }
+    { page: 'prs', label: 'Pull requests', icon: 'pr' }
   ] },
   { title: 'System', items: [
     { page: 'hooks', label: 'Hooks', icon: 'plug' }, { page: 'integrations', label: 'Integrations', icon: 'link' },

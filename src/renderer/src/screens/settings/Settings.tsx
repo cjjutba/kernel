@@ -1,6 +1,6 @@
 import './settings.css'
 import type { ReactNode } from 'react'
-import type { SettingsPage } from '@shared/types'
+import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { Account } from './pages/Account'
@@ -24,7 +24,7 @@ import { Team } from './pages/Team'
 export { SettingsNav } from './SettingsNav'
 
 /** The page to the right of the Settings nav. */
-export function Settings({ page, roomId }: { page: SettingsPage; roomId?: string }) {
+export function Settings({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const settings = useSettings()
   let body: ReactNode
   if (page === 'shortcuts') body = <Shortcuts />
@@ -40,11 +40,11 @@ export function Settings({ page, roomId }: { page: SettingsPage; roomId?: string
   else if (page === 'git') body = <Git s={settings} />
   else if (page === 'scripts') body = <Scripts s={settings} />
   else if (page === 'prs') body = <PRs s={settings} />
-  else if (page === 'files') body = <Files />
   else if (page === 'hooks') body = <Hooks s={settings} />
-  else if (page === 'agents') body = <Team s={settings} />
-  else if (page === 'skills') body = <Skills />
   else if (page === 'integrations') body = <Integrations />
+  else if (page === 'room' && section === 'files') body = <Files />
+  else if (page === 'room' && section === 'agents') body = <Team s={settings} />
+  else if (page === 'room' && section === 'skills') body = <Skills />
   else if (page === 'room') body = <Room roomId={roomId} s={settings} />
   return <div className="panel">{body}</div>
 }

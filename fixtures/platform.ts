@@ -1,4 +1,4 @@
-import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, SettingsPage, Skill } from '@shared/types'
+import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, SettingsPage, Skill } from '@shared/types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
@@ -48,6 +48,8 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 
 // KERNEL-25: the app-wide settings pages. The seed's rooms fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
+/** One of Client A's room pages (KERNEL-191). */
+const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section } } }))
 const accountUsage: RateLimit[] = [
   { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
   { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
@@ -130,10 +132,10 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
   SettingsScripts: settingsPage('scripts', clientA()),
-  SettingsFiles: settingsPage('files', clientA()),
+  SettingsFiles: roomPage('files', clientA()),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
-  SettingsTeam: scene((f) => ({ agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
-  SettingsSkills: settingsPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
+  SettingsTeam: scene((f) => ({ agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene((f) => ({
     ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
