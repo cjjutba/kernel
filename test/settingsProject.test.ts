@@ -194,6 +194,60 @@ describe('hooks installer without SessionStart', () => {
   })
 })
 
+describe('bringing out-of-date hooks up to date at start (KERNEL-206)', () => {
+  const boot = async (content?: string) => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const port = 18000 + Math.floor(Math.random() * 800)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
+    const claudeSettingsFile = join(await mkdtemp(join(tmpdir(), 'kernel-claude-')), 'settings.json')
+    if (content !== undefined) await writeFile(claudeSettingsFile, content)
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile })
+    await k.start()
+    return { k, h: k.handlers(), port, claudeSettingsFile }
+  }
+  const tokenless = (port: number) => `/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hooks || true`
+  const mine = { matcher: 'Bash', hooks: [{ type: 'command', command: './guard.sh' }] }
+
+  it('rewrites tokenless Kernel entries with the token and leaves other hooks alone', async () => {
+    const before = { hooks: { PreToolUse: [mine, { matcher: '*', hooks: [{ type: 'command', command: tokenless(7420), timeout: 10 }] }] } }
+    const { k, h, claudeSettingsFile } = await boot(JSON.stringify(before))
+    const status = await h['hooks.status']()
+    const after = JSON.parse(await readFile(claudeSettingsFile, 'utf8'))
+    expect(after.hooks.PreToolUse[0]).toEqual(mine)
+    expect(after.hooks.PreToolUse[1].hooks[0].command).toContain(`X-Kernel-Token: ${status.token}`)
+    expect(after.hooks.PreToolUse[1].hooks[0].command).toContain(`127.0.0.1:${status.port}/hooks`)
+    expect(Object.keys(after.hooks)).toEqual(['PreToolUse'])
+    expect(status.events.find((e) => e.name === 'PreToolUse')?.installed).toBe(true)
+    expect(status.needsInstall).toBe(false)
+    await k.stop()
+  })
+
+  it('writes nothing for a user who never installed', async () => {
+    const empty = await boot()
+    await expect(stat(empty.claudeSettingsFile)).rejects.toThrow()
+    await empty.k.stop()
+    const text = JSON.stringify({ hooks: { PreToolUse: [mine] } })
+    const other = await boot(text)
+    expect(await readFile(other.claudeSettingsFile, 'utf8')).toBe(text)
+    await expect(stat(other.claudeSettingsFile + '.kernel-backup')).rejects.toThrow()
+    expect((await other.h['hooks.status']()).needsInstall).toBe(false)
+    await other.k.stop()
+  })
+
+  it('leaves a file it cannot parse alone and asks for Install until a write works', async () => {
+    const text = `{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "${tokenless(7420)}" }] }] }, }`
+    const { k, h, port, claudeSettingsFile } = await boot(text)
+    expect(await readFile(claudeSettingsFile, 'utf8')).toBe(text)
+    await expect(stat(claudeSettingsFile + '.kernel-backup')).rejects.toThrow()
+    expect((await h['hooks.status']()).needsInstall).toBe(true)
+    // The user fixes the file and clicks Install.
+    await writeFile(claudeSettingsFile, '{}')
+    await h['hooks.install']({ port })
+    expect((await h['hooks.status']()).needsInstall).toBe(false)
+    await k.stop()
+  })
+})
+
 describe('rewriting the hooks on a settings change', () => {
   it('never adds hooks, and moves old http entries to the command form', async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))

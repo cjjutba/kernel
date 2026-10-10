@@ -59,6 +59,40 @@ export function hasKernelHooks(settings: Settings): boolean {
   return Object.values(settings.hooks ?? {}).some((ms) => ms.some((m) => m.hooks.some(isOurs)))
 }
 
+/**
+ * Kernel's own entries brought up to date where they are, for the start of each run (KERNEL-206). An entry without this
+ * install's token, or with another port or timeout, becomes the current one in the same place. An event with no Kernel entry
+ * gets none, so a user who never installed gets nothing and one who removed an event keeps it removed. An entry for an event
+ * Kernel no longer hooks (SessionStart, D-047) goes, as Install does. Every other hook stays as it is. Null when nothing changes.
+ */
+export function withCurrentKernelHooks(settings: Settings, port: number, approvalTimeoutSec: number, token: string): Settings | null {
+  let changed = false
+  const hooks: Record<string, Matcher[]> = {}
+  for (const [event, matchers] of Object.entries(settings.hooks ?? {})) {
+    const want = (KERNEL_HOOK_EVENTS as readonly string[]).includes(event) ? kernelHookMatcher(event, port, approvalTimeoutSec, token).hooks[0] : null
+    let placed = false
+    const next = matchers.map((m) => ({
+      ...m,
+      hooks: m.hooks.flatMap((h): HookEntry[] => {
+        if (!isOurs(h)) return [h]
+        // One Kernel entry per event: a second one would post every event twice.
+        if (!want || placed) { changed = true; return [] }
+        placed = true
+        if (h.type === want.type && h.command === want.command && h.timeout === want.timeout) return [h]
+        changed = true
+        return [want]
+      })
+    }))
+    // Only a group this emptied goes. One the user left empty stays.
+    const kept = next.filter((m, i) => m.hooks.length || !matchers[i].hooks.length)
+    if (kept.length) hooks[event] = kept
+  }
+  if (!changed) return null
+  const out: Settings = { ...settings, hooks }
+  if (!Object.keys(hooks).length) delete out.hooks
+  return out
+}
+
 async function readSettings(file: string): Promise<Settings> {
   try { return JSON.parse(await readFile(file, 'utf8')) } catch (e: any) { if (e.code === 'ENOENT') return {}; throw new Error(`Could not parse ${file}: ${e.message}`) }
 }
@@ -100,6 +134,20 @@ export async function installHooks(file: string, port: number, approvalTimeoutSe
   const next = withKernelHooks(current, port, approvalTimeoutSec, token)
   await writeAtomic(file, next)
   return installedEvents(next, token)
+}
+
+/**
+ * Runs at start: rewrites Kernel's out-of-date entries with the same safe write as Install, and writes nothing when they are
+ * current or there are none. Returns whether it wrote. Throws, leaving the file alone, when the file can't be read, parsed or
+ * written, so Kernel can ask the user to install instead.
+ */
+export async function refreshHooks(file: string, port: number, approvalTimeoutSec: number, token: string): Promise<boolean> {
+  const next = withCurrentKernelHooks(await readSettings(file), port, approvalTimeoutSec, token)
+  if (!next) return false
+  assertWritable(file)
+  await backupOnce(file)
+  await writeAtomic(file, next)
+  return true
 }
 
 export async function uninstallHooks(file: string) {

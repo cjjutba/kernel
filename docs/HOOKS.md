@@ -1,6 +1,6 @@
 # Hooks contract
 
-Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button writes them (CheckHooks, Settings > Hooks). A port or approval timeout change rewrites hooks that are already there and never adds them. Code: `src/main/services/hooksInstaller.ts`.
+Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button adds them (CheckHooks, Settings > Hooks). Each start, a port change and an approval timeout change rewrite Kernel's out-of-date entries that are already there, and never add any. Code: `src/main/services/hooksInstaller.ts`.
 
 Each entry is a command hook that pipes the payload to the server with curl (D-050):
 
@@ -15,7 +15,7 @@ Each entry is a command hook that pipes the payload to the server with curl (D-0
 - The Host must be `127.0.0.1:<port>` or `localhost:<port>`, and the `X-Kernel-Token` header must match the token. Either failing gets a 401. The token is compared in constant time.
 - The content type must be `application/json`, or the server answers 415. A web page's `no-cors` fetch can only send `text/plain`.
 
-`GET /health` needs no token. An entry with another token, or none, counts as not installed, so CheckHooks and Settings > Hooks offer Install, which rewrites it. curl's `-f` keeps a 401 quiet, the same way it handles a server that is down. See KERNEL-206.
+`GET /health` needs no token. An entry with another token, or none, counts as not installed. Kernel rewrites it with the current token at the next start. If that fails (a file it can't parse or write), Kernel leaves the file alone and shows the hooks banner, and CheckHooks and Settings > Hooks offer Install. curl's `-f` keeps a 401 quiet, the same way it handles a server that is down. See KERNEL-206.
 
 ## When Kernel isn't running
 
