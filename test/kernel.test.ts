@@ -28,6 +28,9 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const room = await k.addRoom(repo)
     const agents = await k.agents(room.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['rowan', true], ['kai', false]])
+    // The preview reads the room's saved list, or the patterns the user is typing (KERNEL-245).
+    expect(await k.handlers()['files.preview']({ roomId: room.id })).toEqual([{ path: '.env.local', size: 9 }])
+    expect(await k.handlers()['files.preview']({ roomId: room.id, patterns: ['*.md', '.env*'] })).toEqual([{ path: '.env.local', size: 9 }])
 
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the invoice table with empty states', agentId: 'kai', title: 'Invoice table' })
     expect(ws).toMatchObject({ status: 'ready', branch: 'feat/invoice-table', mode: 'worktree', agentId: 'kai' })

@@ -76,4 +76,43 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('Back 
     await page.keyboard.press('Meta+Shift+L')
     await expect.poll(() => selected(page)).toEqual([expect.stringContaining('Second chat')])
   }, 60_000)
+
+  it('⌘[ and ⌘] step through the chats you opened (KERNEL-200)', async () => {
+    const page = await launch('NavMemory')
+    const on = (title: string) => expect.poll(() => selected(page)).toEqual([expect.stringContaining(title)])
+    // The fixture opens on the first chat. Nothing is behind it, so ⌘[ right after launch does nothing.
+    await page.keyboard.press('Meta+[')
+    await on('Lead')
+    await tabs(page).filter({ hasText: 'Third chat' }).click()
+    await on('Third chat')
+    await page.keyboard.press('Meta+[')
+    await expect.poll(() => selected(page)).not.toEqual([expect.stringContaining('Third chat')])
+    await page.keyboard.press('Meta+]')
+    await on('Third chat')
+
+    // The mouse's back and forward buttons do the same.
+    await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 3, cancelable: true })))
+    await expect.poll(() => selected(page)).not.toEqual([expect.stringContaining('Third chat')])
+    await page.evaluate(() => window.dispatchEvent(new MouseEvent('mouseup', { button: 4, cancelable: true })))
+    await on('Third chat')
+
+    // A modal keeps ⌘[ to itself.
+    await page.keyboard.press('Meta+k')
+    await page.getByRole('dialog').waitFor()
+    await page.keyboard.press('Meta+[')
+    await expect.poll(() => page.getByRole('dialog').isVisible()).toBe(true)
+    await page.keyboard.press('Escape')
+    await on('Third chat')
+
+    // One ⌘[ leaves Settings after several pages, and ⌘] reopens the last of them.
+    await page.keyboard.press('Meta+,')
+    await settings(page).waitFor()
+    await settings(page).getByRole('button', { name: 'Models and effort' }).click()
+    await settings(page).getByRole('button', { name: 'Hooks' }).click()
+    await onPage(page, 'Hooks')
+    await page.keyboard.press('Meta+[')
+    await on('Third chat')
+    await page.keyboard.press('Meta+]')
+    await onPage(page, 'Hooks')
+  }, 60_000)
 })
