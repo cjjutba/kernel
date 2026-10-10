@@ -65,9 +65,14 @@ async function capture(name: string): Promise<boolean> {
     await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: HEIGHT })
     await page.waitForSelector('html[data-fixture="ready"]', { state: 'attached', timeout: 15_000 })
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    // Settings, Floor and Board are lazy chunks. App shows the boot shell with data-lazy until the chunk has loaded, and their data
+    // loads on mount, so wait for the chunk first and for the screen's data after.
+    const lazyLoaded = () => page.waitForSelector('[data-lazy="pending"]', { state: 'detached', timeout: 15_000 })
+    await lazyLoaded()
     // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
     await interactions[name]?.(page)
+    await lazyLoaded()
     await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
     console.log(`shots/${name}${suffix}.png`)
     return true
