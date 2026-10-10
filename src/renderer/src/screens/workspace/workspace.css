@@ -167,6 +167,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
+.run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }
 

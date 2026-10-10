@@ -154,7 +154,15 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
-  SettingsRoomScripts: roomPage('scripts', clientA()),
+  // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
+  SettingsRoomScripts: roomPage('scripts', clientA({
+    runScripts: [
+      { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+      { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+      { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+    ],
+    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local' }
+  })),
   SettingsRoomInstructions: roomPage('instructions', clientA()),
   SettingsRoomPermissions: scene((f) => ({
     ...clientA(),
