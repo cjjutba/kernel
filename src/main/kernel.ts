@@ -31,11 +31,12 @@ import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
+import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -138,6 +139,14 @@ export class Kernel {
   readonly overlaps: Overlaps
   readonly ptys = new Ptys()
   readonly roomIcons: RoomIcons
+  /** App-wide and per-room variables, encrypted in `env.json` (KERNEL-247). */
+  readonly envStore: EnvStore
+  /**
+   * Per room, the `[env] files` list `envFor` may read, as JSON: the user's own list, or the repo's once the room is
+   * trusted. `untrusted` sets it each time it checks. A room with no entry reads no env file, since `envFor` is
+   * synchronous and can't wait for the check (KERNEL-247).
+   */
+  private envFilesOk = new Map<string, string>()
   /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
   avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
@@ -189,9 +198,16 @@ export class Kernel {
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
     /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
     fetch?: typeof fetch
+    /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
+    cipher?: Cipher
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.roomIcons = new RoomIcons(o.dataDir)
+    this.envStore = new EnvStore({
+      file: join(o.dataDir, 'env.json'), cipher: o.cipher,
+      // Names only: the file it moved holds ciphertext, and the note never names a value.
+      onSetAside: (file) => void bus.activity({ kind: 'note', actor: 'kernel', text: 'could not read its saved variables and moved them to', object: file })
+    })
     this.trusted = new ScriptTrustStore(join(o.dataDir, 'trust.json'))
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
@@ -214,6 +230,7 @@ export class Kernel {
       // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
       rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
+      envFor: (ws) => this.envFor(ws),
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
@@ -335,6 +352,8 @@ export class Kernel {
     await this.sessions.endLeftovers()
     // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
     await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.agents(r.id).catch(() => undefined)))
+    // Before any session restarts, so a trusted room's env files reach it (KERNEL-247).
+    await Promise.all(this.store.rooms().map((r) => this.untrusted(r).catch(() => null)))
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
@@ -633,6 +652,7 @@ export class Kernel {
     const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
     this.store.saveRoom(room)
     await this.agents(room.id)
+    await this.untrusted(room).catch(() => null)
     return room
   }
 
@@ -845,6 +865,8 @@ export class Kernel {
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
+    this.envStore.dropRoom(roomId)
+    this.envFilesOk.delete(roomId)
     await this.roomIcons.remove(room.icon)
     await this.trusted.forget(roomId)
     this.agentWatchers.get(roomId)?.()
@@ -1110,7 +1132,7 @@ export class Kernel {
     const script = repo.runScripts.find((r) => r.name === name)?.command
     if (!script) throw new Error(name === 'run' ? 'No run script in .kernel/settings.toml' : `No run script named ${name} in .kernel/settings.toml`)
     if (repo.scripts.runMode === 'single') for (const other of this.store.workspaces(room.id)) if (other.id !== ws.id && other.status !== 'archived') stopRuns(other.id)
-    void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, port: ws.port, root: room.path })
+    void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
   }
 
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
@@ -1131,7 +1153,7 @@ export class Kernel {
     // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
     if (await this.untrusted(room, repo)) return this.holdForTrust(ws.id)
     if (repo.scripts.setup) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.envFor(ws, { script: true }) })
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
@@ -1169,7 +1191,7 @@ export class Kernel {
     // and trusting runs setup and sends it (KERNEL-209).
     if (script && await this.untrusted(room, repo)) return this.holdForTrust(ws.id)
     if (script) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
         if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
@@ -1207,12 +1229,15 @@ export class Kernel {
    * nothing to trust (KERNEL-209).
    */
   private async untrusted(room: Room, repo?: RepoSettings): Promise<ScriptTrust | null> {
-    const subject = await this.subjectOf(room, repo)
-    if (!subject) return null
-    const hash = trustHash(subject)
-    if (await this.trusted.has(room.id, hash)) return null
+    const settings = repo ?? await loadRepoSettings(room.path)
+    const subject = await this.subjectOf(room, settings)
+    const hash = subject && trustHash(subject)
+    const trusted = !subject || await this.trusted.has(room.id, hash!)
+    // What envFor may read until the next check: the room's list, unless it is the repo's and waits for trust (KERNEL-247).
+    this.envFilesOk.set(room.id, JSON.stringify(trusted || !subject?.envFiles ? settings.env.files : []))
+    if (trusted) return null
     const workspaceIds = this.store.workspaces(room.id).filter((w) => w.status === 'trust').map((w) => w.id)
-    return { roomId: room.id, hash, ...subject, workspaceIds }
+    return { roomId: room.id, hash: hash!, ...subject!, workspaceIds }
   }
 
   /** Tell the renderer the room's scripts wait for the user. */
@@ -1238,6 +1263,7 @@ export class Kernel {
   private async trustCurrent(room: Room, repo?: RepoSettings) {
     const subject = await this.subjectOf(room, repo)
     if (subject) await this.trusted.add(room.id, trustHash(subject))
+    await this.untrusted(room, repo)
   }
 
   /**
@@ -1256,7 +1282,7 @@ export class Kernel {
       return
     }
     if (!before.trusted) return
-    const wrote = (group: 'scripts' | 'files', key: string) => {
+    const wrote = (group: 'scripts' | 'files' | 'env', key: string) => {
       const v = (patch[group] as Record<string, unknown> | undefined)?.[key]
       if (v === undefined || v === null || v === '') return false
       const source = next.sources[`${group}.${key}`]
@@ -1266,7 +1292,8 @@ export class Kernel {
     const copyOk = JSON.stringify(after.copy) === JSON.stringify(before.subject?.copy ?? []) || wrote('files', 'copy')
     // A named run script the save changed in the repo's text waits for the dialog (KERNEL-244).
     const runsOk = JSON.stringify(after.runScripts ?? []) === JSON.stringify(before.subject?.runScripts ?? [])
-    if (!scriptsOk || !copyOk || !runsOk) return
+    const envOk = JSON.stringify(after.envFiles ?? []) === JSON.stringify(before.subject?.envFiles ?? []) || wrote('env', 'files')
+    if (!scriptsOk || !copyOk || !runsOk || !envOk) return
     await this.trustCurrent(room, next)
     await this.releaseHeld(room.id)
   }
@@ -1300,6 +1327,7 @@ export class Kernel {
       throw new Error("This room's scripts changed since you read them. Read them again before trusting them.")
     }
     if (subject) await this.trusted.add(roomId, hash)
+    await this.untrusted(room)
     await this.releaseHeld(roomId)
   }
 
@@ -1340,7 +1368,7 @@ export class Kernel {
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
-    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
+    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
     return this.setupPassed(ws, code)
   }
 
@@ -1377,7 +1405,7 @@ export class Kernel {
     if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) {
       // Archiving never waits on trust: untrusted text is skipped and the workspace archives (KERNEL-209).
       if (await this.untrusted(room, repo)) bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', line: "Skipped the archive script: this room's scripts aren't trusted yet.", stream: 'stderr' })
-      else await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
+      else await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, env: this.envFor(ws, { script: true }) })
     }
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
@@ -1736,6 +1764,25 @@ export class Kernel {
     return fork
   }
 
+  /**
+   * Every variable a session, script or terminal in the workspace gets: the Mac's, the app's, the room's env files, the
+   * room's, then Kernel's own (KERNEL-247). Synchronous, since a session starts synchronously. Scripts also get PORT and
+   * FORCE_COLOR=0. Sessions and terminals take `ANTHROPIC_*` and `CLAUDE_CODE_*` names from the Mac only, and drop the API
+   * key afterwards, in `sessionEnv`. Scripts get every layer whole.
+   */
+  envFor(ws: Workspace, o: { script?: boolean } = {}): Record<string, string> {
+    const room = this.store.room(ws.roomId)
+    const keep = o.script ? (layer: Record<string, string>) => layer : withoutClaudeNames
+    // A repo's env file can set ZDOTDIR or BASH_ENV and run its code in every shell, so the list must be one the last
+    // trust check allowed. A list changed since then waits for the next check, which this starts.
+    const list = room ? loadRepoSettingsSync(room.path).env.files : []
+    const allowed = !!room && this.envFilesOk.get(room.id) === JSON.stringify(list)
+    if (room && list.length && !allowed) void this.untrusted(room).catch(() => null)
+    const files = allowed ? readEnvFiles(ws.path, list).map((f) => keep(f.vars)) : []
+    const kernel: Record<string, string> = { ...kernelVars(ws, room?.path ?? ws.path), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
+    return buildEnv({ base: process.env, app: keep(this.envStore.values()), files, room: keep(this.envStore.values(ws.roomId)), kernel })
+  }
+
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
@@ -1745,7 +1792,7 @@ export class Kernel {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     this.ptys.start(id, {
       cwd: ws.path,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.settings.models.agentTeams }),
+      env: sessionEnv(this.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
       command: plain ? undefined : 'claude',
       ...size
     })
@@ -2841,7 +2888,7 @@ export class Kernel {
         // Trusted since it was held: it sets up the way trusting releases it, brief and all.
         if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
-        void runScript({ workspaceId, kind, script: script!, cwd: ws.path, port: ws.port, root: room.path })
+        void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.envFor(ws, { script: true }) })
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
@@ -2866,6 +2913,8 @@ export class Kernel {
         const next = await saveRepoSettings(room.path, patch, shared)
         this.roomRemotes.set(room.path, next.workspace.remote)
         await this.trustSaved(room, before, patch, !!shared, next)
+        // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
+        await this.untrusted(room, next)
         return next
       },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
@@ -2874,6 +2923,22 @@ export class Kernel {
       'files.preview': async ({ roomId, patterns }) => {
         const { path } = this.mustRoom(roomId)
         return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
+      },
+      'env.get': async ({ roomId }) => {
+        const room = roomId ? this.mustRoom(roomId) : undefined
+        // The room's files are checked in its main checkout, without reading them. A workspace reads its own copies when
+        // something starts there.
+        const files = room ? (await loadRepoSettings(room.path)).env.files.map((path) => ({ path, missing: !envFileReadable(room.path, path) })) : []
+        return { names: this.envStore.names(roomId), files }
+      },
+      'env.set': async ({ roomId, name, value }) => {
+        if (roomId) this.mustRoom(roomId)
+        this.envStore.set(roomId, name, value)
+        return { ok: true }
+      },
+      'env.reveal': async ({ roomId, name }) => {
+        if (roomId) this.mustRoom(roomId)
+        return this.envStore.reveal(roomId, name)
       },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined
