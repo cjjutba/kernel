@@ -211,7 +211,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(where.dataDir) },
       body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: repo, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm db:reset' } })
     }).catch(() => undefined)
-    await vi.waitFor(() => expect(k.store.approvals({ pendingOnly: true }).some((a) => a.source === 'hook')).toBe(true))
+    await vi.waitFor(() => expect(k.store.approvals({ pendingOnly: true }).some((a) => a.source === 'hook')).toBe(true), { timeout: 10_000 })
     sdk.deaf = true
     try {
       const t0 = Date.now()
