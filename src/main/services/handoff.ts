@@ -23,6 +23,9 @@ export const LEAD_RULE = [
   'The user may have several chats with you at once. mcp__kernel__list_workspaces marks the workspaces you handed off in this chat as yours. Leave the others to the chat that handed them off unless the user asks you to step in.'
 ].join('\n')
 
+/** Appended to the Lead's prompt after LEAD_RULE, only while sharing is on (KERNEL-302). */
+export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'
+
 /**
  * Appended to a review workspace's prompt (KERNEL-130). The reviewer works in a worktree started from the author's branch,
  * reports its verdict with submit_review, and leaves GitHub's approve and request-changes alone, since the PR is the

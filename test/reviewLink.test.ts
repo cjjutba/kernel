@@ -61,6 +61,18 @@ describe('the review link (KERNEL-130)', () => {
     expect(deps.rulesFor(author, agent('kai'))).toBe(TEAMMATE_RULE)
   })
 
+  it('adds share_file to the reviewer and the author only while sharing is on (KERNEL-302)', async () => {
+    const { k, review, author, agent, deps } = await setup()
+    const names = (ws: Workspace, id: string) => k.toolsFor(ws, agent(id), k.store.chats(ws.id)[0]).map((t) => t.name)
+    expect(names(review, 'theo')).toEqual(['submit_review'])
+    expect(names(author, 'kai')).toEqual(['wait_for_merge'])
+    await k.handlers()['settings.set']({ patch: { experimental: { sharing: true } } })
+    expect(names(review, 'theo')).toEqual(['submit_review', 'share_file'])
+    expect(names(author, 'kai')).toEqual(['wait_for_merge', 'share_file'])
+    expect(deps.mcpFor(review, agent('theo'), k.store.chats(review.id)[0])).toHaveProperty('kernel')
+    expect(deps.mcpFor(author, agent('kai'), k.store.chats(author.id)[0])).toHaveProperty('kernel')
+  })
+
   it("resets to the PR's commit on GitHub once the work has a PR, the commit verdicts are checked against (KERNEL-136)", async () => {
     const { k, review, author, agent, deps } = await setup()
     k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prNumber: 108, prState: 'ready' })

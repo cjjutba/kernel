@@ -405,6 +405,20 @@ export type ChatItem =
   | { kind: 'interrupted'; id: string; ts: number }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
+  /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */
+  | { kind: 'shared'; id: string; ts: number; sharedId: string; version: number }
+
+/** What a shared file is, from its extension and first bytes (KERNEL-302). */
+export type SharedKind = 'html' | 'image' | 'pdf' | 'markdown'
+
+/**
+ * One version of a shared file. `file` is the copy's name in `<dataDir>/shared/<id>/v<n>/`. `chatId` is the chat that shared
+ * it, `thumb` says a thumbnail was captured, and `outside` counts the HTML's references to other files or the network.
+ */
+export interface SharedVersion { n: number; at: number; file: string; mime: string; bytes: number; sha256: string; chatId?: string; note?: string; thumb?: boolean; width?: number; height?: number; outside?: number }
+
+/** A file an agent shared, one per workspace and source path, with every version Kernel kept (KERNEL-302). `source` is relative to the workspace. */
+export interface SharedFile { id: string; roomId: string; workspaceId: string; agentId: string; source: string; title: string; kind: SharedKind; versions: SharedVersion[]; createdAt: number; updatedAt: number }
 
 /** Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. */
 export type ChatPart =
@@ -443,6 +457,7 @@ export type TeamEventKind =
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   | 'review'
   | 'wait.started' | 'wait.released' | 'wait.broken'
+  | 'shared'
 
 /** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
 export interface TeamUpdateEvent {
@@ -462,6 +477,8 @@ export interface TeamUpdateRow {
   /** The teammate's last reply, or a reviewer's summary, as the Lead got it. */
   reply?: string
   fromChat?: string
+  /** Files the teammate shared since the last update, newest version of each. The card draws them, not `events` (KERNEL-302). */
+  shared?: { sharedId: string; version: number; title: string; kind: SharedKind }[]
 }
 
 /** Kernel's update to a Lead chat. The card draws this; the Lead reads the item's text. `omitted` counts workspaces left out. */
@@ -876,7 +893,8 @@ export interface AppSettings {
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+  /** `sharing` gives agents share_file. No page shows it; KERNEL-308 turns it on (KERNEL-302). */
+  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean; sharing?: boolean }
 }
 
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
@@ -1009,7 +1027,7 @@ export interface Toast {
 
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
-  right: 'files' | 'changes' | 'checks'
+  right: 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
@@ -1030,6 +1048,10 @@ export interface WorkspaceTabs {
   files: string[]
   /** Paths of the open diff tabs. An empty path is All changes. */
   diffs: string[]
+  /** Ids of the open `shared:<id>` tabs (KERNEL-302). */
+  shared?: string[]
+  /** By shared id, the version a tab shows when it isn't the newest. */
+  sharedVersion?: Record<string, number>
 }
 
 export interface UiState {

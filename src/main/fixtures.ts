@@ -265,6 +265,18 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
+      .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
+    'shared.read': async ({ sharedId, version }) => {
+      const file = f.shared?.find((x) => x.id === sharedId)
+      const v = file?.versions.find((x) => x.n === version)
+      if (!file || !v) throw new Error('That shared file or version is gone.')
+      const data = f.sharedData?.[sharedId]?.[version]
+      return { kind: file.kind, mime: v.mime, ...(data?.text !== undefined ? { text: data.text } : {}), ...(data?.dataUrl ? { dataUrl: data.dataUrl } : {}) }
+    },
+    'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
+    'shared.reveal': async () => ok,
     // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
     'env.get': async ({ roomId }) => {
       const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }

@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { migrate, refuseNewer } from './migrations'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedFile, Task, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
 // migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
@@ -69,7 +69,7 @@ export class Store {
   room(id: string): Room | undefined { return this.one('select data from rooms where id = ?', id) }
   saveRoom(r: Room) { this.db.prepare('insert or replace into rooms (id, data, created_at) values (?, ?, ?)').run(r.id, JSON.stringify(r), r.createdAt); return r }
 
-  /** Kernel's record of a room: the room, its workspaces, chats, approvals and activity. Nothing on disk. */
+  /** Kernel's record of a room: the room, its workspaces, chats, approvals, activity and shared files. Nothing on disk. */
   deleteRoom(id: string) {
     this.db.transaction(() => {
       const ws = 'select id from workspaces where room_id = ?'
@@ -81,6 +81,7 @@ export class Store {
       this.db.prepare('delete from notifications where room_id = ?').run(id)
       this.db.prepare('delete from tasks where room_id = ?').run(id)
       this.db.prepare('delete from overlaps where room_id = ?').run(id)
+      this.db.prepare('delete from shared_files where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
@@ -176,6 +177,23 @@ export class Store {
   overlaps(): Overlap[] { return this.all('select data from overlaps') }
   saveOverlap(o: Overlap) { this.db.prepare('insert or replace into overlaps (id, room_id, data) values (?, ?, ?)').run(o.id, o.roomId, JSON.stringify(o)); return o }
   deleteOverlap(id: string) { this.db.prepare('delete from overlaps where id = ?').run(id) }
+
+  // files agents shared (KERNEL-302), newest first
+  sharedFiles(f: { roomId?: string; workspaceId?: string; limit?: number } = {}): SharedFile[] {
+    const where: string[] = []
+    const args: unknown[] = []
+    if (f.roomId) { where.push('room_id = ?'); args.push(f.roomId) }
+    if (f.workspaceId) { where.push('workspace_id = ?'); args.push(f.workspaceId) }
+    return this.all(`select data from shared_files ${where.length ? 'where ' + where.join(' and ') : ''} order by updated_at desc, rowid desc limit ?`, ...args, f.limit ?? -1)
+  }
+  sharedFile(id: string): SharedFile | undefined { return this.one('select data from shared_files where id = ?', id) }
+  /** The file shared from this path in the workspace, relative to it. */
+  sharedFileAt(workspaceId: string, source: string): SharedFile | undefined { return this.one('select data from shared_files where workspace_id = ? and source = ?', workspaceId, source) }
+  saveSharedFile(f: SharedFile) {
+    this.db.prepare('insert or replace into shared_files (id, room_id, workspace_id, source, data, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)')
+      .run(f.id, f.roomId, f.workspaceId, f.source, JSON.stringify(f), f.createdAt, f.updatedAt)
+    return f
+  }
 
   // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)
   meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }

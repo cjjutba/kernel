@@ -1,5 +1,6 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import { kernelServer } from './kernelServer'
 
 /** What a reviewer sends with submit_review. */
 export interface ReviewInput {
@@ -30,10 +31,7 @@ export function reviewTools(d: ReviewToolDeps) {
   ]
 }
 
-/**
- * The review workspace's own MCP server. It is named `kernel` like the Lead's, so Kernel's auto-allow for
- * `mcp__kernel__` tools covers it (sessions.ts canUseTool).
- */
+/** The review workspace's own MCP server, named `kernel` like the Lead's (`kernelServer`). */
 export function reviewMcpServer(d: ReviewToolDeps) {
-  return createSdkMcpServer({ name: 'kernel', version: '0.1.0', alwaysLoad: true, tools: reviewTools(d) })
+  return kernelServer(reviewTools(d))
 }

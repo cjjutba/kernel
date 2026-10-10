@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, PrState, ReviewVerdict, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -70,6 +70,8 @@ export interface TeamEvent {
   review?: { verdict: ReviewVerdict['verdict']; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean }
   /** A wait on other PRs (KERNEL-259), and on a setup that passed while one stands. */
   wait?: WaitNews
+  /** A file the teammate shared, at the version it shared (KERNEL-302). `source` is its path in the workspace. */
+  shared?: { sharedId: string; version: number; title: string; kind: SharedKind; source: string }
 }
 
 /**
@@ -118,6 +120,9 @@ const BLOCKER_MAX = 300
 /** What a teammate says it needs from the PR it waits for, kept this long (KERNEL-262). */
 const WHY_MAX = 300
 
+/** How the Lead's text names each kind of shared file. */
+const KIND_LABEL: Record<SharedKind, string> = { html: 'HTML', image: 'image', pdf: 'PDF', markdown: 'Markdown' }
+
 /** "PR #54", or "the PR" before it has a number. */
 const prOf = (e: TeamEvent) => (e.pr ? `PR #${e.pr}` : 'the PR')
 const upper = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -141,6 +146,10 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
     case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
+    case 'shared': {
+      const f = e.shared
+      return f ? `Shared "${f.title}" v${f.version} (${KIND_LABEL[f.kind]}, ${f.source}). The user can open it from this update.` : 'Shared a file.'
+    }
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review.'
@@ -171,6 +180,7 @@ function cardText(e: TeamEvent, status = ''): string {
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'}`
     case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged`
     case 'wait.broken': return `${upper(e.wait?.label ?? 'the PR it waited for')} ${e.wait?.gone ?? 'closed'} without merging`
+    case 'shared': return e.shared ? `Shared "${e.shared.title}"` : 'Shared a file'
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review'
@@ -182,9 +192,9 @@ function cardText(e: TeamEvent, status = ''): string {
 }
 
 /**
- * One workspace's events as they are worth sending now, oldest first: the last turn end, PR events once, and the last PR
- * state event only while the PR is still in that state. A checks failure fixed since, or a ready PR whose checks run
- * again, says nothing.
+ * One workspace's events as they are worth sending now, oldest first: the last turn end, PR events once, the last PR
+ * state event only while the PR is still in that state, and the newest share of each file. A checks failure fixed since,
+ * or a ready PR whose checks run again, says nothing.
  */
 export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEvent[] {
   const sorted = [...events].sort((a, b) => a.n - b.n)
@@ -194,6 +204,8 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   const setup = last((e) => e.kind === 'setup.failed' || e.kind === 'setup.passed')
   const review = last((e) => e.kind === 'review')
   const wait = last((e) => e.kind.startsWith('wait.'))
+  const shares = new Map<string, TeamEvent>()
+  for (const e of sorted) if (e.kind === 'shared' && e.shared) shares.set(e.shared.sharedId, e)
   // Once per PR: after Continue moved the workspace on, its new PR's opening is news too.
   const seen = new Set<string>()
   return sorted.filter((e) => {
@@ -203,6 +215,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     if (e.kind === 'setup.failed' || e.kind === 'setup.passed') return e === setup
     if (e.kind === 'review') return e === review
     if (e.kind.startsWith('wait.')) return e === wait
+    if (e.kind === 'shared') return !!e.shared && shares.get(e.shared.sharedId) === e
     // A close the PR has since left, by reopening or Continue, says nothing any more.
     if (e.kind === 'pr.closed' && ws && ws.prState !== 'closed') return false
     if (ONCE.has(e.kind)) { const key = `${e.kind}:${e.pr ?? ''}`; if (seen.has(key)) return false; seen.add(key); return true }
@@ -210,8 +223,11 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   })
 }
 
-/** One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it off. */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+/**
+ * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
+ * off. `shares` are its shared files, which the card draws apart from `events`.
+ */
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: Chat; owner?: string }
@@ -373,6 +389,15 @@ export class LeadUpdates {
     this.add(ws, { kind, wait: wait.why ? { ...wait, why: capText(wait.why, WHY_MAX) } : wait })
   }
 
+  /**
+   * A teammate shared a file (KERNEL-302). It never wakes the Lead on its own: it goes out with the next update that does,
+   * which lists it for the Lead to pass on. The Lead's own shares are in its own chat already.
+   */
+  shared(ws: Workspace, file: SharedFile, version: SharedVersion) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, { kind: 'shared', shared: { sharedId: file.id, version: version.n, title: file.title, kind: file.kind, source: file.source } })
+  }
+
   /** A reviewer's submit_review (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
   reviewed(reviewer: Workspace, of: Workspace, v: ReviewVerdict) {
     if (this.d.isLead(reviewer)) return
@@ -505,11 +530,11 @@ export class LeadUpdates {
         const review = kept.some((e) => e.kind === 'pr.ready') ? this.d.reviewState?.(ws) : undefined
         const reviewer = this.d.reviewer?.(ws.roomId)
         const block: Block = {
-          ws, name, events: kept, reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer),
+          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer),
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
         }
         if (source.owner) {
-          const decided = decide({ ws, name, events: kept, fromChat: source.from?.title }, {
+          const decided = decide({ ws, name, events: block.events, fromChat: source.from?.title }, {
             review, reviewer, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id)
           })
           block.wake = decided.wake
@@ -546,7 +571,8 @@ export class LeadUpdates {
         ...(prNumber ? { prNumber } : {}),
         events: b.events.map((e) => ({ kind: e.kind, text: cardText(e, b.status), actionable: b.wake.has(e) })),
         ...(b.reply ? { reply: b.reply } : {}),
-        ...(b.from ? { fromChat: b.from.title } : {})
+        ...(b.from ? { fromChat: b.from.title } : {}),
+        ...(b.shares.length ? { shared: b.shares.flatMap((e) => (e.shared ? [{ sharedId: e.shared.sharedId, version: e.shared.version, title: e.shared.title, kind: e.shared.kind }] : [])) } : {})
       }
     })
     const allMerged = order.some((b) => b.events.some((e) => e.kind === 'pr.merged' && b.wake.has(e)))
@@ -667,10 +693,14 @@ function stillBroken(ws: Workspace, e: TeamEvent, workspace?: (id: string) => Wo
 /** The To do line once the last task a chat handed off has merged. */
 const ALL_MERGED = 'Every task you handed off in this chat has merged. Tell the user in one line.'
 
-/** One workspace's block in the Lead's text: who and what, each event, then the reply quoted. A reply says the turn ended. */
+/**
+ * One workspace's block in the Lead's text: who and what, each event, each file shared, then the reply quoted. A reply says
+ * the turn ended.
+ */
 function blockLines(b: Block): string[] {
   const lines = [`${b.name} (${b.ws.agentId}) · ${b.ws.title ?? b.ws.name} · workspace ${b.ws.id}`]
   for (const e of b.events) if (!(e.kind === 'turn' && b.reply && !b.summary)) lines.push(`- ${sentence(e, b.name, b.status)}`)
+  for (const e of b.shares) lines.push(`- ${sentence(e, b.name)}`)
   if (b.reply) {
     lines.push(`- ${b.name}'s ${b.summary ? 'summary' : 'last reply'}:`)
     for (const l of b.reply.split('\n')) lines.push(l.trim() ? `  > ${l}` : '  >')

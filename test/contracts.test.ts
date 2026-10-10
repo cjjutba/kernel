@@ -49,6 +49,20 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
+  it('fixture mode answers the shared file channels from the fixture, empty without one (KERNEL-302)', async () => {
+    const empty = fixtureHandlers(fixtures.Workspace)
+    expect(await empty['shared.list']({})).toEqual([])
+    expect(await empty['shared.thumb']({ sharedId: 'x', version: 1 })).toBeNull()
+    const v = { n: 1, at: 1, file: 'a.html', mime: 'text/html', bytes: 4, sha256: 'x' }
+    const file = (id: string, workspaceId: string, updatedAt: number) => ({ id, roomId: 'room-a', workspaceId, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html' as const, versions: [v], createdAt: 1, updatedAt })
+    const h = fixtureHandlers({ ...fixtures.Workspace, shared: [file('a', 'w1', 1), file('b', 'w2', 2)], sharedData: { a: { 1: { text: '<p>', thumb: 'data:image/png;base64,AA' } } } })
+    expect((await h['shared.list']({ roomId: 'room-a' })).map((f) => f.id)).toEqual(['b', 'a'])
+    expect((await h['shared.list']({ workspaceId: 'w1' })).map((f) => f.id)).toEqual(['a'])
+    expect(await h['shared.read']({ sharedId: 'a', version: 1 })).toEqual({ kind: 'html', mime: 'text/html', text: '<p>' })
+    expect(await h['shared.thumb']({ sharedId: 'a', version: 1 })).toBe('data:image/png;base64,AA')
+    await expect(h['shared.read']({ sharedId: 'a', version: 2 })).rejects.toThrow()
+  })
+
   it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
     const h = fixtureHandlers(fixtures.SettingsRoomIcon)
     expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
