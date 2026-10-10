@@ -713,3 +713,53 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     expect(row(store, 'm1')).toMatchObject({ label: 'kernel · say', detail: '{"text":"Hi","description":"Greet"}' })
   })
 })
+
+describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
+  type Tool = ChatItem & { kind: 'tool' }
+  const row = (store: Store, toolUseId: string) => store.items('chat').find((i): i is Tool => i.kind === 'tool' && i.toolUseId === toolUseId)
+  const use = (id: string, name: string, input: Record<string, unknown>) => ({ type: 'assistant', uuid: `a-${id}`, parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id, name, input }] } })
+  const result = (id: string, content: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+
+  it('keeps a multi-line Bash command whole, while the row still shows its first line', async () => {
+    const { call, store } = await setup()
+    const command = 'cd src\npnpm test\necho done'
+    call.feed(use('b1', 'Bash', { command, description: 'Run tests' }))
+    call.feed(result('b1', 'ok'))
+    await flush()
+    expect(row(store, 'b1')).toMatchObject({ detail: 'cd src', input: { command, description: 'Run tests' }, output: 'ok', status: 'done' })
+    expect(row(store, 'b1')?.outputCut).toBeUndefined()
+  })
+
+  it("keeps an Edit's old and new text", async () => {
+    const { call, store } = await setup()
+    call.feed(use('e1', 'Edit', { file_path: 'src/a.ts', old_string: 'const a = 1\n', new_string: 'const a = 2\n', replace_all: false }))
+    await flush()
+    expect(row(store, 'e1')).toMatchObject({ detail: 'src/a.ts', input: { file_path: 'src/a.ts', old_string: 'const a = 1\n', new_string: 'const a = 2\n', replace_all: false } })
+  })
+
+  it('keeps 20,000 characters of output and says when it was cut', async () => {
+    const { call, store } = await setup()
+    call.feed(use('r1', 'Bash', { command: 'cat big.log' }))
+    call.feed(result('r1', 'x'.repeat(25_000)))
+    call.feed(use('r2', 'Bash', { command: 'cat exact.log' }))
+    call.feed(result('r2', 'y'.repeat(20_000)))
+    await flush()
+    expect(row(store, 'r1')?.output).toHaveLength(20_000)
+    expect(row(store, 'r1')?.outputCut).toBe(true)
+    expect(row(store, 'r2')?.output).toHaveLength(20_000)
+    expect(row(store, 'r2')?.outputCut).toBeUndefined()
+  })
+
+  it("clips a long Write content, nested strings too, and leaves the rest of the input alone", async () => {
+    const { call, store } = await setup()
+    call.feed(use('w1', 'Write', { file_path: 'big.txt', content: 'z'.repeat(30_000) }))
+    call.feed(use('m1', 'MultiEdit', { file_path: 'b.ts', edits: [{ old_string: 'q'.repeat(21_000), new_string: 'r' }] }))
+    await flush()
+    const write = row(store, 'w1')!.input as { file_path: string; content: string }
+    expect(write.file_path).toBe('big.txt')
+    expect(write.content).toHaveLength(20_000)
+    const multi = row(store, 'm1')!.input as { edits: { old_string: string; new_string: string }[] }
+    expect(multi.edits[0].old_string).toHaveLength(20_000)
+    expect(multi.edits[0].new_string).toBe('r')
+  })
+})
