@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
@@ -154,7 +154,7 @@ function rememberRoom(route: Route) {
   if (!id || route.name === 'settings') return
   try { localStorage.setItem(LAST_ROOM, id) } catch { /* not remembered */ }
 }
-function lastRoom(): string | null {
+export function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
 const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }
@@ -177,7 +177,7 @@ const placeNow = (): Place => {
 }
 /** Where Settings was opened from, the last Settings page, and where the app opened. Module level like `folded`: none of it outlasts a restart. */
 let returnTo: Place | undefined
-let lastSettings: { page: SettingsPage; roomId?: string } | undefined
+let lastSettings: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection } | undefined
 let launch: Route = { name: 'home' }
 /** Back and forward: the places you left, newest last, and the ones Back stepped over. Module level like `returnTo`, so a restart starts empty. */
 const HISTORY_LIMIT = 50
@@ -190,7 +190,7 @@ const capped = (list: Place[]) => list.length > HISTORY_LIMIT ? list.slice(-HIST
 function moved(from: Place, to: Place, history: HistoryMode = 'push') {
   if (to.route.name === 'settings') {
     if (from.route.name !== 'settings') returnTo = from
-    lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}) }
+    lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }
   }
   if (history === 'none' || samePlace(from, to)) return
   // Onboarding and the dev pages are not somewhere to come back to, and nor is a page of Settings once you are in Settings.

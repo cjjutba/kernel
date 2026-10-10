@@ -86,7 +86,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       })
       case 'terminal': return run(id, 'Could not open Terminal', () => call('app.openTerminal', { cwd: ws.path, command: 'claude /login' }))
       case 'signIn': return run(id, 'Could not sign in', async () => actions.account.set(await call('account.signIn', undefined)))
-      case 'editScript': return go({ name: 'settings', page: 'scripts', roomId: ws.roomId })
+      case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })
         await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })

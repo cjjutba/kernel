@@ -126,7 +126,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
               <Menu label="Pull request options" anchorRef={caret} onClose={actions.ui.closeMenu} style={{ right: 0, top: 'calc(100% + 6px)', width: 260 }} items={[
                 { id: 'pr', label: 'Create PR', shortcut: '⌘⇧P', onSelect: () => start('create') },
                 { id: 'draft', label: 'Create draft PR', onSelect: createDraft },
-                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'prs' }) },
+                { id: 'edit', label: 'Edit PR instructions', onSelect: () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'instructions' }) },
                 { id: 'copy', label: 'Copy branch name', onSelect: () => void copyBranch(ws.branch) },
                 { id: 'discard', label: 'Discard changes', disabled: ws.mode === 'current', onSelect: () => actions.ui.openModal({ name: 'confirm', kind: 'discard', workspaceId: id }) }
               ]} />
