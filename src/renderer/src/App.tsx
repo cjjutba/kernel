@@ -111,6 +111,13 @@ function useDevUiHash() {
   }, [])
 }
 
+/** Back or forward, unless a modal is open or setup is on screen. */
+function stepHistory(dir: 'back' | 'forward') {
+  const s = getState()
+  if (s.ui.modal || s.ui.route.name === 'onboarding') return
+  actions.ui[dir]()
+}
+
 export function App() {
   useDevUiHash()
   useAppearance()
@@ -131,12 +138,24 @@ export function App() {
         if (!s.ui.modal && s.ui.route.name !== 'onboarding') { e.preventDefault(); openSlot(Number(digit[1])) }
         return
       }
+      // ⌘[ and ⌘] go back and forward, as in Slack and Linear. Not with a modal open or during setup, like ⌘1 to ⌘9.
+      if ((e.code === 'BracketLeft' || e.code === 'BracketRight') && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        stepHistory(e.code === 'BracketLeft' ? 'back' : 'forward')
+        return
+      }
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
       // Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
+      // ⌘N does the same, but not over a modal (it would reset the New chat prompt) or during onboarding.
+      if (e.key === 'n' && !e.shiftKey && !e.altKey && !e.ctrlKey) {
+        e.preventDefault()
+        const s = getState()
+        if (!s.ui.modal && s.ui.route.name !== 'onboarding') actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() })
+      }
       // The Lead's chat in the room in view, or the first room when none is (Home, Inbox).
       if (e.code === 'KeyL' && e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -145,8 +164,15 @@ export function App() {
         if (room) void openLead(room.id)
       }
     }
+    // A mouse's back button is 3 and its forward button 4.
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      stepHistory(e.button === 3 ? 'back' : 'forward')
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouseUp) }
   }, [])
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (

@@ -56,8 +56,10 @@ export interface Fixture {
   /** What the Issues screen reads (KERNEL-159). Issues carry their detail, so the issue pane needs nothing else. */
   linear?: { issues?: LinearIssueDetail[]; scope?: LinearScope }
   settings?: AppSettings
-  /** By room id. */
-  roomSettings?: Record<string, RoomSettings>
+  /** By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. */
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources'> & Partial<Pick<RoomSettings, 'sources'>>>
+  /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
+  roomIcons?: Record<string, string>
   account?: ClaudeAccount
   hooks?: HookStatus
   /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */

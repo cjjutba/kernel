@@ -16,7 +16,7 @@ import type { Store } from '../src/main/db'
 const port = 17420 + Math.floor(Math.random() * 500)
 // Enough of the store for approvals to report how they ended.
 const saved = new Map<string, Approval>()
-const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()] } as unknown as Store)
+const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()], approval: (id: string) => saved.get(id) } as unknown as Store)
 const token = 'ab'.repeat(32)
 let server: Server
 const post = (body: unknown) => fetch(`http://127.0.0.1:${port}/hooks`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json', 'x-kernel-token': token } }).then((r) => r.json())
