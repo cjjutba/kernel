@@ -183,6 +183,12 @@ export interface KernelApi {
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
+  // main through `env.reveal`.
+  'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
+  /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
+  'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
+  'env.reveal': { req: { roomId?: string; name: string }; res: string }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */

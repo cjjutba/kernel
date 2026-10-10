@@ -867,6 +867,11 @@ export interface RoomSettings {
    */
   preview: { urls: { name: string; url: string }[] }
   /**
+   * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
+   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247).
+   */
+  env: { files: string[] }
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
