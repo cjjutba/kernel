@@ -33,6 +33,8 @@
 .menu-item:disabled { color: var(--faint); cursor: default; background: transparent; }
 .menu-item svg { color: var(--muted); flex-shrink: 0; }
 .menu-item:focus-visible { outline: 0; background: var(--hover); }
+.menu-item[aria-checked='true'] { background: var(--hover); }
+.menu-item[aria-checked='true'] > svg:last-child { color: var(--ink); }
 .menu-kbd { font: 11.5px var(--mono); color: var(--muted); }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
 .popover { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
