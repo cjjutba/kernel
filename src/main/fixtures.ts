@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import { join } from 'node:path'
 import type { Handlers } from './kernel'
@@ -102,6 +102,23 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'github.prs': async ({ query }) => (f.openPrs ?? []).filter((p) => !query || `#${p.number} ${p.title} ${p.author ?? ''}`.toLowerCase().includes(query.toLowerCase())),
     'github.issues': async ({ query }) => (f.issues ?? []).filter((i) => i.source === 'github' && (!query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase()))),
     'issues.list': async ({ roomId, query }) => (f.issues?.filter((i) => i.source !== 'github') ?? (f.tasks?.[roomId] ?? []).map((t) => ({ id: t.id, title: t.title }))).filter((i) => !query || `${i.id} ${i.title}`.toLowerCase().includes(query.toLowerCase())),
+    'linear.issues': async ({ filter }) => (f.linear?.issues ?? []).filter((i) => {
+      const q = filter.query?.trim().toLowerCase()
+      return (!filter.mine || i.assignee?.me) && (!filter.teamId || i.team.id === filter.teamId) && (!filter.projectId || i.project?.id === filter.projectId)
+        && (!filter.cycleId || i.cycle?.id === filter.cycleId) && (!q || `${i.id} ${i.title}`.toLowerCase().includes(q))
+    }).map(({ description: _d, comments: _c, ...issue }): LinearIssue => issue),
+    'linear.issue': async ({ id }) => {
+      const issue = f.linear?.issues?.find((i) => i.id === id)
+      if (!issue) throw new Error(`Unknown issue ${id}`)
+      return issue
+    },
+    'linear.scope': async () => f.linear?.scope ?? { teams: [], projects: [], cycles: [] },
+    'linear.plan': async ({ roomId }) => {
+      const ws = leadWs(roomId)
+      const c = ws && f.chats.find((x) => x.workspaceId === ws.id)
+      if (!ws || !c) throw new Error('This fixture has no chat for the Lead.')
+      return { chatId: c.id, workspaceId: ws.id }
+    },
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
     'chats.create': async ({ workspaceId, kind }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)
@@ -184,7 +201,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.setRoom': async ({ roomId, patch }) => {
       // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing.
       const cur = roomSettings(roomId) as unknown as Record<string, Record<string, unknown>>
-      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled } }
+      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled }, linear: { ...cur.linear } }
       for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
       f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
       return roomSettings(roomId)

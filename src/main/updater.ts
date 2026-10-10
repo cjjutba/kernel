@@ -40,7 +40,7 @@ export class Updater {
   private timer?: NodeJS.Timeout
   private readonly file: string
 
-  /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (D-137). */
+  /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (KERNEL-154). */
   constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string }) {
     this.file = join(o.dataDir, 'update.json')
     this.saved = readSaved(this.file)

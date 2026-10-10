@@ -79,7 +79,7 @@ app.whenReady().then(async () => {
   if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
   else {
     // Only a packaged, signed app can update itself. Dev runs report no update. scripts/release.sh writes the version's
-    // notes into the build for What's new (D-137).
+    // notes into the build for What's new (KERNEL-154).
     const updater = app.isPackaged
       ? new Updater({
           current: app.getVersion(),

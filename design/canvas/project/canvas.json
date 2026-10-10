@@ -1072,6 +1072,69 @@
       "radius": 12,
       "title": "Update ready in the footer",
       "is_interactive": true
+    },
+    "Issues.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues",
+      "w": 1440,
+      "x": 12160,
+      "y": 2600
+    },
+    "IssuesWorking.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 linked workspaces",
+      "w": 1440,
+      "x": 13680,
+      "y": 2600
+    },
+    "IssuesNoRoom.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 team not linked to a room",
+      "w": 1440,
+      "x": 15200,
+      "y": 2600
+    },
+    "IssuesEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 nothing matches",
+      "w": 1440,
+      "x": 16720,
+      "y": 2600
+    },
+    "IssuesConnect.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 connect Linear",
+      "w": 1440,
+      "x": 18240,
+      "y": 2600
+    },
+    "IssuesError.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Issues \u00b7 Linear unreachable",
+      "w": 1440,
+      "x": 19760,
+      "y": 2600
+    },
+    "WorkspaceIssue.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Workspace \u00b7 issue key in the header",
+      "w": 1440,
+      "x": 10640,
+      "y": 14300
     }
   },
   "createdOnFiles": {
@@ -1244,6 +1307,12 @@
     "Home.dc.html",
     "Inbox.dc.html",
     "InboxEmpty.dc.html",
+    "Issues.dc.html",
+    "IssuesWorking.dc.html",
+    "IssuesNoRoom.dc.html",
+    "IssuesEmpty.dc.html",
+    "IssuesConnect.dc.html",
+    "IssuesError.dc.html",
     "CommandPalette.dc.html",
     "Rooms.dc.html",
     "NewRoom.dc.html",
@@ -1309,6 +1378,7 @@
     "WorkspaceMerged.dc.html",
     "WorkspacePRClosed.dc.html",
     "WorkspaceToast.dc.html",
+    "WorkspaceIssue.dc.html",
     "WorkspaceRunning.dc.html",
     "WorkspacePlan.dc.html",
     "WorkspacePerm.dc.html",
