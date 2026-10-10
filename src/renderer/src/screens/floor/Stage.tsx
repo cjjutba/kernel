@@ -208,7 +208,7 @@ function Overflow({ room, agents, all, status, selectedId, onSelect, card }: { r
           <span className="grow" /><span className="muted" style={{ fontSize: 12 }}>{WORD[status[a.id] ?? 'idle']}</span>
         </button>
       ))}
-      <button type="button" className="floor-link" onClick={() => go({ name: 'settings', page: 'room', roomId: room.id })}>Add desks in room settings</button>
+      <button type="button" className="floor-link" onClick={() => go({ name: 'settings', page: 'room', roomId: room.id, section: 'agents' })}>Add desks in room settings</button>
     </section>
   )
 }
