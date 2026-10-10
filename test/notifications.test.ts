@@ -41,6 +41,15 @@ describe('notifications service', () => {
     expect(shown).toHaveLength(1)
   })
 
+  it('counts the questions in the heading when an agent asks more than one', async () => {
+    const { n } = await setup()
+    const q = (question: string) => ({ question, options: [] })
+    bus.push({ type: 'approval', approval: approval({ kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?'), q('Which region?'), q('Which plan?')] }) })
+    bus.push({ type: 'approval', approval: approval({ id: 'a2', kind: 'question', toolName: 'AskUserQuestion', title: 'Which store?', questions: [q('Which store?')] }) })
+    expect(n.list().find((x) => x.approvalId === 'a1')).toMatchObject({ title: 'Which store?', heading: 'Noor has 3 questions' })
+    expect(n.list().find((x) => x.approvalId === 'a2')?.heading).toBe('Noor has a question')
+  })
+
   it('plays no sound when Settings > Notifications sound is none', async () => {
     for (const [sound, expected] of [['none', true], ['subtle', false]] as const) {
       const { silent } = await setup({ sound })

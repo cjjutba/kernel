@@ -98,6 +98,48 @@ describe('questions to the user', () => {
     expect(store.chat('chat')?.plan).toBe(false)
   })
 
+  const asked = {
+    questions: [
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ]
+  }
+  const ask = (options: Options, id: string) => (options.canUseTool as CanUseTool)('AskUserQuestion', asked, { signal: new AbortController().signal, toolUseID: id, requestId: `r-${id}` })
+
+  it('keeps every question of an AskUserQuestion call on one approval, titled with the first', async () => {
+    const { options, store } = await setup('bypassInWorktrees')
+    void ask(options, 'q1')
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ kind: 'question', title: 'Which store?', options: ['Postgres', 'SQLite'] })
+    expect(pending[0].questions).toEqual([
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ])
+  })
+
+  it('sends each answer back in the tool input, and saves them on the approval', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q2')
+    await flush()
+    const id = store.approvals({ pendingOnly: true })[0].id
+    const answers = { 'Which store?': 'Postgres', 'Which regions?': 'EU, US', 'Ship it today?': 'No' }
+    approvals.decide(id, { behavior: 'answer', text: 'Postgres · EU, US · No', answers })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...asked, answers } })
+    expect(store.approvals().find((a) => a.id === id)).toMatchObject({ status: 'answered', answer: 'Postgres · EU, US · No', answers })
+  })
+
+  it('gives a text-only answer to the first question', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q3')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...asked, answers: { 'Which store?': 'Use whatever is cheapest' } } })
+  })
+
   it('still lets bypass answer an ordinary tool', async () => {
     const { options } = await setup('bypassInWorktrees')
     expect(await (options.canUseTool as CanUseTool)('Edit', { file_path: 'a.ts' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })).toMatchObject({ behavior: 'allow' })

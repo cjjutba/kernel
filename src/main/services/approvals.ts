@@ -77,7 +77,8 @@ export class Approvals {
     p.resolve(decision)
     const prev = this.store?.approvals().find((x) => x.id === id)
     if (!prev) return undefined
-    const next: Approval = { ...prev, status, answer: decision && decision.behavior === 'answer' ? decision.text : prev.answer }
+    const answered = decision?.behavior === 'answer' ? decision : undefined
+    const next: Approval = { ...prev, status, answer: answered ? answered.text : prev.answer, answers: answered?.answers ?? prev.answers }
     this.store?.saveApproval(next)
     bus.push({ type: 'approval', approval: next })
     bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `${status} ${next.title}`, object: next.toolName })

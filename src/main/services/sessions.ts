@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -774,15 +774,16 @@ export class Sessions {
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
       const d = describeTool(toolName, shown)
-      const options = isQuestion ? ((input as any).questions?.[0]?.options ?? []).map((o: any) => String(o.label ?? o)) : undefined
+      const questions = isQuestion ? askedQuestions(input) : undefined
+      const options = questions?.[0]?.options.map((o) => o.label) ?? (isQuestion ? [] : undefined)
       this.setStatus(ws, agent, 'needs', d.title)
       const isPlan = toolName === 'ExitPlanMode'
       const plan = isPlan ? String((input as any).plan ?? '') : ''
       const reuse = isPlan ? this.lastPlanFile(chat, ws) : undefined
       const { approval, decision } = this.d.approvals.request({
         kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
-        toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : isPlan ? `Plan for ${ws.name}` : d.title,
-        detail: isPlan ? plan : d.detail, options
+        toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : isPlan ? `Plan for ${ws.name}` : d.title,
+        detail: isPlan ? plan : d.detail, options, questions
       }, { signal })
       this.placeApproval(chat.id, approval.id)
       if (isPlan && plan.trim() && existsSync(ws.path)) {
@@ -796,8 +797,12 @@ export class Sessions {
       if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
-      // Answers to questions travel back as the denial message, which the model reads as the user's reply.
-      if (result.behavior === 'answer') return { behavior: 'deny', message: `The user answered: ${result.text}` }
+      // Answers go back in the tool's own `answers` field, one per question. A text-only answer is the first question's.
+      if (result.behavior === 'answer') {
+        const answers = result.answers ?? (questions?.[0] ? { [questions[0].question]: result.text } : undefined)
+        if (isQuestion && answers) return { behavior: 'allow', updatedInput: { ...input, answers } }
+        return { behavior: 'deny', message: `The user answered: ${result.text}` }
+      }
       return { behavior: 'deny', message: result.message ?? 'Denied in Kernel.' }
     }
   }
@@ -951,6 +956,20 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
 /** The commands the / menu offers: Claude Code's own, without its internal ones (named with a leading underscore). */
 export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
   return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
+}
+
+/** Every question of an AskUserQuestion call, with what the card needs from each. */
+function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
+  const list = Array.isArray(input.questions) ? input.questions : []
+  return list.filter((q: any) => q && typeof q.question === 'string').map((q: any) => ({
+    question: q.question,
+    ...(typeof q.header === 'string' ? { header: q.header } : {}),
+    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => ({
+      label: String(o?.label ?? o),
+      ...(typeof o?.description === 'string' ? { description: o.description } : {})
+    })),
+    ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
+  }))
 }
 
 /** The tool that starts a subagent. Task is its old name. */
