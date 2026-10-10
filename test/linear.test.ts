@@ -107,7 +107,26 @@ describe('Linear queries', () => {
     expect(out).toEqual({ ...mapped, description: detail.description, comments: [
       { id: 'c1', body: 'First', author: 'Rowan', createdAt: '2026-10-09T11:00:00.000Z' },
       { id: 'c2', body: 'Second', createdAt: '2026-10-09T12:00:00.000Z' }
-    ] })
+    ], blockedBy: [] })
+  })
+
+  it('reads the issues that block it from its inverse relations, once each (KERNEL-263)', async () => {
+    const l = linear(() => ({ issue: { ...detail, inverseRelations: { nodes: [
+      { type: 'blocks', issue: { identifier: 'KERNEL-197' } },
+      { type: 'related', issue: { identifier: 'KERNEL-200' } },
+      { type: 'duplicate', issue: { identifier: 'KERNEL-201' } },
+      { type: 'blocks', issue: { identifier: 'KERNEL-202' } },
+      { type: 'blocks', issue: { identifier: 'KERNEL-197' } },
+      { type: 'blocks', issue: null }
+    ] } } }))
+    const out = await getIssue('k', 'KERNEL-198', l.fetch)
+    expect(l.calls[0].query).toContain('inverseRelations { nodes { type issue { identifier } } }')
+    expect(out.blockedBy).toEqual(['KERNEL-197', 'KERNEL-202'])
+  })
+
+  it('reads an issue with no relations as blocked by nothing', async () => {
+    const l = linear(() => ({ issue: { ...detail, inverseRelations: { nodes: [] } } }))
+    expect((await getIssue('k', 'KERNEL-198', l.fetch)).blockedBy).toEqual([])
   })
 
   it('reads an issue with no description as empty', async () => {
