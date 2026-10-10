@@ -158,9 +158,28 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
   return { scripts, copy }
 }
 
-/** Does git track the room's personal settings file? Then a commit brought it, and its text is the repo's (KERNEL-209). */
-export async function localSettingsTracked(repo: string): Promise<boolean> {
-  return (await exec('git', ['-C', repo, 'ls-files', '--error-unmatch', '--', LOCAL_SETTINGS])).code === 0
+/**
+ * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when git
+ * answers cleanly that neither the index nor HEAD holds it, compared without case: on a case-insensitive disk a
+ * committed `.Kernel/Settings.local.toml` is the file Kernel reads. Any git error, no git at all, or an answer Kernel
+ * can't read means no, and the file's text needs trusting like the repo's. Skip-worktree entries are in the index, so
+ * they count as committed too.
+ */
+export async function localSettingsOwn(repo: string): Promise<boolean> {
+  const target = LOCAL_SETTINGS.toLowerCase()
+  const has = (out: string) => out.split('\0').some((p) => p.toLowerCase() === target)
+  const index = await exec('git', ['-C', repo, 'ls-files', '-z', '--', `:(icase)${LOCAL_SETTINGS}`])
+  if (index.code !== 0 || has(index.stdout)) return false
+  const head = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', 'HEAD'])
+  // No commit yet: nothing can have brought the file. Any other failure is an error.
+  if (head.code === 1 && !head.stdout.trim() && !head.stderr.trim()) return true
+  if (head.code !== 0) return false
+  const top = await exec('git', ['-C', repo, 'ls-tree', '-z', '--name-only', 'HEAD'])
+  if (top.code !== 0) return false
+  const dirs = top.stdout.split('\0').filter((p) => p.toLowerCase() === '.kernel')
+  if (!dirs.length) return true
+  const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', '--name-only', 'HEAD', '--', ...dirs])
+  return tree.code === 0 && !has(tree.stdout)
 }
 
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */

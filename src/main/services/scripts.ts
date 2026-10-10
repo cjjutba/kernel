@@ -41,8 +41,10 @@ async function leavesWorktree(worktreeRoot: string, to: string): Promise<boolean
  */
 export async function copyLocalFiles(repo: string, worktree: string, files: string[]): Promise<{ copied: string[]; refused: string[] }> {
   const copied: string[] = [], refused: string[] = []
-  const repoRoot = await realpath(repo)
-  const worktreeRoot = await realpath(worktree)
+  const roots = await Promise.all([realpath(repo), realpath(worktree)]).catch(() => undefined)
+  // A worktree archived while it was being set up is gone: there is nothing to copy into.
+  if (!roots) return { copied, refused }
+  const [repoRoot, worktreeRoot] = roots
   for (const f of files) {
     if (typeof f !== 'string' || !f) continue
     const to = resolve(worktree, f)

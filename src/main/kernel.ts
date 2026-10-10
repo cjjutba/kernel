@@ -29,7 +29,7 @@ import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, loadAppSettings, loadRepoSettings, localSettingsTracked, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { applySettingsPatch, loadAppSettings, loadRepoSettings, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
@@ -621,7 +621,7 @@ export class Kernel {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      if (await ensureRepoSettings(room.path) && !(await localSettingsTracked(room.path))) await this.trustCurrent(room)
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path)) await this.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
@@ -1007,7 +1007,11 @@ export class Kernel {
 
   /** Copy the local files into a new worktree, then run setup. Only for text the user trusted (KERNEL-209). */
   private async prepare(ws: Workspace, room: Room, repo: RepoSettings): Promise<boolean> {
-    if (ws.mode === 'worktree') await this.copyFiles(ws, room, repo)
+    // An archive can land while the trust check or the copy waits: then nothing starts in the removed folder, and the
+    // caller sees the workspace archived.
+    const archived = () => this.mustWs(ws.id).status === 'archived'
+    if (ws.mode === 'worktree' && !archived()) await this.copyFiles(ws, room, repo)
+    if (archived()) return false
     return this.runSetup(ws, room, repo.scripts.setup)
   }
 
@@ -1040,7 +1044,7 @@ export class Kernel {
    * it (KERNEL-209, KERNEL-190). The user's own personal file needs no trusting.
    */
   private async subjectOf(room: Room, repo?: RepoSettings): Promise<TrustSubject | undefined> {
-    return scriptsToTrust(repo ?? await loadRepoSettings(room.path), { localIsOwn: !(await localSettingsTracked(room.path)) })
+    return scriptsToTrust(repo ?? await loadRepoSettings(room.path), { localIsOwn: await localSettingsOwn(room.path) })
   }
 
   /** The repo's text as it is now, and whether the user trusts it. Nothing to trust counts as trusted. */
@@ -1063,9 +1067,14 @@ export class Kernel {
    * doesn't show, and clearing an override can't wave through the repo's value it was hiding.
    */
   private async trustSaved(room: Room, before: { subject?: TrustSubject; trusted: boolean }, patch: RoomSettingsPatch, shared: boolean, next: RepoSettings) {
-    if (!before.trusted) return
     const after = await this.subjectOf(room, next)
-    if (!after) return
+    // Nothing of the repo's text runs any more, or only text the user already trusted, say after a personal override
+    // of every repo script: whatever waited can go, and the prompt clears.
+    if (!after || await this.trusted.has(room.id, trustHash(after))) {
+      if (!before.trusted || this.store.workspaces(room.id).some((w) => w.status === 'trust')) await this.releaseHeld(room.id)
+      return
+    }
+    if (!before.trusted) return
     const wrote = (group: 'scripts' | 'files', key: string) => {
       const v = (patch[group] as Record<string, unknown> | undefined)?.[key]
       if (v === undefined || v === null || v === '') return false

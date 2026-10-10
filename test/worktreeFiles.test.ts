@@ -98,6 +98,11 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     await expect(stat(join(worktree, 'dotssh'))).rejects.toThrow()
   })
 
+  it('copies nothing, and throws nothing, into a worktree an archive already removed', async () => {
+    const { repo, worktree } = await layout()
+    expect(await copyLocalFiles(repo, join(worktree, 'gone'), ['.env.local'])).toEqual({ copied: [], refused: [] })
+  })
+
   it("refuses to write through a symlink the worktree checked out", async () => {
     const { home, repo, worktree } = await layout()
     const outside = join(home, 'outside')
