@@ -10,6 +10,7 @@ import { listCheckpoints } from '../src/main/services/checkpoints'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { resolveTarget, waitBroken, waitMet, waitRefusal } from '../src/main/services/waits'
+import { saveLinearToken } from '../src/main/services/integrations'
 import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
@@ -37,7 +38,7 @@ const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.
 const prInfo = (state: PrState, number: number): PrInfo => ({ workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title: `PR ${number}`, state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
 /** A room on a repo with a bare origin, a fake GitHub, and Kernels that can quit and start again on the same data. */
-async function setup(files: Record<string, string> = {}) {
+async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fetch; linearToken?: string } = {}) {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
   await run('git', ['clone', '-q', '--bare', repo, origin])
@@ -47,6 +48,7 @@ async function setup(files: Record<string, string> = {}) {
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
+  if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   const gh = { prs: new Map<string, PrInfo>() }
   const fake = (k: Kernel) => {
     k.github = {
@@ -56,15 +58,15 @@ async function setup(files: Record<string, string> = {}) {
     }
     return k
   }
-  const k = fake(new Kernel({ dataDir, home }))
+  const k = fake(new Kernel({ dataDir, home, fetch: o.fetch }))
   await k.start()
   const room = await k.addRoom(repo)
   await trustRoom(k, room.id)
   const lead = await k.leadChat(room.id)
-  const again = async () => { const next = fake(new Kernel({ dataDir, home })); await next.start(); return next }
+  const again = async () => { const next = fake(new Kernel({ dataDir, home, fetch: o.fetch })); await next.start(); return next }
   /** A teammate's workspace with an open PR, the work others wait for. */
-  const target = async (k: Kernel, number: number, title = `Work ${number}`) => {
-    const ws = await k.createWorkspace(room.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id })
+  const target = async (k: Kernel, number: number, title = `Work ${number}`, issue?: string) => {
+    const ws = await k.createWorkspace(room.id, { prompt: title, agentId: 'noor', title, leadChatId: lead.id, ...(issue ? { source: { kind: 'issue' as const, id: issue, title } } : {}) })
     gh.prs.set(ws.branch, prInfo('open', number))
     return k.refreshPr(ws.id)
   }
@@ -441,6 +443,130 @@ describe('the Lead\'s tools', () => {
     expect(await call('create_workspace', { agent: 'kai', title: 'x', brief: 'x', wait_for: ['w1'], review_of: 'w1' })).toEqual({ isError: true, text: 'Not created: a review starts from the work it reviews, so it never waits for another PR.' })
     expect(await call('create_workspace', { agent: 'kai', title: 'x', brief: 'x', wait_for: ['w1'], mode: 'current' })).toEqual({ isError: true, text: "Not created: a workspace on the main checkout has no branch of its own to start later, so it can't wait for a PR. Use worktree mode." })
   })
+})
+
+/**
+ * A Linear whose issues are blocked by `blockedBy[key]`, as the issue detail query reads them. Moving an issue to In
+ * Progress finds it started already. `fail` answers every call with a 500.
+ */
+function linear(blockedBy: Record<string, string[]>, o: { fail?: boolean } = {}) {
+  const calls: string[] = []
+  const fetch = (async (_url: string, init: { body: string }) => {
+    const { query, variables } = JSON.parse(init.body) as { query: string; variables: { id: string } }
+    calls.push(variables.id)
+    if (o.fail) return new Response('{}', { status: 500 })
+    const id = variables.id
+    if (query.includes('query Started')) return new Response(JSON.stringify({ data: { issue: { id, state: { type: 'started' }, team: { states: { nodes: [] } } } } }))
+    const issue = {
+      id: `uuid-${id}`, identifier: id, title: `Issue ${id}`, url: `https://linear.app/cj/issue/${id}`, branchName: `cj/${id.toLowerCase()}`, priority: 0, updatedAt: '2026-10-10T00:00:00.000Z',
+      state: { id: 's', name: 'Todo', type: 'unstarted', position: 1 }, assignee: null, labels: { nodes: [] }, team: { id: 't', key: 'KERNEL', name: 'Kernel' }, project: null, cycle: null,
+      description: '', comments: { nodes: [] },
+      inverseRelations: { nodes: (blockedBy[id] ?? []).map((b) => ({ type: 'blocks', issue: { identifier: b } })) }
+    }
+    return new Response(JSON.stringify({ data: { issue } }))
+  }) as unknown as typeof globalThis.fetch
+  return { calls, fetch }
+}
+
+describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
+  const handOff = async (k: Kernel, room: { id: string }, lead: Chat, input: object) => {
+    const rowan = (await k.agents(room.id)).find((a) => a.lead)!
+    const create = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+    const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', ...input } as never, {})).content[0] as { text: string }
+    return { text: out.text, w: k.store.workspace(/^Created (\S+) on/.exec(out.text)![1])! }
+  }
+
+  it('starts the teammate, waits without holding the brief, says so, and asks for a rebase when the blocking PR merges', async () => {
+    const l = linear({ 'KERNEL-198': ['KERNEL-197'] })
+    const { k, room, lead, target, mergeOnGitHub } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
+    const noor = await target(k, 164, 'Tool rows', 'KERNEL-197')
+    const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts now, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.`)
+    expect(w.waitsFor).toEqual({ on: [noor.id], held: false })
+    const chat = chatOf(k, w)
+    expect(users(k, chat)).toEqual([['Build T-15', 'lead']])
+    expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel asks Kai to rebase onto it then.')
+    callsIn(w)[0].feed(result('r1'))
+    await flush()
+    await mergeOnGitHub(k, noor)
+    await vi.waitFor(() => expect(users(k, chat).at(-1)).toEqual(['PR #164 by Noor merged into main. Fetch origin, rebase onto origin/main, re-run the tests, then carry on with your task.', 'kernel']), SLOW)
+    await k.stop()
+  }, 20_000)
+
+  it('names every blocker an open teammate is building, before its PR is open', async () => {
+    const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-199'] })
+    const { k, room, lead, target } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
+    const one = await target(k, 164, 'Tool rows', 'KERNEL-197')
+    const two = await k.createWorkspace(room.id, { prompt: 'Rows', agentId: 'noor', title: 'Rows', leadChatId: lead.id, source: { kind: 'issue', id: 'KERNEL-199', title: 'Rows' } })
+    const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai. Linear marks KERNEL-198 as blocked by KERNEL-197 and KERNEL-199, which Noor is building. Kai starts now, and Kernel messages Kai when PR #164 and Noor's PR merge. Pass wait_for to hold the brief instead.`)
+    expect(w.waitsFor).toEqual({ on: [one.id, two.id], held: false })
+    await k.stop()
+  }, 20_000)
+
+  it('ignores blockers with no open workspace, one that merged, one archived, or a review', async () => {
+    const l = linear({ 'KERNEL-198': ['KERNEL-197', 'KERNEL-300', 'KERNEL-301', 'KERNEL-302'] })
+    const { k, room, lead, target, mergeOnGitHub } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
+    await mergeOnGitHub(k, await target(k, 164, 'Tool rows', 'KERNEL-197'))
+    const gone = await target(k, 170, 'Old rows', 'KERNEL-301')
+    await k.archiveWorkspace(gone.id)
+    const reviewed = await target(k, 171, 'Reviewed', 'KERNEL-303')
+    const review = await k.createWorkspace(room.id, { prompt: 'Review', agentId: 'noor', title: 'Review', leadChatId: lead.id, reviewOf: reviewed.id })
+    k.store.saveWorkspace({ ...k.store.workspace(review.id)!, source: { kind: 'issue', id: 'KERNEL-302', title: 'Review' } })
+    const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
+    expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+    expect(w.waitsFor).toBeUndefined()
+    expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
+    await k.stop()
+  }, 20_000)
+
+  it('leaves the hand-off as it was when Linear fails or has no token', async () => {
+    vi.stubEnv('LINEAR_API_KEY', '')
+    try {
+      for (const o of [{ fetch: linear({}, { fail: true }).fetch, linearToken: 'k' }, { fetch: linear({ 'KERNEL-198': ['KERNEL-197'] }).fetch }]) {
+        const { k, room, lead, target } = await setup({}, o)
+        await target(k, 164, 'Tool rows', 'KERNEL-197')
+        const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
+        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+        expect(w).toMatchObject({ status: 'ready', source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' } })
+        expect(w.waitsFor).toBeUndefined()
+        expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])
+        await k.stop()
+      }
+    } finally { vi.unstubAllEnvs() }
+  }, 20_000)
+
+  it("says the teammate starts once the brief goes out when the brief waits for a free slot", async () => {
+    const team = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai', lead: false }, { id: 'noor', name: 'Noor', lead: false }] as AgentDef[]
+    const noor = { id: 'w1', name: 'w1', agentId: 'noor', status: 'ready', mode: 'worktree', prState: 'open', prNumber: 164, createdAt: 1, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } } as Workspace
+    const kai = { id: 'k1', name: 'k1', branch: 'feat/x', agentId: 'kai', status: 'ready', mode: 'worktree', prState: 'none', createdAt: 2, source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' }, waitsFor: { on: ['w1'], held: false } } as Workspace
+    let created = false
+    const deps: KernelToolDeps = {
+      // Kai's workspace exists once it is created, so KERNEL-287's check for a second hand-off doesn't see it first.
+      roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => (created ? [noor, kai] : [noor]),
+      createWorkspace: async () => { created = true; return { ...kai, queued: 'capacity' as const } },
+      messageWorkspace: async () => ({ ok: true, note: '' }), askUser: async () => null, hireAgent: async () => '',
+      archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+    }
+    const out = (await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', issue: 'KERNEL-198' } as never, {})).content[0] as { text: string }
+    expect(out.text).toBe("Created k1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up. Linear marks KERNEL-198 as blocked by KERNEL-197, which Noor is building. Kai starts once the brief goes out, and Kernel messages Kai when PR #164 merges. Pass wait_for to hold the brief instead.")
+  })
+
+  it("keeps Rowan's wait_for, even one that merged already, and doesn't add Linear's blockers", async () => {
+    const l = linear({ 'KERNEL-198': ['KERNEL-197'] })
+    const { k, room, lead, target, mergeOnGitHub } = await setup({}, { fetch: l.fetch, linearToken: 'k' })
+    await target(k, 164, 'Tool rows', 'KERNEL-197')
+    const other = await target(k, 170, 'Other')
+    const held = await handOff(k, room, lead, { issue: 'KERNEL-198', wait_for: ['#170'] })
+    expect(held.text).toBe(`Created ${held.w.id} on ${held.w.branch} for kai. Kai waits for PR #170 by Noor to merge, and Kernel sends the brief then. Tell the user that merging it starts Kai.`)
+    expect(held.w.waitsFor).toMatchObject({ on: [other.id], held: true })
+    await k.archiveWorkspace(held.w.id)
+    await mergeOnGitHub(k, other)
+    const started = await handOff(k, room, lead, { issue: 'KERNEL-198', wait_for: ['#170'] })
+    expect(started.text).toBe(`Created ${started.w.id} on ${started.w.branch} for kai.`)
+    expect(started.w.waitsFor).toBeUndefined()
+    await k.stop()
+  }, 20_000)
 })
 
 describe('waits, the rules', () => {
