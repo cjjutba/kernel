@@ -109,6 +109,33 @@ describe('kernel.db versions', () => {
     expect(userVersion(join(d, 'kernel.db.bak-v3'))).toBe(3)
   })
 
+  it('keeps the copy it just made when a restored older file gives it the lowest version', () => {
+    const d = dir()
+    const file = join(d, 'kernel.db')
+    oldDb(file)
+    writeFileSync(join(d, 'kernel.db.bak-v2'), 'two')
+    writeFileSync(join(d, 'kernel.db.bak-v3'), 'three')
+    writeFileSync(join(d, 'kernel.db.bak-vX'), 'not a copy')
+    new Store(file).db.close()
+    expect(readdirSync(d).filter((n) => n.includes('.bak-')).sort()).toEqual(['kernel.db.bak-v1', 'kernel.db.bak-v3', 'kernel.db.bak-vX'])
+    expect(userVersion(join(d, 'kernel.db.bak-v1'))).toBe(0)
+  })
+
+  it('opens its own file after a crash left committed rows in the -wal', () => {
+    const d = dir()
+    const src = join(d, 'live.db')
+    const file = join(d, 'kernel.db')
+    const live = new Store(src)
+    live.saveRoom({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
+    copyFileSync(src, file)
+    copyFileSync(`${src}-wal`, `${file}-wal`)
+    live.db.close()
+    const store = new Store(file)
+    expect(store.rooms().map((r) => r.id)).toEqual(['r1'])
+    expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
+    store.db.close()
+  })
+
   it('keeps the old file and its version when a migration fails', () => {
     const d = dir()
     const file = join(d, 'kernel.db')
@@ -215,6 +242,19 @@ describe('pruning', () => {
   })
 })
 
+describe('pruning rows other builds saved', () => {
+  it('counts from when it was asked for a settled approval with no settle time', () => {
+    const store = new Store(':memory:')
+    const old = Date.now() - KEEP_APPROVAL_INPUT_MS - DAY
+    store.db.prepare('insert into approvals (id, room_id, status, data, created_at) values (?, ?, ?, ?, ?)')
+      .run('a', 'r1', 'allowed', JSON.stringify(approval({ id: 'a', status: 'allowed', input: { content: 'z'.repeat(500) }, createdAt: old })), old)
+    expect(store.prune().approvals).toBe(1)
+    // Saved as pending again, it can be pruned again once it settles.
+    store.saveApproval(approval({ id: 'a', status: 'pending', input: { content: 'z'.repeat(500) } }))
+    expect(store.db.prepare('select pruned, settled_at from approvals').get()).toEqual({ pruned: 0, settled_at: null })
+  })
+})
+
 describe('store reads', () => {
   it('skips a row whose JSON does not parse and keeps the rest of the list', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -224,6 +264,8 @@ describe('store reads', () => {
     store.saveRoom({ id: 'c', name: 'C', createdAt: 3 } as never)
     expect(store.rooms().map((r) => r.id)).toEqual(['a', 'c'])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('bad JSON'))
+    expect(store.room('bad')).toBeUndefined()
+    expect(store.room('a')?.id).toBe('a')
     vi.restoreAllMocks()
   })
 

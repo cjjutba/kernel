@@ -23,9 +23,9 @@ export class Store {
     refuseNewer(file)
     this.db = new Database(file)
     try {
+      this.db.pragma('busy_timeout = 5000')
       this.db.pragma('journal_mode = WAL')
       this.db.pragma('synchronous = NORMAL')
-      this.db.pragma('busy_timeout = 5000')
       this.db.pragma(`journal_size_limit = ${64 * 1024 * 1024}`)
       migrate(this.db, file)
     } catch (err) {
@@ -46,7 +46,7 @@ export class Store {
   prune(now = Date.now()): { activity: number; approvals: number } {
     return this.db.transaction(() => {
       const activity = this.db.prepare('delete from activity where ts < ?').run(now - KEEP_ACTIVITY_MS).changes
-      const rows = this.db.prepare(`select id, data from approvals where status != 'pending' and pruned = 0 and settled_at < ?`).all(now - KEEP_APPROVAL_INPUT_MS) as { id: string; data: string }[]
+      const rows = this.db.prepare(`select id, data from approvals where status != 'pending' and pruned = 0 and coalesce(settled_at, created_at) < ?`).all(now - KEEP_APPROVAL_INPUT_MS) as { id: string; data: string }[]
       const mark = this.db.prepare('update approvals set data = ?, pruned = 1 where id = ?')
       let approvals = 0
       for (const r of rows) {
@@ -142,11 +142,15 @@ export class Store {
     return this.all(`select data from approvals ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc`, ...args)
   }
   approval(id: string): Approval | undefined { return this.one('select data from approvals where id = ?', id) }
-  /** `settled_at` is set the first time an approval is saved as no longer pending, and kept after that. */
+  /**
+   * `settled_at` is set the first time an approval is saved as no longer pending, and kept after that. A row an older
+   * build saved has none, so pruning counts from `created_at` for it.
+   */
   saveApproval(a: Approval) {
     this.db.prepare(`insert into approvals (id, room_id, status, data, created_at, settled_at) values (?, ?, ?, ?, ?, ?)
       on conflict (id) do update set room_id = excluded.room_id, status = excluded.status, data = excluded.data, created_at = excluded.created_at,
-        settled_at = case when excluded.status = 'pending' then null else coalesce(approvals.settled_at, excluded.settled_at) end`)
+        settled_at = case when excluded.status = 'pending' then null else coalesce(approvals.settled_at, excluded.settled_at) end,
+        pruned = case when excluded.status = 'pending' then 0 else approvals.pruned end`)
       .run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt, a.status === 'pending' ? null : Date.now())
     return a
   }
@@ -179,14 +183,15 @@ export class Store {
 
   /** A row whose JSON doesn't parse is skipped and logged, so one bad row doesn't empty its list. */
   private all<T>(sql: string, ...args: unknown[]): T[] {
-    const out: T[] = []
-    for (const r of this.db.prepare(sql).all(...args) as { data: string }[]) {
-      try { out.push(JSON.parse(r.data)) } catch { console.warn(`[db] skipped a row with bad JSON: ${sql.slice(0, 80)}`) }
-    }
-    return out
+    return (this.db.prepare(sql).all(...args) as { data: string }[]).flatMap((r) => parsed<T>(r.data, sql))
   }
   private ids(sql: string, ...args: unknown[]): string[] { return (this.db.prepare(sql).all(...args) as { id: string }[]).map((r) => r.id) }
-  private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? JSON.parse(r.data) : undefined }
+  /** A row whose JSON doesn't parse reads as missing, and is logged. */
+  private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? parsed<T>(r.data, sql)[0] : undefined }
+}
+
+function parsed<T>(data: string, sql: string): T[] {
+  try { return [JSON.parse(data)] } catch { console.warn(`[db] skipped a row with bad JSON: ${sql.slice(0, 80)}`); return [] }
 }
 
 /** A pruned tool input: its string fields cut to 200 characters, numbers and booleans as they were, the rest dropped. */
