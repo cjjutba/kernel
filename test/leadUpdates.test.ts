@@ -383,6 +383,12 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR closed without merging', [ev('pr.closed')], 'closed', {}, ["PR #54 was closed without merging. Ask the user whether Noor's work is still wanted."]],
     ['a PR closed and opened again', [ev('pr.closed')], 'open', {}, []],
     ['a merge that leaves other tasks open', [ev('pr.merged')], 'merged', { allMerged: () => false }, []],
+    ['a wait the Lead set itself (KERNEL-259)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, told: true } })], 'none', {}, []],
+    ['a wait the Lead did not set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, ['Noor is waiting for PR #60 by Kai to merge. Tell the user that merging it moves Noor on.']],
+    ['a merge that released a wait', [ev('wait.released', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, []],
+    ['a wait whose PR closed without merging', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ["Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]],
+    ['a wait whose PR closed and opened again', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('open'), id: 'w2', prNumber: 60 }) }, []],
+    ['a started teammate whose wait broke', [ev('wait.broken', { wait: { on: ['w2'], label: "Kai's work", held: false, target: 'w2', gone: 'archived' } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor is waiting for Kai's work, which was archived without merging. Ask the user whether Noor should carry on without it (wait_for_merge with an empty list) or archive Noor's workspace."]],
     ["the chat's last merge", [ev('pr.merged')], 'merged', { allMerged: () => true }, ['Every task you handed off in this chat has merged. Tell the user in one line.']],
     ['a PR opening', [ev('pr.opened')], 'checks', {}, []],
     ['a PR that passed checks, with a reviewer and no review', [ev('pr.ready')], 'ready', { reviewer: THEO }, [NEEDS_REVIEW]],
@@ -407,7 +413,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a turn after an older PR event', [ev('pr.opened', { n: 0 }), ev('turn', { by: 'lead' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]]
   ]
   it.each(rows)('%s', (_label, events, prState, c, todo) => {
-    const out = decide({ ws: ws(prState), name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
+    const out = decide({ ws: { ...ws(prState), waitsFor: { on: ['w2'], held: true } }, name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
     expect(out.todo).toEqual(todo)
     expect(out.wake.size).toBe(todo.length)
   })
@@ -495,6 +501,45 @@ describe("a teammate's setup (KERNEL-126)", () => {
       todo: ["- Setup failed in Noor's workspace. Tell the user to fix it and click Run again there."]
     })
     u.setup(w1, true)
+    await wait()
+    expect(s.posts).toEqual([])
+  })
+})
+
+describe('a teammate that waits for another PR (KERNEL-259)', () => {
+  const KAI_60 = { on: ['w2'], label: 'PR #60 by Kai', held: true }
+  async function waiting() {
+    const t = await setup()
+    t.store.saveWorkspace({ ...t.store.workspace('w1')!, waitsFor: { on: ['w2'], held: true } })
+    return { ...t, w1: t.store.workspace('w1')! }
+  }
+
+  it("rides along when it starts and when it is released, and the setup that passed says it still waits", async () => {
+    const { u, s, w1, pr } = await waiting()
+    u.waits(w1, 'wait.started', { ...KAI_60, told: true })
+    u.setup(w1, true, { wait: KAI_60 })
+    u.waits(w1, 'wait.released', KAI_60)
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, '- Setup passed on Run again. Noor still waits for PR #60 by Kai to merge, and Kernel sends the brief then.', '- PR #60 by Kai merged, so Kernel sent Noor the brief.', OPENED_54, '- Checks failed on PR #54.'])
+  })
+
+  it('wakes the Lead when the PR it waits for closes, and says nothing once it opened again', async () => {
+    const { u, s, w1, store } = await waiting()
+    store.saveWorkspace({ ...store.workspace('w2')!, prState: 'closed', prNumber: 60 })
+    u.waits(w1, 'wait.broken', { ...KAI_60, target: 'w2', gone: 'closed' })
+    await wait()
+    expect(parts(s.posts.pop()!)).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, '- Noor is waiting for PR #60 by Kai, which was closed without merging.'],
+      todo: ["- Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]
+    })
+    s.accept = false
+    u.waits(w1, 'wait.broken', { ...KAI_60, target: 'w2', gone: 'closed' })
+    store.saveWorkspace({ ...store.workspace('w2')!, prState: 'open' })
+    s.accept = true
     await wait()
     expect(s.posts).toEqual([])
   })
