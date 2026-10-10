@@ -30,7 +30,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fetchOrigin, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -84,6 +84,14 @@ function unbuilt(): Pick<Handlers, Unbuilt> {
   const out: Record<string, () => Promise<never>> = {}
   for (const [channel, issue] of Object.entries(UNBUILT as Record<string, string>)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
   return out as unknown as Pick<Handlers, Unbuilt>
+}
+
+/** When origin was last fetched, for a workspace that started from it after a fetch failed: "Oct 10, 2:05 PM (3 hours ago)". */
+export function fetchedAt(ts: number, now = Date.now()): string {
+  const min = Math.max(0, Math.round((now - ts) / 60000))
+  const [n, unit] = min < 60 ? [min, 'minute'] : min < 60 * 48 ? [Math.round(min / 60), 'hour'] : [Math.round(min / 1440), 'day']
+  const ago = n === 0 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`
+  return `${new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${ago})`
 }
 
 export class Kernel {
@@ -824,8 +832,14 @@ export class Kernel {
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
+    const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    // A failed fetch still starts the workspace, from origin as last fetched, and says so (KERNEL-179). A folder with no
+    // origin has nothing to fetch, so it says nothing.
+    const fetched = !reviewed && mode === 'worktree' && wanted.startsWith('origin/') && (await exec('git', ['-C', room.path, 'remote', 'get-url', 'origin'])).code === 0
+      ? await fetchOrigin(room.path) : undefined
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch)
-      : await resolveBaseRef(room.path, o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef, { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
+      : await resolveBaseRef(room.path, wanted, { strict: o.source?.kind === 'pr' || o.source?.kind === 'branch' })
+    const stale = fetched?.ok === false ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
     const taken = new Set(this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port))
     const port = await freePort(4300, taken)
 
@@ -846,12 +860,13 @@ export class Kernel {
     }
 
     // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), prState: 'none', createdAt: Date.now() }
+    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching origin failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
     this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching origin failed:`, object: stale.error, warn: true })
     // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
     if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.startIssue(ws, o.source.id)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -859,6 +874,7 @@ export class Kernel {
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    if (stale) this.note(ws.id, `Couldn't fetch origin (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
