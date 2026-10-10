@@ -61,6 +61,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 ## Rules
 
 - The PNGs are the spec. Do not invent layouts, copy or colors. When the PNG and DESIGN.md disagree, the PNG wins and you note it in the PR.
+- `design/redesign/` (KERNEL-274) is the spec for the surfaces its README lists: the workspace panel, PR states, plan mode, Team update, Ask Rowan and the new chat state. There it replaces the `design/screens/` PNGs. Its "Not built" list is not spec.
 - Follow `DESIGN.md`: monochrome, no status dots, purple only for merged, hairlines instead of shadows, one modal shell, tokens only (no hex values in screen code).
 - Statuses come from real events only, never timers. Fixtures are for screenshots and tests.
 - Real buttons, inputs and labels; everything reachable by keyboard; icon buttons have `aria-label`.

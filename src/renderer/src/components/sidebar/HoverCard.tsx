@@ -90,7 +90,7 @@ function Status({ accent, spin, icon, label }: { accent: Accent; spin?: boolean;
 function glyphAccent(g: WorkspaceGlyph): Accent {
   if (g.icon === 'spin') return 'working'
   if (g.icon === 'question' || g.icon === 'plan') return 'needs'
-  return g.tone === 'ink' ? 'muted' : g.tone
+  return g.tone
 }
 
 /** The newest event that matches, whatever order the list arrived in. */
