@@ -20,7 +20,7 @@ export interface KernelToolDeps {
    * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
    * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
@@ -203,7 +203,8 @@ export function kernelTools(d: KernelToolDeps) {
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
       const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
-      // A reviewer started on another workspace's branch is a review of it, with the same checks (KERNEL-299).
+      // A reviewer started on another workspace's branch is a review of it, with the same checks. It keeps base_ref and
+      // branch, since a long reviewed branch can't take review_of yet (KERNEL-299, KERNEL-265).
       const review_of = askedReview ?? reviewedByBase(pick, base_ref, d.workspaces())?.id
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
       // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
@@ -240,7 +241,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (why) return { ...text(`Not created: ${why}`), isError: true }
         targets = waitTargets(all, wait_for).filter((t) => !isMerged(t))
       }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.

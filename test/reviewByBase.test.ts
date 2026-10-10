@@ -6,6 +6,7 @@ import type { AgentDef, PrInfo, Workspace } from '@shared/types'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { kernelTools } from '../src/main/services/kernelMcp'
+import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
 // KERNEL-299: a review the Lead started with base_ref set to the reviewed branch, instead of review_of, is still a review,
@@ -68,6 +69,29 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
     await until(() => status(review) === 'archived')
     expect(status(review)).toBe('archived')
     expect(status(author)).not.toBe('archived')
+  })
+
+  it('keeps an origin/ base and a short branch name, on a long reviewed branch', async () => {
+    const { k, gh, room, lead, handOff, status } = await setup()
+    const remote = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+    await run('git', ['init', '-q', '--bare', remote])
+    await run('git', ['-C', room.path, 'remote', 'add', 'origin', remote])
+    await run('git', ['-C', room.path, 'push', '-q', 'origin', 'main'])
+    // The branch review_of can't start a review from yet (KERNEL-265), pushed with a commit on it.
+    const author = await k.createWorkspace(room.id, { prompt: 'Fix it', agentId: 'kai', title: 'MCP servers', leadChatId: lead.id, branch: 'cjjutbaofficial/kernel-295-agents-in-the-kernel-repo-start-three-mcp-servers-they-never' })
+    await writeFile(join(author.path, 'mcp.ts'), 'export {}\n')
+    await run('git', ['-C', author.path, 'add', '-A'])
+    await run('git', ['-C', author.path, 'commit', '-q', '-m', 'mcp'])
+    await run('git', ['-C', author.path, 'push', '-q', 'origin', author.branch])
+    gh.pr = info('ready')
+    await k.refreshPr(author.id)
+    const review = await handOff({ agent: 'theo', title: 'Review PR #213', brief: 'Review it', base_ref: `origin/${author.branch}`, branch: 'review/kernel-295-pr-213' }) as Workspace
+    expect(review).toMatchObject({ reviewOf: author.id, branch: 'review/kernel-295-pr-213', baseRef: `origin/${author.branch}` })
+    expect((await run('git', ['-C', review.path, 'log', '-1', '--format=%s'])).trim()).toBe('mcp')
+    gh.pr = info('merged')
+    await k.refreshPr(author.id)
+    await until(() => status(review) === 'archived')
+    expect(status(review)).toBe('archived')
   })
 
   it('runs the review checks: a second review by the same reviewer is refused', async () => {
