@@ -167,7 +167,7 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsExperimental: settingsPage('experimental'),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
-  SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
+  SettingsGit: settingsPage('git', { settings: { ...DEFAULT_SETTINGS('/Users/you'), workspace: { ...DEFAULT_SETTINGS('/Users/you').workspace, branchPattern: 'feat/{slug}' } }, branches: ['origin/main', 'origin/dev', 'main'] }),
   SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
