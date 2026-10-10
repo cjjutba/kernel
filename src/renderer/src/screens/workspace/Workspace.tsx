@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangedFile } from '@shared/types'
+import type { ChangedFile, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
@@ -161,6 +161,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
         <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
+        <IssueKey ws={ws} />
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
         {!panels && <PrHeader ws={ws} />}
@@ -208,4 +209,16 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       )}
     </div>
   )
+}
+
+/** The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, a GitHub issue opens its page. */
+function IssueKey({ ws }: { ws: WorkspaceModel }) {
+  const source = ws.source
+  if (source?.kind !== 'issue') return null
+  const github = source.id.startsWith('#')
+  const open = () => {
+    if (!github) actions.ui.go({ name: 'issues', issueId: source.id })
+    else if (source.url) void call('system.openExternal', { url: source.url })
+  }
+  return <button type="button" className="ws-issue" aria-label={`Open ${github ? 'issue' : 'Linear issue'} ${source.id}`} title={source.title} onClick={open}>{source.id}</button>
 }

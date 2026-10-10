@@ -117,9 +117,12 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsSkills: settingsPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene((f) => ({
-    ...clientA({ scripts: { setup: 'pnpm install' } }),
+    ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
     rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
     agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
+    // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
+    integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
+    linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
     ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
   })),
   DevUi: gallery('components'),

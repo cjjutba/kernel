@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings, RoomSettings } from '@shared/types'
+import type { AppSettings, LinearScope, RoomSettings } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, SegmentedControl, Select, useBusy } from '../../../ui'
@@ -17,6 +17,13 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const rs = useRoomSettings(roomId)
   const [branches, setBranches] = useState<string[]>([])
   const [busy, run] = useBusy()
+  // null until Integrations answers, so the row doesn't flash "Connect Linear" for a connected account.
+  const [teams, setTeams] = useState<LinearScope['teams'] | null | undefined>(undefined)
+  useEffect(() => {
+    void call('integrations.list', undefined)
+      .then((rows) => (rows.find((r) => r.id === 'linear')?.connected ? call('linear.scope', undefined).then((scope) => setTeams(scope.teams)) : setTeams(null)))
+      .catch(() => setTeams(null))
+  }, [])
   useEffect(() => {
     if (roomId) void call('git.branches', { roomId }).then(setBranches).catch(() => setBranches([]))
   }, [roomId])
@@ -26,6 +33,9 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const base = rs?.workspace.baseRef
   const setWs = (patch: Partial<Record<keyof RoomSettings['workspace'], string | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
   const branchOptions = [{ value: USE_DEFAULT, label: 'Use default' }, ...[...new Set([...(base ? [base] : []), ...branches])].map((b) => ({ value: b, label: b }))]
+  const team = rs?.linear?.team
+  // A saved team that is no longer in the list still shows, so the select never claims None for a team that is set.
+  const teamOptions = [{ value: USE_DEFAULT, label: 'None' }, ...[...new Set([...(team ? [team] : []), ...(teams ?? []).map((t) => t.key)])].map((k) => ({ value: k, label: k }))]
   const allow = room.allow ?? []
   const removeRule = async (rule: string) => {
     try {
@@ -46,6 +56,11 @@ export function Room({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Row label="Repository"><span className="set-value">{room.repo ?? sourceOf(room)}</span></Row>
         <Row label="Local path"><span className="set-value">{home(room.path)}</span></Row>
         <Row label="Team"><span className="set-value">{agents?.filter((a) => !a.retired).map((a) => a.role).join(', ') || 'No agents yet'}</span></Row>
+        {teams !== undefined && (teams
+          ? <Row label="Linear team" desc="Issues from this team open in this room">
+              <Select label="Linear team" value={team ?? USE_DEFAULT} options={teamOptions} onChange={(e) => void patchRoomSettings(roomId, { linear: { team: e.target.value || null } })} />
+            </Row>
+          : <Row label="Linear team" desc={<>Connect Linear in <button type="button" className="set-link" onClick={() => go({ name: 'settings', page: 'integrations' })}>Settings, Integrations</button></>} />)}
       </Section>
       <Section title="Overrides">
         <Row label="Default workspace type">

@@ -240,6 +240,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspaceModel: newWorkspace('model'),
   NewWorkspacePlus: newWorkspace('plus'),
   Workspace: scene(() => ({ ui: open })),
+  // KERNEL-161: the workspace started on a Linear issue shows its key after the branch.
+  WorkspaceIssue: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
+    ui: open
+  })),
   WorkspaceLoading: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },
