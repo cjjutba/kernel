@@ -8,7 +8,7 @@ import { upNext } from './upNext'
 // `pnpm release:notes` (see .changes/README.md). Entries are newest first; the first gets the Latest badge.
 // Everything is parsed at build time, so a malformed file fails the build.
 // CHANGELOG_FIXTURE swaps in another folder with releases/ and upNext.json. The e2e render comparison builds from
-// tests/fixtures/render, the content design/site/renders shows, so a new release doesn't fail it (D-134).
+// tests/fixtures/render, the content design/site/renders shows, so a new release doesn't fail it (D-135).
 const fixture = process.env.CHANGELOG_FIXTURE
 const releases = loadReleases(join(fixture ?? join(process.cwd(), 'content'), 'releases'))
 

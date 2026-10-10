@@ -40,3 +40,44 @@ export async function savePlan(root: string, text: string, o: { fallback: string
 }
 
 export const planExists = (root: string, file: string) => exists(join(root, file))
+
+/**
+ * Images sent with a plan's change request (D-134). A denial carries text only, so each image is saved to
+ * `.kernel/attachments/` in the workspace, out of git like the plans, and the message names its path for the agent to Read.
+ */
+export const ATTACHMENTS_DIR = '.kernel/attachments'
+
+/** A base64 image data URL: its media type and data. `toUserMessage` reads chat images with it too. */
+export const IMAGE_DATA_URL = /^data:(image\/[a-z+]+);base64,(.*)$/
+
+/**
+ * Writes each image under a name of its own (pasted images often all arrive as `image.png`) and returns absolute paths.
+ * Every image is checked before any is written, so a refused one leaves no files behind.
+ */
+export async function saveAttachments(root: string, images: { name: string; dataUrl: string }[]): Promise<string[]> {
+  const files = images.map((image) => {
+    const m = IMAGE_DATA_URL.exec(image.dataUrl)
+    if (!m) throw new Error(`${image.name} isn't an image Kernel can attach.`)
+    const ext = m[1].slice('image/'.length).replace(/\+.*$/, '').replace('jpeg', 'jpg')
+    const slug = image.name.replace(/\.[^.]*$/, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 60).replace(/-+$/, '')
+    return { base: slug || 'image', ext, data: Buffer.from(m[2], 'base64') }
+  })
+  await excludeFromGit(root, `${ATTACHMENTS_DIR}/`)
+  await mkdir(join(root, ATTACHMENTS_DIR), { recursive: true })
+  const paths: string[] = []
+  for (const { base, ext, data } of files) {
+    for (let n = 1; ; n++) {
+      const path = join(root, ATTACHMENTS_DIR, `${n === 1 ? base : `${base}-${n}`}.${ext}`)
+      // `wx` fails on a taken name, so two requests saving at once never write to the same file.
+      try { await writeFile(path, data, { flag: 'wx' }) }
+      catch (e) { if ((e as NodeJS.ErrnoException).code === 'EEXIST') continue; throw e }
+      paths.push(path)
+      break
+    }
+  }
+  return paths
+}
+
+/** The change request with a line per saved image after what the user typed. */
+export const attachmentNote = (message: string | undefined, paths: string[]) =>
+  [message?.trim(), paths.map((p) => `Attached image: ${p}. Read it before revising the plan.`).join('\n')].filter(Boolean).join('\n\n')

@@ -7,7 +7,7 @@ import { expect, isMobile, test } from './fixtures'
 const renders = join(import.meta.dirname, '..', '..', '..', 'design', 'site', 'renders')
 const out = join(import.meta.dirname, '..', '..', 'test-results', 'compare')
 // The site built from tests/fixtures/render by server.mjs. The renders show 0.1.0 and the plans of the day, so the
-// live content would drift from them with every release (D-134).
+// live content would drift from them with every release (D-135).
 const renderSite = 'http://localhost:3101'
 
 for (const [name, path] of [
