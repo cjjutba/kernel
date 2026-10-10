@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, constants, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { parseEnv } from 'node:util'
 import { ENV_NAME, isKernelVar, type KernelVar } from '@shared/kernelVars'
@@ -66,12 +66,18 @@ function envFilePath(dir: string, path: string): string | null {
 }
 
 /**
+ * How an env file is opened: never blocking on a FIFO, and never through a link, so a file swapped for a link between
+ * `realpathSync` and the open fails instead of reading where the link points.
+ */
+const OPEN_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW
+
+/**
  * The file's text when it is a regular file of at most `MAX_ENV_FILE` bytes, else null. It opens without blocking and
  * checks what it opened, so a FIFO or a device never stalls the main process, which reads this synchronously.
  */
 function readSmallFile(real: string): string | null {
   let fd: number
-  try { fd = openSync(real, constants.O_RDONLY | constants.O_NONBLOCK) } catch { return null }
+  try { fd = openSync(real, OPEN_FLAGS) } catch { return null }
   try {
     const st = fstatSync(fd)
     if (!st.isFile() || st.size > MAX_ENV_FILE) return null
@@ -86,7 +92,7 @@ export function envFileReadable(dir: string, path: string): boolean {
   const real = envFilePath(dir, path)
   if (!real) return false
   try {
-    const fd = openSync(real, constants.O_RDONLY | constants.O_NONBLOCK)
+    const fd = openSync(real, OPEN_FLAGS)
     try { const st = fstatSync(fd); return st.isFile() && st.size <= MAX_ENV_FILE } finally { closeSync(fd) }
   } catch { return false }
 }
@@ -137,25 +143,28 @@ export class EnvStore {
   private stored: EnvFile | null = null
   /** Decrypted values by scope (`APP` or a room id), filled on first read. */
   private plain = new Map<string, Record<string, string>>()
-  /** Set when an unreadable file couldn't be moved aside, so nothing is saved over it. */
+  /**
+   * Set while the file exists but can't be read (EACCES, EMFILE), or couldn't be moved aside. Nothing is saved over it,
+   * and the next call tries again.
+   */
   private stuck = false
 
   constructor(private o: { file: string; cipher?: Cipher; onSetAside?: (file: string) => void }) {}
 
   private file(): EnvFile {
     if (this.stored) return this.stored
-    this.stored = { app: {}, rooms: {} }
     let text: string
     try { text = readFileSync(this.o.file, 'utf8') } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return this.stored
-      this.setAside()
-      return this.stored
+      if ((e as NodeJS.ErrnoException).code === 'ENOENT') { this.stuck = false; return (this.stored = { app: {}, rooms: {} }) }
+      // The file may be fine and only unreadable for now. It stays where it is, nothing is cached, and saves refuse.
+      this.stuck = true
+      return { app: {}, rooms: {} }
     }
+    this.stuck = false
     let parsed: EnvFile | null = null
     try { parsed = envFileOf(JSON.parse(text)) } catch { /* not JSON */ }
-    if (parsed) this.stored = parsed
-    else this.setAside()
-    return this.stored
+    if (!parsed) this.setAside()
+    return (this.stored = parsed ?? { app: {}, rooms: {} })
   }
 
   /** Moves an unreadable `env.json` to `env.json.corrupt-<time>`. It holds only names and ciphertext, so keeping it is safe. */
@@ -181,7 +190,7 @@ export class EnvStore {
     const out: Record<string, string> = {}
     const { cipher } = this.o
     if (cipher) for (const [name, data] of Object.entries(this.scope(roomId))) { try { out[name] = cipher.decrypt(data) } catch { /* unreadable */ } }
-    this.plain.set(key, out)
+    if (!this.stuck) this.plain.set(key, out)
     return out
   }
 
@@ -198,30 +207,35 @@ export class EnvStore {
     checkName(name)
     const { cipher } = this.o
     if (value !== null && !cipher) throw new Error(`${NO_CIPHER} So it won't save them.`)
-    const f = this.file()
+    const f = this.writable()
     const scope = roomId ? (f.rooms[roomId] ??= {}) : f.app
     const plain = this.values(roomId)
     if (value === null) { delete scope[name]; delete plain[name] }
     else { scope[name] = cipher!.encrypt(value); plain[name] = value }
     if (roomId && !Object.keys(scope).length) delete f.rooms[roomId]
-    this.save()
+    this.save(f)
   }
 
   /** A removed room takes its variables with it. */
   dropRoom(roomId: string) {
-    const f = this.file()
     this.plain.delete(roomId)
-    if (!f.rooms[roomId]) return
+    if (!this.file().rooms[roomId]) return
+    const f = this.writable()
     delete f.rooms[roomId]
-    this.save()
+    this.save(f)
   }
 
-  private save() {
-    if (this.stuck && existsSync(this.o.file)) throw new Error(`Kernel can't read ${basename(this.o.file)} in its data folder, so it won't write over it. Move the file away and try again.`)
-    this.stuck = false
+  /** The file to change, or a throw while it can't be read, so nothing is written over it. */
+  private writable(): EnvFile {
+    const f = this.file()
+    if (this.stuck) throw new Error(`Kernel can't read ${basename(this.o.file)} in its data folder, so it won't write over it. Check the file's permissions, or move it away, and try again.`)
+    return f
+  }
+
+  private save(f: EnvFile) {
     mkdirSync(dirname(this.o.file), { recursive: true })
     const tmp = `${this.o.file}.tmp`
-    writeFileSync(tmp, JSON.stringify(this.file(), null, 2), { mode: 0o600 })
+    writeFileSync(tmp, JSON.stringify(f, null, 2), { mode: 0o600 })
     // A temp file a crash left behind keeps its old mode through writeFileSync, and the rename would carry it over.
     chmodSync(tmp, 0o600)
     renameSync(tmp, this.o.file)

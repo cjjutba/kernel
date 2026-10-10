@@ -191,12 +191,12 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   }
 }
 
-/** The text a room runs or copies on its own: the three scripts and the files.copy list, as the room reads them. */
-export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy'>
+/** The text a room runs or copies on its own: the scripts, the files.copy list and the env files list, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles'>
 
 /**
- * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script and the
- * files.copy list the room runs, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the
+ * files.copy list and the env files list (KERNEL-247) the room uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
  * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
  * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
  * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
@@ -212,8 +212,10 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
   const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
   // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
   const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
-  if (!Object.keys(scripts).length && !runScripts.length && !copy.length) return undefined
-  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy }
+  // An env file can set ZDOTDIR or BASH_ENV, which makes every shell Kernel starts run repo code (KERNEL-247).
+  const envFiles = fromRepo('env.files') ? repo.env.files : []
+  if (!Object.keys(scripts).length && !runScripts.length && !copy.length && !envFiles.length) return undefined
+  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy, ...(envFiles.length ? { envFiles } : {}) }
 }
 
 /**
@@ -271,7 +273,9 @@ export async function localSettingsOwn(repo: string): Promise<boolean> {
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
 export function trustHash(s: TrustSubject): string {
   const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
-  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs])).digest('hex')
+  // Tagged and only when set, so a room without repo env files keeps the hash the user already trusted (KERNEL-247).
+  const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env])).digest('hex')
 }
 
 /** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */

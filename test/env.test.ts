@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
@@ -9,6 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { buildEnv, envFileReadable, EnvStore, MAX_ENV_FILE, readEnvFiles, type Cipher } from '../src/main/services/env'
 import { sessionEnv } from '../src/main/services/sessions'
+import { loadRepoSettings, scriptsToTrust } from '../src/main/services/settings'
 
 /** Stands in for safeStorage, which doesn't work under ELECTRON_RUN_AS_NODE. Its output never holds the text it was given. */
 const fakeCipher: Cipher = {
@@ -63,6 +64,18 @@ describe('readEnvFiles', () => {
     expect(read.filter((f) => f.missing).every((f) => !Object.keys(f.vars).length)).toBe(true)
     // env.get's check agrees, and reads nothing.
     for (const [path, missing] of Object.entries(paths)) expect(envFileReadable(dir, path), path).toBe(!missing)
+  })
+})
+
+describe('scriptsToTrust', () => {
+  it('asks to trust an env files list from the repo, and not the user\'s own', async () => {
+    const shared = await tempRepo({ 'README.md': '#\n', '.kernel/settings.toml': '[env]\nfiles = [".env"]\n' })
+    expect(scriptsToTrust(await loadRepoSettings(shared), { localIsOwn: true })).toEqual({ scripts: {}, copy: [], envFiles: ['.env'] })
+    const own = await tempRepo({ 'README.md': '#\n' })
+    await mkdir(join(own, '.kernel'))
+    await writeFile(join(own, '.kernel', 'settings.local.toml'), '[env]\nfiles = [".env"]\n')
+    expect(scriptsToTrust(await loadRepoSettings(own), { localIsOwn: true })).toBeUndefined()
+    expect(scriptsToTrust(await loadRepoSettings(own), { localIsOwn: false })?.envFiles).toEqual(['.env'])
   })
 })
 
@@ -131,6 +144,27 @@ describe('EnvStore', () => {
     const moved: string[] = []
     expect(new EnvStore({ file: join(await mkdtemp(join(tmpdir(), 'kernel-env-')), 'env.json'), onSetAside: (f) => moved.push(f) }).names()).toEqual([])
     expect(moved).toEqual([])
+  })
+
+  it.skipIf(process.getuid?.() === 0)('leaves a file it can\'t open where it is, refuses to write over it, and reads it once it can', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-env-'))
+    const file = join(dir, 'env.json')
+    new EnvStore({ file, cipher: fakeCipher }).set(undefined, 'KEPT', 'v')
+    const before = readFileSync(file, 'utf8')
+    await chmod(file, 0o000)
+    const moved: string[] = []
+    const store = new EnvStore({ file, cipher: fakeCipher, onSetAside: (f) => moved.push(f) })
+    try {
+      expect(store.names()).toEqual([])
+      expect(() => store.set(undefined, 'NEW', 'x')).toThrow('won\'t write over it')
+      expect(() => store.set(undefined, 'KEPT', null)).toThrow('won\'t write over it')
+      expect(moved).toEqual([])
+      expect(readdirSync(dir)).toEqual(['env.json'])
+    } finally { await chmod(file, 0o600) }
+    expect(readFileSync(file, 'utf8')).toBe(before)
+    // Nothing unreadable was cached, so the next read finds the variable.
+    expect(store.names()).toEqual(['KEPT'])
+    expect(store.reveal(undefined, 'KEPT')).toBe('v')
   })
 
   it('saves the file readable by the user only, even over a leftover temp file', async () => {
@@ -277,7 +311,95 @@ describe('Kernel env', () => {
     const notes = k.store.activity(undefined, 50).filter((e) => e.object === moved)
     expect(notes).toHaveLength(1)
     expect(notes[0]).toMatchObject({ kind: 'note', actor: 'kernel' })
-    k.store.db.close()
+    await k.stop()
+  })
+
+  it('runs nothing from a repo\'s env files until the room is trusted, in a shell or a big terminal', async () => {
+    // ZDOTDIR makes `zsh -l` run the repo's own .zshenv, the way BASH_ENV does for `bash -c`.
+    const repo = await tempRepo({
+      'README.md': '# shell\n',
+      '.env.shell': 'ZDOTDIR=zd\nFROM_REPO=yes\n',
+      'zd/.zshenv': 'touch "$PWD/zshenv-ran"\n',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.kernel/settings.toml': '[env]\nfiles = [".env.shell"]\n'
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const shell = process.env.SHELL
+    process.env.SHELL = '/bin/zsh'
+    const k = new Kernel({ dataDir, home, cipher: fakeCipher })
+    try {
+      await k.start()
+      k.sessions.send = async () => ({ queued: false })
+      const h = k.handlers()
+      const room = await k.addRoom(repo)
+      await h['env.set']({ roomId: room.id, name: 'MINE', value: 'set-by-me' })
+      const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Shell' })
+      expect(ws.status).toBe('trust')
+      expect((await h['rooms.scriptTrust']({ roomId: room.id }))?.envFiles).toEqual(['.env.shell'])
+      // The user's own variables still apply. The repo's file doesn't.
+      expect(k.envFor(ws)).toMatchObject({ MINE: 'set-by-me' })
+      expect(k.envFor(ws).FROM_REPO).toBeUndefined()
+      expect(k.envFor(ws, { script: true }).FROM_REPO).toBeUndefined()
+
+      let out = ''
+      const on = (e: { type: string; chatId?: string; data?: string }) => { if (e.type === 'terminal.data') out += e.data }
+      bus.on('push', on)
+      const plain = `shell:${ws.id}`
+      await h['terminal.resize']({ chatId: plain, cols: 100, rows: 30 })
+      await h['terminal.write']({ chatId: plain, data: 'echo "plain-$((40+2))"\r' })
+      await until(() => out.includes('plain-42'))
+      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(false)
+
+      // Once trusted, the same file is read, and the shell runs the repo's .zshenv. That shows the check above is real.
+      await trustRoom(k, room.id)
+      expect(k.envFor(ws).FROM_REPO).toBe('yes')
+      const start = k.ptys.start.bind(k.ptys)
+      k.ptys.start = (id, o) => start(id, { ...o, command: undefined })
+      const term = await h['chats.create']({ workspaceId: ws.id, kind: 'terminal' })
+      await h['terminal.write']({ chatId: term.id, data: 'echo "big-$((40+3))"\r' })
+      await until(() => out.includes('big-43'))
+      expect(existsSync(join(ws.path, 'zshenv-ran'))).toBe(true)
+      bus.off('push', on)
+    } finally {
+      if (shell === undefined) delete process.env.SHELL
+      else process.env.SHELL = shell
+      await k.stop()
+    }
+  })
+
+  it('asks again when a commit adds an env file, and reads none of the list until then', async () => {
+    const repo = await tempRepo({
+      'README.md': '# env\n',
+      '.env.a': 'A=1\n',
+      '.env.b': 'B=1\n',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.kernel/settings.toml': '[env]\nfiles = [".env.a"]\n'
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, cipher: fakeCipher })
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const h = k.handlers()
+    const room = await k.addRoom(repo)
+    await trustRoom(k, room.id)
+    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Env' })
+    expect(ws.status).toBe('ready')
+    expect(k.envFor(ws)).toMatchObject({ A: '1' })
+
+    await writeFile(join(repo, '.kernel/settings.toml'), '[env]\nfiles = [".env.a", ".env.b"]\n')
+    expect(k.envFor(ws).A).toBeUndefined()
+    expect(k.envFor(ws).B).toBeUndefined()
+    const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+    expect(trust?.envFiles).toEqual(['.env.a', '.env.b'])
+    expect(k.envFor(ws).A).toBeUndefined()
+
+    await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+    expect(k.envFor(ws)).toMatchObject({ A: '1', B: '1' })
+    await k.stop()
   })
 
   it('removing a room removes its variables', async () => {
@@ -288,6 +410,6 @@ describe('Kernel env', () => {
     await k.handlers()['env.set']({ roomId: room.id, name: 'GONE_SOON', value: 'v' })
     await k.removeRoom(room.id, false)
     expect(JSON.parse(readFileSync(join(dataDir, 'env.json'), 'utf8')).rooms).toEqual({})
-    k.store.db.close()
+    await k.stop()
   })
 })
