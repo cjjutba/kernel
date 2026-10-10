@@ -1,15 +1,29 @@
-import { describe, expect, it } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdtemp, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo } from './helpers'
-import { git } from '../src/main/services/exec'
-import { defaultBranch, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
+import { exec, git } from '../src/main/services/exec'
+import { defaultBranch, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
 import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
-import { Kernel } from '../src/main/kernel'
+import { fetchedAt, Kernel } from '../src/main/kernel'
+import { kernelTools } from '../src/main/services/kernelMcp'
 import { briefParts, leadMessage, pickedLines } from '../src/renderer/src/screens/new-workspace/brief'
-import type { ChatPart } from '../src/shared/types'
+import type { AgentDef, ChatPart } from '../src/shared/types'
+
+/** While `on`, every `git fetch` times out, the way exec reports it when its timer kills git (KERNEL-179). */
+const fetchTimesOut = vi.hoisted(() => ({ on: false, fetches: 0 }))
+vi.mock('../src/main/services/exec', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/main/services/exec')>()
+  return {
+    ...real,
+    exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
+      if (args.includes('fetch')) fetchTimesOut.fetches++
+      return fetchTimesOut.on && args.includes('fetch') ? Promise.resolve({ code: 1, stdout: '', stderr: '', timedOut: true }) : real.exec(cmd, args, opts)
+    }
+  }
+})
 
 describe('branch naming', () => {
   it('uses feat/{task}-{slug} when a Linear issue is linked', () => {
@@ -144,6 +158,108 @@ describe('the base a workspace starts from', () => {
     expect(ws.baseRef).toBe('master')
     expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'master'))
     await k.stop()
+  })
+
+  describe('when fetching origin fails (KERNEL-179)', () => {
+    const team = { ...lead, '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' }
+    const warnings = (k: Kernel, roomId: string) => k.store.activity(roomId).filter((a) => a.warn)
+    const notes = (k: Kernel, wsId: string) => k.store.items(k.store.chats(wsId)[0].id).flatMap((i) => i.kind === 'note' ? [i.text] : [])
+
+    it('says how a command that ran out of time ended', async () => {
+      expect(await exec('sleep', ['5'], { timeoutMs: 50 })).toMatchObject({ timedOut: true })
+      expect((await exec('true', [], { timeoutMs: 5000 })).timedOut).toBeUndefined()
+    })
+
+    it('reads the time origin was last fetched as a date and an age', () => {
+      const now = new Date(2026, 9, 10, 17, 5).getTime()
+      expect(fetchedAt(now - 3 * 3600000, now)).toBe('Oct 10, 2:05 PM (3 hours ago)')
+      expect(fetchedAt(now - 60000, now)).toMatch(/\(1 minute ago\)$/)
+      expect(fetchedAt(now - 3 * 86400000, now)).toMatch(/^Oct 7, .*\(3 days ago\)$/)
+    })
+
+    it('starts from origin as last fetched when origin is unreachable, and says so once in the log and in the chat', async () => {
+      const repo = await cloneOf(await tempRepo(team))
+      await git(repo, 'fetch', '-q', 'origin')
+      const hoursAgo = new Date(Date.now() - 3 * 3600000)
+      await utimes(join(repo, '.git', 'FETCH_HEAD'), hoursAgo, hoursAgo)
+      await git(repo, 'remote', 'set-url', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
+      const k = await kernel()
+      const room = await k.addRoom(repo)
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      expect(ws.status).toBe('ready')
+      expect(ws.baseRef).toBe('origin/main')
+      expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(repo, 'rev-parse', 'origin/main'))
+      expect(ws.fetchFailed).toMatch(/^Fetching origin failed \(fatal: .*does not appear to be a git repository\), so it started from origin\/main as of .+ \(3 hours ago\)\.$/)
+      const warned = warnings(k, room.id)
+      expect(warned).toHaveLength(1)
+      expect(warned[0]).toMatchObject({ kind: 'note', workspaceId: ws.id, object: expect.stringContaining('does not appear to be a git repository') })
+      expect(warned[0].text).toMatch(new RegExp(`^started ${ws.name} from origin/main as last fetched .+ \\(3 hours ago\\), because fetching origin failed:$`))
+      expect(notes(k, ws.id)).toEqual([expect.stringMatching(/^Couldn't fetch origin \(fatal: .*\), so this workspace started from origin\/main as of .+ \(3 hours ago\)\. It may be missing recent merges\.$/)])
+      await k.stop()
+      // The failed fetch emptied FETCH_HEAD, so the next failure can't say when origin was last fetched.
+      expect(await fetchOrigin(repo)).toEqual({ ok: false, error: expect.stringContaining('does not appear to be a git repository') })
+    })
+
+    it('adds nothing to the log or the chat when the fetch succeeds', async () => {
+      const remote = await tempRepo(team)
+      const repo = await cloneOf(remote)
+      await writeFile(join(remote, 'NEW.md'), 'merged\n')
+      await git(remote, 'add', '-A')
+      await git(remote, 'commit', '-q', '-m', 'merged')
+      expect(await fetchOrigin(await cloneOf(remote))).toEqual({ ok: true })
+      const k = await kernel()
+      const room = await k.addRoom(repo)
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      expect(ws.fetchFailed).toBeUndefined()
+      // Create fetched: the commit merged after the clone is in the workspace.
+      expect(await git(ws.path, 'rev-parse', 'HEAD')).toBe(await git(remote, 'rev-parse', 'main'))
+      expect(warnings(k, room.id)).toEqual([])
+      expect(notes(k, ws.id)).toEqual([])
+      await k.stop()
+    })
+
+    it('shares one fetch between workspaces started together', async () => {
+      const repo = await cloneOf(await tempRepo(team))
+      const before = fetchTimesOut.fetches
+      expect(await Promise.all([fetchOrigin(repo), fetchOrigin(repo)])).toEqual([{ ok: true }, { ok: true }])
+      expect(fetchTimesOut.fetches - before).toBe(1)
+      await fetchOrigin(repo)
+      expect(fetchTimesOut.fetches - before).toBe(2)
+    })
+
+    it('says nothing when the base fell back to a local branch, which no fetch updates', async () => {
+      const repo = await tempRepo(team)
+      await git(repo, 'remote', 'add', 'origin', join(tmpdir(), 'kernel-no-such-remote'))
+      const k = await kernel()
+      const room = await k.addRoom(repo)
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it' })
+      expect(ws.baseRef).toBe('main')
+      expect(ws.fetchFailed).toBeUndefined()
+      expect(warnings(k, room.id)).toEqual([])
+      expect(notes(k, ws.id)).toEqual([])
+      await k.stop()
+    })
+
+    it('reads a timeout as a timeout, and the Lead hears it from create_workspace', async () => {
+      const repo = await cloneOf(await tempRepo(team))
+      fetchTimesOut.on = true
+      onTestFinished(() => { fetchTimesOut.on = false })
+      expect(await fetchOrigin(repo)).toEqual({ ok: false, error: 'timed out after 30 seconds' })
+      const k = await kernel()
+      const room = await k.addRoom(repo)
+      const tool = kernelTools({
+        roomId: room.id, lead: undefined, agents: async () => [{ id: 'kai', name: 'Kai', role: 'Frontend', lead: false } as AgentDef], workspaces: () => [],
+        createWorkspace: (o) => k.createWorkspace(room.id, o), messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => null,
+        hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false
+      }).find((t) => t.name === 'create_workspace')!
+      const r = await tool.handler({ agent: 'kai', title: 'Inbox actions', brief: 'Go' } as never, {})
+      const ws = k.store.workspaces(room.id)[0]
+      // A clone has no FETCH_HEAD, so the time is unknown.
+      expect((r.content[0] as { text: string }).text).toBe(`Created ${ws.id} on ${ws.branch} for kai. Fetching origin failed (timed out after 30 seconds), so it started from origin/main as of its last fetch.`)
+      expect(warnings(k, room.id).map((a) => [a.text, a.object])).toEqual([[`started ${ws.name} from origin/main as last fetched, because fetching origin failed:`, 'timed out after 30 seconds']])
+      expect(notes(k, ws.id)).toEqual(["Couldn't fetch origin (timed out after 30 seconds), so this workspace started from origin/main as of its last fetch. It may be missing recent merges."])
+      await k.stop()
+    })
   })
 
   it('starts a workspace from origin/master when the remote default is master', async () => {

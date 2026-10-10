@@ -1,5 +1,5 @@
 import { mkdir, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
 
@@ -52,13 +52,38 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
 }
 
 /**
+ * `git fetch origin`, with a 30 second limit. On failure: git's first line of stderr, or the timeout, and when origin
+ * was last fetched (FETCH_HEAD's mtime), so a caller can say how old `origin/<branch>` is (KERNEL-179). Git empties
+ * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
+ * failed) gives no time.
+ */
+export function fetchOrigin(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
+  // Two workspaces started together share one fetch. Two at once race for origin's ref locks, and the loser fails.
+  const running = fetching.get(repo)
+  if (running) return running
+  const next = fetchNow(repo).finally(() => fetching.delete(repo))
+  fetching.set(repo, next)
+  return next
+}
+const fetching = new Map<string, ReturnType<typeof fetchNow>>()
+
+async function fetchNow(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
+  const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
+  const lastFetch = head.code === 0 ? await stat(resolve(repo, head.stdout.trim())).then((s) => s.size > 0 ? s.mtimeMs : undefined, () => undefined) : undefined
+  const r = await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+  if (r.code === 0) return { ok: true }
+  const error = r.timedOut ? 'timed out after 30 seconds' : r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? `git fetch exited with code ${r.code}`
+  return { ok: false, error, ...(lastFetch === undefined ? {} : { lastFetch }) }
+}
+
+/**
  * The ref a workspace starts from: `wanted` when it exists, else the same branch without `origin/` locally,
  * else the default branch, `origin/<default>` when the remote has it. A folder with no remote and only
  * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, an `origin/` ref fetches first.
  * `strict` is for a base the user picked (a PR or a branch): it throws rather than start somewhere else.
  */
 export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean } = {}): Promise<string> {
-  if (o.fetch && wanted.startsWith('origin/')) await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+  if (o.fetch && wanted.startsWith('origin/')) await fetchOrigin(repo)
   const name = wanted.replace(/^origin\//, '')
   for (const ref of new Set([wanted, name])) if (await refExists(repo, ref)) return ref
   if (o.strict) throw new Error(`${name} is not on origin or in this repo, so there is nothing to start from.`)

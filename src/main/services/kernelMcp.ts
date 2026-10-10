@@ -158,7 +158,8 @@ export function kernelTools(d: KernelToolDeps) {
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}`)
+      const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}`)
     }),
     tool('message_agent', 'Send a follow-up message into an existing workspace chat.', {
       workspace_id: z.string(), text: z.string()
