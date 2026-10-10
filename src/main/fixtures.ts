@@ -50,7 +50,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
   }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
@@ -265,6 +265,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
+    'env.get': async ({ roomId }) => {
+      const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
+      return { names: [...(scope?.names ?? [])].sort(), files: roomId ? scope?.files ?? roomSettings(roomId).env.files.map((path) => ({ path, missing: false })) : [] }
+    },
+    'env.set': async () => ok,
+    'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
