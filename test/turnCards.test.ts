@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatItem } from '../src/shared/types'
-import { isStepList, noteFromParts, outcome, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
+import type { AskedQuestion, ChatItem } from '../src/shared/types'
+import { answerDecision, answeredList, emptyPick, isStepList, isStepped, noteFromParts, outcome, pickReady, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
 import { buildThread } from '../src/renderer/src/screens/workspace/thread'
 
 describe('turn cards', () => {
@@ -12,6 +12,44 @@ describe('turn cards', () => {
   it('words a resolved approval', () => {
     expect(outcome({ kind: 'plan', status: 'denied' } as never)).toBe('Changes requested')
     expect(outcome({ kind: 'question', status: 'answered', answer: 'Yes' } as never)).toBe('You answered: Yes')
+  })
+
+  describe('questions that step', () => {
+    const qs: AskedQuestion[] = [
+      { question: 'Keep the number?', options: [{ label: 'Yes' }, { label: 'No' }] },
+      { question: 'Where?', multiSelect: true, options: [{ label: 'Menu' }, { label: 'Header' }, { label: 'Bar' }] }
+    ]
+
+    it('steps through several questions or any multi-select, and keeps one single-select as one click', () => {
+      expect(isStepped({ questions: qs })).toBe(true)
+      expect(isStepped({ questions: [qs[1]] })).toBe(true)
+      expect(isStepped({ questions: [qs[0]] })).toBe(false)
+      expect(isStepped({})).toBe(false)
+    })
+
+    it('waits for a pick, and for text when Something else is on', () => {
+      expect(pickReady(emptyPick())).toBe(false)
+      expect(pickReady({ sel: ['Menu'], other: false, text: '' })).toBe(true)
+      expect(pickReady({ sel: ['Menu'], other: true, text: '  ' })).toBe(false)
+      expect(pickReady({ sel: [], other: true, text: 'Somewhere' })).toBe(true)
+    })
+
+    it('sends one answer keyed by question text, multi-select labels joined with ", " in the order asked', () => {
+      const d = answerDecision(qs, [{ sel: ['Yes'], other: false, text: '' }, { sel: ['Header', 'Menu'], other: true, text: ' Footer ' }])
+      expect(d).toEqual({
+        behavior: 'answer',
+        text: 'Yes · Menu, Header, Footer',
+        answers: { 'Keep the number?': 'Yes', 'Where?': 'Menu, Header, Footer' }
+      })
+    })
+
+    it('lists answers for several questions only when they were kept', () => {
+      expect(answeredList({ questions: qs, answers: { 'Keep the number?': 'Yes', 'Where?': 'Menu' } })).toEqual([
+        { question: 'Keep the number?', answer: 'Yes' }, { question: 'Where?', answer: 'Menu' }
+      ])
+      expect(answeredList({ questions: qs })).toBeUndefined()
+      expect(answeredList({ questions: [qs[0]], answers: { 'Keep the number?': 'Yes' } })).toBeUndefined()
+    })
   })
 
   it('shows a failed turn as an error and a stopped turn as a marker with its time', () => {
