@@ -60,10 +60,11 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [q])
-  // A room's pages run past the bottom of the window, so a room page brings the end of its room into view, then the open page.
+  // A room's pages run past the bottom of the window, so a room page brings the end of its room and the next room's row into view, then the open page.
   useEffect(() => {
     if (page !== 'room') return
-    list.current?.querySelector('[data-room-end]')?.scrollIntoView({ block: 'nearest' })
+    const end = list.current?.querySelector('[data-room-end]')
+    ;(end?.parentElement?.nextElementSibling?.firstElementChild ?? end)?.scrollIntoView({ block: 'nearest' })
     list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
@@ -84,39 +85,39 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         <input id="set-q" type="text" autoComplete="off" placeholder="Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div ref={list} className="set-list">
-      {groups.map((g) => (
-        <div key={g.title}>
-          <p className="set-group">{g.title}</p>
-          {g.items.map((i) => (
-            <button key={i.page} type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
-              <Icon name={i.icon} size={15} />{i.label}
-            </button>
-          ))}
-        </div>
-      ))}
-      {shownRooms.length > 0 && (
-        <div>
-          <p className="set-group">Rooms</p>
-          {shownRooms.map(({ room: r, pages }) => {
-            const expanded = searching ? true : open === r.id && folded !== r.id
-            return (
-              <div key={r.id}>
-                <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
-                  // Another room opens on its General page. Its own row folds and unfolds its pages.
-                  if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
-                  else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
-                }}>
-                  <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
-                </button>
-                {expanded && pages.map((p, n) => (
-                  <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
+        {groups.map((g) => (
+          <div key={g.title}>
+            <p className="set-group">{g.title}</p>
+            {g.items.map((i) => (
+              <button key={i.page} type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
+                <Icon name={i.icon} size={15} />{i.label}
+              </button>
+            ))}
+          </div>
+        ))}
+        {shownRooms.length > 0 && (
+          <div>
+            <p className="set-group">Rooms</p>
+            {shownRooms.map(({ room: r, pages }) => {
+              const expanded = searching ? true : open === r.id && folded !== r.id
+              return (
+                <div key={r.id}>
+                  <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
+                    // Another room opens on its General page. Its own row folds and unfolds its pages.
+                    if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
+                    else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
+                  }}>
+                    <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
+                  </button>
+                  {expanded && pages.map((p, n) => (
+                    <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
       </div>
     </nav>
   )
