@@ -2,10 +2,11 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore, type State } from '../../store'
-import { Button, Icon, SegmentedControl, Tabs, useBusy } from '../../ui'
+import { Button, Icon, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
+import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
@@ -110,6 +111,31 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, 
   return todos.length ? [...groups, { title: 'Todos', rows: todos }] : groups
 }
 
+/** Open opens the first preview URL, or the one a run script printed. The caret lists them all (WorkspacePreview.png). */
+function OpenPreview({ ws }: { ws: Workspace }) {
+  const rs = useRoomSettings(ws.roomId)
+  const configured = rs?.preview?.urls ?? []
+  const detected = useStore((s) => detectedUrl(s.scriptUrl[ws.id], (rs?.runScripts ?? []).map((r) => r.name)))
+  const menuOpen = useStore((s) => s.ui.menu === 'preview')
+  const anchor = useRef<HTMLSpanElement>(null)
+  const first = openTarget(configured, ws.port, detected)
+  const open = (url: string | null) => { if (url) void attempt('Could not open the preview', () => call('system.openExternal', { url })) }
+  const entry = (t: PreviewTarget): MenuEntry => ({ id: t.id, label: t.label, shortcut: t.address, disabled: !t.url, onSelect: () => open(t.url) })
+  const items: (MenuEntry | typeof MENU_SEPARATOR)[] = [...configuredTargets(configured, ws.port).map(entry), ...(configured.length ? [MENU_SEPARATOR] : []), entry(detectedTarget(detected))]
+  return (
+    <span className="open-split">
+      <button type="button" className="open-main" disabled={!first} onClick={() => open(first)}>Open</button>
+      <span ref={anchor} className="open-caret-anchor">
+        <button type="button" className="open-caret" aria-label="More preview URLs" aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => actions.ui.toggleMenu('preview')}>
+          <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 6.5 8 10l3.5-3.5" /></svg>
+        </button>
+        {/* The menu waits for the room's settings, so it opens with its first row focused and not the one row it had before they loaded. */}
+        {menuOpen && rs && <Menu label="Open preview" heading="Preview URLs" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ right: -10, top: 30, width: 300 }} items={items} />}
+      </span>
+    </span>
+  )
+}
+
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
   const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId))
@@ -127,7 +153,7 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
           ))}
         </div>
       ))}
-      <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span></div>
+      <div className="row muted" style={{ gap: 10, fontSize: 12 }}><span>Port</span><span className="mono ink2">{ws.port}</span><span className="grow" /><OpenPreview ws={ws} /></div>
     </div>
   )
 }
@@ -195,8 +221,8 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   const log = useRef<HTMLDivElement>(null)
   const pinned = useRef(true)
   const onLogScroll = () => { const el = log.current; if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PIN_PX }
-  useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id])
-  useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id])
+  useLayoutEffect(() => { pinned.current = true }, [bottom, ws.id, selected])
+  useLayoutEffect(() => { const el = log.current; if (el && pinned.current) el.scrollTop = el.scrollHeight }, [lines, bottom, ws.id, selected])
   const addScript = () => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
   // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
   const empty = bottom === 'run'
