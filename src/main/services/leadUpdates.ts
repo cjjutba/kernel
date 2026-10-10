@@ -273,7 +273,11 @@ export class LeadUpdates {
     this.detached = false
     for (const w of this.d.store.workspaces()) this.prev.set(w.id, w.prState)
     this.load()
-    const on = (e: PushEvent) => { if (e.type === 'pr') this.onPr(e.workspaceId, e.state) }
+    const on = (e: PushEvent) => {
+      if (e.type === 'pr') this.onPr(e.workspaceId, e.state)
+      // However the turn ended, a stop or archive included, which never reach turnDone (KERNEL-262).
+      else if (e.type === 'chat.running' && !e.running) this.waitTurnOver(e.chatId)
+    }
     bus.on('push', on)
     this.off = () => bus.off('push', on)
   }
@@ -327,6 +331,12 @@ export class LeadUpdates {
     if (!t.ok) { this.add(ws, { kind: 'error', by: t.by }); return }
     const reply = [...this.d.store.items(chat.id)].reverse().find((i) => i.kind === 'text')
     this.add(ws, { kind: 'turn', by: t.by, reply: reply?.kind === 'text' ? capText(reply.text, REPLY_KEPT) : undefined })
+  }
+
+  /** A teammate's chat stopped running. A wait it set mid-turn no longer holds its updates. */
+  private waitTurnOver(chatId: string) {
+    const ws = this.d.store.workspace(this.d.store.chat(chatId)?.workspaceId ?? '')
+    if (ws && this.waitTurns.delete(ws.id)) this.rearm(ws)
   }
 
   /** Kernel is reading the workspace's PR after a turn. Its updates wait until every read started has ended (`readPr`). */

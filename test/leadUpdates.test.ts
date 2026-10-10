@@ -563,6 +563,22 @@ describe('a teammate that waits for another PR (KERNEL-259)', () => {
     })
   })
 
+  it("doesn't hold a teammate's wait, or the Lead chat's other updates, past a turn stopped by archive or close (KERNEL-262)", async () => {
+    const { u, s, w1, pr } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    pr('w2', 'cifail', 60)
+    await wait(120)
+    expect(s.posts).toEqual([])
+    // Stopping the session ends the chat's run without a turn end.
+    bus.push({ type: 'chat.running', chatId: 'nc', running: false })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).todo).toEqual([
+      '- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.',
+      '- Tell Kai about the failed checks on PR #60 with message_agent (workspace w2).'
+    ])
+  })
+
   it("doesn't hold a teammate's wait past a crash (KERNEL-262)", async () => {
     const { u, s, w1 } = await setup()
     u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })

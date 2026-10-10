@@ -1862,7 +1862,7 @@ export class Kernel {
   }
 
   /**
-   * The Lead's wait_for_merge: `on` replaces what the workspace waits for, with targets that merged already left out.
+   * The Lead's wait_for_merge, and a teammate's own (KERNEL-262, `told: false`): `on` replaces what the workspace waits for, with targets that merged already left out.
    * A teammate that started waits with its brief out (`held: false`). An empty list ends the wait, and a held brief goes now.
    */
   async setWait(id: string, on: string[], o: { told?: boolean; why?: string } = {}): Promise<Workspace> {
