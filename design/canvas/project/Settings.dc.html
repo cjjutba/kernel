@@ -61,12 +61,15 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-if value="{{ g.show }}" hint-placeholder-val="{{ true }}">
 <p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: #8a8f98">{{ g.title }}</p>
 <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="4">
-<button type="button" onClick="{{ n.pick }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px 0 {{ n.padLeft }}; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
-<sc-if value="{{ n.isIcon }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ n.stroke }}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.icon }}"></path></svg></sc-if>
-<sc-if value="{{ n.isLetter }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 15px; height: 15px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #2a2b30; font-size: 8.5px; font-weight: 600">{{ n.letter }}</span></sc-if>
+<sc-if value="{{ n.isRoom }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ n.pick }}" aria-expanded="{{ n.expanded }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="width: 15px; height: 15px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #2a2b30; font-size: 8.5px; font-weight: 600">{{ n.letter }}</span>
 <span style="flex: 1">{{ n.label }}</span>
-<sc-if value="{{ n.isRoom }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.chevron }}"></path></svg></sc-if>
-</button>
+<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.chevron }}"></path></svg>
+</button></sc-if>
+<sc-if value="{{ n.notRoom }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ n.pick }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px 0 {{ n.padLeft }}; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<sc-if value="{{ n.isIcon }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ n.stroke }}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.icon }}"></path></svg></sc-if>
+<span style="flex: 1">{{ n.label }}</span>
+</button></sc-if>
 </sc-for>
 </sc-if>
 </sc-for>
@@ -98,7 +101,8 @@ details.dd>summary::-webkit-details-marker{display:none}
 <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
 <div style="display: flex; flex-wrap: wrap; align-items: center; column-gap: 24px; row-gap: 10px; min-height: 58px; box-sizing: border-box; padding: 12px 18px; border-top: {{ r.border }}">
 <div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
-<span onClick="{{ r.labelAct }}" style="{{ r.labelStyle }}">{{ r.label }}</span>
+<sc-if value="{{ r.isRule }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.labelAct }}" aria-expanded="{{ r.expanded }}" style="{{ r.labelStyle }}">{{ r.label }}</button></sc-if>
+<sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}</span></sc-if>
 <sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
 </div>
@@ -200,7 +204,7 @@ class Component extends DCLogic {
     var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
     return {
       general: { title: 'General', sections: [
-        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] }
+        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter']), seg('newteam', 'Default team for new rooms', ['Starter team', 'Pair'], 0, 'What an empty room starts with')] }
       ] },
       appearance: { title: 'Appearance', sections: [
         { title: 'Interface', rows: [seg('theme', 'Theme', ['Dark', 'Light', 'System']), sel('font', 'Font size', ['Default', 'Small', 'Large']), seg('density', 'Density', ['Comfortable', 'Compact']), tog('pointer', 'Use pointer cursors', false), tog('motion', 'Reduce motion', false)] }
@@ -262,7 +266,7 @@ class Component extends DCLogic {
         { title: 'New workspaces', rows: [
           seg('rg-mode', 'Default workspace type', ['Use default', 'New worktree', 'Current branch'], 0, 'The app default is New worktree'),
           over(sel('rg-from', 'Branch new workspaces from', ['origin/dev', 'origin/main'])),
-          sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'Where to push, pull and open PRs')
+          sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'The app default is origin')
         ] }
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
@@ -296,7 +300,7 @@ class Component extends DCLogic {
       ]),
       'r-agents': roomPage('Agents', 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.', [
         { title: 'In this room', rows: [btn('Rowan · Lead', 'Edit', '.claude/agents/rowan.md · Plans and hands out tasks'), btn('Kai · Frontend', 'Edit', '.claude/agents/kai.md · UI work, follows DESIGN.md'), btn('Noor · Backend', 'Edit', '.claude/agents/noor.md · Schema, API, migrations'), btn('Ivy · QA', 'Edit', '.claude/agents/ivy.md · Runs tests, attaches output'), btn('Theo · Reviewer', 'Edit', '.claude/agents/theo.md · Types, security, tenancy'), btn('Lumi · Designer', 'Edit', '.claude/agents/lumi.md · Joined today')] },
-        { title: 'Sync', rows: [val('Agents folder', '.claude/agents'), tog('names', 'Show names instead of roles', true)] }
+        { title: 'Sync', rows: [val('Agents folder', '.claude/agents')] }
       ]),
       'r-skills': roomPage('Skills and MCP', 'Skills and MCP servers agents can use in Client A.', [
         { title: 'Skills', rows: [tog('s1', '/setup', true), tog('s2', '/plan', true), tog('s3', '/feature', true), tog('s4', '/verify', true), tog('s5', '/image', true)] },
@@ -319,7 +323,7 @@ class Component extends DCLogic {
         var on = s.page === it[0] && !isRoom;
         return {
           label: it[1], isIcon: !isRoom && !isPage, isLetter: isRoom, letter: it[2] || '', icon: icons[it[0]] || '',
-          isRoom: isRoom, chevron: it[3] === 'open' ? 'M2.5 4 5 6.5 7.5 4' : 'M4 2.5 6.5 5 4 7.5',
+          isRoom: isRoom, notRoom: !isRoom, expanded: it[3] === 'open' ? 'true' : 'false', chevron: it[3] === 'open' ? 'M2.5 4 5 6.5 7.5 4' : 'M4 2.5 6.5 5 4 7.5',
           padLeft: isPage ? '33px' : '8px',
           current: on ? 'page' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#d0d6e0', stroke: on ? '#d0d6e0' : '#8a8f98',
           pick: function () { if (pageMap[it[0]]) self.setState({ page: it[0] }); }
@@ -330,7 +334,7 @@ class Component extends DCLogic {
     var setVal = function (id, v) { var n = Object.assign({}, self.state.vals); n[id] = v; self.setState({ vals: n }); };
     var P = pageMap[s.page];
     var LABEL = 'font-size: 13.5px; font-weight: 500';
-    var RULE = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 20px; color: #d0d6e0; overflow-wrap: anywhere; cursor: pointer; ";
+    var RULE = "width: 100%; padding: 0; border: 0; background: none; text-align: left; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 20px; color: #d0d6e0; overflow-wrap: anywhere; cursor: pointer; ";
     var sections = P.sections.map(function (sec) {
       return { title: sec.title, rows: sec.rows.map(function (r, i) {
         var v = r.id && s.vals[r.id] !== undefined ? s.vals[r.id] : undefined;
@@ -339,7 +343,7 @@ class Component extends DCLogic {
           border: i === 0 ? '0' : '1px solid #1d1e22', labelStyle: LABEL, labelAct: function () {},
           isSelect: r.type === 'select', isToggle: r.type === 'toggle', isSegment: r.type === 'segment', isButton: r.type === 'button',
           isValue: r.type === 'value', isCode: r.type === 'code', isKbd: r.type === 'kbd', isMeter: r.type === 'meter',
-          isDisclose: r.type === 'instr', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
+          isRule: r.type === 'rule', notRule: r.type !== 'rule', isDisclose: r.type === 'instr', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
           pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {}
         };
@@ -369,6 +373,7 @@ class Component extends DCLogic {
         if (r.type === 'rule') {
           var shown = v === undefined ? r.open : v;
           o.labelStyle = RULE + (shown ? '' : 'display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden');
+          o.expanded = shown ? 'true' : 'false';
           o.labelAct = function () { setVal(r.id, !shown); };
         }
         return o;
@@ -384,365 +389,6 @@ class Component extends DCLogic {
         isRoom: !!P.isRoom, menuShown: !!s.menu, menuOpen: s.menu ? 'true' : 'false', menuBg: s.menu ? '#1c1d21' : 'transparent',
         toggleMenu: function () { self.setState({ menu: !self.state.menu }); }
       }
-    };
-  }
-}
-</script>
-</head>
-<body>
-<x-dc>
-<helmet>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
-<style>
-body{margin:0}
-a{color:#f7f8f8}a:hover{color:#ffffff}
-button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
-.cmp:focus-within{border-color:#3a3c42}
-input::placeholder,textarea::placeholder{color:#8a8f98}
-.pin{animation:pin 1.8s ease-out infinite}
-.pina{animation:pina 1.4s ease-out infinite}
-@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
-@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
-@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
-.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
-@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
-.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.spin{animation:spin .8s linear infinite}
-@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
-.hv .more{opacity:0;transition:opacity .12s}
-.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
-details.dd{position:relative}
-details.dd>summary{list-style:none}
-details.dd>summary::-webkit-details-marker{display:none}
-.mi:hover{background:#232428}
-.row:hover{background:#141518}
-.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.msg .acts{opacity:0;transition:opacity .12s}
-.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
-.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
-@keyframes skp{50%{opacity:.5}}
-@media (prefers-reduced-motion: reduce){.sk{animation:none}}
-</style>
-</helmet>
-<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
-
-<nav aria-label="Settings" style="width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
-<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px">
-<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
-<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
-<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
-</div>
-<a href="Home.dc.html" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 5.5 8l4.5 4.5"></path></svg>Back to app</a>
-<div style="position: relative; margin: 8px 0 6px">
-<label for="set-q" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Search settings</label>
-<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" style="position: absolute; left: 10px; top: 9px"><circle cx="7" cy="7" r="4.3"></circle><path d="m10.3 10.3 3.2 3.2"></path></svg>
-<input id="set-q" type="text" autocomplete="off" value="{{ q }}" onChange="{{ onQ }}" placeholder="Search settings" style="width: 100%; height: 32px; box-sizing: border-box; padding: 0 10px 0 30px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; outline: none">
-</div>
-<div style="flex: 1; min-height: 0; overflow: hidden; margin: 0 -8px 0 -10px; padding: 0 8px 0 10px">
-<div style="margin-top: {{ navShift }}">
-<sc-for list="{{ groups }}" as="g" hint-placeholder-count="5">
-<sc-if value="{{ g.show }}" hint-placeholder-val="{{ true }}">
-<p style="margin: 10px 0 2px; padding: 0 8px; font-size: 12px; font-weight: 500; color: #8a8f98">{{ g.title }}</p>
-<sc-for list="{{ g.items }}" as="n" hint-placeholder-count="4">
-<button type="button" onClick="{{ n.pick }}" aria-current="{{ n.current }}" style="width: 100%; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px 0 {{ n.padLeft }}; border: 0; border-radius: 6px; background: {{ n.bg }}; color: {{ n.color }}; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
-<sc-if value="{{ n.isIcon }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="{{ n.stroke }}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.icon }}"></path></svg></sc-if>
-<sc-if value="{{ n.isLetter }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="width: 15px; height: 15px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; border: 1px solid #2a2b30; font-size: 8.5px; font-weight: 600">{{ n.letter }}</span></sc-if>
-<span style="flex: 1">{{ n.label }}</span>
-<sc-if value="{{ n.isRoom }}" hint-placeholder-val="{{ false }}"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ n.chevron }}"></path></svg></sc-if>
-</button>
-</sc-for>
-</sc-if>
-</sc-for>
-<div style="height: 10px"></div>
-</div>
-</div>
-</nav>
-
-<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0; box-sizing: border-box">
-<div style="flex: 1; min-height: 0; overflow-y: auto; background: #0f1011; border: 1px solid #1d1e22; border-radius: 10px">
-<div style="max-width: 700px; margin: 0 auto; padding: 52px 24px 40px; display: flex; flex-direction: column; gap: 28px">
-<div style="display: flex; align-items: flex-start; gap: 24px">
-<div style="flex: 1; min-width: 0">
-<h1 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.6px">{{ page.title }}</h1>
-<sc-if value="{{ page.hasIntro }}" hint-placeholder-val="{{ false }}"><p style="margin: 8px 0 0; color: #8a8f98; font-size: 14px">{{ page.intro }}</p></sc-if>
-</div>
-<sc-if value="{{ page.isRoom }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0; margin-top: 2px">
-<div style="display: flex; height: 30px; box-sizing: border-box; border: 1px solid #2a2b30; border-radius: 7px">
-<button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px 0 11px; border: 0; border-radius: 6px 0 0 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5H4.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7ZM9.5 2.5v3h3"></path></svg>Open settings.local.toml</button>
-<button type="button" onClick="{{ page.toggleMenu }}" aria-label="More files" aria-haspopup="menu" aria-expanded="{{ page.menuOpen }}" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-left: 1px solid #2a2b30; border-radius: 0 6px 6px 0; background: {{ page.menuBg }}; cursor: pointer"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
-</div>
-<sc-if value="{{ page.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" style="position: absolute; top: 36px; right: 0; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b"><button type="button" role="menuitem" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: #1c1d21; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5H4.5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1v-7ZM9.5 2.5v3h3"></path></svg>Open settings.toml</button></div></sc-if>
-</div></sc-if>
-</div>
-<sc-for list="{{ page.sections }}" as="sec" hint-placeholder-count="2">
-<section style="display: flex; flex-direction: column; gap: 10px">
-<h2 style="margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2>
-<div style="border-radius: 10px; border: 1px solid #1f2024; background: #141516">
-<sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
-<div style="display: flex; flex-wrap: wrap; align-items: center; column-gap: 24px; row-gap: 10px; min-height: 58px; box-sizing: border-box; padding: 12px 18px; border-top: {{ r.border }}">
-<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
-<span onClick="{{ r.labelAct }}" style="{{ r.labelStyle }}">{{ r.label }}</span>
-<sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
-<sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
-</div>
-<sc-if value="{{ r.hasReset }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.reset }}" aria-label="Reset {{ r.label }}" style="height: 30px; margin-right: -10px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reset</button></sc-if>
-<sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ r.act }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-if>
-<sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}"><button type="button" role="switch" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" onClick="{{ r.act }}" style="width: 32px; height: 20px; position: relative; flex-shrink: 0; padding: 0; border: 0; border-radius: 999px; background: {{ r.swBg }}; cursor: pointer"><span aria-hidden="true" style="position: absolute; top: 2px; left: {{ r.knob }}; width: 16px; height: 16px; border-radius: 50%; background: {{ r.knobBg }}"></span></button></sc-if>
-<sc-if value="{{ r.isSegment }}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="{{ r.label }}" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
-<sc-for list="{{ r.segs }}" as="sg" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{ sg.checked }}" onClick="{{ sg.pick }}" style="height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ sg.bg }}; color: {{ sg.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ sg.label }}</button></sc-for>
-</div></sc-if>
-<sc-if value="{{ r.isButton }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.act }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ r.value }}</button></sc-if>
-<sc-if value="{{ r.isValue }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">{{ r.value }}</span></sc-if>
-<sc-if value="{{ r.isKbd }}" hint-placeholder-val="{{ false }}"><span style="display: flex; gap: 4px"><sc-for list="{{ r.keys }}" as="k" hint-placeholder-count="2"><span style="min-width: 22px; height: 22px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 5px; border: 1px solid #2a2b30; background: #18191a; font-size: 12px; color: #d0d6e0">{{ k }}</span></sc-for></span></sc-if>
-<sc-if value="{{ r.isMeter }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; gap: 6px"><div role="meter" aria-label="{{ r.label }}" aria-valuenow="{{ r.num }}" aria-valuemin="0" aria-valuemax="100" style="height: 6px; border-radius: 3px; background: #23252a; overflow: hidden"><div style="width: {{ r.pct }}; height: 100%; border-radius: 3px; background: {{ r.barColor }}"></div></div><span style="font-size: 12px; color: #8a8f98">{{ r.value }}</span></div></sc-if>
-<sc-if value="{{ r.isDisclose }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.act }}" aria-label="{{ r.toggleLabel }}" aria-expanded="{{ r.expanded }}" style="width: 30px; height: 30px; padding: 0; margin-right: -8px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; cursor: pointer"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.chevron }}"></path></svg></button></sc-if>
-<sc-if value="{{ r.isRemove }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="Remove {{ r.label }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Remove</button></sc-if>
-<sc-if value="{{ r.isEditor }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre-wrap">{{ ln }}</span></sc-for></div></sc-if>
-<sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre">{{ ln }}</span></sc-for></div></sc-if>
-</div>
-</sc-for>
-</div>
-</section>
-</sc-for>
-</div>
-</div>
-<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
-<span></span>
-<span style="display: inline-flex; align-items: center; gap: 6px">
-<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
-<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
-<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
-<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
-<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
-<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="QuickAsk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
-</div></details>
-
-</span>
-</footer>
-</div>
-</div>
-</x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
-class Component extends DCLogic {
-  constructor(props) {
-    super(props);
-    this.state = { page: 'general', q: '', vals: {}, menu: 'general' === 'r-git' };
-  }
-
-  icons() {
-    return {
-      general: 'M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6M11.5 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7.5 11a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
-      appearance: 'M8 2.5a5.5 5.5 0 1 0 0 11ZM8 2.5a5.5 5.5 0 0 1 0 11',
-      notifications: 'M4 11V7a4 4 0 0 1 8 0v4l1 1.5H3ZM6.5 13.5a1.5 1.5 0 0 0 3 0',
-      account: 'M10.5 5.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM3 13.5c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5',
-      shortcuts: 'M2 4.5h12v7H2ZM4.5 7h1M7.5 7h1M10.5 7h1M5 9.5h6',
-      models: 'M5 5h6v6H5ZM6.5 2.5V5M9.5 2.5V5M6.5 11v2.5M9.5 11v2.5M2.5 6.5H5M2.5 9.5H5M11 6.5h2.5M11 9.5h2.5',
-      team: 'M8 5.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM2 13c.4-2 2-3 4-3s3.6 1 4 3M11 3.9a1.8 1.8 0 1 1 0 3.6M12 10.2c1.2.4 1.9 1.4 2 2.8',
-      permissions: 'M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z',
-      skills: 'M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z',
-      git: 'M4.5 5.3v5.4M11.5 7c0 2.6-7 1.5-7 3.7M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z',
-      scripts: 'M3 4.5 6.5 8 3 11.5M8 12h5',
-      prs: 'M4.5 5.3v5.4M6 3.8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM6 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM13 12.2a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM11.5 10.7V6.5A1.5 1.5 0 0 0 10 5H7.5',
-      files: 'M5.5 5.5h7v8h-7ZM3.5 10.5v-8h7',
-      hooks: 'M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14',
-      integrations: 'M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7',
-      experimental: 'M6 2.5h4M6.8 2.5v4L3.3 12.2a.9.9 0 0 0 .8 1.3h7.8a.9.9 0 0 0 .8-1.3L9.2 6.5v-4M4.8 9.8h6.4',
-      about: 'M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1',
-      env: 'M5.5 3.5C4 3.5 4 4.5 4 5.5v1C4 7.3 3.5 8 2.5 8 3.5 8 4 8.7 4 9.5v1c0 1 0 2 1.5 2M10.5 3.5C12 3.5 12 4.5 12 5.5v1c0 .8.5 1.5 1.5 1.5-1 0-1.5.7-1.5 1.5v1c0 1 0 2-1.5 2',
-      bigterm: 'M2.5 3.5h11v9h-11ZM5 6.5 7 8.5 5 10.5M8.5 10.5H11'
-    };
-  }
-
-  // The final nav. Environment and Big terminal draw their rows now and their pages in a later design issue (KERNEL-255).
-  // Room pages sit indented under their room row and only the room row has the letter. The current room is expanded, the other collapsed.
-  nav() {
-    var pages = [['r-general', 'General'], ['r-git', 'Git'], ['r-scripts', 'Scripts'], ['r-files', 'Files to copy'], ['r-env', 'Environment'], ['r-instructions', 'Instructions'], ['r-permissions', 'Permissions'], ['r-agents', 'Agents'], ['r-skills', 'Skills and MCP']];
-    return [
-      { title: 'Personal', items: [['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Shortcuts']] },
-      { title: 'Agents', items: [['models', 'Models and effort'], ['permissions', 'Permissions'], ['env', 'Environment']] },
-      { title: 'Workspaces', items: [['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests']] },
-      { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['about', 'About']] },
-      { title: 'Rooms', items: [['r-general', 'Client A', 'A', 'open']].concat(pages.map(function (p) { return [p[0], p[1], '', 'page']; }), [['room-b', 'Client B', 'B', 'shut']]) }
-    ];
-  }
-
-  pages() {
-    var sel = function (id, label, opts, desc) { return { id: id, label: label, type: 'select', opts: opts, desc: desc }; };
-    var tog = function (id, label, on, desc) { return { id: id, label: label, type: 'toggle', on: on, desc: desc }; };
-    var seg = function (id, label, opts, def, desc) { return { id: id, label: label, type: 'segment', opts: opts, def: def || 0, desc: desc }; };
-    var btn = function (label, value, desc) { return { label: label, type: 'button', value: value, desc: desc }; };
-    var val = function (label, value, desc) { return { label: label, type: 'value', value: value, desc: desc }; };
-    var code = function (label, lines, desc) { return { label: label, type: 'code', lines: lines, desc: desc }; };
-    var kbd = function (label, keys) { return { label: label, type: 'kbd', keys: keys }; };
-    var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
-    // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
-    var from = function (row) { row.source = 'From settings.toml'; return row; };
-    var over = function (row) { row.source = 'Overriding settings.toml'; row.reset = true; return row; };
-    var rule = function (text, open) { return { label: text, type: 'rule', open: !!open, id: 'rule-' + text }; };
-    var instr = function (id, label, desc, lines, open, overridden) { var r = { id: id, label: label, type: 'instr', desc: desc, lines: lines, open: open }; if (overridden) { over(r); r.desc = ''; } return r; };
-    var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
-    return {
-      general: { title: 'General', sections: [
-        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] }
-      ] },
-      appearance: { title: 'Appearance', sections: [
-        { title: 'Interface', rows: [seg('theme', 'Theme', ['Dark', 'Light', 'System']), sel('font', 'Font size', ['Default', 'Small', 'Large']), seg('density', 'Density', ['Comfortable', 'Compact']), tog('pointer', 'Use pointer cursors', false), tog('motion', 'Reduce motion', false)] }
-      ] },
-      notifications: { title: 'Notifications', sections: [
-        { title: 'Notify me when', rows: [tog('n1', 'An agent asks for permission', true), tog('n2', 'A plan is ready for review', true), tog('n3', 'A PR is ready to merge', true), tog('n4', 'A check fails', true), tog('n5', 'A workspace is finished', true), tog('n6', 'An agent is idle for 10 minutes', false)] },
-        { title: 'Delivery', rows: [sel('sound', 'Sound', ['Subtle', 'Chime', 'None']), sel('quiet', 'Quiet hours', ['Off', '23:00 to 07:00']), btn('Phone', 'Set up', 'Approve requests from your iPhone with Remote Control')] }
-      ] },
-      account: { title: 'Account and usage', sections: [
-        { title: 'Usage', rows: [meter('Current session', 62, '62% used · resets at 3:40 PM'), meter('This week, all models', 38, '38% used · resets Monday at 9:00 AM'), meter('This week, Fable 5.1', 90, '90% used · resets Monday at 9:00 AM')] },
-        { title: 'Claude', rows: [val('Plan', 'Claude Max'), btn('Details', 'Open /usage', 'The same numbers Claude Code shows'), tog('warn', 'Warn me before the weekly limit', true), tog('pause', 'Pause new work when close to the limit', true, 'Running agents finish their turn, new work waits')] },
-        { title: 'Session', rows: [btn('Sign out', 'Sign out', 'Agents stop until you sign in again')] }
-      ] },
-      shortcuts: { title: 'Shortcuts', sections: [
-        { title: 'Workspaces', rows: [kbd('New workspace', ['⌘', '⇧', 'N']), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T']), kbd('Create PR', ['⌘', '⇧', 'P']), kbd('Open diff', ['⌘', '⇧', 'D']), kbd('Run dev script', ['⌘', 'R'])] },
-        { title: 'Agents', rows: [kbd('Approve request', ['⌘', '↵']), kbd('Deny request', ['⌘', '⌫']), kbd('Toggle plan mode', ['⇧', 'Tab']), kbd('Focus composer', ['⌘', 'L'])] },
-        { title: 'App', rows: [kbd('Command palette', ['⌘', 'K']), kbd('Settings', ['⌘', ','])] }
-      ] },
-      models: { title: 'Models and effort', sections: [
-        { title: 'Default model by role', rows: [sel('m-lead', 'Lead', ['Opus 5.5', 'Sonnet 5.5']), sel('m-eng', 'Frontend and Backend', ['Sonnet 5.5', 'Opus 5.5', 'Haiku 4.5']), sel('m-qa', 'QA', ['Sonnet 5.5', 'Haiku 4.5']), sel('m-rev', 'Reviewer', ['Opus 5.5', 'Sonnet 5.5'])] },
-        { title: 'Defaults', rows: [seg('effort', 'Effort', ['Low', 'Medium', 'High', 'Extra high'], 2), tog('planlead', 'Start the Lead in plan mode', true), sel('max', 'Agents working at once', ['4', '5', '6', '3'], 'More agents means more usage and more diffs for you to review'), tog('teams', 'Use agent teams', true, 'Experimental in Claude Code. The Lead coordinates teammates through a shared task list.')] }
-      ] },
-      permissions: { title: 'Permissions', sections: [
-        { title: 'Mode', rows: [seg('pmode', 'Permission mode', ['Ask', 'Accept edits', 'Bypass in worktrees'], 1, 'Bypass only applies inside isolated worktrees, never on your current branch'), tog('net', 'Allow network access', true)] },
-        { title: 'Commands', rows: [code('Always ask before', ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset']), code('Never allow', ['git push origin main', 'curl * | sh']), val('Protected branches', 'main, dev')] }
-      ] },
-      git: { title: 'Git and worktrees', intro: 'Defaults for every room. Each room can override them on its own Git page.', sections: [
-        { title: 'New workspaces', rows: [seg('wmode', 'Default workspace type', ['New worktree', 'Current branch'], 0, 'A worktree is an isolated copy on its own branch'), sel('from', 'Branch new workspaces from', ['origin/main', 'origin/dev']), sel('remote', 'Remote origin', ['origin', 'upstream'], 'Where to push, pull and open PRs'), val('Branch name pattern', 'feat/{slug}', 'Renamed from your task once the workspace starts'), val('Worktree location', '~/kernel/worktrees')] },
-        { title: 'Current branch workspaces', rows: [tog('baseline', 'Treat existing changes as the baseline', true, 'Changes already in your checkout are hidden from the diff and never committed by agents'), tog('single', 'One current-branch workspace per room', true, 'Two agents editing one checkout would overwrite each other')] },
-        { title: 'Cleanup', rows: [tog('delbranch', 'Delete branch on archive', false), tog('archmerge', 'Archive on merge', true), tog('upstream', 'Set upstream on push', true)] }
-      ] },
-      scripts: { title: 'Scripts', intro: 'Each room keeps its own scripts on its Scripts page. These switches apply to every room.', sections: [
-        { title: 'Automation', rows: [tog('autosetup', 'Run setup when a workspace is created', true, 'New workspaces are ready before the first message'), tog('autorun', 'Start the run script after setup', false, 'Each workspace gets its own port'), tog('autoarchive', 'Run archive script on archive', true)] }
-      ] },
-      prs: { title: 'Pull requests', intro: 'The default instructions agents get. Each room can override them on its own Instructions page.', sections: [
-        { title: 'Instructions', rows: [code('Create PR', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit', '3. Fill in summary, scope and risk'], 'Sent to the agent when you press Create PR'), code('Resolve conflicts', ['# Resolve conflicts', '1. Rebase on origin/main', '2. Re-run pnpm test and pnpm typecheck'], 'Sent when you press Resolve conflicts'), code('Fix checks', ['# Fix failing checks', '1. Read the failing job log', '2. Fix the cause, not the test', '3. Push and wait for the checks'], 'Sent when you press Fix checks'), code('Address review', ['# Address review comments', '1. Read every open thread', '2. Change the code or reply with a reason', '3. Push and resolve the threads'], 'Sent when you press Address review')] },
-        { title: 'Merging', rows: [seg('merge', 'Merge method', ['Squash', 'Merge', 'Rebase']), tog('draft', 'Open as draft', false), tog('green', 'Require green checks to merge', true), tog('revok', 'Require Reviewer approval', true)] }
-      ] },
-      hooks: { title: 'Hooks', sections: [
-        { title: 'Status', rows: [val('Hook server', 'Live on localhost:7420'), btn('Test', 'Send test event')] },
-        { title: 'Gates', rows: [tog('g1', 'Block TaskCompleted without test output', true), tog('g2', 'Keep idle teammates working', false), sel('timeout', 'Approval timeout', ['5 min', '2 min', '10 min'], 'After this, the request falls back to the normal prompt in Claude Code')] },
-        { title: 'Maintenance', rows: [btn('Reinstall hooks', 'Reinstall', 'Rewrites Kernel\u2019s entries in ~/.claude/settings.json'), btn('Settings file', 'Open settings.json')] }
-      ] },
-      integrations: { title: 'Integrations', sections: [
-        { title: 'Connected', rows: [btn('GitHub', 'Manage', 'Through the GitHub CLI as cjjutba'), btn('Linear', 'Connect', 'Create workspaces from issues'), btn('Vercel', 'Connect', 'Preview deployments show up in Checks'), btn('Remote Control', 'Set up', 'Approvals and briefs from your phone')] }
-      ] },
-      experimental: { title: 'Experimental', intro: 'Early features. They may change or go away.', sections: [
-        { title: 'Big terminal', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens Claude Code itself in a terminal tab, next to your chats'), code('Runs', ['claude --dangerously-skip-permissions'], 'In the workspace worktree. Hooks still report to Kernel.'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T'])] },
-        { title: 'Voice', rows: [tog('voice', 'Voice briefs', false, 'Hold Fn and talk to Rowan')] }
-      ] },
-      about: { title: 'About', sections: [
-        { title: 'Kernel', rows: [val('Version', '0.1.0'), btn('Updates', 'Check for updates'), val('Data', '~/Library/Application Support/Kernel'), btn('Logs', 'Export logs'), btn('Onboarding', 'Show again')] }
-      ] },
-      'r-general': roomPage('General', 'How Client A is set up in Kernel.', [
-        { title: 'Room', rows: [val('Repository', 'cjjutba/client-a'), val('Local path', '~/Projects/client-a'), val('Team', 'Lead, Frontend, Backend, QA, Reviewer'), sel('r-linear', 'Linear team', ['KERNEL', 'None'], 'Issues from this team open in this room')] },
-        { title: 'Danger zone', rows: [btn('Archive room', 'Archive', 'Stops every agent and archives all workspaces. You can restore it later.')] }
-      ]),
-      'r-git': roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', [
-        { title: 'New workspaces', rows: [
-          seg('rg-mode', 'Default workspace type', ['Use default', 'New worktree', 'Current branch'], 0, 'The app default is New worktree'),
-          over(sel('rg-from', 'Branch new workspaces from', ['origin/dev', 'origin/main'])),
-          sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'Where to push, pull and open PRs')
-        ] }
-      ]),
-      'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
-        { title: 'Workspace scripts', rows: [
-          from(code('Setup', ['pnpm install', 'cp ../../.env.local .env.local'], 'Runs when a workspace is created')),
-          over(code('Run', ['pnpm dev --port $KERNEL_PORT'], 'Each workspace gets its own port')),
-          code('Archive', ['docker compose down'], 'Runs before a workspace is archived'),
-          seg('rs-mode', 'Run mode', ['Concurrent', 'One at a time'])
-        ] }
-      ]),
-      'r-files': roomPage('Files to copy', 'Gitignored files that Client A copies into every new worktree.', [
-        { title: 'Gitignored files', rows: [from(code('Copy into every new worktree', ['.env.local', '.env.test', 'certs/*.pem'])), tog('symlink', 'Symlink node_modules', false, 'Faster setup, but workspaces share dependencies')] }
-      ]),
-      'r-instructions': roomPage('Instructions', 'What agents are told in Client A. A row you leave alone uses the text from Settings, Pull requests.', [
-        { title: 'Instructions', rows: [
-          instr('ri-pr', 'Create PR', '', ['# Create a pull request', '1. Rebase on origin/dev and run pnpm test', '2. Title it as a Conventional Commit', '3. Fill in summary, scope and risk', '4. Link the Linear issue in the description'], true, true),
-          instr('ri-conf', 'Resolve conflicts', 'Sent when you press Resolve conflicts', [], false, false),
-          instr('ri-checks', 'Fix checks', 'Sent when you press Fix checks', [], false, false),
-          instr('ri-review', 'Address review', 'Sent when you press Address review', [], false, false)
-        ] }
-      ]),
-      'r-permissions': roomPage('Permissions', 'Commands agents can run in Client A without asking.', [
-        { title: 'Always allowed in this room', rows: [
-          rule('pnpm test'),
-          rule('pnpm typecheck'),
-          rule('gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName'),
-          rule('node design/canvas/source/render.mjs Settings SettingsAppearance SettingsNotifications SettingsAccount SettingsShortcuts SettingsModels SettingsPermissions SettingsGit SettingsScripts SettingsPRs', true),
-          rule('for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | sort | uniq -c | head -40'),
-          rule('git log --oneline origin/main..HEAD')
-        ] }
-      ]),
-      'r-agents': roomPage('Agents', 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.', [
-        { title: 'In this room', rows: [btn('Rowan · Lead', 'Edit', '.claude/agents/rowan.md · Plans and hands out tasks'), btn('Kai · Frontend', 'Edit', '.claude/agents/kai.md · UI work, follows DESIGN.md'), btn('Noor · Backend', 'Edit', '.claude/agents/noor.md · Schema, API, migrations'), btn('Ivy · QA', 'Edit', '.claude/agents/ivy.md · Runs tests, attaches output'), btn('Theo · Reviewer', 'Edit', '.claude/agents/theo.md · Types, security, tenancy'), btn('Lumi · Designer', 'Edit', '.claude/agents/lumi.md · Joined today')] },
-        { title: 'Sync', rows: [val('Agents folder', '.claude/agents'), tog('names', 'Show names instead of roles', true)] }
-      ]),
-      'r-skills': roomPage('Skills and MCP', 'Skills and MCP servers agents can use in Client A.', [
-        { title: 'Skills', rows: [tog('s1', '/setup', true), tog('s2', '/plan', true), tog('s3', '/feature', true), tog('s4', '/verify', true), tog('s5', '/image', true)] },
-        { title: 'MCP servers', rows: [tog('mcp1', 'GitHub', true), tog('mcp2', 'Linear', true), tog('mcp3', 'Vercel', true), tog('mcp4', 'Figma', false)] }
-      ])
-    };
-  }
-
-  renderVals() {
-    var self = this;
-    var s = this.state;
-    var accent = this.props.accent ?? '#f7f8f8';
-    var icons = this.icons();
-    var q = (s.q || '').toLowerCase();
-    var groups = this.nav().map(function (g) {
-      var items = g.items.filter(function (it) { return !q || it[1].toLowerCase().indexOf(q) >= 0; }).map(function (it) {
-        var on = s.page === it[0];
-        return {
-          label: it[1], isIcon: !it[2], isLetter: !!it[2], letter: it[2] || '', icon: icons[it[0]] || '',
-          current: on ? 'page' : 'false', bg: on ? '#1c1d21' : 'transparent', color: on ? '#f7f8f8' : '#d0d6e0', stroke: on ? '#d0d6e0' : '#8a8f98',
-          pick: function () { self.setState({ page: it[0] }); }
-        };
-      });
-      return { title: g.title, items: items, show: items.length > 0 };
-    });
-    var setVal = function (id, v) { var n = Object.assign({}, self.state.vals); n[id] = v; self.setState({ vals: n }); };
-    var P = this.pages()[s.page];
-    var sections = P.sections.map(function (sec) {
-      return { title: sec.title, rows: sec.rows.map(function (r, i) {
-        var v = r.id && s.vals[r.id] !== undefined ? s.vals[r.id] : undefined;
-        var o = {
-          label: r.label, desc: r.desc || '', hasDesc: !!r.desc, border: i === 0 ? '0' : '1px solid #1d1e22',
-          isSelect: r.type === 'select', isToggle: r.type === 'toggle', isSegment: r.type === 'segment', isButton: r.type === 'button',
-          isValue: r.type === 'value', isCode: r.type === 'code', isKbd: r.type === 'kbd', isMeter: r.type === 'meter',
-          pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
-          value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {}
-        };
-        if (r.type === 'select') {
-          var idx = v === undefined ? 0 : v;
-          o.value = r.opts[idx];
-          o.act = function () { setVal(r.id, (idx + 1) % r.opts.length); };
-        }
-        if (r.type === 'toggle') {
-          var on = v === undefined ? r.on : v;
-          o.checked = on ? 'true' : 'false'; o.swBg = on ? '#f7f8f8' : '#2a2b30'; o.knobBg = on ? '#08090a' : '#8a8f98'; o.knob = on ? '14px' : '2px';
-          o.act = function () { setVal(r.id, !on); };
-        }
-        if (r.type === 'segment') {
-          var cur = v === undefined ? r.def : v;
-          o.segs = r.opts.map(function (lab, j) {
-            var sel = cur === j;
-            return { label: lab, checked: sel ? 'true' : 'false', bg: sel ? '#24252a' : 'transparent', color: sel ? '#f7f8f8' : '#8a8f98', pick: function () { setVal(r.id, j); } };
-          });
-        }
-        return o;
-      }) };
-    });
-    return {
-      accent: accent,
-      q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
-      groups: groups,
-      page: { title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections }
     };
   }
 }
