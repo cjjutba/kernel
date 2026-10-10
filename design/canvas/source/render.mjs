@@ -15,7 +15,7 @@ const root = join(import.meta.dirname, '..', '..', '..')
 const args = process.argv.slice(2)
 const outAt = args.indexOf('--out')
 const out = outAt >= 0 ? args[outAt + 1] : join(root, 'design', 'screens')
-const names = args.filter((a, i) => a !== '--out' && i !== outAt + 1)
+const names = args.filter((a, i) => a !== '--out' && !(outAt >= 0 && i === outAt + 1))
 if (!names.length) throw new Error('Name the pages to render, for example: node design/canvas/source/render.mjs Home Team')
 mkdirSync(out, { recursive: true })
 

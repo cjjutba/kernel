@@ -24,8 +24,9 @@ def sidebar(active, empty=False, menu=None):
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
     s=s.replace('%%ROOMSSHOW%%',' show' if menu=='rooms' else '').replace('%%ROOMSHOW%%',' show' if menu=='room' else '')
-    # D-104 hid the floor and the Board: a room lists Team, its Lead and its workspaces. D-108 dropped Try.
-    for k in ['search','home','inbox','issues','history','team','lead','ws']:
+    # D-104 hid the floor and the Board and D-108 dropped Try. D-139 lists the Lead's open chats under a room, each with its workspaces,
+    # and moves Team into the room menu, so no row is Team's: 'lead' marks the Lead's current chat and 'ws' the current workspace.
+    for k in ['search','home','inbox','issues','history','lead','ws']:
         on=k==active
         s=s.replace('%%'+k+'C%%',' aria-current="page"' if on else '')
         s=s.replace('%%'+k+'S%%','#d0d6e0' if on else '#8a8f98')
@@ -45,7 +46,7 @@ def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=Fal
 LMAP={'#08090a':'#f3f3f4','#0f1011':'#ffffff','#0b0c0d':'#fafafa','#0a0b0c':'#f5f5f6','#0c0d0e':'#f6f6f7','#111214':'#f6f6f7','#121315':'#f6f6f7','#141516':'#f4f4f5','#141517':'#f4f4f5','#141518':'#f0f0f2','#16171a':'#efeff1','#17181a':'#ececee','#18191a':'#efeff1','#18191b':'#efeff1','#18191c':'#eeeef0','#1a1b1e':'#e8e8eb','#1c1d20':'#eaeaed','#1c1d21':'#eaeaed','#1d1e22':'#e4e4e7','#1f2024':'#e4e4e7','#222327':'#e6e6e9','#232428':'#e6e6e9','#23252a':'#dedee2','#24252a':'#e2e2e5','#26272b':'#e0e0e4','#26272b':'#e0e0e4','#2a2b30':'#d6d6db','#2e3036':'#d2d2d8','#3a3c42':'#c4c4ca','#3e3e44':'#bdbdc3','#4a4c52':'#a8a8b0','#62666d':'#9a9da4','#6b7079':'#8d9098','#8a8f98':'#6b6f77','#b7bcc4':'#4a4d54','#d0d6e0':'#3a3d44','#e3e5e8':'#1f2023','#f7f8f8':'#18191b'}
 def lighten(t):
     return re.sub(r'#[0-9a-fA-F]{6}\b', lambda m: LMAP.get(m.group(0).lower(), m.group(0)), t)
-simple={'Home':'home','Rooms':None,'NewRoom':None,'HomeEmpty':'home','Welcome':None,'CommandPalette':'search','Team':'team','AgentProfile':None,'History':'history','LoadingApp':None}
+simple={'Home':'home','Rooms':None,'NewRoom':None,'HomeEmpty':'home','Welcome':None,'CommandPalette':'search','Team':None,'AgentProfile':None,'History':'history','LoadingApp':None}
 for n,a in simple.items(): emit(n, rd(n+'.dc.html'), a, empty=(n=='HomeEmpty'))
 emit('WhatsNew', rd('WhatsNew.dc.html'), 'home', update=True)
 emit('UpdateReady', rd('Home.dc.html'), 'home', update=True)
@@ -62,7 +63,7 @@ tr=rd('_Try.dc.html')
 for n,mode,title in [('ConnectRepo','repo','Connect a repo'),('OpenFolder','folder','Open a folder'),('CheckHooks','hooks','Check hooks')]:
     emit(n, tr.replace('%%MODE%%',mode).replace('%%TITLE%%',title), None)
 # The app's fixtures open the room menu over Team and Ask Rowan over Home.
-emit('SidebarRoomMenu', rd('Team.dc.html'), 'team', menu='room')
+emit('SidebarRoomMenu', rd('Team.dc.html'), None, menu='room')
 emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
 WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
@@ -72,11 +73,11 @@ emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 emit('WorkspaceLight', ws.replace('%%SCENARIO%%','done'), 'ws', light=True)
 nw=rd('NewWorkspace.dc.html')
 for n,m in [('NewWorkspace','none'),('NewWorkspaceBranch','branch'),('NewWorkspaceFrom','from'),('NewWorkspaceModel','model'),('NewWorkspacePlus','plus')]:
-    emit(n, nw.replace('%%MENU%%',m), 'team')
+    emit(n, nw.replace('%%MENU%%',m), None)
 na=rd('NewAgent.dc.html')
-for n,st in [('NewAgent','describe'),('NewAgentDraft','draft'),('NewAgentDone','done')]: emit(n, na.replace('%%STEP%%',st), 'team')
+for n,st in [('NewAgent','describe'),('NewAgentDraft','draft'),('NewAgentDone','done')]: emit(n, na.replace('%%STEP%%',st), None)
 cf=rd('Confirm.dc.html')
-for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('ConfirmDiscard','discard'),('ConfirmRetire','retire')]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else 'team' if k=='remove' else None)
+for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('ConfirmDiscard','discard'),('ConfirmRetire','retire')]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
 su=rd('Setup.dc.html')
 for n,k in [('SetupClaudeMissing','missing'),('SetupClaudeOld','old'),('SetupTeamsOff','teams'),('SetupGhSignedOut','gh'),('SetupPortBusy','port'),('RoomSetup','room')]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
