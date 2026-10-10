@@ -71,7 +71,7 @@
 .tucard-ev[data-tone='merged'] { color: var(--merged); }
 .tucard-quote { margin: 7px 0 0; padding: 0; color: var(--ink-3); font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .tucard-quote[data-clamped='true'] { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin: 2px 0 0; padding: 0; color: var(--faint); font-size: 12px; }
+.tucard-toggle { align-self: flex-start; border: 0; background: transparent; margin: 2px 0 0; padding: 0; color: var(--muted); font-size: 12px; }
 .tucard-toggle:hover { color: var(--ink-2); }
 .tucard-from { padding: 10px 16px 0; font-size: 12px; color: var(--muted); }
 .tucard-omitted { padding: 8px 16px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }

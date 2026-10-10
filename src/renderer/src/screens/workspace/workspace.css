@@ -157,10 +157,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .bottom-tabs > [role='tablist'] { align-self: stretch; align-items: stretch; }
 .bottom-tabs .tab { height: auto; padding: 0 9px; border-radius: 0; border-bottom: 2px solid transparent; font-size: 12.5px; }
 .bottom-tabs .tab[aria-selected='true'] { background: transparent; border-bottom-color: var(--ink); }
-.script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font-size: 12px; text-align: center; }
+.script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
+.log[data-empty] { display: flex; padding: 0; }
 
 /* file and diff views */
 .view-head { height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }

@@ -61,7 +61,8 @@ function Row({ row, ws }: { row: TeamUpdateRow; ws: Workspace | undefined }) {
           {row.events.map((e, i) => (
             <Fragment key={i}>
               {i > 0 && <span className="tucard-sep" aria-hidden="true">·</span>}
-              <span className="tucard-ev" data-tone={eventTone(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">. </span></span>
+              {/* A screen reader hears a full stop between events, unless one already ends the sentence. */}
+              <span className="tucard-ev" data-tone={eventTone(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
             </Fragment>
           ))}
         </p>

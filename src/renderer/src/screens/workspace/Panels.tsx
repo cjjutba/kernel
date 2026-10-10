@@ -157,6 +157,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
   // A room without a setup script never runs one, so the tab says so instead of waiting for output that won't come.
   const rs = useRoomSettings(ws.roomId)
   const noSetup = !!rs && !rs.scripts.setup
+  const noRun = !!rs && !rs.scripts.run
   // The run script's Run and Stop stay at the top right on every tab (KERNEL-274), so they read its own state.
   const runRunning = useStore((s) => (s.scripts[ws.id] ?? []).some((l) => l.kind === 'run') && s.scriptExit[ws.id]?.run === undefined)
   const start = (kind: 'setup' | 'run') => {
@@ -164,41 +165,52 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     setState((s) => ({ scriptExit: { ...s.scriptExit, [ws.id]: { ...s.scriptExit[ws.id], [kind]: undefined } } }))
     void attempt(`Could not start ${kind}`, () => call('scripts.run', { workspaceId: ws.id, kind }))
   }
-  const addSetup = () => go({ name: 'settings', page: 'scripts', roomId: ws.roomId })
+  const addScript = () => go({ name: 'settings', page: 'scripts', roomId: ws.roomId })
+  // The log stays mounted, so its first lines are announced; an empty one shows what to do instead (KERNEL-274).
+  const empty = bottom === 'run'
+    ? noRun ? (
+      <div className="script-empty">
+        <span className="ink2">No run script</span>
+        <span>This room has no run script. Add one to start the app from here, on its own port.</span>
+        <Button onClick={addScript}>Add run script</Button>
+      </div>
+    ) : (
+      <div className="script-empty">
+        <span className="script-empty-icon"><Icon name="play" size={30} stroke={1.2} /></span>
+        <Button onClick={() => start('run')}>Start run script</Button>
+        <span>Runs on port {ws.port}. Output shows here.</span>
+      </div>
+    )
+    : noSetup ? (
+      <div className="script-empty">
+        <span className="ink2">No setup script</span>
+        <span>This room has no setup script. Add one and new workspaces run it before the agent starts.</span>
+        <Button onClick={addScript}>Add setup script</Button>
+      </div>
+    ) : (
+      <div className="script-empty">
+        <span className="ink2">No setup output yet</span>
+        <span>Setup output appears here after it runs.</span>
+        <Button icon="play" disabled={running} onClick={() => start('setup')}>Run setup</Button>
+      </div>
+    )
   return (
     <div className="bottom-panel">
       <div className="bottom-tabs">
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
         {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" disabled={running} onClick={() => start('setup')}>Run setup</Button>}
+        {/* Off the Run tab it says which script it stops, so it can't read as stopping setup. */}
         {runRunning
-          ? <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>Stop</Button>
-          : <Button className="small" icon="play" onClick={() => start('run')}>Run</Button>}
+          ? <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>{bottom === 'run' ? 'Stop' : 'Stop run'}</Button>
+          : !noRun && <Button className="small" icon="play" onClick={() => start('run')}>Run</Button>}
       </div>
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}
-      {bottom !== 'terminal' && lines.length > 0 && <div className="log selectable mono" role="log" aria-label={`${bottom} output`}>
-        {lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)}
+      {bottom !== 'terminal' && <div className="log selectable mono" role="log" aria-label={`${bottom} output`} data-empty={lines.length ? undefined : 'true'}>
+        {lines.length
+          ? lines.map((l, i) => <div key={i} style={{ whiteSpace: 'pre-wrap', color: l.stream === 'stderr' ? 'var(--del)' : l.line.startsWith('$') ? 'var(--ink)' : 'var(--ink-3)' }}>{l.line}</div>)
+          : empty}
       </div>}
-      {bottom === 'run' && !lines.length && (
-        <div className="script-empty">
-          <span className="script-empty-icon"><Icon name="play" size={30} stroke={1.2} /></span>
-          <Button onClick={() => start('run')}>Start run script</Button>
-          <span>Runs on port {ws.port}. Output shows here.</span>
-        </div>
-      )}
-      {bottom === 'setup' && !lines.length && (noSetup ? (
-        <div className="script-empty">
-          <span className="ink2">No setup script</span>
-          <span>This room has no setup script. Add one and new workspaces run it before the agent starts.</span>
-          <Button onClick={addSetup}>Add setup script</Button>
-        </div>
-      ) : (
-        <div className="script-empty">
-          <span className="ink2">No setup output yet</span>
-          <span>Setup output appears here after it runs.</span>
-          <Button icon="play" disabled={running} onClick={() => start('setup')}>Run setup</Button>
-        </div>
-      ))}
     </div>
   )
 }

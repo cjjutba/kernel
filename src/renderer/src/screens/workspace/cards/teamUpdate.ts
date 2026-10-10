@@ -28,14 +28,14 @@ export function taskParts(task: string): { key?: string; title: string } {
 }
 
 /**
- * The color an event's words take on the card (KERNEL-274): red for what needs fixing, violet for a merge, green for what
- * passed or was approved. Everything else stays grey, and an event that needs the Lead without one of those is brighter.
+ * The color an event's words take on the card (KERNEL-274): red for what needs fixing, violet for a merge, green for a PR
+ * ready to merge or an approval. Everything else stays grey, and an event that needs the Lead without one of those is brighter.
  */
 export function eventTone(e: { kind: TeamEventKind; text: string; actionable: boolean }): 'del' | 'add' | 'merged' | 'ink2' | 'muted' {
   switch (e.kind) {
     case 'error': case 'crash': case 'setup.failed': case 'pr.cifail': case 'pr.changes': case 'pr.conflict': return 'del'
     case 'pr.merged': return 'merged'
-    case 'pr.ready': case 'setup.passed': return 'add'
+    case 'pr.ready': return 'add'
     case 'review': return /^Approved/.test(e.text) ? 'add' : 'del'
     default: return e.actionable ? 'ink2' : 'muted'
   }

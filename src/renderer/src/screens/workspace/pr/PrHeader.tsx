@@ -86,8 +86,11 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
   const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
+  // The band's tone, in the right panel. In the chat header (panel hidden) there's no band, so the header stays neutral,
+  // except merged, which was already purple there.
+  const band = spread || view.state.tone === 'merged' ? view.state.tone : 'idle'
   // `display: contents` keeps the parent's flex layout and hands the band's tone to everything inside.
-  const tone = (children: ReactNode) => <span className="pr-tone" data-tone={view.state.tone}>{children}</span>
+  const tone = (children: ReactNode) => <span className="pr-tone" data-tone={band}>{children}</span>
 
   if (busy) return tone(<>{link}{state}{gap}{spinner(busy)}</>)
 
@@ -103,8 +106,8 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
 
   // Create PR stays ink on the neutral band; Merge PR takes the green solid; everything else is a soft button in the band's tone.
   const b = view.button
-  const solid = b?.kind === 'primary' && view.state.tone === 'ready'
-  const ink = b?.kind === 'primary' && view.state.tone === 'idle'
+  const solid = b?.kind === 'primary' && band === 'ready'
+  const ink = b?.kind === 'primary' && band === 'idle'
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
       : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} onClick={() => b.action && start(b.action)}>{b.label}</Button>

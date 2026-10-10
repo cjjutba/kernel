@@ -8,10 +8,10 @@ To redraw the PNGs after editing an artboard, run `node design/redesign/render.m
 
 ## Color
 
-- Linear's palette stays: the same neutrals, `--add`, `--del` and `--merged`.
+- Linear's neutrals and hues stay: the same greys, `--add`, `--del` and `--merged`. New tokens cover only plan mode and the PR bands.
 - **PR header.** Every state gets a band: grey for neutral, green for open and ready, red for anything to fix, violet for merged. The label, the link pill and the buttons take the band's tone. A busy button keeps the tone and dims, and the spinner only ever appears on the button.
 - **Plan mode.** The composer gets a blue border and a glow from the bottom edge (`--plan`). Plan waiting uses the same blue, with Copy and Approve in a blue strip on top. There's no hatch and no label.
-- **Amber (`--needs`).** It means "your turn": the sidebar's waiting icon and the Inbox count.
+- **Amber (`--needs`).** It means "your turn": the waiting icon on sidebar rows and chat tabs, and the Inbox count.
 
 ## Screens
 
@@ -40,4 +40,6 @@ The canvas draws a few things KERNEL-274 left out on purpose. Don't treat them a
 - The collapse arrow and the + for more terminals in the bottom panel.
 - The close button in the Ask Rowan header. Escape and clicking outside close it.
 - The centered composer on `NewChat`. The composer stays at the bottom, and only the title, subtitle and suggestions are redesigned.
+- The PR icon before a Kernel note. A note doesn't carry a kind, so the app shows the text and the hairline only.
+- The plan strip's checklist icon. The app uses the clipboard (`plan`) icon the sidebar already shows for a plan to review.
 - Sample copy on the canvas, such as chat text, issue titles and the Kernel notes for PR states the engine doesn't send.

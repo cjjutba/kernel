@@ -115,12 +115,13 @@
 
 /* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
-   top, where send stays ink so Approve is the one blue button. No hatch, no stripes. */
+   top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
+   glow and the caret; its border is the modal shell's. */
 .cmp[data-plan='true'], .nw[data-plan] {
-  border-color: color-mix(in srgb, var(--plan) 45%, var(--surface));
   background-image: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
 }
-.cmp[data-plan='true']:focus-within, .nw[data-plan]:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--surface)); }
+.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--surface)); }
+.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--surface)); }
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
@@ -130,8 +131,8 @@
 .cmp-planbar .btn { height: 28px; }
 .cmp-planbar .btn.ghost { color: var(--ink-2); }
 .cmp-planbar .btn.ghost:hover { color: var(--ink); }
-.cmp-planbar .btn.primary { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
-.cmp-planbar .btn.primary:hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
+.cmp-planbar .btn.primary:not(:disabled) { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
+.cmp-planbar .btn.primary:not(:disabled):hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 
 /* context ring and its popover (KERNEL-96) */

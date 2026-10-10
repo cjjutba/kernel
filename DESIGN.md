@@ -27,7 +27,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | del | #eb5757 | diff deletions, errors |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #7cb2ff | status word in sidebar hover cards: work running |
-| needs | #f2c55c | waiting on you: hover card status word, the sidebar's waiting icon, the Inbox count |
+| needs | #f2c55c | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count |
 | danger | #e5484d | destructive confirm buttons |
 | aside | #0c0d0e | the workspace's right panel, one step below panel |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
@@ -35,7 +35,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-There is no brand accent. Primary buttons are ink on canvas. `working` colors the status word on the sidebar hover cards and nowhere else (D-084). `needs` also marks what waits on you in the sidebar: the waiting icon on a row and the Inbox count. `plan` is plan mode only, and the `pr-*` sets are the PR header only (KERNEL-274).
+There is no brand accent. Primary buttons are ink on canvas. `working` colors the status word on the sidebar hover cards and nowhere else (D-084). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, and the Inbox count. `plan` is plan mode only, and the `pr-*` sets are the PR header only (KERNEL-274).
 
 ## Color (light)
 
@@ -60,7 +60,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | del | #b32e2e | diff deletions, errors |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #1a56b0 | status word in sidebar hover cards: work running |
-| needs | #7a4f00 | waiting on you: hover card status word, the sidebar's waiting icon, the Inbox count |
+| needs | #7a4f00 | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count |
 | danger | #bd2b2b | destructive confirm buttons |
 | aside | #f7f7f8 | the workspace's right panel |
 | plan | #1f5fbf (on-plan #ffffff) | plan mode |
@@ -95,7 +95,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.
 - Danger: red only on the final confirm button, never on the trigger.
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
-- PR header (KERNEL-274): the top of the right panel is a band in the PR's tone: grey (neutral states), green (open, ready, merging), red (checks failed, changes requested, conflicts, resolving), violet (merged). It holds the `#N | ↗` link pill, the state's icon and label, and the actions. Soft buttons use the band's soft fill and edge, Merge PR and Archive its solid. The label always shows the state, never a spinner. `design/redesign/Pr*.png` draws every state.
+- PR header (KERNEL-274): the top of the right panel is a band in the PR's tone: grey (neutral states), green (open, ready, merging), red (checks failed, changes requested, conflicts, resolving), violet (merged). It holds the `#N | ↗` link pill, the state's icon and label, and the actions. Soft buttons use the band's soft fill and edge. Merge PR and a merged PR's Archive take its solid; a closed PR's Archive is soft. Create PR stays ink on the neutral band. The label always shows the state, never a spinner. With the right panel hidden, the header sits in the chat with no band, in neutral colors except merged. `design/redesign/Pr*.png` draws every state.
 - Plan mode (KERNEL-274): the composer gets a `plan` border and a soft glow rising from its bottom edge, and the caret and a ready send button turn `plan`. No hatch, no stripes, no label. A waiting plan keeps the blue and puts Copy and Approve in a blue strip on top; send stays ink there so Approve is the one blue button.
 
 ## Busy buttons

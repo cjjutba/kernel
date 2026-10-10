@@ -59,7 +59,7 @@ describe('reading an update from before KERNEL-117', () => {
     expect(taskParts('Remove the Try section')).toEqual({ title: 'Remove the Try section' })
     const tone = (kind: TeamEventKind, text = '', actionable = false) => eventTone({ kind, text, actionable })
     expect([tone('pr.cifail'), tone('pr.conflict'), tone('crash'), tone('setup.failed')]).toEqual(['del', 'del', 'del', 'del'])
-    expect([tone('pr.merged'), tone('pr.ready'), tone('setup.passed')]).toEqual(['merged', 'add', 'add'])
+    expect([tone('pr.merged'), tone('pr.ready'), tone('setup.passed')]).toEqual(['merged', 'add', 'muted'])
     expect([tone('review', 'Approved PR #108'), tone('review', 'Found 2 blockers in PR #108')]).toEqual(['add', 'del'])
     expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
   })

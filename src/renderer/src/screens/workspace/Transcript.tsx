@@ -21,8 +21,8 @@ import { ReviewCard } from './pr/ReviewCard'
 const EMPTY: ChatItem[] = []
 
 /** What a new chat offers to start with, by who you're talking to (KERNEL-274): the Lead plans and checks on the team. */
-const LEAD_SUGGESTIONS = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
-const SUGGESTIONS = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
+const LEAD_SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
+const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
 
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
