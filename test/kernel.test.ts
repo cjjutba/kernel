@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mkdtemp, readFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import type { ActivityEvent } from '../src/shared/types'
@@ -26,6 +26,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     k.sessions.send = async (_chatId, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
 
     const room = await k.addRoom(repo)
+    await trustRoom(k, room.id)
     const agents = await k.agents(room.id)
     expect(agents.map((a) => [a.id, a.lead])).toEqual([['rowan', true], ['kai', false]])
 

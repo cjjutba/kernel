@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -28,7 +28,7 @@ import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, type AppSettings } from './services/settings'
+import { applySettingsPatch, loadAppSettings, loadRepoSettings, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
@@ -108,6 +108,8 @@ export class Kernel {
   private archiving = new Map<string, Promise<void>>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
   private setupFailures = new Map<string, number | null>()
+  /** The script text the user trusted, per room (KERNEL-209). */
+  private trusted: ScriptTrustStore
   readonly tasks: Tasks
   readonly sessions: Sessions
   readonly overlaps: Overlaps
@@ -152,6 +154,7 @@ export class Kernel {
     fetch?: typeof fetch
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
+    this.trusted = new ScriptTrustStore(join(o.dataDir, 'trust.json'))
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
     this.notifications = new Notifications({
@@ -591,7 +594,8 @@ export class Kernel {
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
-      await ensureRepoSettings(room.path)
+      // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
+      if (await ensureRepoSettings(room.path)) await this.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
@@ -705,6 +709,7 @@ export class Kernel {
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
+    await this.trusted.forget(roomId)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
@@ -835,7 +840,6 @@ export class Kernel {
       if (o.branch && !reviewed && !(await validBranchName(room.path, o.branch))) throw new Error(`${o.branch} is not a valid branch name.`)
       branch = reviewed ? await freeBranch(room.path, `${reviewed.branch}-review`) : await freeBranch(room.path, o.branch || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, o.source?.kind === 'issue' ? o.source.title : title, o.source?.kind === 'issue' ? o.source.id : undefined))
       path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
-      await copyLocalFiles(room.path, path, repo.files.copy)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else {
       if (s.workspace.oneCurrentBranchPerRoom && this.store.workspaces(roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== agent.id))
@@ -863,16 +867,27 @@ export class Kernel {
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
     this.setSetup(ws.id, { ...this.setups.get(ws.id), chatId: chat.id, brief: parts, ...(from ? { from } : {}), later: this.setups.get(ws.id)?.later ?? [] })
-    let ready: boolean
-    try { ready = await this.runSetup(ws, room, repo.scripts.setup) } catch (e) { this.setSetup(ws.id, undefined); throw e }
-    // Archived while setup ran: archive stopped the script, and the workspace stays archived.
-    if (this.mustWs(ws.id).status === 'archived') { this.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The Lead's messages sent before the brief went out follow it, never go before it (KERNEL-118). Messages that
     // arrive while the brief is sent are still caught here, and the mark goes only once the list is empty.
     const after = async (send: (m: ChatPart[]) => Promise<unknown> | void) => {
       for (let held = this.setups.get(ws.id); held?.later.length; held = this.setups.get(ws.id)) { const m = held.later.shift()!; this.saveSetups(); await send(m) }
       this.setSetup(ws.id, undefined)
     }
+    // Nothing from the repo's settings runs or copies until the user trusts that text for the room (KERNEL-209). The
+    // brief waits in the chat's queue, the way it does for a failed setup, and `rooms.trust` sends it.
+    let pending: ScriptTrust | null
+    try { pending = await this.untrusted(room, repo) } catch (e) { this.setSetup(ws.id, undefined); throw e }
+    if (pending) {
+      this.sessions.hold(chat.id, parts, { from })
+      await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
+      const held = this.updateWs(ws.id, { status: 'trust' })
+      if (held.status !== 'archived') await this.askTrust(room.id)
+      return held
+    }
+    let ready: boolean
+    try { ready = await this.prepare(ws, room, repo) } catch (e) { this.setSetup(ws.id, undefined); throw e }
+    // Archived while setup ran: archive stopped the script, and the workspace stays archived.
+    if (this.mustWs(ws.id).status === 'archived') { this.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
     if (!ready) {
       this.sessions.hold(chat.id, parts, { from })
@@ -901,7 +916,7 @@ export class Kernel {
     const done = this.updateWs(ws.id, { status: 'ready' })
     if (done.status === 'archived') return done
     if (start0) bus.push({ type: 'checkpoint', checkpoint: start0 })
-    if (this.settings.scripts.runAfterSetup && repo.scripts.run) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
+    if (this.settings.scripts.runAfterSetup && repo.scripts.run && !(await this.untrusted(room, repo))) void runScript({ workspaceId: ws.id, kind: 'run', script: repo.scripts.run, cwd: ws.path, port: ws.port, root: room.path })
     await start()
     return done
   }
@@ -921,6 +936,12 @@ export class Kernel {
     const room = this.mustRoom(ws.roomId)
     const repo = await loadRepoSettings(room.path)
     const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+    // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
+    if (await this.untrusted(room, repo)) {
+      const held = this.updateWs(ws.id, { status: 'trust' })
+      await this.askTrust(room.id)
+      return held
+    }
     if (repo.scripts.setup) {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
       if (!this.setupPassed(ws, code)) {
@@ -934,6 +955,86 @@ export class Kernel {
     if (!chat) return passed(this.updateWs(ws.id, { status: 'ready' }))
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
     return passed(await this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id)))
+  }
+
+  /** Copy the local files into a new worktree, then run setup. Only for text the user trusted (KERNEL-209). */
+  private async prepare(ws: Workspace, room: Room, repo: RepoSettings): Promise<boolean> {
+    if (ws.mode === 'worktree') await this.copyFiles(ws, room, repo)
+    return this.runSetup(ws, room, repo.scripts.setup)
+  }
+
+  /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
+  private async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
+    const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy)
+    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' })
+  }
+
+  /**
+   * What the room's scripts and files.copy list wait on, or null when the user trusted this text already or there is
+   * nothing to trust (KERNEL-209).
+   */
+  private async untrusted(room: Room, repo?: RepoSettings): Promise<ScriptTrust | null> {
+    const subject = scriptsToTrust(repo ?? await loadRepoSettings(room.path))
+    if (!subject) return null
+    const hash = trustHash(subject)
+    if (await this.trusted.has(room.id, hash)) return null
+    const workspaceIds = this.store.workspaces(room.id).filter((w) => w.status === 'trust').map((w) => w.id)
+    return { roomId: room.id, hash, ...subject, workspaceIds }
+  }
+
+  /** Tell the renderer the room's scripts wait for the user. */
+  private async askTrust(roomId: string) {
+    bus.push({ type: 'room.trust', roomId, trust: await this.untrusted(this.mustRoom(roomId)) })
+  }
+
+  /** Trust the room's current text without asking, for text the user wrote in Settings or Kernel wrote itself. */
+  private async trustCurrent(room: Room) {
+    const subject = scriptsToTrust(await loadRepoSettings(room.path))
+    if (subject) await this.trusted.add(room.id, trustHash(subject))
+  }
+
+  /**
+   * `rooms.trust`: the user read the scripts and trusts them. The hash must still match what the room reads, so text
+   * that changed after the dialog opened asks again. Every workspace held in `trust` then copies its files, runs setup
+   * and sends its brief, like a workspace that never waited (KERNEL-209).
+   */
+  async trustRoom(roomId: string, hash: string): Promise<void> {
+    const room = this.mustRoom(roomId)
+    const subject = scriptsToTrust(await loadRepoSettings(room.path))
+    if (subject && trustHash(subject) !== hash) {
+      await this.askTrust(roomId)
+      throw new Error("This room's scripts changed since you read them. Read them again before trusting them.")
+    }
+    if (subject) await this.trusted.add(roomId, hash)
+    bus.push({ type: 'room.trust', roomId, trust: null })
+    for (const ws of this.store.workspaces(roomId)) if (ws.status === 'trust') void this.releaseTrust(ws.id).catch(() => undefined)
+  }
+
+  /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
+  private async releaseTrust(workspaceId: string): Promise<void> {
+    if (this.settingUp.has(workspaceId)) return
+    this.settingUp.add(workspaceId)
+    try {
+      const ws = this.mustWs(workspaceId)
+      if (ws.status !== 'trust') return
+      const room = this.mustRoom(ws.roomId)
+      const repo = await loadRepoSettings(room.path)
+      // The text changed again between trusting and now: it waits for another yes.
+      if (await this.untrusted(room, repo)) { await this.askTrust(room.id); return }
+      this.updateWs(workspaceId, { status: 'setup' })
+      const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
+      const ready = await this.prepare(ws, room, repo)
+      if (this.mustWs(ws.id).status === 'archived') return
+      if (!ready) {
+        const failed = this.updateWs(ws.id, { status: 'failed' })
+        const code = this.setupFailures.get(ws.id)
+        if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
+        return
+      }
+      if (!chat) { this.updateWs(ws.id, { status: 'ready' }); return }
+      const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
+      await this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id))
+    } finally { this.settingUp.delete(workspaceId) }
   }
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
@@ -972,7 +1073,11 @@ export class Kernel {
     const repo = await loadRepoSettings(room.path)
     // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
     const gone = await folderGone(ws.path)
-    if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
+    if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) {
+      // Archiving never waits on trust: untrusted text is skipped and the workspace archives (KERNEL-209).
+      if (await this.untrusted(room, repo)) bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', line: "Skipped the archive script: this room's scripts aren't trusted yet.", stream: 'stderr' })
+      else await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
+    }
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
@@ -1000,7 +1105,7 @@ export class Kernel {
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
       await restoreWorktree({ repo: room.path, path, branch: ws.branch })
       const repo = await loadRepoSettings(room.path)
-      await copyLocalFiles(room.path, path, repo.files.copy)
+      if (!(await this.untrusted(room, repo))) await this.copyFiles(ws, room, repo)
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
@@ -1371,6 +1476,7 @@ export class Kernel {
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
+      : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this room's scripts, so the message waits behind the brief.`
       : why === 'setup' ? (this.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
       : why === 'paused' ? 'The room is paused, so the message goes out when the user resumes it.'
       : why === 'offline' ? 'Kernel is offline or signed out, so the message goes out once it is back.'
@@ -2028,6 +2134,7 @@ export class Kernel {
         const script = repo.scripts[kind]
         if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
+        if (await this.untrusted(room, repo)) { await this.askTrust(room.id); throw new Error("Trust this room's scripts before running them.") }
         void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
         return { ok: true }
       },
@@ -2041,7 +2148,15 @@ export class Kernel {
       'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
       'app.exportLogs': async () => this.exportLogs(),
       'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path),
-      'settings.setRoom': async ({ roomId, patch, shared }) => saveRepoSettings(this.mustRoom(roomId).path, patch, shared),
+      'settings.setRoom': async ({ roomId, patch, shared }) => {
+        const room = this.mustRoom(roomId)
+        const next = await saveRepoSettings(room.path, patch, shared)
+        // Settings, Scripts shows every script and the copy list, so what the user saves there is what they trust (KERNEL-209).
+        if (patch.scripts || patch.files) await this.trustCurrent(room)
+        return next
+      },
+      'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
+      'rooms.trust': async ({ roomId, hash }) => { await this.trustRoom(roomId, hash); return { ok: true } },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined
         const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []

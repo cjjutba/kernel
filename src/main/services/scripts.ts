@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFile, copyFile, lstat, mkdir, stat, symlink } from 'node:fs/promises'
+import { appendFile, copyFile, lstat, mkdir, realpath, stat, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
 
@@ -20,18 +20,47 @@ export async function freePort(from = 4300, taken: Set<number> = new Set()): Pro
   throw new Error('No free port found')
 }
 
-/** Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. Globs are not expanded. */
-export async function copyLocalFiles(repo: string, worktree: string, files: string[]): Promise<string[]> {
-  const copied: string[] = []
+const inside = (root: string, path: string) => { const r = relative(root, path); return !!r && r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r) }
+
+/**
+ * Would writing `to` land outside the worktree? True when `to` is a symlink, or a folder on its way is one that points
+ * out: a repo can commit either, and the copy would follow it. Checked before any folder is made.
+ */
+async function leavesWorktree(worktreeRoot: string, to: string): Promise<boolean> {
+  if (await lstat(to).then((s) => s.isSymbolicLink(), () => false)) return true
+  let dir = dirname(to)
+  while (!(await lstat(dir).then(() => true, () => false))) dir = dirname(dir)
+  const real = await realpath(dir)
+  return real !== worktreeRoot && !inside(worktreeRoot, real)
+}
+
+/**
+ * Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. Globs are not expanded.
+ * Each entry must stay inside the repo once symlinks are followed, and its copy inside the worktree, so a
+ * `../../.ssh/id_rsa` entry or a link that points out is refused, never copied (KERNEL-209).
+ */
+export async function copyLocalFiles(repo: string, worktree: string, files: string[]): Promise<{ copied: string[]; refused: string[] }> {
+  const copied: string[] = [], refused: string[] = []
+  const repoRoot = await realpath(repo)
+  const worktreeRoot = await realpath(worktree)
   for (const f of files) {
+    if (typeof f !== 'string' || !f) continue
+    const to = resolve(worktree, f)
+    if (!inside(repo, resolve(repo, f)) || !inside(worktree, to)) { refused.push(f); continue }
+    // Missing files are fine.
+    const from = await realpath(resolve(repo, f)).catch(() => undefined)
+    if (!from) continue
+    if (!inside(repoRoot, from)) { refused.push(f); continue }
     try {
-      await stat(join(repo, f))
-      await mkdir(dirname(join(worktree, f)), { recursive: true })
-      await copyFile(join(repo, f), join(worktree, f))
+      // Folders were never copied. Globs are not expanded.
+      if (!(await stat(from)).isFile()) continue
+      if (await leavesWorktree(worktreeRoot, to)) { refused.push(f); continue }
+      await mkdir(dirname(to), { recursive: true })
+      await copyFile(from, to)
       copied.push(f)
-    } catch { /* missing files are fine */ }
+    } catch { /* an unreadable file is skipped like a missing one */ }
   }
-  return copied
+  return { copied, refused }
 }
 
 /** Link the main checkout's node_modules into a fresh worktree. Skips when either side is missing or the worktree already has one. */
