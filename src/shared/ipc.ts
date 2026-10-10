@@ -160,8 +160,10 @@ export interface KernelApi {
   'pr.continue': { req: { workspaceId: string }; res: Workspace }
 
   // scripts
-  'scripts.run': { req: { workspaceId: string; kind: ScriptKind }; res: Ok }
-  'scripts.stop': { req: { workspaceId: string; kind: 'run' }; res: Ok }
+  /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
+  'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
+  /** Stops the named run script, or every run script in the workspace without a name. */
+  'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
@@ -235,8 +237,9 @@ export type PushEvent =
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
-  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; line: string; stream: 'stdout' | 'stderr' }
-  | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; code: number | null }
+  /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
+  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; line: string; stream: 'stdout' | 'stderr' }
+  | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
