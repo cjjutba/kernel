@@ -1,0 +1,48 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-10T12:00:00Z" },
+  "title": "Kernel palette: current vs proposed",
+  "launch": { "view": "canvas" },
+  "pages": [],
+  "boards": {
+    "Main.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 900, "title": "Current" },
+    "Proposed.dc.html": { "x": 1520, "y": 0, "w": 1440, "h": 900, "title": "Proposed" },
+    "ProposedSetup.dc.html": { "x": 3040, "y": 0, "w": 1440, "h": 900, "title": "Proposed, Setup tab" },
+    "ProposedTerminal.dc.html": { "x": 4560, "y": 0, "w": 1440, "h": 900, "title": "Proposed, Terminal tab" },
+    "TeamUpdate.dc.html": { "x": 1520, "y": 1020, "w": 1440, "h": 900, "title": "Proposed, Team update" },
+    "AskRowan.dc.html": { "x": 3040, "y": 1020, "w": 1440, "h": 900, "title": "Proposed, Ask Rowan" },
+    "NewChat.dc.html": { "x": 4560, "y": 1020, "w": 1440, "h": 900, "title": "Proposed, New chat" },
+    "Composer.dc.html": { "x": 1520, "y": 2040, "w": 1440, "h": 900, "title": "Proposed, Composer states" },
+    "PlanStates.dc.html": { "x": 3040, "y": 2040, "w": 1440, "h": 900, "title": "Plan mode and plan waiting" },
+    "PlanModeEmpty.dc.html": { "x": 1520, "y": 3060, "w": 1440, "h": 900, "title": "Plan mode" },
+    "PlanModeTyping.dc.html": { "x": 3040, "y": 3060, "w": 1440, "h": 900, "title": "Plan mode, typing" },
+    "PlanWaiting.dc.html": { "x": 4560, "y": 3060, "w": 1440, "h": 900, "title": "Plan waiting for you" },
+    "PlanWaitingTyping.dc.html": { "x": 6080, "y": 3060, "w": 1440, "h": 900, "title": "Plan waiting, typing changes" },
+    "PrNoChanges.dc.html": { "x": 1520, "y": 4380, "w": 1440, "h": 900, "title": "PR: No changes yet" },
+    "PrNoPr.dc.html": { "x": 3040, "y": 4380, "w": 1440, "h": 900, "title": "PR: No PR yet" },
+    "PrCreating.dc.html": { "x": 4560, "y": 4380, "w": 1440, "h": 900, "title": "PR: Creating PR" },
+    "PrDraft.dc.html": { "x": 6080, "y": 4380, "w": 1440, "h": 900, "title": "PR: Draft" },
+    "PrOpen.dc.html": { "x": 7600, "y": 4380, "w": 1440, "h": 900, "title": "PR: Open" },
+    "PrChecks.dc.html": { "x": 1520, "y": 5400, "w": 1440, "h": 900, "title": "PR: Checks running" },
+    "PrCiFail.dc.html": { "x": 3040, "y": 5400, "w": 1440, "h": 900, "title": "PR: Checks failed" },
+    "PrChanges.dc.html": { "x": 4560, "y": 5400, "w": 1440, "h": 900, "title": "PR: Changes requested" },
+    "PrConflict.dc.html": { "x": 6080, "y": 5400, "w": 1440, "h": 900, "title": "PR: Merge conflicts" },
+    "PrResolving.dc.html": { "x": 7600, "y": 5400, "w": 1440, "h": 900, "title": "PR: Resolving conflicts" },
+    "PrReady.dc.html": { "x": 1520, "y": 6420, "w": 1440, "h": 900, "title": "PR: Ready to merge" },
+    "PrMerging.dc.html": { "x": 3040, "y": 6420, "w": 1440, "h": 900, "title": "PR: Merging" },
+    "PrMerged.dc.html": { "x": 4560, "y": 6420, "w": 1440, "h": 900, "title": "PR: Merged" },
+    "PrClosed.dc.html": { "x": 6080, "y": 6420, "w": 1440, "h": 900, "title": "PR: Closed" }
+  },
+  "order": [
+    "Main.dc.html", "Proposed.dc.html", "ProposedSetup.dc.html", "ProposedTerminal.dc.html",
+    "TeamUpdate.dc.html", "AskRowan.dc.html", "NewChat.dc.html", "Composer.dc.html", "PlanStates.dc.html",
+    "PlanModeEmpty.dc.html", "PlanModeTyping.dc.html", "PlanWaiting.dc.html", "PlanWaitingTyping.dc.html",
+    "PrNoChanges.dc.html", "PrNoPr.dc.html", "PrCreating.dc.html", "PrDraft.dc.html", "PrOpen.dc.html",
+    "PrChecks.dc.html", "PrCiFail.dc.html", "PrChanges.dc.html", "PrConflict.dc.html", "PrResolving.dc.html",
+    "PrReady.dc.html", "PrMerging.dc.html", "PrMerged.dc.html", "PrClosed.dc.html"
+  ],
+  "notes": {
+    "prstates": { "x": 1520, "y": 4080, "text": "PR states", "kind": "title1", "maxW": 7520 }
+  },
+  "designSystems": []
+}
