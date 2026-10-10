@@ -85,6 +85,15 @@ describe('rooms service', () => {
 })
 
 describe('Kernel rooms', () => {
+  it('the copy step names the first five files to copy and counts the rest (KERNEL-245)', async () => {
+    const { k } = await kernel()
+    const repo = await tempRepo({ 'README.md': '# x\n', '.gitignore': '*.env\n', '.kernel/settings.toml': '[files]\ncopy = ["*.env"]\n' })
+    for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) await writeFile(join(repo, `${n}.env`), 'X=1\n')
+    const room = await k.createRoom({ source: 'folder', name: 'Env app', from: repo, team: ['kai'], autostart: false })
+    expect((await setupDone(room.id)).find((s) => s.id === 'copy')).toMatchObject({ state: 'ok', detail: 'a.env, b.env, c.env, d.env, e.env and 2 more' })
+    await k.stop()
+  })
+
   it('creates a room from a folder, runs setup, then removes it without touching the folder', async () => {
     const { k } = await kernel()
     const repo = await tempRepo({ 'README.md': '# x\n' })

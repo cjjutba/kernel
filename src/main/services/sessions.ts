@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -111,11 +111,8 @@ export interface Sender { from?: MessageFrom; update?: TeamUpdate }
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
 
-/**
- * What a sent message waits for in the queue: the running turn, the workspace's setup, a paused room, every room held
- * (`offline` covers a lost connection and a sign-out alike), or the agent limit in Settings, Models.
- */
-export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+/** Moved to the shared contract (KERNEL-271). Exported here too for what imports it from Sessions. */
+export type { QueueReason }
 
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
@@ -125,6 +122,10 @@ export class Sessions {
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
+  /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
+  private reasons = new Map<string, QueueReason | undefined>()
+  /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
+  private unsent = new Set<string>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
@@ -145,7 +146,8 @@ export class Sessions {
   /**
    * What Kernel saved before it last quit: the usage windows, the chats a limit stopped, and the queues of chats held for
    * setup (KERNEL-128). A rejection without a reset time is dropped, since nothing could tell when it ends, so it no longer
-   * holds anything. A held queue comes back only while its workspace's setup still has to pass.
+   * holds anything. A held queue comes back only while its workspace's setup still has to pass, or while a ready workspace's
+   * brief waits for a PR to merge (KERNEL-259). One still in setup is left to Kernel's `recoverSetups`, which holds it once.
    */
   restore(limits: RateLimit[], cutOff: string[], held: Record<string, QueuedMessage[]> = {}) {
     for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
@@ -154,7 +156,8 @@ export class Sessions {
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
       const ws = chat && this.d.store.workspace(chat.workspaceId)
-      if (ws?.status !== 'failed' || !Array.isArray(queue)) continue
+      const waiting = ws?.status === 'ready' && !!ws.waitsFor?.held
+      if ((ws?.status !== 'failed' && !waiting) || !Array.isArray(queue)) continue
       this.waiting.add(id)
       this.setQueue(id, queue)
     }
@@ -169,6 +172,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.global = { open, release, reasons: new Set([reason]) }
+    this.pushReasons()
   }
 
   /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
@@ -179,6 +183,7 @@ export class Sessions {
     g.release()
     for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
     this.carryOn()
+    this.pushReasons()
   }
 
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
@@ -193,6 +198,7 @@ export class Sessions {
     this.waiting.delete(chatId)
     this.saveHeld()
     if (!this.live.get(chatId)?.running) this.drain(chatId)
+    this.pushReasons()
   }
 
   /** Hands Kernel what every chat held for setup is holding, to save. */
@@ -225,6 +231,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.paused.set(roomId, { open, release })
+    this.pushReasons()
   }
 
   /** Let the room's agents go on and send what was held while it was paused. */
@@ -235,6 +242,7 @@ export class Sessions {
     gate.release()
     for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
     this.carryOn()
+    this.pushReasons()
   }
 
   private pausedChat(chat: Chat) {
@@ -311,7 +319,7 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
     if (o.from !== 'kernel') this.handoffs.done(chatId)
-    const why = this.waitsFor(chat)
+    const why = this.waitsFor(chat.id)
     if (why) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
       return { queued: true, why }
@@ -321,7 +329,9 @@ export class Sessions {
   }
 
   /** What a message sent now would wait for, or nothing when it can go at once. */
-  private waitsFor(chat: Chat): QueueReason | undefined {
+  waitsFor(chatId: string): QueueReason | undefined {
+    const chat = this.d.store.chat(chatId)
+    if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return 'setup'
     if (this.global) return 'offline'
@@ -353,13 +363,17 @@ export class Sessions {
 
   queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
 
+  /** What the chat's queue waits for, or nothing when it is empty or its next message is about to go (KERNEL-271). */
+  queueReason(chatId: string): QueueReason | undefined { return this.queued(chatId).length ? this.waitsFor(chatId) : undefined }
+
   unqueue(chatId: string, id: string): QueuedMessage[] {
     return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
   }
 
   /**
-   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends.
-   * `pastPause` sends it from an idle chat even though its room is paused, which Kernel asks for when a limit paused it.
+   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. An idle chat
+   * held only by the agent limit sends it at once. `pastPause` sends it from an idle chat even though its room is paused,
+   * which Kernel asks for when a limit paused it.
    */
   async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
@@ -367,8 +381,10 @@ export class Sessions {
     const rest = this.queued(chatId).filter((q) => q.id !== id)
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
+    const why = this.waitsFor(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
-    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
+    // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271).
+    else if (why === 'capacity' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -460,6 +476,8 @@ export class Sessions {
   drainWaiting() {
     for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
     this.carryOn()
+    // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
+    this.pushReasons()
   }
 
   /**
@@ -493,10 +511,36 @@ export class Sessions {
   private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
     if (queue.length) this.queues.set(chatId, queue)
     else this.queues.delete(chatId)
-    bus.push({ type: 'chat.queue', chatId, queue })
+    this.pushQueue(chatId)
     // A held brief edited or removed in the composer is saved too.
     if (this.waiting.has(chatId)) this.saveHeld()
     return queue
+  }
+
+  /**
+   * Tell the renderer the chat's queue and what it waits for, once the current step is done. A held message going out
+   * changes both the queue and the reason, and the renderer gets one event with where they ended up (KERNEL-271).
+   */
+  private pushQueue(chatId: string) {
+    if (!this.unsent.size) queueMicrotask(() => this.flushQueues())
+    this.unsent.add(chatId)
+  }
+
+  private flushQueues() {
+    const ids = [...this.unsent]
+    this.unsent.clear()
+    for (const chatId of ids) {
+      const queue = this.queued(chatId)
+      const why = this.queueReason(chatId)
+      if (queue.length) this.reasons.set(chatId, why)
+      else this.reasons.delete(chatId)
+      bus.push({ type: 'chat.queue', chatId, queue, ...(why ? { why } : {}) })
+    }
+  }
+
+  /** A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. */
+  private pushReasons() {
+    for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
   }
 
   /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
@@ -806,6 +850,8 @@ export class Sessions {
     if (live.running === running) return
     live.running = running
     bus.push({ type: 'chat.running', chatId: chat.id, running })
+    // This chat's queue now waits for something else, and a slot was taken or freed for the others.
+    this.pushReasons()
     // An agent that gave up after a hook refused it still needs someone to look.
     if (!running && this.showBlocked(ws, live)) return
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')

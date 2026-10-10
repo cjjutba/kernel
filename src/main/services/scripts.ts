@@ -1,10 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process'
-import { appendFile, copyFile, lstat, mkdir, stat, symlink } from 'node:fs/promises'
+import { appendFile, copyFile, lstat, mkdir, symlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
+import { resolveFilesToCopy } from './filesToCopy'
 
 /** Find a free TCP port, starting at `from`. Each workspace gets its own as $KERNEL_PORT. */
 export async function freePort(from = 4300, taken: Set<number> = new Set()): Promise<number> {
@@ -20,16 +21,15 @@ export async function freePort(from = 4300, taken: Set<number> = new Set()): Pro
   throw new Error('No free port found')
 }
 
-/** Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. Globs are not expanded. */
-export async function copyLocalFiles(repo: string, worktree: string, files: string[]): Promise<string[]> {
+/** Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. `entries` are exact paths and patterns (KERNEL-245). */
+export async function copyLocalFiles(repo: string, worktree: string, entries: string[]): Promise<string[]> {
   const copied: string[] = []
-  for (const f of files) {
+  for (const { path } of await resolveFilesToCopy(repo, entries)) {
     try {
-      await stat(join(repo, f))
-      await mkdir(dirname(join(worktree, f)), { recursive: true })
-      await copyFile(join(repo, f), join(worktree, f))
-      copied.push(f)
-    } catch { /* missing files are fine */ }
+      await mkdir(dirname(join(worktree, path)), { recursive: true })
+      await copyFile(join(repo, path), join(worktree, path))
+      copied.push(path)
+    } catch { /* a file that went away is fine */ }
   }
   return copied
 }

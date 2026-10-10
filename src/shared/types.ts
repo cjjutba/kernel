@@ -234,6 +234,20 @@ export interface Workspace {
   createdAt: number
   mergedAt?: number
   archivedAt?: number
+  /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
+  waitsFor?: WaitsFor
+}
+
+/**
+ * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't
+ * gone out. `base` is HEAD when the brief was held. `releasing` means they merged and the teammate, which had already
+ * started, hasn't taken Kernel's message yet.
+ */
+export interface WaitsFor {
+  on: string[]
+  held: boolean
+  base?: string
+  releasing?: boolean
 }
 
 /** Git facts the archive and discard confirmations show (ConfirmArchive.png, ConfirmDiscard.png). */
@@ -380,6 +394,12 @@ export interface QueuedMessage {
   update?: TeamUpdate
 }
 
+/**
+ * What a chat's queue waits for: the running turn, the workspace's setup, a paused room, every room held (`offline` covers
+ * a lost connection and a sign-out alike), or the agent limit in Settings, Models. Computed, never saved (KERNEL-271).
+ */
+export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'
 
@@ -388,6 +408,7 @@ export type TeamEventKind =
   | 'turn' | 'error' | 'crash' | 'setup.failed' | 'setup.passed'
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   | 'review'
+  | 'wait.started' | 'wait.released' | 'wait.broken'
 
 /** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
 export interface TeamUpdateEvent {
@@ -807,6 +828,7 @@ export interface AppSettings {
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
+  /** `copy` takes exact paths and patterns like `.env*` (KERNEL-245). */
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
   /** Skills and MCP servers switched off for this room, by name. */
@@ -830,6 +852,12 @@ export type RoomSettingSource = 'shared' | 'local' | 'override'
 
 /** The sections of a room's settings page. A route without one opens General. */
 export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
+
+/** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
+export interface FileToCopy {
+  path: string
+  size: number
+}
 
 /** A patch to a room's settings file. `null` removes the key so the app default applies again. */
 export type RoomSettingsPatch = {
