@@ -63,12 +63,15 @@ describe('IPC contract', () => {
     await expect(h['shared.read']({ sharedId: 'a', version: 2 })).rejects.toThrow()
   })
 
-  it('fixture mode answers the room icon channels, with Portfolio showing a small PNG', async () => {
-    const h = fixtureHandlers(fixtures.Workspace)
-    expect(await h['rooms.icon']({ roomId: 'room-portfolio' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
-    expect(await h['rooms.icon']({ roomId: 'room-a' })).toBeNull()
-    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'github' } })).icon?.kind).toBe('github')
-    expect((await h['rooms.setIcon']({ roomId: 'room-portfolio', icon: { kind: 'letter' } })).icon).toBeUndefined()
+  it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.SettingsRoomIcon)
+    expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['rooms.icon']({ roomId: 'room-b' })).toBeNull()
+    expect((await h['rooms.setIcon']({ roomId: 'room-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
+    expect(await fixtureHandlers(fixtures.HomeRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
+    // The other screens draw letters, so no base fixture room carries an icon.
+    expect(await fixtureHandlers(fixtures.Workspace)['rooms.icon']({ roomId: 'room-portfolio' })).toBeNull()
   })
 
   it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {

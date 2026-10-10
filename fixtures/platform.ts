@@ -3,7 +3,7 @@ import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
 import { workspaceFixtures } from './workspace'
-import { at, base, ids, scene, tableItems, withWorkspace } from './base'
+import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
 // Check copy matches src/main/services/preflight.ts.
@@ -78,6 +78,17 @@ const roomRules = [
   'for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | grep -v "pixelHeight: 900"',
   'git log --oneline origin/main..HEAD'
 ]
+/** Client A's General page (SettingsRoom.png), which SettingsRoomIcon builds on. */
+const settingsRoom = (f: Fixture): Partial<Fixture> => ({
+  ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
+  rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
+  agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
+  // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
+  integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
+  linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
+  ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
+})
+
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
@@ -163,15 +174,17 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsTeam: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
-  SettingsRoom: scene((f) => ({
-    ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
-    agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
-    // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
-    integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
-    linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
-  })),
+  SettingsRoom: scene(settingsRoom),
+  // KERNEL-253: the room has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
+  SettingsRoomIcon: scene((f) => {
+    const room = settingsRoom(f)
+    return {
+      ...room,
+      rooms: room.rooms!.map((r) => (r.id === ids.roomA ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomA}-1.png`, at: at(9, 0) } } : r)),
+      roomIcons: { [ids.roomA]: invaderIcon },
+      ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA }, menu: 'roomIcon' }
+    }
+  }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),

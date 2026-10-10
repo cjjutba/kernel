@@ -18,6 +18,18 @@ asarUnpack:
   - node_modules/better-sqlite3/**
   - node_modules/node-pty/**
   - node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/**
+# Flipped in the packaged binary (KERNEL-208). With these off, no local process can run its own code under Kernel's
+# signature and Automation grant through ELECTRON_RUN_AS_NODE, NODE_OPTIONS or --inspect, and the app only loads
+# from an app.asar whose hash matches the one signed into Info.plist.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableEmbeddedAsarIntegrityValidation: true
+  # Flipping a fuse edits the binary and voids its ad hoc signature, and macOS kills an arm64 binary with a void
+  # signature. This signs it ad hoc again so unsigned pnpm dist:mac builds still run. A release signs it for real after.
+  resetAdHocDarwinSignature: true
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.icns
@@ -30,7 +42,7 @@ mac:
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
-  entitlementsInherit: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
   # Notarizes when APPLE_KEYCHAIN_PROFILE is set (scripts/release.sh sets kernel-notary) and skips otherwise.
   notarize: true
 dmg:

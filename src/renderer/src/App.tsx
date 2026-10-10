@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { Suspense, createElement, lazy, useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
@@ -8,8 +8,16 @@ import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead } from './lead'
 import { AgentProfile } from './screens/agent/AgentProfile'
-import { Board } from './screens/board/Board'
-import { Floor } from './screens/floor/Floor'
+// Floor, Board and Settings load lazily (below), but their stylesheets stay eager, in the slots those screens' imports used to fill.
+// Other screens lean on rules in floor.css and settings.css (.agent-dot, the compact .nav-item), and `.log-all` has to come before
+// tokens.css's `.btn` to lose the tie, as FloorEmpty.png draws it. A new stylesheet under screens/floor, board or settings has to be
+// imported here too, or it becomes a lazy chunk that lands after tokens.css.
+import './screens/board/board.css'
+import './screens/workspace/composer/composer.css'
+import './screens/workspace/cards/cards.css'
+import './screens/floor/moments/moments.css'
+import './screens/floor/logs.css'
+import './screens/floor/floor.css'
 import { History } from './screens/history/History'
 import { Home } from './screens/home/Home'
 import { Inbox } from './screens/inbox/Inbox'
@@ -26,7 +34,7 @@ import { Rooms } from './screens/rooms/Rooms'
 import { RoomSetup } from './screens/rooms/RoomSetup'
 import { CommandPalette } from './screens/search/CommandPalette'
 import { roomInView } from './screens/search/model'
-import { Settings, SettingsNav } from './screens/settings/Settings'
+import './screens/settings/settings.css'
 import { useAppearance } from './screens/settings/appearance'
 import { ConfirmRetire } from './screens/team/ConfirmRetire'
 import { NewAgent } from './screens/team/NewAgent'
@@ -39,6 +47,29 @@ import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { Workspace } from './screens/workspace/Workspace'
 import { DevUi } from './ui/DevUi'
+
+/**
+ * React.lazy, plus a warm path. Route changes here are synchronous (the store is a useSyncExternalStore), and a lazy component
+ * suspends on its first render even when its chunk is already in memory, which flashes the fallback. Once `warm()` has run, a
+ * screen that mounts afterwards renders straight away. One that mounted cold keeps its lazy wrapper, so it never remounts.
+ */
+function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>) {
+  let loaded: ComponentType<P> | undefined
+  const fetch = () => load().then((c) => (loaded = c))
+  const Lazy = lazy(() => fetch().then((component) => ({ default: component })))
+  const Screen = (props: P) => {
+    const [Ready] = useState(() => loaded)
+    return Ready ? createElement(Ready, props) : createElement(Lazy as ComponentType<P>, props)
+  }
+  return { Screen, warm: () => void fetch() }
+}
+// Settings, and the hidden Floor and Board (D-104), load on first visit so they stay out of the main chunk.
+const Board = lazy(() => import('./screens/board/Board').then((m) => ({ default: m.Board })))
+const Floor = lazy(() => import('./screens/floor/Floor').then((m) => ({ default: m.Floor })))
+const settings = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.Settings))
+const settingsNav = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.SettingsNav))
+const Settings = settings.Screen
+const SettingsNav = settingsNav.Screen
 
 /** Routes drawn full window, without the sidebar, like Welcome.png, Setup*.png and Settings*.png. */
 const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'settings' || r.name === 'devUi'
@@ -127,6 +158,12 @@ export function App() {
   const booted = useStore((s) => s.system.booted)
   const sidebar = useStore((s) => s.ui.sidebar)
   const hidden = booted && !fullWindow(route) && !sidebar
+  // Settings is one ⌘, away, so fetch it once the app is idle. Without that, the first ⌘, swaps the window for the loading shell until the chunk lands.
+  useEffect(() => {
+    if (!booted) return
+    const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
+    return () => cancelIdleCallback(id)
+  }, [booted])
   useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -175,17 +212,20 @@ export function App() {
     return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouseUp) }
   }, [])
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
+  // While a screen's chunk loads, show the boot shell again. `data-lazy` lets scripts/shots.ts wait for it to go.
   return (
-    <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
-      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} section={route.section} />}
-      {!fullWindow(route) && sidebar && <Sidebar />}
-      <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
-        <Screen route={route} />
-        {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
+    <Suspense fallback={<div className="app" data-lazy="pending"><Loading /></div>}>
+      <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
+        {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} section={route.section} />}
+        {!fullWindow(route) && sidebar && <Sidebar />}
+        <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
+          <Screen route={route} />
+          {route.name !== 'onboarding' && route.name !== 'devUi' && <Footer />}
+        </div>
+        {modal && <ModalView modal={modal} />}
+        <Toasts />
+        <Tooltips />
       </div>
-      {modal && <ModalView modal={modal} />}
-      <Toasts />
-      <Tooltips />
-    </div>
+    </Suspense>
   )
 }
