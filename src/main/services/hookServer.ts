@@ -20,8 +20,8 @@ export interface HookServerOptions {
 
 /**
  * Receives Claude Code hooks on localhost, posted by the curl command the installer writes (D-050). Most events are fire and forget.
- * PermissionRequest is held open until the user decides in Kernel, or the timeout passes and the
- * empty response lets Claude Code show its normal prompt in the terminal.
+ * PermissionRequest from a session in a room is held open until the user decides in Kernel, the timeout passes,
+ * or Claude Code stops waiting. The empty response lets Claude Code show its normal prompt in the terminal.
  */
 export function startHookServer(o: HookServerOptions): Promise<Server> {
   const sessions = new Set<string>()
@@ -47,8 +47,13 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
 
     const ev = parsed.event as HookPayload
     if (ev.hook_event_name === 'PermissionRequest') {
+      // A session outside every room asks in its own window, as if Kernel weren't installed (D-138).
+      if (!ctx.roomId) return json(res, 200, permissionResponse(null))
+      // Claude Code stops waiting when the user answers in the terminal or the session ends, so the approval ends too.
+      const closed = new AbortController()
+      res.on('close', () => { if (!res.writableFinished) closed.abort() })
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs })
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))
