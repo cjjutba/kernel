@@ -108,9 +108,16 @@ function runScriptsOf(table: unknown): Map<string, string> {
 }
 
 /** A `[[preview.urls]]` list with the entries that have a name and an address. A blank name is kept, a blank address isn't (KERNEL-246). */
-function previewUrlsOf(v: unknown): RoomSettings['preview']['urls'] {
+export function previewUrlsOf(v: unknown): RoomSettings['preview']['urls'] {
   if (!Array.isArray(v)) return []
   return v.filter((e) => typeof e?.name === 'string' && typeof e?.url === 'string' && e.url.trim()).map((e) => ({ name: e.name, url: e.url }))
+}
+
+/** A patch value as the file stores it. A preview list with no entry left is unset, like `null` (KERNEL-246). */
+function stored(g: Group, v: unknown): unknown {
+  if (g !== 'preview' || !Array.isArray(v)) return v
+  const urls = previewUrlsOf(v)
+  return urls.length ? urls : null
 }
 
 /** One settings file's values by app-side name, with the same whitelist for both files. */
@@ -166,7 +173,8 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
- * `preview.urls` replaces the whole `[[preview.urls]]` list, and an empty list is a list (KERNEL-246).
+ * `preview.urls` replaces the whole `[[preview.urls]]` list. A list with no entry that has an address removes the key, like
+ * `null`, so the shared file's URLs show again (KERNEL-246).
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
@@ -178,7 +186,7 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
-  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), g === 'preview' && Array.isArray(v) ? previewUrlsOf(v) : v)
+  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), stored(g, v))
   for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
     if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
     // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).

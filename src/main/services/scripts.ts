@@ -74,12 +74,13 @@ export function loginShell(): string {
   return existsSync('/bin/zsh') ? '/bin/zsh' : '/bin/sh'
 }
 
-/** The most a line can hold before it is shown anyway. A spinner writes `\r` and never a newline (KERNEL-246). */
+/** The most characters a line can hold before it is cut and shown. A spinner writes `\r` and never a newline (KERNEL-246). */
 export const MAX_LINE = 64 * 1024
 
 /**
  * Calls `onLine` with each whole line `stream` writes, however the chunks split it, and a character split across two
- * chunks stays whole. Returns the flush for when the process closes, which hands over a last line with no newline.
+ * chunks stays whole. A line longer than `MAX_LINE` characters goes out in pieces of `MAX_LINE`, never splitting an emoji.
+ * Returns the flush for when the process closes, which hands over a last line with no newline.
  */
 export function pipeLines(stream: Readable | null, onLine: (line: string) => void): () => void {
   let buf = ''
@@ -89,7 +90,12 @@ export function pipeLines(stream: Readable | null, onLine: (line: string) => voi
     const lines = buf.split(/\r?\n/)
     buf = lines.pop()!
     for (const line of lines) onLine(line)
-    if (buf.length >= MAX_LINE) { onLine(buf); buf = '' }
+    while (buf.length >= MAX_LINE) {
+      // A high surrogate at the cut would leave half an emoji on each side.
+      const cut = /[\uD800-\uDBFF]/.test(buf[MAX_LINE - 1]) ? MAX_LINE - 1 : MAX_LINE
+      onLine(buf.slice(0, cut))
+      buf = buf.slice(cut)
+    }
   })
   return () => { if (buf) onLine(buf); buf = '' }
 }

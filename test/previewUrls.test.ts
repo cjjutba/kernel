@@ -113,15 +113,28 @@ describe('whole lines of run output (KERNEL-246)', () => {
     expect(got).toEqual(['Local: http://localhost:5173/', 'next ➜ done'])
   })
 
-  it('hands over a line that reaches 64 KB without a newline, the way a spinner writes', async () => {
+  it('cuts a line with no newline at exactly MAX_LINE characters, the way a spinner writes, and keeps the rest', async () => {
     const s = new PassThrough()
     const got: string[] = []
-    pipeLines(s, (l) => got.push(l))
+    const flush = pipeLines(s, (l) => got.push(l))
     const frame = '\r⠋ building'
-    for (let i = 0; i < Math.ceil(MAX_LINE / frame.length); i++) s.write(frame)
+    const text = frame.repeat(Math.ceil((MAX_LINE * 2 + 5) / frame.length))
+    s.write(text)
     await tick()
-    expect(got).toHaveLength(1)
-    expect(got[0].length).toBeGreaterThanOrEqual(MAX_LINE)
+    expect(got.map((l) => l.length)).toEqual([MAX_LINE, MAX_LINE])
+    flush()
+    expect(got.join('')).toBe(text)
+  })
+
+  it('cuts one short rather than split an emoji at MAX_LINE', async () => {
+    const s = new PassThrough()
+    const got: string[] = []
+    const flush = pipeLines(s, (l) => got.push(l))
+    const text = 'a'.repeat(MAX_LINE - 1) + '🚀' + 'b'
+    s.write(text)
+    await tick()
+    flush()
+    expect(got).toEqual(['a'.repeat(MAX_LINE - 1), '🚀b'])
   })
 
   it('shows a URL a script prints in two writes as one line, and finds it', async () => {
@@ -211,12 +224,27 @@ describe('[preview] urls in a room\'s settings (KERNEL-246)', () => {
     } finally { await k.stop() }
   })
 
-  it('writes only entries with a name and an address, and keeps an empty list', async () => {
+  it('writes only entries with a name and an address', async () => {
     const repo = await tempRepo()
     const junk = [{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }, { name: 'Blank', url: '  ' }, { url: 'http://x' }, 'nope'] as unknown as { name: string; url: string }[]
     expect((await saveRepoSettings(repo, { preview: { urls: junk } }, true)).preview.urls).toEqual([{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }])
-    const rs = await saveRepoSettings(repo, { preview: { urls: [] } })
+  })
+
+  it('an empty list, or one whose rows are all blank, removes the key like null, so the shared URLs show again', async () => {
+    const shared = [{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }]
+    const repo = await tempRepo({ '.kernel/settings.toml': '[[preview.urls]]\nname = "Web"\nurl = "http://localhost:$KERNEL_PORT"\n' })
+    const mine = [{ name: 'App', url: 'http://localhost:$KERNEL_PORT/app' }]
+    for (const urls of [[], [{ name: '', url: '' }, { name: 'Draft', url: '   ' }]]) {
+      expect((await saveRepoSettings(repo, { preview: { urls: mine } })).sources['preview.urls']).toBe('override')
+      const rs = await saveRepoSettings(repo, { preview: { urls } })
+      expect(rs.preview.urls).toEqual(shared)
+      expect(rs.sources['preview.urls']).toBe('shared')
+      // Nothing else was in the personal file, so it is gone rather than left empty.
+      await expect(readFile(join(repo, '.kernel/settings.local.toml'), 'utf8')).rejects.toThrow()
+    }
+    // In the shared file it removes the key too, and the room has no URLs.
+    const rs = await saveRepoSettings(repo, { preview: { urls: [] } }, true)
     expect(rs.preview.urls).toEqual([])
-    expect(rs.sources['preview.urls']).toBe('override')
+    expect(rs.sources['preview.urls']).toBeUndefined()
   })
 })

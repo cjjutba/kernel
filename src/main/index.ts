@@ -54,7 +54,9 @@ function createWindow() {
     }
   })
   if (!headless) win.once('ready-to-show', () => win?.show())
-  win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
+  // A link with target="_blank" never opens a window. A web page goes to the browser, and anything else, like a file: link
+  // in an agent's message, goes nowhere (KERNEL-246).
+  win.webContents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) void shell.openExternal(url); return { action: 'deny' } })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(here, '../renderer/index.html'))
 }

@@ -118,6 +118,11 @@ describe('IPC contract', () => {
     expect(rs.preview.urls).toEqual(urls)
     expect(rs.sources['preview.urls']).toBe('local')
     expect((await h['settings.setRoom']({ roomId, patch: { preview: { urls: null } } })).preview.urls).toEqual([])
+    // An empty list, or all blank rows, removes the key as in the engine.
+    await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    const blank = await h['settings.setRoom']({ roomId, patch: { preview: { urls: [{ name: '', url: ' ' }] } } })
+    expect(blank.preview.urls).toEqual([])
+    expect(blank.sources['preview.urls']).toBeUndefined()
   })
 
   it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
