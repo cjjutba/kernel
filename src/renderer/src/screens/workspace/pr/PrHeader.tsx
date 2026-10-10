@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, useStore } from '../../../store'
@@ -26,7 +26,8 @@ const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden=
 /**
  * The pull request actions, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed, WorkspaceChangesRequested,
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
- * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071).
+ * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071), on a band in the
+ * state's tone (KERNEL-274). design/redesign/Pr*.png draws every state.
  */
 export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   // The key is the spinner's label, such as "Merging".
@@ -78,33 +79,40 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   }, [canCreate, id])
 
   const link = view.link && ws.prNumber && ws.prUrl
-    ? <a className="pr-link" data-merged={view.merged || undefined} href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}>#{ws.prNumber}<Icon name="ext" size={11} stroke={1.8} /></a>
+    ? <a className="pr-link" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}><span className="pr-num">#{ws.prNumber}</span><span className="pr-ext"><Icon name="ext" size={11} stroke={1.8} /></span></a>
     : null
+  // The state always shows, busy or not: only the busy button spins (KERNEL-274).
+  const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
   const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
   const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
+  // `display: contents` keeps the parent's flex layout and hands the band's tone to everything inside.
+  const tone = (children: ReactNode) => <span className="pr-tone" data-tone={view.state.tone}>{children}</span>
 
-  if (busy) return <>{link}{gap}{spinner(busy)}</>
+  if (busy) return tone(<>{link}{state}{gap}{spinner(busy)}</>)
 
-  if (view.merged) return (
+  if (view.merged) return tone(
     <>
       {link}
-      <span className="pr-status merged-label">Merged</span>
+      {state}
       {gap}
-      <Button className="continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} />Continue</Button>
-      <Button variant="merged" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
+      <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} /><span className="pr-btn-label">Continue</span></Button>
+      <Button className="pr-solid" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
     </>
   )
 
+  // Create PR stays ink on the neutral band; Merge PR takes the green solid; everything else is a soft button in the band's tone.
   const b = view.button
+  const solid = b?.kind === 'primary' && view.state.tone === 'ready'
+  const ink = b?.kind === 'primary' && view.state.tone === 'idle'
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant={b.kind === 'primary' ? 'primary' : 'secondary'} className={[view.caret && 'split-main', b.kind === 'strong' && 'pr-strong'].filter(Boolean).join(' ') || undefined} onClick={() => b.action && start(b.action)}>{b.label}</Button>
+      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} onClick={() => b.action && start(b.action)}>{b.label}</Button>
 
-  return (
+  return tone(
     <>
       {link}
-      {view.status && <span className="pr-status" data-tone={view.status.tone}>{view.status.text}</span>}
+      {state}
       {gap}
       {view.caret ? (
         <span className="pr-split">
@@ -123,7 +131,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
           </span>
         </span>
       ) : main}
-      {view.archive && <Button onClick={archive}>Archive</Button>}
+      {view.archive && <Button className="pr-soft" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
     </>
   )
 }

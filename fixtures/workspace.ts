@@ -398,6 +398,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     prNote('m-note', 'PR #42 was squashed into main.')
   ], { prs: prInfo('merged') }),
   WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.')], { prs: prInfo('closed') }),
+  // The PR header in the states the canvas above doesn't draw (KERNEL-274, design/redesign/Pr*.png).
+  WorkspacePRNoChanges: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
+    changes: { [ids.table]: [] },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspacePRNone: prScene('none', []),
+  WorkspacePRCreating: prScene('creating', []),
+  WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
+  WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
+  WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
+  WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),
+  WorkspacePRReady: prScene('ready', [], { prs: prInfo('ready') }),
+  WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),
     ui: { toasts: [
