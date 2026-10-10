@@ -12,12 +12,12 @@ const question = approval('question')
 
 describe('glyphs for pending approvals', () => {
   it('shows the clipboard when only plans wait, whether they arrive as a plan or as ExitPlanMode', () => {
-    expect(chatGlyph({ waiting: [plan], running: false })).toEqual({ icon: 'plan', tone: 'ink', label: 'Plan to review' })
+    expect(chatGlyph({ waiting: [plan], running: false })).toEqual({ icon: 'plan', tone: 'needs', label: 'Plan to review' })
     expect(chatGlyph({ waiting: [plan, hookPlan], running: true })).toMatchObject({ icon: 'plan', label: 'Plan to review' })
   })
 
   it('shows the question mark when a tool or question waits, even next to a plan', () => {
-    expect(chatGlyph({ waiting: [plan, bash], running: false })).toEqual({ icon: 'question', tone: 'ink', label: 'Needs you' })
+    expect(chatGlyph({ waiting: [plan, bash], running: false })).toEqual({ icon: 'question', tone: 'needs', label: 'Needs you' })
     expect(chatGlyph({ waiting: [question, plan], running: false })).toMatchObject({ icon: 'question', label: 'Needs you' })
   })
 

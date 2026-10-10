@@ -110,10 +110,25 @@ describe('PR header and toasts', () => {
     expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })
     expect(headerView('merged')).toMatchObject({ merged: true, link: true })
     expect(headerView('merged').button).toBeUndefined()
-    expect(headerView('draft')).toMatchObject({ status: { text: 'Draft' }, button: { label: 'Ready for review', action: 'ready' } })
-    expect(headerView('cifail')).toMatchObject({ status: { text: 'Checks failed', tone: 'del' }, button: { label: 'Fix checks' } })
-    expect(headerView('changes')).toMatchObject({ status: { text: 'Changes requested' }, button: { label: 'Address review' } })
-    expect(headerView('closed')).toMatchObject({ status: { text: 'Closed' }, button: { label: 'Reopen' }, archive: true })
+    expect(headerView('draft')).toMatchObject({ state: { label: 'Draft', tone: 'idle' }, button: { label: 'Ready for review', action: 'ready' } })
+    expect(headerView('cifail')).toMatchObject({ state: { label: 'Checks failed', tone: 'fail' }, button: { label: 'Fix checks' } })
+    expect(headerView('changes')).toMatchObject({ state: { label: 'Changes requested', tone: 'fail' }, button: { label: 'Address review' } })
+    expect(headerView('closed')).toMatchObject({ state: { label: 'Closed', tone: 'idle', glyph: 'prClosed' }, button: { label: 'Reopen' }, archive: true })
+  })
+
+  it('names every state and gives its band a tone, without a spinner in the label (KERNEL-274)', () => {
+    const label = (s: Parameters<typeof headerView>[0], changed?: boolean) => { const { state } = headerView(s, changed); return `${state.label}/${state.tone}/${state.glyph}` }
+    expect(label('none', false)).toBe('No changes yet/idle/branch')
+    expect(label('none')).toBe('No PR yet/idle/branch')
+    expect(label('creating')).toBe('No PR yet/idle/branch')
+    expect(label('open')).toBe('Open/ready/pr')
+    expect(label('checks')).toBe('Open/idle/pr')
+    expect(label('conflict')).toBe('Merge conflicts/fail/pr')
+    expect(label('resolving')).toBe('Merge conflicts/fail/pr')
+    expect(label('ready')).toBe('Ready to merge/ready/pr')
+    expect(label('merging')).toBe('Ready to merge/ready/pr')
+    expect(label('merged')).toBe('Merged/merged/merged')
+    expect(label('draft')).toBe('Draft/idle/prDraft')
   })
 
   it('toasts a created PR, a merge, and a create that ended without a PR', () => {

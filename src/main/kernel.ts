@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -32,9 +32,10 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
@@ -46,6 +47,7 @@ import { Overlaps } from './services/overlap'
 import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
+import { isMerged, joinLabels, waitLabel, waitMet } from './services/waits'
 
 const COPY = 'fork:'
 
@@ -152,6 +154,13 @@ export class Kernel {
   /** Runs `checkLimits` while any window is rejected. */
   private limitCheck?: NodeJS.Timeout
   private limitChecking?: Promise<void>
+  /** Waits being released, so a merge seen twice (push and poll) sends the brief once (KERNEL-259). */
+  private waitReleases = new Map<string, Promise<void>>()
+  /**
+   * Started teammates whose rebase message Kernel sent or queued in this run. A queue doesn't survive a quit, so the
+   * workspace keeps `waitsFor.releasing` until a turn Kernel started there ends, and a restart sends the message again.
+   */
+  private releaseSent = new Set<string>()
 
   constructor(private o: {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
@@ -210,6 +219,7 @@ export class Kernel {
         void this.changes(ws.id).catch(() => undefined)
         if (teammate) void this.refreshPr(ws.id).catch(() => undefined).then(() => this.leadUpdates.readPr(ws.id)).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
+        this.releaseTaken(ws.id, chat.id, turn.by)
       },
       onFailure: (failure) => {
         if (failure === 'auth') this.signedOut()
@@ -267,6 +277,9 @@ export class Kernel {
       // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
       if (e.type === 'pr' && (e.state === 'merged' || e.state === 'closed')) void this.archiveReviews(e.workspaceId).catch(() => undefined)
       else if (e.type === 'pr') this.unmarkReviews(...this.reviewsOf(e.workspaceId))
+      // A merge releases the workspaces that wait for it, and a close breaks their wait (KERNEL-259). Here, not in
+      // LeadUpdates, which drops events while Lead updates are off.
+      if (e.type === 'pr') void this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
     }
     bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
     // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
@@ -303,6 +316,7 @@ export class Kernel {
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
+    void this.sweepWaits().catch(() => undefined)
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
   }
@@ -479,8 +493,15 @@ export class Kernel {
    * Send now in a room a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
    * the room stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
    */
-  private sendNow(chatId: string, id: string) {
-    const room = this.store.room(this.mustWs(this.mustChat(chatId).workspaceId).roomId)
+  private async sendNow(chatId: string, id: string) {
+    const ws = this.mustWs(this.mustChat(chatId).workspaceId)
+    // A brief held for a merge goes now, without waiting (KERNEL-259). One held because setup failed still waits for Run again.
+    if (ws.status === 'ready' && ws.waitsFor?.held) {
+      await this.sessions.sendNow(chatId, id)
+      await this.releaseWait(ws.id, { now: true })
+      return this.sessions.queued(chatId)
+    }
+    const room = this.store.room(ws.roomId)
     return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
   }
 
@@ -627,10 +648,9 @@ export class Kernel {
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
     })
     await step('copy', async () => {
-      const wanted = (await loadRepoSettings(room.path)).files.copy
-      const present: string[] = []
-      for (const f of wanted) if (await stat(join(room.path, f)).then(() => true, () => false)) present.push(f)
-      return { detail: present.length ? present.join(', ') : 'No local files to copy' }
+      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
+      if (!present.length) return { detail: 'No local files to copy' }
+      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
     })
     await step('hooks', async () => {
       const status = await this.hooksStatus()
@@ -862,7 +882,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; waitFor?: string[] }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -874,6 +894,7 @@ export class Kernel {
     const reviewed = o.reviewOf && this.store.workspace(o.reviewOf) ? await this.syncBranch(o.reviewOf) : undefined
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     const remote = await this.remoteFor(room.path, repo)
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
@@ -900,7 +921,7 @@ export class Kernel {
     }
 
     // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), prState: 'none', createdAt: Date.now() }
+    const ws: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
     this.store.saveWorkspace(ws)
     // Until its brief has gone out, the Lead's messages to it wait here (KERNEL-118).
     this.setSetup(ws.id, { later: [] })
@@ -938,7 +959,29 @@ export class Kernel {
       if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { told: !!o.leadChatId && this.sessions.isRunning(o.leadChatId), code })
       return failed
     }
+    // Read again: wait_for_merge may have set or cleared the wait while setup ran (KERNEL-259).
+    const wait = this.mustWs(ws.id).waitsFor
+    if (wait?.held && wait.on.length) {
+      // The brief and the Lead's messages wait in the chat, and only then does the workspace count as ready, so a quit
+      // between them finds a ready waiter that Sessions.restore holds again. No checkpoint, run script or turn yet.
+      const base = await this.head(ws.path)
+      this.sessions.hold(chat.id, parts, { from })
+      await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
+      const now = this.mustWs(ws.id)
+      if (now.status === 'archived') return now
+      const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...(now.waitsFor ?? wait), held: true, ...(base ? { base } : {}) } })
+      const label = this.waitLabelOf(held)
+      this.note(ws.id, `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.`)
+      // The Lead reads it in create_workspace's result while its turn still waits for it (KERNEL-126's pattern).
+      this.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
+      // Something it waits for may have merged while setup ran.
+      void this.settleWait(ws.id).catch(() => undefined)
+      return held
+    }
     return this.setupDone(ws, room, chat, o.prompt, async () => {
+      // A wait set while the brief was on its way is now a started teammate's (KERNEL-259).
+      const late = this.mustWs(ws.id).waitsFor
+      if (late?.held) this.updateWs(ws.id, { waitsFor: { ...late, held: false } })
       await this.sessions.send(chat.id, parts, { from })
       await after((m) => this.sessions.send(chat.id, m, { from: 'lead' }))
     })
@@ -984,10 +1027,47 @@ export class Kernel {
         return now
       }
     } else this.setupFailures.delete(ws.id)
-    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status !== 'archived') this.leadUpdates.setup(now, true); return now }
-    if (!chat) return passed(this.updateWs(ws.id, { status: 'ready' }))
+    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.leadUpdates.setup(now, true); return now }
+    // A brief that waits for a PR stays held: the workspace is ready and keeps waiting (KERNEL-259).
+    const wait = this.mustWs(ws.id).waitsFor
+    if (wait?.held && chat) {
+      if (waitMet(wait, this.store.workspaces(ws.roomId))) {
+        this.updateWs(ws.id, { status: 'ready' })
+        await this.releaseWait(ws.id)
+        return passed(this.mustWs(ws.id))
+      }
+      const base = await this.head(ws.path)
+      const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
+      if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.waitLabelOf(held), held: true } })
+      return held
+    }
+    return passed(await this.startBrief(ws, room, chat))
+  }
+
+  /**
+   * Sends a held brief (KERNEL-259): reruns setup first when asked, then `setupDone` takes the start checkpoint at HEAD,
+   * marks the workspace ready, and releases the chat's queue in the same tick as it clears the wait, so nothing saved
+   * shows a waiting workspace whose brief went out. Run again's tail and a released wait share it. A setup that fails
+   * here leaves the workspace failed, with no wait, so Run again works as it always has.
+   */
+  private async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor } = {}): Promise<Workspace> {
+    const script = o.setup && this.settings.scripts.setupOnCreate ? (await loadRepoSettings(room.path)).scripts.setup : undefined
+    if (script) {
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
+      if (!this.setupPassed(ws, code)) {
+        const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
+        if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
+        return failed
+      }
+    }
+    // The wait this release ends goes. One set while the brief was on its way stays, for a teammate that has now started.
+    const settle = () => {
+      const w = this.mustWs(ws.id).waitsFor
+      if (w) this.updateWs(ws.id, { waitsFor: o.released && w.on.join() === o.released.on.join() ? undefined : { on: w.on, held: false } })
+    }
+    if (!chat) { settle(); return this.updateWs(ws.id, { status: 'ready' }) }
     const first = this.sessions.queued(chat.id)[0]?.parts.find((p) => p.type === 'text')
-    return passed(await this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => this.sessions.release(chat.id)))
+    return this.setupDone(ws, room, chat, first?.type === 'text' ? first.text : ws.title ?? ws.name, async () => { settle(); this.sessions.release(chat.id) })
   }
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
@@ -1034,7 +1114,11 @@ export class Kernel {
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     if (ws.mode === 'worktree' && !o.keepWorktree) await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
-    this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
+    // Archiving a waiter ends its wait (KERNEL-259).
+    const archived = this.updateWs(id, { status: 'archived', archivedAt: Date.now(), waitsFor: undefined }, { archived: true })
+    this.releaseSent.delete(id)
+    // Work archived without merging never will, so whoever waits for it is stuck. A closed PR already said so.
+    if (archived.prState !== 'merged' && archived.prState !== 'closed') for (const w of this.waitersOn(id)) this.breakWait(w, archived, 'archived')
     // Only once it is archived: an archive that fails keeps the brief for Run again.
     this.sessions.dropHeld(id)
     // Nothing in an archived workspace can still be answered or merged from the inbox (D-137).
@@ -1458,6 +1542,7 @@ export class Kernel {
         return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
       },
       archiveWorkspace: (id) => this.archiveWorkspace(id),
+      setWait: (id, on) => this.setWait(id, on),
       refreshPr: (id) => this.refreshPr(id, { settle: true }),
       isRunning: (id) => this.working(id),
       // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
@@ -1504,7 +1589,9 @@ export class Kernel {
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
+    const waiting = this.store.workspace(ws.id)
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
+      : why === 'setup' && waiting?.status === 'ready' && waiting.waitsFor?.held ? `${name} waits for ${this.waitLabelOf(waiting)} to merge, so this goes out after the brief. To start ${name} now, call wait_for_merge with an empty list.`
       : why === 'setup' ? (this.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
       : why === 'paused' ? 'The room is paused, so the message goes out when the user resumes it.'
       : why === 'offline' ? 'Kernel is offline or signed out, so the message goes out once it is back.'
@@ -1554,10 +1641,11 @@ export class Kernel {
 
   /**
    * A workspace's agent is working, or has a message waiting to start a turn. One whose setup failed isn't: its held
-   * brief waits for the user to click Run again, not for a turn.
+   * brief waits for the user to click Run again, not for a turn. Nor is one whose brief waits for a merge (KERNEL-259).
    */
   private working(id: string) {
-    if (this.store.workspace(id)?.status === 'failed') return false
+    const ws = this.store.workspace(id)
+    if (ws?.status === 'failed' || ws?.waitsFor?.held) return false
     return this.chatTabs(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
   }
 
@@ -1607,6 +1695,192 @@ export class Kernel {
       if (!r?.reviewOf || r.status === 'archived') { this.unmarkReviews(id); continue }
       await this.archiveReviews(r.reviewOf, id).catch(() => undefined)
     }
+  }
+
+  // ---------- waits (KERNEL-259)
+
+  /** The open workspaces that wait for `id`. */
+  private waitersOn(id: string) { return this.store.workspaces().filter((w) => w.status !== 'archived' && w.waitsFor?.on.includes(id)) }
+
+  private nameOf(ws: Workspace) { return this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.name ?? ws.agentId }
+
+  /** "PR #164 by Noor and PR #170 by Ivy": what the workspace waits for. */
+  private waitLabelOf(ws: Workspace) {
+    const targets = (ws.waitsFor?.on ?? []).map((id) => this.store.workspace(id)).filter((t): t is Workspace => !!t)
+    return joinLabels(targets.map((t) => waitLabel(t, this.nameOf(t)))) || 'another PR'
+  }
+
+  private async head(path: string) {
+    const r = await exec('git', ['-C', path, 'rev-parse', 'HEAD'])
+    return r.code === 0 ? r.stdout.trim() : undefined
+  }
+
+  /** A PR merged or closed. Its own wait ends, its waiters whose targets all merged go on, and a close breaks their wait. */
+  private async onTargetPr(id: string, state: PrState) {
+    if (state !== 'merged' && state !== 'closed') return
+    const ws = this.store.workspace(id)
+    if (!ws) return
+    if (ws.waitsFor?.held && ws.status === 'ready') await this.releaseWait(id, { now: true })
+    else this.clearWait(id)
+    for (const w of this.waitersOn(id)) {
+      if (state === 'merged') await this.settleWait(w.id).catch(() => undefined)
+      else this.breakWait(w, ws, 'closed')
+    }
+  }
+
+  /** Tells the Lead a wait can't end on its own: `target` closed or was archived without merging. The waiter stays as it is. */
+  private breakWait(w: Workspace, target: Workspace, gone: 'closed' | 'archived') {
+    if (!w.waitsFor || w.waitsFor.releasing) return
+    this.leadUpdates.waits(w, 'wait.broken', { on: w.waitsFor.on, label: waitLabel(target, this.nameOf(target)), held: w.waitsFor.held, target: target.id, gone })
+  }
+
+  /** Releases the wait when everything it is on has merged. */
+  private async settleWait(id: string) {
+    const ws = this.store.workspace(id)
+    if (ws?.waitsFor && ws.status !== 'archived' && waitMet(ws.waitsFor, this.store.workspaces(ws.roomId))) await this.releaseWait(id)
+  }
+
+  /**
+   * At start, once each room's team is read: a merge saved just before a quit never emits again, so its waiters go now,
+   * and rebase messages a quit lost go again. A merge made while Kernel was closed reaches them through the first poll.
+   */
+  private async sweepWaits() {
+    for (const r of this.store.rooms()) { if (this.stopped) return; await this.agents(r.id).catch(() => undefined) }
+    if (!this.stopped) await this.retryWaits()
+  }
+
+  private async retryWaits() {
+    for (const ws of this.store.workspaces()) {
+      if (this.stopped) return
+      if (!ws.waitsFor || ws.status === 'archived') continue
+      if (ws.waitsFor.releasing) await this.deliverRelease(ws.id).catch(() => undefined)
+      else await this.settleWait(ws.id).catch(() => undefined)
+    }
+  }
+
+  /** One release per workspace at a time, as with archives. `now` starts a held brief without waiting for the merge. */
+  private releaseWait(id: string, o: { now?: boolean } = {}): Promise<void> {
+    const running = this.waitReleases.get(id)
+    if (running) return running
+    const next = this.releaseNow(id, o).finally(() => this.waitReleases.delete(id))
+    this.waitReleases.set(id, next)
+    return next
+  }
+
+  private async releaseNow(id: string, o: { now?: boolean }) {
+    const ws = this.mustWs(id)
+    let wait = ws.waitsFor
+    // Setup running or failed: the brief goes when setup passes, which looks at the wait again.
+    if (!wait || ws.status !== 'ready' || wait.releasing) return
+    // Started early: what merged already is still a merge to start from. Only the rest is skipped.
+    let now = !!o.now
+    if (now) {
+      const all = this.store.workspaces(ws.roomId)
+      const merged = wait.on.filter((t) => isMerged(all.find((w) => w.id === t)))
+      if (merged.length) {
+        const rest = wait.on.filter((t) => !merged.includes(t))
+        if (rest.length) this.note(id, `Started without waiting for ${this.waitLabelOf({ ...ws, waitsFor: { ...wait, on: rest } })}.`)
+        wait = this.updateWs(id, { waitsFor: { ...wait, on: merged } }).waitsFor!
+        now = false
+      }
+    }
+    const label = this.waitLabelOf(this.mustWs(id))
+    if (!wait.held) {
+      if (now) { this.clearWait(id); return }
+      this.updateWs(id, { waitsFor: { ...wait, releasing: true } })
+      this.leadUpdates.waits(ws, 'wait.released', { on: wait.on, label, held: false })
+      await this.deliverRelease(id)
+      return
+    }
+    const room = this.mustRoom(ws.roomId)
+    const chat = this.store.chats(id).find((c) => c.kind !== 'terminal' && this.sessions.queued(c.id).length > 0) ?? this.prChat(id)
+    const before = await this.head(ws.path)
+    // Onto the remote's copy of the base, even when the workspace started from the local branch, which a merge on
+    // GitHub doesn't move. Only a fast-forward on a clean tree: anything else is the agent's to rebase.
+    const remote = await this.remoteFor(room.path)
+    const base = stripRemote(ws.baseRef, remote)
+    let forwarded = true
+    if (!now && ws.mode === 'worktree') {
+      // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
+      const fetched = await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30_000 }).then((r) => r.code === 0, () => false)
+      forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
+    }
+    const after = await this.head(ws.path)
+    // Archived, started or changed while git ran.
+    const current = this.mustWs(id)
+    if (current.status !== 'ready' || !current.waitsFor?.held) return
+    if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
+    if (now) this.note(id, `Started without waiting for ${label}.`)
+    else {
+      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
+      this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`)
+      this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
+    }
+    // Setup runs again only when the files under it changed.
+    await this.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor })
+  }
+
+  /** The Lead or the user ends a wait before its merge: a held brief goes now, with whatever merged already under it. */
+  private async dropWait(id: string) {
+    const ws = this.mustWs(id)
+    if (ws.waitsFor && ws.status === 'ready' && !ws.waitsFor.releasing) return this.releaseWait(id, { now: true })
+    this.clearWait(id)
+  }
+
+  private clearWait(id: string) {
+    this.releaseSent.delete(id)
+    if (this.mustWs(id).waitsFor) this.updateWs(id, { waitsFor: undefined })
+  }
+
+  /**
+   * Kernel's message to a teammate that started before what it waited for merged. An idle chat takes it now; a busy,
+   * paused or offline one queues it, so the running turn's end isn't news for the Lead. A crashed chat, or one with every
+   * agent slot taken, waits for the next poll.
+   */
+  private async deliverRelease(id: string) {
+    const remote = await this.remoteOfWs(this.mustWs(id))
+    // Read after the await, and marked before the send, so the poll and a merge can't both send it.
+    const ws = this.store.workspace(id)
+    if (!ws?.waitsFor?.releasing || ws.status === 'archived' || this.releaseSent.has(id)) return
+    const chat = this.prChat(id)
+    if (!chat) return
+    const base = stripRemote(ws.baseRef, remote)
+    const parts: ChatPart[] = [{ type: 'text', text: `${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.` }]
+    const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
+    this.releaseSent.add(id)
+    if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
+    else if (!this.sessions.post(chat.id, parts)) this.releaseSent.delete(id)
+  }
+
+  /** A turn Kernel started ended, with nothing of Kernel's left in the queue: the teammate took the rebase message. */
+  private releaseTaken(id: string, chatId: string, by: string) {
+    const ws = this.store.workspace(id)
+    if (by !== 'kernel' || !ws?.waitsFor?.releasing || !this.releaseSent.has(id) || this.prChat(id)?.id !== chatId) return
+    if (this.sessions.queued(chatId).some((q) => q.from === 'kernel')) return
+    this.releaseSent.delete(id)
+    this.updateWs(id, { waitsFor: undefined })
+  }
+
+  /**
+   * The Lead's wait_for_merge: `on` replaces what the workspace waits for, with targets that merged already left out.
+   * A teammate that started waits with its brief out (`held: false`). An empty list ends the wait, and a held brief goes now.
+   */
+  async setWait(id: string, on: string[]): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
+    const all = this.store.workspaces(ws.roomId)
+    const left = [...new Set(on)].filter((t) => !isMerged(all.find((w) => w.id === t)))
+    if (!left.length) { await this.dropWait(id); return this.mustWs(id) }
+    if (ws.mode === 'current' || ws.reviewOf) throw new Error(`${ws.name} can't wait for a PR.`)
+    const was = ws.waitsFor
+    const held = ws.status === 'setup' || ws.status === 'failed' || !!was?.held
+    this.releaseSent.delete(id)
+    const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
+    const label = this.waitLabelOf(next)
+    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`)
+    // The Lead set it, and reads what happened in the tool's result.
+    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, told: true })
+    return next
   }
 
   // ---------- reviews (KERNEL-130)
@@ -1917,6 +2191,9 @@ export class Kernel {
     for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.refreshPr(ws.id).catch(() => undefined)
     // Updates held for a busy or paused Lead go out once it can take them.
     this.leadUpdates.flushAll()
+    // A rebase message that couldn't go out, or a release that failed, tries again (KERNEL-259). After the flush, since a
+    // release can fetch and rerun setup.
+    await this.retryWaits()
   }
 
   /** The room's Lead chat if the Lead has been briefed. Unlike `leadChat`, never creates one. */
@@ -2152,6 +2429,7 @@ export class Kernel {
       },
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
+      'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {
@@ -2203,6 +2481,10 @@ export class Kernel {
         const next = await saveRepoSettings(path, patch, shared)
         this.roomRemotes.set(path, next.workspace.remote)
         return next
+      },
+      'files.preview': async ({ roomId, patterns }) => {
+        const { path } = this.mustRoom(roomId)
+        return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
       },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined

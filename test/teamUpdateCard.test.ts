@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { ChatItem, TeamUpdate } from '../src/shared/types'
-import { cardData, legacyRows, sections, sentenceOf } from '../src/renderer/src/screens/workspace/cards/teamUpdate'
+import type { ChatItem, TeamEventKind, TeamUpdate } from '../src/shared/types'
+import { cardData, eventTone, legacyRows, sections, taskParts } from '../src/renderer/src/screens/workspace/cards/teamUpdate'
 
 // KERNEL-127: Kernel's team update draws as a card, from the data saved with it or from an older update's lines.
 
@@ -54,9 +54,14 @@ describe('reading an update from before KERNEL-117', () => {
     ])
   })
 
-  it('ends each event with a full stop once', () => {
-    expect(sentenceOf('Opened PR #108')).toBe('Opened PR #108.')
-    expect(sentenceOf('Passed checks, no conflicts. Theo approved it.')).toBe('Passed checks, no conflicts. Theo approved it.')
+  it('sets an issue key apart from the task, and colors only what failed, merged or passed (KERNEL-274)', () => {
+    expect(taskParts('KERNEL-182 New chats focus the composer')).toEqual({ key: 'KERNEL-182', title: 'New chats focus the composer' })
+    expect(taskParts('Remove the Try section')).toEqual({ title: 'Remove the Try section' })
+    const tone = (kind: TeamEventKind, text = '', actionable = false) => eventTone({ kind, text, actionable })
+    expect([tone('pr.cifail'), tone('pr.conflict'), tone('crash'), tone('setup.failed')]).toEqual(['del', 'del', 'del', 'del'])
+    expect([tone('pr.merged'), tone('pr.ready'), tone('setup.passed')]).toEqual(['merged', 'add', 'muted'])
+    expect([tone('review', 'Approved PR #108'), tone('review', 'Found 2 blockers in PR #108')]).toEqual(['add', 'del'])
+    expect([tone('turn'), tone('turn', '', true), tone('pr.opened')]).toEqual(['muted', 'ink2', 'muted'])
   })
 })
 
@@ -75,8 +80,10 @@ describe('the Team update card', () => {
     expect(html).toContain('aria-label="Team update from Kernel"')
     expect(html).toContain('Team update')
     expect(html).toContain('<span class="tucard-name">Kai</span>')
-    expect(html).toContain('<span class="muted">Opened PR #108. </span>')
-    expect(html).toContain('<span class="ink2">Passed checks, no conflicts.</span>')
+    // Events read as one line between dots; only what passed, failed or merged takes a color (KERNEL-274).
+    expect(html).toContain('<span class="tucard-ev" data-tone="muted">Opened PR #108<span class="sr-only">. </span></span>')
+    expect(html).toContain('<span class="tucard-sep" aria-hidden="true">·</span>')
+    expect(html).toContain('<span class="tucard-ev" data-tone="add">Passed checks, no conflicts<span class="sr-only">. </span></span>')
     // The reply starts clamped. Show more waits until the lines are measured and run over, which a static render never does.
     expect(html).toContain('data-clamped="true"')
     expect(html).not.toContain('Show more')

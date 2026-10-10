@@ -79,6 +79,17 @@ export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: 
   return await refExists(repo, `${remote}/${d}`) ? `${remote}/${d}` : d
 }
 
+/**
+ * Moves the branch checked out at `path` forward to `ref`, only when that needs no merge commit and no tracked file has
+ * uncommitted changes. Untracked files don't count: the fast-forward stops on its own if one is in the way. False when
+ * it didn't move, and the agent is told to rebase instead (KERNEL-259).
+ */
+export async function fastForward(path: string, ref: string): Promise<boolean> {
+  const status = await exec('git', ['-C', path, 'status', '--porcelain', '--untracked-files=no'])
+  if (status.code !== 0 || status.stdout.trim()) return false
+  return (await exec('git', ['-C', path, 'merge', '--ff-only', '--quiet', ref])).code === 0
+}
+
 export async function remoteRepo(repo: string, remote = 'origin'): Promise<string | undefined> {
   const r = await exec('git', ['-C', repo, 'remote', 'get-url', remote])
   if (r.code !== 0) return undefined
