@@ -5,7 +5,7 @@ import { actions, go, lastRoom, useStore } from '../../store'
 import { Button, Icon, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
 import { openLeadChat } from '../../lead'
-import { roomLetter } from '../rooms/roomInfo'
+import { RoomIcon } from '../../components/RoomIcon'
 import { Markdown } from '../workspace/markdown'
 import { initials, issueAge, linkedWorkspaces, stateShape, workspaceState } from './model'
 
@@ -160,7 +160,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
             {room && (
               <span className="is-room">
                 <span className="muted">Room</span>
-                <span className="is-letter" aria-hidden="true">{roomLetter(room.name)}</span>
+                <RoomIcon room={room} className="is-letter" />
                 <span>{room.name}</span>
                 <Icon name="chevron" size={10} stroke={1.9} />
                 <select aria-label={`Room: ${room.name}`} value={room.id} onChange={(e) => setPicked({ issue: id, room: e.target.value })}>

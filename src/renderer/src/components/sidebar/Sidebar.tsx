@@ -7,7 +7,7 @@ import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
 import { tabOf } from '../../nav'
-import { roomLetter } from '../../screens/rooms/roomInfo'
+import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
@@ -232,7 +232,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
           <span className="room-mark">
-            <span className="room-letter" data-current={current || undefined}>{roomLetter(room.name)}</span>
+            <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
           </span>
           <span className="grow ellipsis">{room.name}</span>
