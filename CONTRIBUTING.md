@@ -33,4 +33,4 @@ If you change a screen, run `pnpm shots <Screen>` and `pnpm shots:compare <Scree
 4. Use a Conventional Commits title, for example `fix(workspace): keep the diff open after a revert`.
 5. Say what changed and how you checked it. Add screenshots for UI changes.
 
-`CLAUDE.md` and `DESIGN.md` hold the project's rules (design tokens, copy style, no fake statuses). They're written for agents but apply to everyone. Check `docs/DECISIONS.md` before changing something that looks deliberate.
+`CLAUDE.md` and `DESIGN.md` hold the project's rules (design tokens, copy style, no fake statuses). They're written for agents but apply to everyone. Check `docs/DECISIONS.md` and `docs/decisions/` before changing something that looks deliberate. New decisions go in `docs/decisions/`, one file each (`docs/decisions/README.md`).

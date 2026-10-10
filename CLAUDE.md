@@ -21,7 +21,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 - `src/shared/` contracts used by every process: `types.ts`, `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
 - `design/screens/` one PNG per canvas screen (the target). `design/canvas/` the canvas markup with exact values
-- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS, SCREENS (screen to issue map), ROADMAP
+- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-139), SCREENS (screen to issue map), ROADMAP. `docs/decisions/` holds newer decisions, one file each
 - `test/` vitest suites
 
 ## How to work an issue
@@ -67,7 +67,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - UI copy is plain, sentence case, no em dashes.
 - A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
-- Check `docs/DECISIONS.md` before changing a deliberate choice, and add an entry when you make a new one.
+- Check `docs/DECISIONS.md` and `docs/decisions/` before changing a deliberate choice. When you make a new one, add a file in `docs/decisions/` named after the issue (`docs/decisions/README.md`).
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.

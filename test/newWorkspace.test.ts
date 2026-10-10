@@ -74,7 +74,8 @@ describe('createWorkspace from a source', () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const k = new Kernel({ dataDir, home })
+    // An issue source moves the issue in Linear (D-140). The stub keeps a LINEAR_API_KEY in the environment from touching a real one.
+    const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
     await k.start()
     const sent: string[][] = []
     k.sessions.send = async (_c, parts) => { sent.push(parts.map((p) => p.type)); return { queued: false } }
