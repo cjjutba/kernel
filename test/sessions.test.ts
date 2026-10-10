@@ -1,11 +1,41 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
-import { bashVerdict, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import type { Options, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, Chat, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
+import { Store } from '../src/main/db'
+import { Approvals } from '../src/main/services/approvals'
+import { bashVerdict, IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import type { AppSettings } from '../src/main/services/settings'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
+
+// The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
+// An abort ends the stream with an error, as the real one does when Kernel stops the process.
+const sdk = vi.hoisted(() => ({ calls: [] as { options: Options; feed: (m: unknown) => void }[] }))
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: ({ options }: { options: Options }) => {
+    const items: unknown[] = []
+    const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
+    const signal = options.abortController?.signal
+    const aborted = () => new Error('Claude Code process aborted by user')
+    signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
+    sdk.calls.push({ options, feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) } })
+    return {
+      [Symbol.asyncIterator]: () => ({
+        next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
+          : signal?.aborted ? Promise.reject(aborted()) : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
+      }),
+      interrupt: async () => {},
+      setModel: async () => {},
+      setPermissionMode: async () => {},
+      applyFlagSettings: async () => {}
+    }
+  }
+}))
 
 const lists = { neverAllow: ['git push origin main'], alwaysAsk: ['rm -rf', 'drizzle-kit push'] }
 
@@ -128,5 +158,206 @@ describe('Always allow in this room', () => {
     const again = open()
     expect(again.store.room(room.id)?.allow).toEqual(['git log --oneline -1'])
     again.store.db.close()
+  })
+})
+
+describe('idle stop (KERNEL-183)', () => {
+  afterEach(() => { vi.useRealTimers(); bus.removeAllListeners('push'); bus.removeAllListeners('activity') })
+
+  const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
+  const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true }
+  // Lets the scripted stream reach Kernel. Fake timers move by a millisecond, which no idle clock notices.
+  const flush = () => vi.advanceTimersByTimeAsync(1)
+
+  async function setup(o: { agent?: AgentDef; agentLimit?: number } = {}) {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-idle-')), 'kernel.db'))
+    const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
+    const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
+    store.saveWorkspace(ws)
+    store.saveChat(chat)
+    store.saveChat({ ...chat, id: 'other', title: 'Other' })
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
+    const exits: string[] = []
+    const cutOff: string[][] = []
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined,
+      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
+    })
+    const pushes: PushEvent[] = []
+    const activity: { kind: string }[] = []
+    bus.on('push', (e: PushEvent) => pushes.push(e))
+    bus.on('activity', (e: { kind: string }) => activity.push(e))
+    const sid = 'session-1'
+    /** Sends a message and runs the turn it starts to its end. */
+    const turn = async (chatId = chat.id, o: { from?: 'kernel' } = {}) => {
+      await sessions.send(chatId, [{ type: 'text', text: 'Add a pdf_url column' }], o)
+      const call = sdk.calls.at(-1)!
+      call.feed({ type: 'system', subtype: 'init', session_id: chatId === chat.id ? sid : 'session-2', apiKeySource: 'none' })
+      call.feed({ type: 'result', subtype: 'success', uuid: `r${sdk.calls.length}`, duration_ms: 5 })
+      await flush()
+      return call
+    }
+    const stopped = (call: { options: Options }) => !!call.options.abortController?.signal.aborted
+    return { store, sessions, turn, stopped, pushes, activity, exits, cutOff, sid }
+  }
+
+  it('stops the process after 10 idle minutes and adds no status, row or crash', async () => {
+    const { sessions, turn, stopped, pushes, activity, exits, store, sid } = await setup()
+    const call = await turn()
+    expect(sessions.isRunning('chat')).toBe(false)
+    pushes.length = 0
+    activity.length = 0
+    const items = store.items('chat').length
+
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS - 10)
+    expect(stopped(call)).toBe(false)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(stopped(call)).toBe(true)
+
+    // Nothing tells anyone: no offline or idle status, no log row, no transcript row, no crash for the Lead.
+    expect(pushes.filter((e) => e.type === 'agent.status' || e.type === 'chat.running')).toEqual([])
+    expect(activity).toEqual([])
+    expect(store.items('chat')).toHaveLength(items)
+    expect(exits).toEqual([])
+    // The hook server drops managed sessions' hooks, so Claude Code's SessionEnd on the way out adds no "ended the session" row.
+    expect(sessions.isManaged(sid)).toBe(true)
+  })
+
+  it('resumes the same conversation on the next message, with the model and effort the chat has now', async () => {
+    const { sessions, turn, store, sid } = await setup()
+    await turn()
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    await sessions.configure('chat', { model: 'claude-opus-5-5', effort: 'high' })
+
+    const next = await turn()
+    expect(sdk.calls.at(-1)).toBe(next)
+    expect(next.options).toMatchObject({ resume: sid, model: 'claude-opus-5-5', effort: 'high' })
+    expect(next.options.sessionId).toBeUndefined()
+
+    // The reply streams into the transcript as before.
+    await sessions.send('chat', [{ type: 'text', text: 'And an index' }])
+    sdk.calls.at(-1)!.feed({ type: 'system', subtype: 'init', session_id: sid, apiKeySource: 'none' })
+    sdk.calls.at(-1)!.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Indexed it.' }] } })
+    await flush()
+    expect(store.items('chat').at(-1)).toMatchObject({ kind: 'text', text: 'Indexed it.' })
+  })
+
+  it('counts the idle time from the last turn, and never stops a turn that is running', async () => {
+    const { sessions, turn, stopped } = await setup()
+    const call = await turn()
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS - 60_000)
+    await turn()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(stopped(call)).toBe(false)
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+
+    // A turn that runs for an hour keeps its process.
+    await sessions.send('chat', [{ type: 'text', text: 'Run the migration' }])
+    const long = sdk.calls.at(-1)!
+    await vi.advanceTimersByTimeAsync(6 * IDLE_STOP_MS)
+    expect(sessions.isRunning('chat')).toBe(true)
+    expect(stopped(long)).toBe(false)
+  })
+
+  it('gives the same turnFrom, kernelTurn and blocked status before and after the stop', async () => {
+    const { sessions, turn, pushes } = await setup()
+    const call = await turn('chat', { from: 'kernel' })
+    expect(sessions.kernelTurn('chat')).toBe(true)
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(sdk.calls.at(-1)).toBe(call)
+    expect(sessions.kernelTurn('chat')).toBe(true)
+    expect(sessions.turnFrom('chat')).toBe('kernel')
+
+    // A hook refused a step and the agent gave up: the chat shows blocked, process or not.
+    await sessions.send('chat', [{ type: 'text', text: 'Push it' }])
+    const next = sdk.calls.at(-1)!
+    next.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    next.feed({ type: 'system', subtype: 'hook_response', hook_event: 'PreToolUse', exit_code: 2, stderr: 'No pushes to main', output: '', stdout: '' })
+    next.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r-blocked', duration_ms: 5 })
+    await flush()
+    expect(sessions.turnFrom('chat')).toBeUndefined()
+    pushes.length = 0
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(next.options.abortController?.signal.aborted).toBe(true)
+    expect(pushes.filter((e) => e.type === 'agent.status')).toEqual([])
+    // Close chat still clears the block it kept, as it does for a chat with a process.
+    sessions.stop('chat')
+    expect(pushes.filter((e) => e.type === 'agent.status')).toEqual([expect.objectContaining({ status: 'idle' })])
+  })
+
+  it('keeps the process while messages wait, and stops it once the queue is gone', async () => {
+    const { sessions, turn, stopped } = await setup({ agentLimit: 1 })
+    const call = await turn()
+    // Another chat takes the only slot, so a message to this one waits.
+    await sessions.send('other', [{ type: 'text', text: 'Busy' }])
+    const { queued, why } = await sessions.send('chat', [{ type: 'text', text: 'Waits' }])
+    expect({ queued, why }).toEqual({ queued: true, why: 'capacity' })
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+
+    sessions.unqueue('chat', sessions.queued('chat')[0].id)
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+  })
+
+  it('keeps the process of a chat held for setup', async () => {
+    const { sessions, turn, stopped } = await setup()
+    const call = await turn()
+    sessions.hold('chat', [{ type: 'text', text: 'The brief' }])
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+  })
+
+  it('keeps the process while the room is paused, and stops it after the room resumes', async () => {
+    const { sessions, turn, stopped } = await setup()
+    const call = await turn()
+    sessions.pause('room')
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+    sessions.resume('room')
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+  })
+
+  it('keeps the process of a chat a usage limit cut off', async () => {
+    const { sessions, stopped, cutOff } = await setup()
+    await sessions.send('chat', [{ type: 'text', text: 'Go' }])
+    const call = sdk.calls.at(-1)!
+    call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 86_400 } })
+    call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r-limit', duration_ms: 5 })
+    await flush()
+    expect(cutOff.at(-1)).toEqual(['chat'])
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+  })
+
+  it('keeps the process while a background task runs, and ignores ambient ones', async () => {
+    const { turn, stopped } = await setup()
+    const call = await turn()
+    const tasks = (list: { task_id: string; ambient?: boolean }[]) => call.feed({ type: 'system', subtype: 'background_tasks_changed', tasks: list.map((t) => ({ task_type: 'local_bash', description: 'dev server', ...t })) })
+    tasks([{ task_id: 't1' }, { task_id: 'watch', ambient: true }])
+    await flush()
+    await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
+    expect(stopped(call)).toBe(false)
+
+    tasks([{ task_id: 'watch', ambient: true }])
+    await flush()
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+  })
+
+  it("starts a Lead turn from a team update after the Lead's chat was stopped", async () => {
+    const { sessions, turn, stopped, sid } = await setup({ agent: rowan })
+    const call = await turn()
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(call)).toBe(true)
+
+    expect(sessions.post('chat', [{ type: 'text', text: 'Noor opened PR #12' }])).toBe(true)
+    expect(sdk.calls.at(-1)!.options).toMatchObject({ resume: sid })
+    expect(sessions.isRunning('chat')).toBe(true)
+    expect(sessions.kernelTurn('chat')).toBe(true)
   })
 })
