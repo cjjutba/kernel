@@ -22,6 +22,7 @@ import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
 import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
+import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
@@ -46,8 +47,15 @@ import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './servic
 
 const COPY = 'fork:'
 
-/** The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session (`nameChat`). */
+/**
+ * The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session, or to the one
+ * Kernel picks at the end of a turn, and comes back after /clear (`nameChat`, KERNEL-202).
+ */
 const NEW_CHAT = 'New chat'
+/** The Lead's first tab before anyone writes in it. Like "New chat", it gives way to a real name. */
+const LEAD_CHAT = 'Lead'
+/** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
+const RENAME_AT = [1, 3, 10, 30]
 
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
@@ -116,6 +124,8 @@ export class Kernel {
   forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
   /** The SDK call that reads a session's title from its transcript. Tests swap it for a stub. */
   sessionInfo: typeof GetSessionInfo = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).getSessionInfo(id, o)
+  /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
+  titleFor: typeof askTitle = askTitle
   settings!: AppSettings
   private hookServer?: Server
   private agentCache = new Map<string, AgentDef[]>()
@@ -175,6 +185,7 @@ export class Kernel {
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
       },
       onReply: (ws, chat) => void this.nameChat(ws, chat),
+      onReset: (_ws, chat, trigger) => this.resetName(chat, trigger),
       onTurnDone: (ws, chat, turn) => {
         void this.checkpoint(ws, chat).catch(() => undefined)
         void this.nameChat(ws, chat, true)
@@ -269,6 +280,7 @@ export class Kernel {
     this.approvals.expireStale()
     this.notifications.attach()
     this.backfillLeadChats()
+    void this.nameStuckChats()
     this.leadUpdates.attach()
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
@@ -491,6 +503,7 @@ export class Kernel {
   }
 
   async stop() {
+    this.stopped = true
     this.unlisten()
     this.notifications.detach()
     this.leadUpdates.detach()
@@ -1141,30 +1154,92 @@ export class Kernel {
     return c
   }
 
+  /** A name the user types is theirs: Kernel never changes it again (KERNEL-202). */
   renameChat(chatId: string, title: string): Chat {
     const t = title.trim()
     if (!t) throw new Error('Give the chat a name.')
-    return this.saveChat({ ...this.mustChat(chatId), title: t })
+    return this.saveChat({ ...this.mustChat(chatId), title: t, autoTitle: undefined })
   }
 
   /** When Kernel last looked for a session title, by chat, so a busy turn reads the transcript at most every few seconds. */
   private titleChecked = new Map<string, number>()
+  /** Chats with a naming request in flight. One at a time per chat. */
+  private naming = new Set<string>()
+  /** The session a chat had when /clear emptied it. Its title belongs to the old conversation, so Kernel doesn't take it. */
+  private clearedSession = new Map<string, string>()
+  /** How many times /clear reset each chat's name, so an answer about the old conversation that arrives after one is dropped. */
+  private nameResets = new Map<string, number>()
+  private stopped = false
+
+  /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
+  private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
+  /** An auto-named chat that has no real name yet. */
+  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && c.title === LEAD_CHAT) }
 
   /**
-   * A chat still called "New chat" takes the title Claude Code writes into its transcript a few seconds after the first prompt,
-   * the same one Claude Code's own session list shows. The SDK sends no event for it, so Kernel looks on replies and at the end
-   * of each turn until it finds one. A chat the user renamed keeps its name (D-089).
+   * Names an auto-named chat (KERNEL-202, amends D-089). Until it has a name, it takes the title Claude Code writes into its
+   * transcript a few seconds after the first prompt. The SDK sends no event for it, so Kernel looks on replies, at most every
+   * few seconds, and at the end of each turn. At the end of a turn Kernel also asks Haiku for a name from the whole
+   * conversation when the chat still has none, or when its count of finished turns reaches 1, 3, 10 or 30. A name the user
+   * typed, even while a request is in flight, is never changed. A request that fails leaves the name, and the next turn end
+   * tries again.
    */
   private async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
-    if (chat.kind === 'terminal' || chat.title !== NEW_CHAT || !chat.sessionId) return
-    const last = this.titleChecked.get(chat.id) ?? 0
-    if (!turnEnded && Date.now() - last < 3000) return
-    this.titleChecked.set(chat.id, Date.now())
-    const title = (await this.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.customTitle?.trim().slice(0, 60)
+    if (!this.autoNamed(chat)) return
+    const resets = this.nameResets.get(chat.id) ?? 0
+    if (this.unnamed(chat) && chat.sessionId && chat.sessionId !== this.clearedSession.get(chat.id)) {
+      const last = this.titleChecked.get(chat.id) ?? 0
+      if (turnEnded || Date.now() - last >= 3000) {
+        this.titleChecked.set(chat.id, Date.now())
+        const title = (await this.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.customTitle?.trim().slice(0, 60)
+        if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
+        const now = this.store.chat(chat.id)
+        if (title && now && this.autoNamed(now) && this.unnamed(now)) {
+          this.titleChecked.delete(chat.id)
+          this.saveChat({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
+        }
+      }
+    }
+    if (!turnEnded || this.naming.has(chat.id) || resets !== (this.nameResets.get(chat.id) ?? 0)) return
+    const before = this.store.chat(chat.id)
+    if (!before || before.closed || !this.autoNamed(before)) return
+    const items = this.store.items(chat.id)
+    const turns = items.filter((i) => i.kind === 'result').length
+    const done = before.autoTitle?.turns ?? 0
+    if (!turns || !(this.unnamed(before) || RENAME_AT.some((at) => at > done && at <= turns))) return
+    this.naming.add(chat.id)
+    try {
+      const title = await this.titleFor(titleText(items), { cwd: ws.path, current: this.unnamed(before) ? undefined : before.title }).catch(() => undefined)
+      if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
+      const now = this.store.chat(chat.id)
+      if (!title || !now || !this.autoNamed(now) || now.title !== before.title) return
+      this.saveChat({ ...now, title, autoTitle: { turns } })
+    } finally {
+      this.naming.delete(chat.id)
+    }
+  }
+
+  /** /clear starts a new conversation, so an auto name goes back to "New chat" and the schedule starts over. Other resets keep it. */
+  private resetName(chat: Chat, trigger?: string) {
+    if (trigger && trigger !== 'clear') return
     const now = this.store.chat(chat.id)
-    if (!title || !now || now.title !== NEW_CHAT) return
+    if (!now || !this.autoNamed(now)) return
+    if (now.sessionId) this.clearedSession.set(chat.id, now.sessionId)
+    this.nameResets.set(chat.id, (this.nameResets.get(chat.id) ?? 0) + 1)
     this.titleChecked.delete(chat.id)
-    this.saveChat({ ...now, title })
+    this.saveChat({ ...now, title: NEW_CHAT, autoTitle: { turns: 0 } })
+  }
+
+  /** Open chats still called "New chat" after a finished turn, as /clear left them before KERNEL-202. Named one at a time. */
+  private async nameStuckChats() {
+    for (const ws of this.store.workspaces().filter((w) => w.status !== 'archived')) {
+      for (const chat of this.chatTabs(ws.id)) {
+        if (this.stopped) return
+        if (chat.kind === 'terminal' || chat.title !== NEW_CHAT || !chat.sessionId) continue
+        if (!this.store.items(chat.id).some((i) => i.kind === 'result')) continue
+        await this.nameChat(ws, chat, true).catch(() => undefined)
+      }
+    }
   }
 
   /** The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab is replaced by a fresh chat. */
@@ -1232,8 +1307,11 @@ export class Kernel {
     })
   }
 
+  /** A chat opened with a placeholder name ("New chat", the Lead's "Lead") is auto-named. A workspace's title or a fork's is not (KERNEL-202). */
   newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal' }): Chat {
-    return this.store.saveChat({ id: newId(), workspaceId, title, kind: o.kind ?? 'chat', model: o.model, effort: o.effort, plan: o.plan, createdAt: Date.now() })
+    const kind = o.kind ?? 'chat'
+    const auto = kind === 'chat' && (title === NEW_CHAT || title === LEAD_CHAT)
+    return this.store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(auto ? { autoTitle: { turns: 0 } } : {}), createdAt: Date.now() })
   }
 
   private modelFor(agent: AgentDef): ModelId {
@@ -1263,7 +1341,7 @@ export class Kernel {
   /** The Lead's first open chat. Floor briefs go there. */
   async leadChat(roomId: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, 'Lead', { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, LEAD_CHAT, { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
   /**
@@ -1277,7 +1355,7 @@ export class Kernel {
     const unused = o.fresh ? undefined : this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
     // The default "Lead" title gives way to the first message's; a name the user gave stays.
     const chat = unused
-      ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === 'Lead' ? { title: NEW_CHAT } : {}) })
+      ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === LEAD_CHAT ? { title: NEW_CHAT } : {}) })
       : this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
