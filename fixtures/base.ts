@@ -130,9 +130,9 @@ export const base: Fixture = {
   ],
   usage: [],
   preflight: [
-    { id: 'claude', ok: true, title: 'Claude Code', detail: 'v2.1.292' },
-    { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
-    { id: 'hooks', ok: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
+    { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'v2.1.292' },
+    { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
+    { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
   ],
   changes: {
     [ids.table]: [
