@@ -1,14 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { Server } from 'node:http'
+import { request, type Server } from 'node:http'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { startHookServer } from '../src/main/services/hookServer'
 import { Approvals } from '../src/main/services/approvals'
 import { bus } from '../src/main/bus'
 import { hookCommand } from '@shared/hookEntry'
+import type { Approval } from '@shared/types'
+import type { Store } from '../src/main/db'
 
 const port = 17420 + Math.floor(Math.random() * 500)
-const approvals = new Approvals()
+// Enough of the store for approvals to report how they ended.
+const saved = new Map<string, Approval>()
+const approvals = new Approvals({ saveApproval: (a: Approval) => saved.set(a.id, a), approvals: () => [...saved.values()] } as unknown as Store)
 let server: Server
 const post = (body: unknown) => fetch(`http://127.0.0.1:${port}/hooks`, { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }).then((r) => r.json())
 const base = { session_id: 'outside', transcript_path: '/t', cwd: '/repo/wt/invoice-table' }
@@ -34,14 +38,18 @@ describe('hook server', () => {
     expect(seen[1]).toMatchObject({ kind: 'tool.end', text: 'edited', object: 'table.tsx', roomId: 'room', agentId: 'kai', sessionId: 'outside' })
   })
 
-  it('holds a permission request until it is approved', async () => {
+  it('holds a permission request from a room until it is approved', async () => {
     let id = ''
+    let answered = false
     const onPush = (e: any) => { if (e.type === 'approval' && e.approval.status === 'pending') id = e.approval.id }
     bus.on('push', onPush)
     const pending = post({ ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm drizzle-kit push' } })
-    await new Promise((r) => setTimeout(r, 50))
+    void pending.then(() => (answered = true))
+    await new Promise((r) => setTimeout(r, 150))
     bus.off('push', onPush)
     expect(id).not.toBe('')
+    expect(answered).toBe(false)
+    expect(saved.get(id)).toMatchObject({ status: 'pending', roomId: 'room', workspaceId: 'ws' })
     approvals.decide(id, { behavior: 'allow' })
     expect(await pending).toEqual({ hookSpecificOutput: { hookEventName: 'PermissionRequest', decision: { behavior: 'allow' } } })
   })
@@ -49,6 +57,35 @@ describe('hook server', () => {
   it('falls back to the terminal prompt when nobody decides in time', async () => {
     const r = await post({ ...base, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } })
     expect(r).toEqual({})
+  })
+
+  it('answers a permission request from outside every room at once, opening no approval', async () => {
+    const pushes: any[] = []
+    const onPush = (e: any) => { if (e.type === 'approval') pushes.push(e) }
+    bus.on('push', onPush)
+    const t = Date.now()
+    const r = await post({ ...base, session_id: 'superset', cwd: '/Users/cj/elsewhere', hook_event_name: 'PermissionRequest', tool_name: 'Skill', tool_input: { skill: 'name-workspace' } })
+    bus.off('push', onPush)
+    expect(r).toEqual({})
+    expect(Date.now() - t).toBeLessThan(1000)
+    expect(pushes).toEqual([])
+  })
+
+  it('expires the approval when Claude Code stops waiting for it', async () => {
+    let id = ''
+    const onPush = (e: any) => { if (e.type === 'approval' && e.approval.status === 'pending') id = e.approval.id }
+    bus.on('push', onPush)
+    const body = JSON.stringify({ ...base, session_id: 'answered-in-terminal', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'git push' } })
+    const req = request({ host: '127.0.0.1', port, path: '/hooks', method: 'POST', headers: { 'content-type': 'application/json' } })
+    req.on('error', () => {})
+    req.end(body)
+    await new Promise((r) => setTimeout(r, 50))
+    bus.off('push', onPush)
+    expect(saved.get(id)?.status).toBe('pending')
+    req.destroy()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(saved.get(id)?.status).toBe('expired')
+    expect(approvals.isPending(id)).toBe(false)
   })
 
   it('ignores sessions Kernel manages itself', async () => {
