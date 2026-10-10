@@ -4,7 +4,7 @@ import type { Room, RoomSettings } from '@shared/types'
 import { call } from '../../../api'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Icon, Modal, useBusy } from '../../../ui'
-import { isOverride, NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchRoomSettings } from '../useSettings'
 
@@ -121,11 +121,12 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
       >
         {env && files.length === 0 && <div className="set-empty">No env files. Add one, like .env, and its variables reach every chat and script.</div>}
         {files.map((f, i) => (
-          // The list is one value, so its source shows on the first row.
+          // The list is one value, so its source shows on the first row. Reset only shows for a list that overrides settings.toml:
+          // a list that lives only in the personal file can be emptied with Remove, so Reset adds nothing there.
           <Row key={f.path} label={<span className="set-mono">{f.path}</span>} source={i === 0 ? sourceLine(rs, path) : undefined}>
             {f.missing && <span className="set-tag">Missing</span>}
             <div className="set-entry-actions">
-              {i === 0 && isOverride(rs, path) && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}
+              {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}
               <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
             </div>
           </Row>
