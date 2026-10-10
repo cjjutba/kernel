@@ -30,10 +30,10 @@ export interface State {
   saying: Record<string, string>
   // workspaces
   workspaces: Workspace[]
-  /** By workspace id. */
+  /** By workspace id. Lines carry the run script's `name`, and each script keeps its own last 400. */
   scripts: Record<string, ScriptLine[]>
-  /** By workspace id. Exit code of the last run of each script. */
-  scriptExit: Record<string, Partial<Record<ScriptKind, number | null>>>
+  /** By workspace id, then `scriptKey`. Exit code of the last run of each script. */
+  scriptExit: Record<string, Record<string, number | null | undefined>>
   /** By workspace id. */
   checkpoints: Record<string, Checkpoint[]>
   // chats
@@ -137,6 +137,19 @@ export function useStore<T>(select: (s: State) => T): T {
     last.current = { value }
     return value
   })
+}
+
+/** Lines kept for each script. */
+const SCRIPT_LINES = 400
+/** A run script's name, `run` for the default one. Setup and archive have none. */
+const runName = (kind: ScriptKind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
+/**
+ * Where a script's exit code lives in `scriptExit`: `setup`, `archive`, `run` for the default run script and `run:<name>` for the rest.
+ * A run script may be named `setup`, so its key can't be the bare name.
+ */
+export const scriptKey = (kind: ScriptKind, name?: string) => {
+  const n = runName(kind, name)
+  return n && n !== 'run' ? `run:${n}` : kind
 }
 
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
@@ -350,8 +363,17 @@ export const actions = {
   workspaces: {
     set: (list: Workspace[]) => setState((s) => ({ workspaces: list, ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => !list.some((w) => w.id === id && w.status !== 'archived')) } })),
     upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws), ui: ws.status === 'archived' ? { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => id === ws.id) } : s.ui })),
-    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: [...(s.scripts[workspaceId] ?? []), line].slice(-400) } })),
-    scriptExited: (workspaceId: string, kind: ScriptKind, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...(s.scriptExit[workspaceId] ?? {}), [kind]: code } } })),
+    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
+      const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
+      const next = [...(s.scripts[workspaceId] ?? []), named]
+      const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
+      // A chatty script drops its own oldest line, so it can't push another script's output out.
+      if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
+      return { scripts: { ...s.scripts, [workspaceId]: next } }
+    }),
+    scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
+    /** A new run starts clean, so the last exit code no longer says it stopped. */
+    clearScriptExit: (workspaceId: string, kind: ScriptKind, name?: string) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: undefined } } })),
     setCheckpoints: (workspaceId: string, list: Checkpoint[]) => setState((s) => ({ checkpoints: { ...s.checkpoints, [workspaceId]: list } })),
     /** Only one checkpoint is where the worktree is now, so a new current one clears the flag on the rest. */
     upsertCheckpoint: (c: Checkpoint) => setState((s) => {
@@ -448,8 +470,8 @@ export function apply(e: PushEvent) {
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
-    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, line: e.line, stream: e.stream })
-    case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.code)
+    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
+    case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
