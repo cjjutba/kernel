@@ -79,6 +79,25 @@ describe('IPC contract', () => {
     await k.stop()
   })
 
+  it('fixture mode answers the run script shapes: runScripts, a runScripts patch by name, and named Run and Stop (KERNEL-244)', async () => {
+    const h = fixtureHandlers(structuredClone(fixtures.Workspace))
+    const roomId = fixtures.Workspace.rooms[0].id
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect((await h['settings.room']({ roomId })).runScripts).toEqual([])
+    const rs = await h['settings.setRoom']({ roomId, patch: { runScripts: { run: 'pnpm dev', web: 'pnpm web' } }, shared: true })
+    expect(rs.runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }])
+    expect(rs.scripts.run).toBe('pnpm dev')
+    expect(rs.sources).toMatchObject({ 'runScripts.web': 'shared', 'runScripts.run': 'shared', 'scripts.run': 'shared' })
+    // `RUN` is `run`, as in the engine.
+    expect((await h['settings.setRoom']({ roomId, patch: { runScripts: { RUN: 'pnpm start' } }, shared: true })).runScripts[0]).toEqual({ name: 'run', command: 'pnpm start' })
+    const after = await h['settings.setRoom']({ roomId, patch: { runScripts: { web: null } }, shared: true })
+    expect(after.runScripts).toEqual([{ name: 'run', command: 'pnpm start' }])
+    expect(after.sources['runScripts.web']).toBeUndefined()
+    expect(await h['scripts.run']({ workspaceId, kind: 'run', name: 'web' })).toEqual({ ok: true })
+    expect(await h['scripts.stop']({ workspaceId, kind: 'run', name: 'web' })).toEqual({ ok: true })
+    expect(await h['scripts.stop']({ workspaceId, kind: 'run' })).toEqual({ ok: true })
+  })
+
   it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
     const h = fixtureHandlers(fixtures.Workspace)
     const roomId = fixtures.Workspace.rooms[0].id
@@ -98,8 +117,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 133 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(133)
+  it('lists all 138 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(138)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)

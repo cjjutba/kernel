@@ -6,19 +6,35 @@ import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
 import { resolveFilesToCopy } from './filesToCopy'
+import { PORT_BLOCK } from '@shared/types'
 
-/** Find a free TCP port, starting at `from`. Each workspace gets its own as $KERNEL_PORT. */
-export async function freePort(from = 4300, taken: Set<number> = new Set()): Promise<number> {
-  for (let p = from; p < from + 500; p++) {
-    if (taken.has(p)) continue
-    const ok = await new Promise<boolean>((res) => {
-      const srv = createServer()
-      srv.once('error', () => res(false))
-      srv.listen(p, '127.0.0.1', () => srv.close(() => res(true)))
-    })
-    if (ok) return p
+const canBind = (p: number) => new Promise<boolean>((res) => {
+  const srv = createServer()
+  srv.once('error', () => res(false))
+  srv.listen(p, '127.0.0.1', () => srv.close(() => res(true)))
+})
+
+/** The first port of each block a workspace can get: 4300, 4310 and so on to 4800 (KERNEL-244). */
+export const BLOCK_STARTS = Array.from({ length: (4800 - 4300) / PORT_BLOCK + 1 }, (_, i) => 4300 + i * PORT_BLOCK)
+
+/** Whether the blocks starting at `a` and `b` share a port. A legacy port that isn't a multiple of 10 still has a whole block. */
+export const blocksOverlap = (a: number, b: number) => Math.abs(a - b) < PORT_BLOCK
+
+/**
+ * A free block of `PORT_BLOCK` ports for a workspace, as its first port ($KERNEL_PORT). `taken` is read again for each candidate,
+ * and the port goes in `reserved` before the bind check awaits, so two calls in one turn never get the same block. The caller
+ * drops it from `reserved` once the workspace that holds it is saved.
+ */
+export async function portBlock(taken: () => number[], reserved: Set<number>): Promise<number> {
+  for (const start of BLOCK_STARTS) {
+    if ([...taken(), ...reserved].some((p) => blocksOverlap(p, start))) continue
+    reserved.add(start)
+    let free = true
+    for (let p = start; p < start + PORT_BLOCK && free; p++) free = await canBind(p)
+    if (free) return start
+    reserved.delete(start)
   }
-  throw new Error('No free port found')
+  throw new Error('No free block of ports between 4300 and 4809')
 }
 
 /** Copy gitignored files (like .env.local) from the main checkout into a fresh worktree. `entries` are exact paths and patterns (KERNEL-245). */
@@ -57,39 +73,69 @@ export function loginShell(): string {
 }
 
 type Kind = 'setup' | 'run' | 'archive'
-const running = new Map<string, ChildProcess>()
-const key = (workspaceId: string, kind: Kind) => `${workspaceId}:${kind}`
+/** Every script still running, by workspace, kind and run script name. Setup and archive have no name. */
+const running = new Map<string, { workspaceId: string; kind: Kind; name?: string; child: ChildProcess }>()
+const key = (workspaceId: string, kind: Kind, name?: string) => JSON.stringify([workspaceId, kind, name ?? null])
+/** A run script is named, `run` when none is given. Setup and archive aren't. */
+const nameOf = (kind: Kind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
 
 /** Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. */
-export function runScript(o: { workspaceId: string; kind: Kind; script: string; cwd: string; port: number; root: string }): Promise<number | null> {
-  stopScript(o.workspaceId, o.kind)
+export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; port: number; root: string }): Promise<number | null> {
+  const name = nameOf(o.kind, o.name)
+  const k = key(o.workspaceId, o.kind, name)
+  stopScript(o.workspaceId, o.kind, name)
+  const tag = { workspaceId: o.workspaceId, kind: o.kind, ...(name ? { name } : {}) }
   return new Promise((resolve) => {
     const child = spawn(loginShell(), ['-lc', o.script], {
       cwd: o.cwd,
       env: { ...process.env, KERNEL_PORT: String(o.port), PORT: String(o.port), KERNEL_WORKSPACE: o.cwd, KERNEL_ROOT_PATH: o.root, FORCE_COLOR: '0' },
       detached: true
     })
-    running.set(key(o.workspaceId, o.kind), child)
-    bus.push({ type: 'script.output', workspaceId: o.workspaceId, kind: o.kind, line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
+    running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })
+    bus.push({ type: 'script.output', ...tag, line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
     const pipe = (stream: 'stdout' | 'stderr') => (d: Buffer) => {
-      for (const line of d.toString().split(/\r?\n/)) if (line) bus.push({ type: 'script.output', workspaceId: o.workspaceId, kind: o.kind, line, stream })
+      for (const line of d.toString().split(/\r?\n/)) if (line) bus.push({ type: 'script.output', ...tag, line, stream })
     }
     child.stdout?.on('data', pipe('stdout'))
     child.stderr?.on('data', pipe('stderr'))
-    child.on('error', (err) => { bus.push({ type: 'script.output', workspaceId: o.workspaceId, kind: o.kind, line: String(err), stream: 'stderr' }) })
+    child.on('error', (err) => { bus.push({ type: 'script.output', ...tag, line: String(err), stream: 'stderr' }) })
     child.on('close', (code) => {
-      running.delete(key(o.workspaceId, o.kind))
-      bus.push({ type: 'script.exit', workspaceId: o.workspaceId, kind: o.kind, code })
+      // A restart already holds the slot with the new process.
+      if (running.get(k)?.child === child) running.delete(k)
+      bus.push({ type: 'script.exit', ...tag, code })
       resolve(code)
     })
   })
 }
 
-/** Kill the whole process group so dev servers started by the script die too. */
-export function stopScript(workspaceId: string, kind: Kind) {
-  const child = running.get(key(workspaceId, kind))
-  if (child?.pid) { try { process.kill(-child.pid, 'SIGTERM') } catch { child.kill('SIGTERM') } }
-  running.delete(key(workspaceId, kind))
+/** How long a stopped script's processes get to exit on SIGTERM before they get SIGKILL. */
+const STOP_GRACE_MS = 3000
+
+/** Kill the whole process group so dev servers started by the script die too. A run script without a name is `run`. */
+export function stopScript(workspaceId: string, kind: Kind, name?: string, o: { now?: boolean } = {}) {
+  const k = key(workspaceId, kind, nameOf(kind, name))
+  const child = running.get(k)?.child
+  if (child?.pid && o.now) {
+    // Kernel is quitting and no timer would outlive it, so the group dies now.
+    try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+  } else if (child?.pid) {
+    const group = -child.pid
+    try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
+    // A server that ignores SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the
+    // output open, so the script would never report its exit. The group gets SIGKILL if it hasn't closed by then.
+    const force = setTimeout(() => { try { process.kill(group, 'SIGKILL') } catch { /* already gone */ } }, STOP_GRACE_MS)
+    force.unref()
+    child.once('close', () => clearTimeout(force))
+  }
+  running.delete(k)
 }
 
-export function stopAllScripts() { for (const k of [...running.keys()]) { const [id, kind] = k.split(':'); stopScript(id, kind as Kind) } }
+/** The names of the run scripts running in a workspace. */
+export const runningRuns = (workspaceId: string): string[] =>
+  [...running.values()].filter((r) => r.workspaceId === workspaceId && r.kind === 'run').map((r) => r.name!)
+
+/** Stop every run script in a workspace (KERNEL-244). */
+export function stopRuns(workspaceId: string) { for (const name of runningRuns(workspaceId)) stopScript(workspaceId, 'run', name) }
+
+/** On quit: every script's process group gets SIGKILL at once, so a server that ignores SIGTERM doesn't outlive Kernel. */
+export function stopAllScripts() { for (const r of [...running.values()]) stopScript(r.workspaceId, r.kind, r.name, { now: true }) }

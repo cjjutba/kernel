@@ -142,7 +142,7 @@ export function kernelTools(d: KernelToolDeps) {
       brief: z.string().describe('Everything the agent needs: goal, files, acceptance criteria'),
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
-      branch: z.string().optional().describe("Branch name for the work, when the repo names branches after its issues (for example Linear's gitBranchName). Left out, Kernel names it from the issue or the title"),
+      branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
       issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged')
@@ -152,9 +152,23 @@ export function kernelTools(d: KernelToolDeps) {
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
+      // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
+      if (!review_of) {
+        const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+        const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
+          ? w.source?.kind === 'issue' && same(w.source.id, issue)
+          : !!d.chatId && w.leadChatId === d.chatId && w.agentId === pick.id && !!w.title && same(w.title, title)))
+        if (open) {
+          const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
+          const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
+          if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
+          return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
+        }
+      }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {
-        const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
         const target = d.workspaces().find((w) => w.id === review_of)
         if (!target) return refuse(`there is no workspace ${review_of} in this room to review. Call list_workspaces for the ids.`)
         if (target.status === 'archived') return refuse(`${target.name} is archived. Ask the user to restore it from History first.`)

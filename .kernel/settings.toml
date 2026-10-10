@@ -9,4 +9,4 @@ copy = [".env", ".env.local"]
 
 [workspace]
 base_ref = "origin/main"
-branch_pattern = "feat/{task}-{slug}"
+branch_pattern = "{type}/{task}-{slug}"

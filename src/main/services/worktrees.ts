@@ -1,5 +1,5 @@
-import { mkdir, realpath, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, rename, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
 
@@ -9,18 +9,55 @@ export function slugify(text: string, max = 48): string {
   return (s.slice(0, max).replace(/-+$/, '') || 'workspace')
 }
 
-/** Fill a branch pattern like "feat/{slug}" or "feat/{task}-{slug}". */
-export function branchName(pattern: string, vars: { slug: string; task?: string }): string {
-  return pattern.replace('{slug}', vars.slug).replace('{task}', vars.task ? vars.task.toLowerCase() : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, '')
+/** Words a branch name can do without (KERNEL-275). */
+const FILLER = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'when', 'that', 'its'])
+
+/**
+ * A few words of a title for a branch: "A review can't start when the reviewed branch name is long" ->
+ * "review-cant-start-reviewed-branch". Filler words go unless nothing else is left. Whole words up to `max` characters,
+ * and a single longer word is cut.
+ */
+export function shortSlug(text: string, max = 35): string {
+  const all = slugify(text.replace(/['’]/g, ''), Infinity).split('-')
+  const kept = all.filter((w) => !FILLER.has(w))
+  const words = kept.length ? kept : all
+  let out = words[0].slice(0, max)
+  for (const w of words.slice(1)) { if (out.length + 1 + w.length > max) break; out += `-${w}` }
+  return out.replace(/-+$/, '') || 'workspace'
+}
+
+/** An issue key for a branch: "KERNEL-267" -> "kernel-267", "#41" -> "41". */
+export const taskToken = (task: string) => task.toLowerCase().replace(/[^a-z0-9-]/g, '')
+
+/** Cuts a branch name to `max` characters at its last `-` or `/`, with no trailing `-`, `/` or `.`. */
+export function capBranch(name: string, max = 60): string {
+  if (name.length <= max) return name
+  const head = name.slice(0, max + 1)
+  const at = Math.max(head.lastIndexOf('-'), head.lastIndexOf('/'))
+  return (at > 0 ? head.slice(0, at) : name.slice(0, max)).replace(/[-/.]+$/, '')
+}
+
+/** `fix` for an issue with a label named Bug, in any case, else `feat`. */
+export const branchType = (labels: string[] = []): 'fix' | 'feat' => labels.some((l) => l.toLowerCase() === 'bug') ? 'fix' : 'feat'
+
+/** A review's branch: `review/<key>` for an issue's work, else `review/<a few words of its title>`. */
+export function reviewBranch(title: string, task?: string): string {
+  const key = task ? taskToken(task) : ''
+  return capBranch(`review/${key || shortSlug(title)}`)
+}
+
+/** Fill a branch pattern like "{type}/{task}-{slug}" or "feat/{slug}", cut to 60 characters. */
+export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat' }): string {
+  return capBranch(pattern.replace('{type}', vars.type ?? 'feat').replace('{slug}', vars.slug).replace('{task}', vars.task ? taskToken(vars.task) : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, ''))
 }
 
 /**
  * The branch for a task. With a task id (a Linear issue) the id leads the slug, `feat/{task}-{slug}`,
  * even when the configured pattern only has `{slug}`.
  */
-export function taskBranch(pattern: string, title: string, task?: string): string {
+export function taskBranch(pattern: string, title: string, task?: string, type?: 'fix' | 'feat'): string {
   const p = task && !pattern.includes('{task}') ? pattern.replace('{slug}', '{task}-{slug}') : pattern
-  return branchName(p, { slug: slugify(title), task })
+  return branchName(p, { slug: shortSlug(title), task, type })
 }
 
 /** `origin/main` -> `main` for the room's remote. Any other ref comes back as it is. */
@@ -33,12 +70,13 @@ export const stripRemote = (ref: string, remote = 'origin') => (ref.startsWith(`
 export const onRemote = (ref: string, remote = 'origin') => (remote !== 'origin' && ref.startsWith('origin/') ? `${remote}/${ref.slice('origin/'.length)}` : ref)
 
 /**
- * Local branches and the room remote's, newest first, for the From popover and the target branch menu. `<remote>/HEAD`
- * is left out.
+ * Local branches and remote branches, newest first, for the From popover and the target branch menu. With `remote`, only that
+ * remote's branches are listed; without one, every remote's, as before KERNEL-190 (KERNEL-244). `<remote>/HEAD` is left out.
  */
-export async function listBranches(repo: string, remote = 'origin'): Promise<string[]> {
-  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', `refs/remotes/${remote}`)
-  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== remote && !l.endsWith('/HEAD'))
+export async function listBranches(repo: string, remote?: string): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', remote ? `refs/remotes/${remote}` : 'refs/remotes')
+  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && !l.endsWith('/HEAD'))
+    .map((l) => l.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, ''))
   return [...new Set(names)]
 }
 
@@ -194,12 +232,46 @@ export async function removeWorktree(repo: string, path: string, opts: { deleteB
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
 }
 
-export interface WorktreeInfo { path: string; branch?: string; head: string }
+/**
+ * `removeWorktree` without the wait: the folder moves to `<parent>/.trash/<name>-<time>`, which is instant on the same
+ * disk, and the caller deletes it later (KERNEL-284). `moving` gets that path before the move, so the caller can save it
+ * first and a quit halfway still deletes it. Returns the path, or nothing when there was no folder to move or the move
+ * failed and `git worktree remove` deleted it here. Same guards: a gone folder only prunes, an unreadable one throws, and
+ * so does one that isn't this repo's worktree, the repo itself, or a locked one, whose record prune would keep.
+ * `slugify` never starts a worktree folder with a dot, so `.trash` can't be one.
+ */
+export async function detachWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean; moving?: (trash: string) => void } = {}): Promise<string | undefined> {
+  let moved: string | undefined
+  if (await folderGone(path)) await git(repo, 'worktree', 'prune')
+  else {
+    // git may list a worktree by its real path (/private/var/... for /var/... on macOS). The first entry is the repo.
+    const real = await realpath(path)
+    const entry = (await listWorktrees(repo)).slice(1).find((w) => w.path === path || w.path === real)
+    if (!entry) throw new Error(`${path} is not a worktree of ${repo}.`)
+    if (entry.locked) throw new Error(`git has locked the worktree at ${path}. Unlock it with git worktree unlock, then archive again.`)
+    const trash = join(dirname(path), '.trash', `${basename(path)}-${Date.now()}`)
+    opts.moving?.(trash)
+    try {
+      await mkdir(dirname(trash), { recursive: true })
+      await rename(path, trash)
+      moved = trash
+    } catch {
+      await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
+    }
+    // The record points at a folder that is no longer there, so prune drops it. The folder has moved either way, so a
+    // failed prune doesn't fail the archive: the next prune drops the record.
+    if (moved) await exec('git', ['-C', repo, 'worktree', 'prune'])
+  }
+  if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+  return moved
+}
+
+export interface WorktreeInfo { path: string; branch?: string; head: string; locked?: boolean }
 export async function listWorktrees(repo: string): Promise<WorktreeInfo[]> {
   const out = await git(repo, 'worktree', 'list', '--porcelain')
   return out.trim().split(/\n\n+/).filter(Boolean).map((block) => {
     const get = (k: string) => block.split('\n').find((l) => l.startsWith(k + ' '))?.slice(k.length + 1)
-    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', '') }
+    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', ''), locked: block.split('\n').some((l) => l === 'locked' || l.startsWith('locked ')) }
   })
 }
 

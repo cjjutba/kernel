@@ -308,8 +308,13 @@ export interface Checkpoint {
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
 
+/** Each workspace gets this many ports, `$KERNEL_PORT` to `$KERNEL_PORT + 9` (KERNEL-244). */
+export const PORT_BLOCK = 10
+
 export interface ScriptLine {
   kind: ScriptKind
+  /** Which run script printed the line (`run` is the default one). Setup and archive lines have none. */
+  name?: string
   line: string
   stream: 'stdout' | 'stderr'
 }
@@ -789,9 +794,10 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'agents' | 'permissions' | 'skills'
-  | 'git' | 'scripts' | 'prs' | 'files'
+  | 'models' | 'permissions'
+  | 'git' | 'scripts' | 'prs'
   | 'hooks' | 'integrations' | 'experimental' | 'about'
+  /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
@@ -828,6 +834,11 @@ export interface AppSettings {
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
+  /**
+   * The room's run scripts in file order: `run` (from `[scripts] run`) first when set, then the `[run_scripts]` table.
+   * Their sources are keyed `runScripts.<name>` (KERNEL-244).
+   */
+  runScripts: { name: string; command: string }[]
   /** `copy` takes exact paths and patterns like `.env*` (KERNEL-245). */
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
@@ -859,10 +870,13 @@ export interface FileToCopy {
   size: number
 }
 
-/** A patch to a room's settings file. `null` removes the key so the app default applies again. */
+/**
+ * A patch to a room's settings file. `null` removes the key so the app default applies again.
+ * `runScripts` maps a name to its command, and `run` is `[scripts] run`.
+ */
 export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
-}
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+} & { runScripts?: Record<string, string | null> }
 
 /** Recursive partial for settings patches. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] : T[K] extends object | null ? DeepPartial<T[K]> : T[K] }
@@ -915,7 +929,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from'
+  | 'branch' | 'from' | 'settingsFiles'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'

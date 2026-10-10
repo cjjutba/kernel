@@ -21,8 +21,25 @@ export function sections(rows: TeamUpdateRow[]): { fromChat?: string; rows: Team
   return out
 }
 
-/** One event as the card's line ends it: with a full stop unless it already has one. */
-export const sentenceOf = (text: string) => (/[.!?…]$/.test(text) ? text : `${text}.`)
+/** A task that starts with an issue key ("KERNEL-182 New chats focus the composer") split so the card can set the key apart. */
+export function taskParts(task: string): { key?: string; title: string } {
+  const m = /^([A-Z][A-Z0-9]+-\d+)\s+(.+)$/.exec(task)
+  return m ? { key: m[1], title: m[2] } : { title: task }
+}
+
+/**
+ * The color an event's words take on the card (KERNEL-274): red for what needs fixing, violet for a merge, green for a PR
+ * ready to merge or an approval. Everything else stays grey, and an event that needs the Lead without one of those is brighter.
+ */
+export function eventTone(e: { kind: TeamEventKind; text: string; actionable: boolean }): 'del' | 'add' | 'merged' | 'ink2' | 'muted' {
+  switch (e.kind) {
+    case 'error': case 'crash': case 'setup.failed': case 'pr.cifail': case 'pr.changes': case 'pr.conflict': return 'del'
+    case 'pr.merged': return 'merged'
+    case 'pr.ready': return 'add'
+    case 'review': return /^Approved/.test(e.text) ? 'add' : 'del'
+    default: return e.actionable ? 'ink2' : 'muted'
+  }
+}
 
 // The lines of an update before KERNEL-117: "- Kai · Inbox actions (workspace <id>): PR #54 is ready to merge".
 const LINE = /^- (.+?) · (.+?) \(workspace ([^)]+)\): (.+)$/
