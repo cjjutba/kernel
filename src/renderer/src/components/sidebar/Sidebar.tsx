@@ -300,7 +300,7 @@ export function Sidebar() {
       <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
-        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
+        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>

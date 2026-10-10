@@ -29,7 +29,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .ws-tab { display: inline-flex; align-items: center; gap: 7px; min-width: 0; height: 100%; max-width: 220px; padding: 0 12px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .tab-glyph { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tab-glyph > svg { flex-shrink: 0; }
-.tab-glyph[data-tone='ink'] svg { color: var(--ink); }
+.tab-glyph[data-tone='needs'] svg { color: var(--needs); }
 .ws-tab:hover { color: var(--ink-2); }
 .ws-tab[aria-selected='true'] { color: var(--ink); }
 /* The pen and the close button share one slot. Focus only counts from the keyboard, so a clicked tab keeps its pen. */
