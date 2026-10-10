@@ -1,4 +1,4 @@
-import { basename, join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
@@ -1123,7 +1123,7 @@ export class Kernel {
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).
-    const moved = ws.mode === 'worktree' && !o.keepWorktree ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined }) : undefined
+    const moved = ws.mode === 'worktree' && !o.keepWorktree ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     // Archiving a waiter ends its wait (KERNEL-259).
     const archived = this.updateWs(id, { status: 'archived', archivedAt: Date.now(), waitsFor: undefined }, { archived: true })
     if (moved) this.throwAway(moved)
@@ -1141,20 +1141,21 @@ export class Kernel {
 
   /**
    * Queues a moved-aside worktree folder for deletion. `rm` unlinks a symlinked `node_modules` and leaves what it points
-   * to alone. A path leaves the saved list only once it is deleted; a failure stays for the next start, silently.
+   * to alone. A path leaves the saved list only once it is deleted; a failure stays for the next start, silently. Only a
+   * folder inside a `.trash` folder is deleted, whatever the saved list says.
    */
   private throwAway(path: string) {
-    this.trash.add(path)
-    this.saveTrash()
+    this.keepTrash(path)
     this.emptying = this.emptying.then(async () => {
       if (this.stopped) return
-      try { await rm(path, { recursive: true, force: true }) } catch { return }
+      if (basename(dirname(path)) === '.trash') try { await rm(path, { recursive: true, force: true }) } catch { return }
       // A quit closes the database, and the path is still saved for the next start.
       if (this.stopped) return
       this.trash.delete(path)
       this.saveTrash()
-    })
+    }).catch(() => undefined)
   }
+  private keepTrash(path: string) { if (!this.trash.has(path)) { this.trash.add(path); this.saveTrash() } }
   private saveTrash() { this.store.saveMeta('trash', [...this.trash]) }
 
   /** Resolves once every queued folder delete has run, including ones queued while it waits. */

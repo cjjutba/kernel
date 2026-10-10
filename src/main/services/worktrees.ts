@@ -211,19 +211,23 @@ export async function removeWorktree(repo: string, path: string, opts: { deleteB
 
 /**
  * `removeWorktree` without the wait: the folder moves to `<parent>/.trash/<name>-<time>`, which is instant on the same
- * disk, and the caller deletes it later (KERNEL-284). Returns that path, or nothing when there was no folder to move or
- * the move failed and `git worktree remove` deleted it here. Same guards: a gone folder only prunes, an unreadable one
- * throws, and so does one that isn't this repo's worktree or is the repo itself. `slugify` never starts a worktree
- * folder with a dot, so `.trash` can't be one.
+ * disk, and the caller deletes it later (KERNEL-284). `moving` gets that path before the move, so the caller can save it
+ * first and a quit halfway still deletes it. Returns the path, or nothing when there was no folder to move or the move
+ * failed and `git worktree remove` deleted it here. Same guards: a gone folder only prunes, an unreadable one throws, and
+ * so does one that isn't this repo's worktree, the repo itself, or a locked one, whose record prune would keep.
+ * `slugify` never starts a worktree folder with a dot, so `.trash` can't be one.
  */
-export async function detachWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean } = {}): Promise<string | undefined> {
+export async function detachWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean; moving?: (trash: string) => void } = {}): Promise<string | undefined> {
   let moved: string | undefined
   if (await folderGone(path)) await git(repo, 'worktree', 'prune')
   else {
     // git may list a worktree by its real path (/private/var/... for /var/... on macOS). The first entry is the repo.
     const real = await realpath(path)
-    if (!(await listWorktrees(repo)).slice(1).some((w) => w.path === path || w.path === real)) throw new Error(`${path} is not a worktree of ${repo}.`)
+    const entry = (await listWorktrees(repo)).slice(1).find((w) => w.path === path || w.path === real)
+    if (!entry) throw new Error(`${path} is not a worktree of ${repo}.`)
+    if (entry.locked) throw new Error(`git has locked the worktree at ${path}. Unlock it with git worktree unlock, then archive again.`)
     const trash = join(dirname(path), '.trash', `${basename(path)}-${Date.now()}`)
+    opts.moving?.(trash)
     try {
       await mkdir(dirname(trash), { recursive: true })
       await rename(path, trash)
@@ -231,19 +235,20 @@ export async function detachWorktree(repo: string, path: string, opts: { deleteB
     } catch {
       await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
     }
-    // The record points at a folder that is no longer there, so prune drops it.
-    if (moved) await git(repo, 'worktree', 'prune')
+    // The record points at a folder that is no longer there, so prune drops it. The folder has moved either way, so a
+    // failed prune doesn't fail the archive: the next prune drops the record.
+    if (moved) await exec('git', ['-C', repo, 'worktree', 'prune'])
   }
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
   return moved
 }
 
-export interface WorktreeInfo { path: string; branch?: string; head: string }
+export interface WorktreeInfo { path: string; branch?: string; head: string; locked?: boolean }
 export async function listWorktrees(repo: string): Promise<WorktreeInfo[]> {
   const out = await git(repo, 'worktree', 'list', '--porcelain')
   return out.trim().split(/\n\n+/).filter(Boolean).map((block) => {
     const get = (k: string) => block.split('\n').find((l) => l.startsWith(k + ' '))?.slice(k.length + 1)
-    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', '') }
+    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', ''), locked: block.split('\n').some((l) => l === 'locked' || l.startsWith('locked ')) }
   })
 }
 

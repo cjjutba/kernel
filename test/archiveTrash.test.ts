@@ -38,6 +38,13 @@ async function fill(path: string) {
   }
 }
 
+/** Holds the delete queue until the returned function is called. */
+function hold(k: Kernel) {
+  let release = () => {}
+  ;(k as unknown as { emptying: Promise<void> }).emptying = new Promise<void>((r) => { release = r })
+  return () => release()
+}
+
 const trash = (k: Kernel) => k.store.meta<string[]>('trash') ?? []
 
 describe('archive moves the worktree aside and deletes it later (KERNEL-284)', () => {
@@ -46,8 +53,7 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await fill(ws.path)
     // Hold the delete queue: archive resolving anyway shows it doesn't wait for the delete.
-    let release = () => {}
-    ;(k as unknown as { emptying: Promise<void> }).emptying = new Promise<void>((r) => { release = r })
+    const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(ws.path)).rejects.toThrow(/ENOENT/)
@@ -81,19 +87,25 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
 
   it('finishes a delete a quit cut short at the next start, and keeps one that fails for the start after', async () => {
     const { dataDir, home, k } = await setup()
-    const left = await mkdtemp(join(tmpdir(), 'kernel-trash-'))
+    const base = await mkdtemp(join(tmpdir(), 'kernel-trash-'))
+    const left = join(base, '.trash', 'feat-left-1')
     await fill(left)
     // A file in a folder Kernel can't write to can't be deleted.
-    const stuck = await mkdtemp(join(tmpdir(), 'kernel-trash-stuck-'))
-    await mkdir(join(stuck, 'locked'))
+    const stuck = join(base, '.trash', 'feat-stuck-1')
+    await mkdir(join(stuck, 'locked'), { recursive: true })
     await writeFile(join(stuck, 'locked', 'a.js'), 'x\n')
     await chmod(join(stuck, 'locked'), 0o555)
     onTestFinished(() => chmod(join(stuck, 'locked'), 0o755))
-    k.store.saveMeta('trash', [left, stuck])
+    // A saved path outside a .trash folder is never deleted, only forgotten.
+    const outside = join(base, 'mine')
+    await mkdir(outside)
+    await writeFile(join(outside, 'notes.md'), 'mine\n')
+    k.store.saveMeta('trash', [left, stuck, outside])
     await k.stop()
     const next = await boot(dataDir, home)
     await next.trashEmptied()
     await expect(stat(left)).rejects.toThrow(/ENOENT/)
+    expect(await readFile(join(outside, 'notes.md'), 'utf8')).toBe('mine\n')
     expect(trash(next)).toEqual([stuck])
   }, 30000)
 
@@ -101,9 +113,11 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const { k, room } = await setup()
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     await fill(ws.path)
+    const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
     const back = await k.restoreWorkspace(ws.id)
     expect(back.status).toBe('ready')
+    release()
     await k.trashEmptied()
     expect(await readFile(join(ws.path, 'README.md'), 'utf8')).toBe('# client\n')
     expect(await readdir(join(dirname(ws.path), '.trash'))).toEqual([])

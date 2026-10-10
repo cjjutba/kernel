@@ -191,6 +191,29 @@ describe('worktrees', () => {
     expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
   })
 
+  it('detach refuses a locked worktree, since prune would keep its record (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-lock-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/held', baseRef: 'main' })
+    await git(repo, 'worktree', 'lock', path)
+    await expect(detachWorktree(repo, path, { force: true, deleteBranch: 'feat/held' })).rejects.toThrow(/locked/)
+    expect((await stat(path)).isDirectory()).toBe(true)
+    expect(await branchExists(repo, 'feat/held')).toBe(true)
+  })
+
+  it('detach falls back to git worktree remove when the folder cannot move (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-fallback-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/fallback', baseRef: 'main' })
+    // A file where the .trash folder would go stops the move.
+    await writeFile(join(root, '.trash'), '')
+    const saved: string[] = []
+    expect(await detachWorktree(repo, path, { force: true, moving: (p) => saved.push(p) })).toBeUndefined()
+    expect(saved).toHaveLength(1)
+    await expect(stat(path)).rejects.toThrow(/ENOENT/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-fallback')
+  })
+
   it('hides pre-existing changes for current-branch workspaces', async () => {
     const repo = await tempRepo({ 'checkout.ts': 'line1\n', 'other.ts': 'o\n' })
     await writeFile(join(repo, 'checkout.ts'), 'line1\nmine\n')
