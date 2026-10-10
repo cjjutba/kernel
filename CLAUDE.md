@@ -21,7 +21,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 - `src/shared/` contracts used by every process: `types.ts`, `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
 - `design/screens/` one PNG per canvas screen (the target). `design/canvas/` the canvas markup with exact values
-- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-139), SCREENS (screen to issue map), ROADMAP. `docs/decisions/` holds newer decisions, one file each
+- `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-140), SCREENS (screen to issue map), ROADMAP. `docs/decisions/` holds newer decisions, one file each
 - `test/` vitest suites
 
 ## How to work an issue
