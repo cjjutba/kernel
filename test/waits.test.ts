@@ -23,10 +23,12 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ options }: { options: unknown }) => {
     const items: unknown[] = []
     const waiters: ((r: IteratorResult<unknown>) => void)[] = []
-    sdk.calls.push({ options, feed: (m: unknown) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) } })
+    const feed = (m: unknown) => { const w = waiters.shift(); if (w) w({ value: m, done: false }); else items.push(m) }
+    sdk.calls.push({ options, feed })
     return {
       [Symbol.asyncIterator]: () => ({ next: () => (items.length ? Promise.resolve({ value: items.shift(), done: false }) : new Promise((resolve) => waiters.push(resolve))) }),
-      interrupt: async () => {}, setModel: async () => {}, setPermissionMode: async () => {}, getContextUsage: async () => ({ percentage: 10 })
+      // As the real one: an interrupt ends the turn. Kernel's quit waits up to 3 seconds for that (KERNEL-215).
+      interrupt: async () => { feed({ type: 'result', subtype: 'error_during_execution', uuid: `i${sdk.calls.length}`, duration_ms: 1 }) }, setModel: async () => {}, setPermissionMode: async () => {}, getContextUsage: async () => ({ percentage: 10 })
     }
   }
 }))
@@ -51,6 +53,8 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
   const gh = { prs: new Map<string, PrInfo>() }
   const fake = (k: Kernel) => {
+    // A start with work to carry on reads the account (KERNEL-215). The real one runs `claude auth status`.
+    k.accountReader = async () => ({ signedIn: true })
     k.github = {
       info: async (_cwd, ref, workspaceId) => { const pr = gh.prs.get(ref); return pr ? { ...pr, workspaceId } : null },
       merge: async (_cwd, ref) => { const pr = gh.prs.get(ref); if (pr) { await land(origin, `pr-${pr.number}.txt`); gh.prs.set(ref, { ...pr, state: 'merged' }) } },

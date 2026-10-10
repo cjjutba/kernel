@@ -117,9 +117,10 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     return { k, where, room, lead, leadWs, ws, kai }
   }
 
-  async function relaunch(where: { dataDir: string; home: string }) {
+  async function relaunch(where: { dataDir: string; home: string }, o: { signedIn?: boolean } = {}) {
     const before = sdk.calls.length
     const k = new Kernel(where)
+    k.accountReader = async () => ({ signedIn: o.signedIn ?? true })
     await k.start()
     onTestFinished(() => k.stop({ budgetMs: 0 }))
     return { k, before }
@@ -181,6 +182,26 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     } finally { sdk.onQuery = undefined }
   }, 30000)
 
+  it('waits for sign-in when Claude Code is signed out at launch, then carries on', async () => {
+    const { k, where, lead, kai } = await working()
+    await k.stop()
+    const { k: k2, before } = await relaunch(where, { signedIn: false })
+    // Nothing started: the notes are there and both chats wait for the sign-in.
+    expect(sdk.calls.length).toBe(before)
+    expect(k2.sessions.heldFor()).toEqual(['auth'])
+    expect(k2.sessions.isRunning(kai.id)).toBe(false)
+    expect(k2.sessions.isRunning(lead.id)).toBe(false)
+    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
+    expect(k2.store.meta('cutOff')).toMatchObject({ [kai.id]: 'quit', [lead.id]: 'quit' })
+    // Signed in, as by `claude /login` in a terminal: both carry on, Kai with the queued message first.
+    k2.accountReader = async () => ({ signedIn: true })
+    await k2.readAccount()
+    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(k2.sessions.isRunning(lead.id)).toBe(true)
+    expect(users(k2, kai).at(-1)).toBe('Then add a test')
+    expect(users(k2, lead).at(-1)).toBe(RELAUNCH_NUDGE)
+  }, 30000)
+
   it("stops inside KERNEL-214's 5 second quit cap when a turn ignores the interrupt and an outside approval is waiting", async () => {
     const { k, where, kai } = await working()
     const port = JSON.parse(await readFile(join(where.dataDir, 'settings.json'), 'utf8')).hookPort
@@ -194,7 +215,10 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     sdk.deaf = true
     try {
       const t0 = Date.now()
-      await k.stop()
+      // Restart to update and before-quit can both ask: they wait for the same stop.
+      const first = k.stop()
+      expect(k.stop()).toBe(first)
+      await first
       const took = Date.now() - t0
       expect(took).toBeGreaterThanOrEqual(QUIT_BUDGET_MS)
       expect(took).toBeLessThan(4000)

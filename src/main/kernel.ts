@@ -339,8 +339,16 @@ export class Kernel {
     // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
     // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
+    // Offline or signed out, what carries on must wait instead of spending its turn on the failure. Nothing has run yet to
+    // notice either, so ask once: the probe the network monitor just started, and the account.
+    if (this.sessions.wasWorking() || Object.keys(cutOff).length) {
+      await this.network?.check()
+      const account = await this.readAccount().catch(() => undefined)
+      if (account && !account.signedIn) this.signedOut()
+    }
     const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}, held, { clean })
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], cutOff, held, { clean })
     this.recoverTrust(held)
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
@@ -576,9 +584,15 @@ export class Kernel {
    * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
    * Their queues are saved, and they carry on at the next start (KERNEL-215).
    */
-  async stop(o: { budgetMs?: number } = {}) {
-    // Its database is closed after the first stop, so a second one has nothing left to do.
-    if (this.stopped) return
+  stop(o: { budgetMs?: number } = {}): Promise<void> {
+    // Restart to update and before-quit can both ask (KERNEL-214). Each waits for the same stop to finish.
+    this.stopping ??= this.doStop(o)
+    return this.stopping
+  }
+
+  private stopping?: Promise<void>
+
+  private async doStop(o: { budgetMs?: number }) {
     this.stopped = true
     this.unlisten()
     this.notifications.detach()
@@ -596,11 +610,12 @@ export class Kernel {
     await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
-    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
-    // waits for it. Kernel can't answer it once it quits, so its connection ends now, and the quit fits KERNEL-214's cap.
-    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.close(() => r()); this.hookServer.closeAllConnections() })
-    // The last write, so the next start can tell a quit from a crash.
+    // The next start tells a quit from a crash by this. It goes before the hook server closes, the one step left that can
+    // wait, so a quit capped by KERNEL-214 still counts as a quit. Nothing after it changes what carries on.
     this.store.saveMeta('cleanExit', true)
+    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
+    // waits for it. Kernel can't answer it once it quits, so its connection ends first.
+    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
     this.store.db.close()
   }
 
