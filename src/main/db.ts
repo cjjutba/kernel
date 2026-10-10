@@ -1,33 +1,67 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
+import { migrate, refuseNewer } from './migrations'
 import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, Task, Workspace } from '@shared/types'
 
-// One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young.
-// Swap for Drizzle with drizzle-kit migrations once the shapes settle (see docs/ARCHITECTURE.md).
+// One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
+// migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
 
-const SCHEMA = `
-create table if not exists rooms (id text primary key, data text not null, created_at integer not null);
-create table if not exists workspaces (id text primary key, room_id text not null, data text not null, created_at integer not null);
-create table if not exists chats (id text primary key, workspace_id text not null, data text not null, created_at integer not null);
-create table if not exists chat_items (id text primary key, chat_id text not null, seq integer not null, data text not null);
-create index if not exists chat_items_by_chat on chat_items (chat_id, seq);
-create table if not exists approvals (id text primary key, room_id text, status text not null, data text not null, created_at integer not null);
-create table if not exists notifications (id text primary key, room_id text, data text not null, created_at integer not null);
-create table if not exists activity (id text primary key, room_id text, ts integer not null, data text not null);
-create index if not exists activity_by_room on activity (room_id, ts);
-create table if not exists tasks (room_id text not null, id text not null, data text not null, created_at integer not null, primary key (room_id, id));
-create table if not exists meta (key text primary key, data text not null);
-create table if not exists overlaps (id text primary key, room_id text not null, data text not null);
-`
+const DAY = 24 * 60 * 60 * 1000
+/** Activity rows older than this go. */
+export const KEEP_ACTIVITY_MS = 30 * DAY
+/** A tool approval settled longer ago than this keeps its row and a short summary of its input. */
+export const KEEP_APPROVAL_INPUT_MS = 7 * DAY
 
 export class Store {
   readonly db: Database.Database
   private seq = 0
 
+  private pruneTimer: NodeJS.Timeout
+
+  /** Throws NEWER_DATA, leaving the file as it was, when a newer build wrote it. */
   constructor(file: string) {
+    refuseNewer(file)
     this.db = new Database(file)
-    this.db.pragma('journal_mode = WAL')
-    this.db.exec(SCHEMA)
+    try {
+      this.db.pragma('busy_timeout = 5000')
+      this.db.pragma('journal_mode = WAL')
+      this.db.pragma('synchronous = NORMAL')
+      this.db.pragma(`journal_size_limit = ${64 * 1024 * 1024}`)
+      migrate(this.db, file)
+    } catch (err) {
+      this.db.close()
+      throw err
+    }
+    this.safePrune()
+    // kernel.ts closes `db` itself on stop, so the timer checks it is still open.
+    this.pruneTimer = setInterval(() => { if (this.db.open) this.safePrune() }, DAY)
+    this.pruneTimer.unref()
+  }
+
+  /**
+   * At start and once a day (KERNEL-210): activity older than 30 days goes, and a tool approval settled more than 7 days
+   * ago keeps its row with only the short string fields of its input (command, file path, URL). Pending approvals,
+   * plans, questions, hires, chats and chat items are never pruned.
+   */
+  prune(now = Date.now()): { activity: number; approvals: number } {
+    return this.db.transaction(() => {
+      const activity = this.db.prepare('delete from activity where ts < ?').run(now - KEEP_ACTIVITY_MS).changes
+      const rows = this.db.prepare(`select id, data from approvals where status != 'pending' and pruned = 0 and coalesce(settled_at, created_at) < ?`).all(now - KEEP_APPROVAL_INPUT_MS) as { id: string; data: string }[]
+      const mark = this.db.prepare('update approvals set data = ?, pruned = 1 where id = ?')
+      let approvals = 0
+      for (const r of rows) {
+        let a: Approval
+        try { a = JSON.parse(r.data) } catch { continue }
+        const trim = a.kind === 'tool' && a.toolName !== 'ExitPlanMode' && a.toolName !== 'AskUserQuestion' && a.input !== undefined
+        if (trim) approvals++
+        mark.run(trim ? JSON.stringify({ ...a, input: summarize(a.input) }) : r.data, r.id)
+      }
+      return { activity, approvals }
+    })()
+  }
+
+  private safePrune() {
+    try { this.prune() } catch (err) { console.warn('[db] prune failed', err) }
   }
 
   // rooms
@@ -107,7 +141,19 @@ export class Store {
     if (filter.workspaceId) { where.push("json_extract(data, '$.workspaceId') = ?"); args.push(filter.workspaceId) }
     return this.all(`select data from approvals ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc`, ...args)
   }
-  saveApproval(a: Approval) { this.db.prepare('insert or replace into approvals (id, room_id, status, data, created_at) values (?, ?, ?, ?, ?)').run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt); return a }
+  approval(id: string): Approval | undefined { return this.one('select data from approvals where id = ?', id) }
+  /**
+   * `settled_at` is set the first time an approval is saved as no longer pending, and kept after that. A row an older
+   * build saved has none, so pruning counts from `created_at` for it.
+   */
+  saveApproval(a: Approval) {
+    this.db.prepare(`insert into approvals (id, room_id, status, data, created_at, settled_at) values (?, ?, ?, ?, ?, ?)
+      on conflict (id) do update set room_id = excluded.room_id, status = excluded.status, data = excluded.data, created_at = excluded.created_at,
+        settled_at = case when excluded.status = 'pending' then null else coalesce(approvals.settled_at, excluded.settled_at) end,
+        pruned = case when excluded.status = 'pending' then 0 else approvals.pruned end`)
+      .run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt, a.status === 'pending' ? null : Date.now())
+    return a
+  }
 
   // tasks
   tasks(roomId: string): Task[] { return this.all('select data from tasks where room_id = ? order by created_at, id', roomId) }
@@ -135,9 +181,26 @@ export class Store {
   meta<T>(key: string): T | undefined { return this.one('select data from meta where key = ?', key) }
   saveMeta<T>(key: string, value: T) { this.db.prepare('insert or replace into meta (key, data) values (?, ?)').run(key, JSON.stringify(value)); return value }
 
-  private all<T>(sql: string, ...args: unknown[]): T[] { return (this.db.prepare(sql).all(...args) as { data: string }[]).map((r) => JSON.parse(r.data)) }
+  /** A row whose JSON doesn't parse is skipped and logged, so one bad row doesn't empty its list. */
+  private all<T>(sql: string, ...args: unknown[]): T[] {
+    return (this.db.prepare(sql).all(...args) as { data: string }[]).flatMap((r) => parsed<T>(r.data, sql))
+  }
   private ids(sql: string, ...args: unknown[]): string[] { return (this.db.prepare(sql).all(...args) as { id: string }[]).map((r) => r.id) }
-  private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? JSON.parse(r.data) : undefined }
+  /** A row whose JSON doesn't parse reads as missing, and is logged. */
+  private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? parsed<T>(r.data, sql)[0] : undefined }
+}
+
+function parsed<T>(data: string, sql: string): T[] {
+  try { return [JSON.parse(data)] } catch { console.warn(`[db] skipped a row with bad JSON: ${sql.slice(0, 80)}`); return [] }
+}
+
+/** A pruned tool input: its string fields cut to 200 characters, numbers and booleans as they were, the rest dropped. */
+function summarize(input: unknown): unknown {
+  const cut = (v: string) => (v.length > 200 ? `${v.slice(0, 200)}…` : v)
+  if (typeof input === 'string') return cut(input)
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  return Object.fromEntries(Object.entries(input).flatMap(([k, v]): [string, unknown][] =>
+    typeof v === 'string' ? [[k, cut(v)]] : typeof v === 'number' || typeof v === 'boolean' ? [[k, v]] : []))
 }
 
 export const newId = () => randomUUID()
