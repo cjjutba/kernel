@@ -1299,7 +1299,7 @@ export class Kernel {
       createWorkspace: async ({ issue, ...o }) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
-        // The issue the task builds (D-139). Linear's branch name unless the Lead named one.
+        // The issue the task builds (D-140). Linear's branch name unless the Lead named one.
         const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch || linked?.branchName
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
@@ -1834,7 +1834,7 @@ export class Kernel {
   private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
 
   /**
-   * A workspace started on a Linear issue: move the issue to In Progress (D-139). Nobody waits for it, and a failure is
+   * A workspace started on a Linear issue: move the issue to In Progress (D-140). Nobody waits for it, and a failure is
    * one note in the log, never a failed workspace. Without a token there is nothing to do.
    */
   private async startIssue(ws: Workspace, key: string) {

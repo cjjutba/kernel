@@ -117,7 +117,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" onClick={() => onSelect(t.id)}
+                <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} onClick={() => onSelect(t.id)}
                   aria-label={g?.label ? `${t.title}, ${g.label}` : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}

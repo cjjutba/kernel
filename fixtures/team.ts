@@ -244,6 +244,36 @@ const askedFromTable = (f: Fixture, leadGone: boolean): Partial<Fixture> => {
   }
 }
 
+/**
+ * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
+ * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Rooms fill in the rest of the sidebar.
+ */
+const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
+  const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
+  const ownedBy = (leadChatId: string) => ({ leadChatId })
+  const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'theo', port: 4315, prNumber: undefined }
+  const rooms = roomsScene(f)
+  return {
+    ...rooms,
+    chats: [
+      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
+      chat('chat-lead-ui', 'Conductor app UI review', 5), chat('chat-lead-inbox', 'Inbox clutter and old messages in the list', 6),
+      chat('chat-lead-tools', 'Tool call display mode', 7), chat('chat-lead-new', 'New chat', 8)
+    ],
+    workspaces: [
+      ...withWorkspace(f, ids.table, { ...ownedBy('chat-lead-inbox'), stat: { files: 4, added: 412, removed: 38 } })
+        .map((w) => (w.id === ids.schema || w.id === ids.invites ? { ...w, ...ownedBy('chat-lead-inbox') } : w)),
+      review
+    ],
+    approvals: [
+      ...(rooms.approvals ?? []),
+      { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
+    ],
+    push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'chat-lead-tools' } }
+  }
+}
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
@@ -307,6 +337,7 @@ export const teamFixtures: Record<string, Fixture> = {
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
+  SidebarLeadChats: scene(sidebarLeadChats),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }
