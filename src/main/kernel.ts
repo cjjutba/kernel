@@ -36,7 +36,7 @@ import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
-import { buildEnv, EnvStore, kernelVars, readEnvFiles, type Cipher } from './services/env'
+import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -197,7 +197,11 @@ export class Kernel {
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.roomIcons = new RoomIcons(o.dataDir)
-    this.envStore = new EnvStore({ file: join(o.dataDir, 'env.json'), cipher: o.cipher })
+    this.envStore = new EnvStore({
+      file: join(o.dataDir, 'env.json'), cipher: o.cipher,
+      // Names only: the file it moved holds ciphertext, and the note never names a value.
+      onSetAside: (file) => void bus.activity({ kind: 'note', actor: 'kernel', text: 'could not read its saved variables and moved them to', object: file })
+    })
     this.trusted = new ScriptTrustStore(join(o.dataDir, 'trust.json'))
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
@@ -1708,13 +1712,15 @@ export class Kernel {
   /**
    * Every variable a session, script or terminal in the workspace gets: the Mac's, the app's, the room's env files, the
    * room's, then Kernel's own (KERNEL-247). Synchronous, since a session starts synchronously. Scripts also get PORT and
-   * FORCE_COLOR=0. Sessions and terminals drop the API key afterwards, in `sessionEnv`.
+   * FORCE_COLOR=0. Sessions and terminals take `ANTHROPIC_*` and `CLAUDE_CODE_*` names from the Mac only, and drop the API
+   * key afterwards, in `sessionEnv`. Scripts get every layer whole.
    */
   envFor(ws: Workspace, o: { script?: boolean } = {}): Record<string, string> {
     const room = this.store.room(ws.roomId)
-    const files = room ? readEnvFiles(ws.path, loadRepoSettingsSync(room.path).env.files).map((f) => f.vars) : []
+    const keep = o.script ? (layer: Record<string, string>) => layer : withoutClaudeNames
+    const files = room ? readEnvFiles(ws.path, loadRepoSettingsSync(room.path).env.files).map((f) => keep(f.vars)) : []
     const kernel: Record<string, string> = { ...kernelVars(ws, room?.path ?? ws.path), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
-    return buildEnv({ base: process.env, app: this.envStore.values(), files, room: this.envStore.values(ws.roomId), kernel })
+    return buildEnv({ base: process.env, app: keep(this.envStore.values()), files, room: keep(this.envStore.values(ws.roomId)), kernel })
   }
 
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
@@ -2858,8 +2864,9 @@ export class Kernel {
       },
       'env.get': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined
-        // The room's files are checked in its main checkout. A workspace reads its own copies when something starts there.
-        const files = room ? readEnvFiles(room.path, (await loadRepoSettings(room.path)).env.files).map(({ path, missing }) => ({ path, missing })) : []
+        // The room's files are checked in its main checkout, without reading them. A workspace reads its own copies when
+        // something starts there.
+        const files = room ? (await loadRepoSettings(room.path)).env.files.map((path) => ({ path, missing: !envFileReadable(room.path, path) })) : []
         return { names: this.envStore.names(roomId), files }
       },
       'env.set': async ({ roomId, name, value }) => {
