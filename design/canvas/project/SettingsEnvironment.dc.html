@@ -7,7 +7,40 @@
 </head>
 <body>
 <x-dc>
-<!--HELMET-->
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
 <div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
 
 <nav aria-label="Settings" style="width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
@@ -114,7 +147,19 @@
 </sc-for>
 </div>
 </div>
-<!--FOOTER-->
+<footer style="height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 12px; color: #8a8f98">
+<span></span>
+<span style="display: inline-flex; align-items: center; gap: 6px">
+<details class="dd"><summary style="list-style: none; display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border-radius: 6px; color: #d0d6e0; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8 13.5 2.8 9.9 13.2 7.6 8.6Z"></path><path d="m7.6 8.6 2.4-2.4"></path></svg>Ask Rowan</summary>
+<div role="dialog" aria-label="Ask Rowan" style="position: absolute; right: -30px; bottom: 34px; z-index: 60; width: 360px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 12px; border: 1px solid #2a2b30; background: #18191b; font-size: 13px; color: #f7f8f8">
+<div style="display: flex; align-items: center; gap: 8px"><span aria-hidden="true" style="width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: #3f4652; font-size: 9px; font-weight: 600">R</span><span style="font-weight: 500">Ask Rowan</span><span style="color: #8a8f98">Client A</span></div>
+<label for="quick-ask" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap">Question for Rowan</label>
+<textarea id="quick-ask" rows="3" placeholder="What's the status of T-15? Who is blocked?" style="resize: none; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #26272b; background: #0f1011; color: #f7f8f8; font-family: inherit; font-size: 13px; line-height: 1.5; outline: none"></textarea>
+<div style="display: flex; align-items: center; gap: 8px"><span style="flex: 1; font-size: 12px; color: #8a8f98">Answers here without opening a workspace</span><a href="QuickAsk.dc.html" style="display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 7px; background: #f7f8f8; color: #08090a; text-decoration: none; font-size: 12.5px; font-weight: 500">Ask</a></div>
+</div></details>
+
+</span>
+</footer>
 </div>
 
 <sc-if value="{{ page.hasModal }}" hint-placeholder-val="{{ false }}"><div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
@@ -140,7 +185,7 @@
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { page: '%%PAGE%%', q: '', vals: {}, menu: '%%PAGE%%' === 'r-git' };
+    this.state = { page: 'env', q: '', vals: {}, menu: 'env' === 'r-git' };
   }
 
   icons() {

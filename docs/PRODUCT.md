@@ -37,7 +37,7 @@ Developers who already use Claude Code and want several agents working on one re
 
 ## v1 scope
 
-Everything on the canvas (131 screens), including the light theme, code signing, notarization and auto-update. See `docs/SCREENS.md`.
+Everything on the canvas (136 screens), including the light theme, code signing, notarization and auto-update. See `docs/SCREENS.md`.
 
 The isometric floor and the Board are hidden for now (D-104). Their code stays, so they can come back.
 
