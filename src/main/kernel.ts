@@ -34,6 +34,7 @@ import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
 import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
@@ -120,6 +121,9 @@ export class Kernel {
   readonly sessions: Sessions
   readonly overlaps: Overlaps
   readonly ptys = new Ptys()
+  readonly roomIcons: RoomIcons
+  /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
+  avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
   forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
   /** The SDK call that reads a session's title from its transcript. Tests swap it for a stub. */
@@ -158,10 +162,11 @@ export class Kernel {
     onSettings?: (s: AppSettings) => void
     /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
-    /** What Linear calls go through. Tests pass a stub; the app leaves it out. */
+    /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
     fetch?: typeof fetch
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
+    this.roomIcons = new RoomIcons(o.dataDir)
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
     this.notifications = new Notifications({
@@ -701,6 +706,30 @@ export class Kernel {
   }
 
   /**
+   * Sets the room icon (KERNEL-241). The new file is saved before the room points at it and the old file goes after,
+   * so a failed avatar fetch or a rejected image leaves the room as it was.
+   */
+  async setRoomIcon(roomId: string, icon: KernelApi['rooms.setIcon']['req']['icon']): Promise<Room> {
+    const before = this.mustRoom(roomId)
+    let next: Room['icon']
+    if (icon.kind === 'github') {
+      const owner = githubOwner(before.repo)
+      if (!owner) throw new Error(AVATAR_FAILED)
+      next = await this.roomIcons.save(roomId, 'github', await this.avatar(owner), before.icon)
+    } else if (icon.kind === 'image') {
+      next = await this.roomIcons.save(roomId, 'image', await readImage(icon.path), before.icon)
+    }
+    // Read again after the download: the room may have gone, or another change may have landed meanwhile.
+    const now = this.store.room(roomId)
+    if (!now) { await this.roomIcons.remove(next); throw new Error(`Unknown room ${roomId}`) }
+    const { icon: old, ...rest } = now
+    const room = this.store.saveRoom(next ? { ...rest, icon: next } : rest)
+    if (old?.file !== next?.file) await this.roomIcons.remove(old)
+    bus.push({ type: 'room', room })
+    return room
+  }
+
+  /**
    * Forgets a room: stops its agents and scripts, archives its workspaces and deletes Kernel's record of them.
    * The folder, its git history and .claude/agents are never touched. Worktrees are removed only when asked.
    */
@@ -718,6 +747,7 @@ export class Kernel {
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
+    await this.roomIcons.remove(room.icon)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
@@ -1034,7 +1064,7 @@ export class Kernel {
    * reads it from there.
    */
   async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false, fresh: true })
+    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
     return { chatId: chat.id }
   }
 
@@ -1365,18 +1395,13 @@ export class Kernel {
   }
 
   /**
-   * The new workspace modal's prompt, sent to the Lead in a chat of its own (KERNEL-148). A chat nobody used yet is taken
-   * instead of adding another, so the first start leaves no empty "Lead" tab. The first message names the chat.
+   * A message to the Lead in a chat of its own (KERNEL-148). It always adds a tab, like the tab row's +: an unused tab may
+   * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). The first message names the chat.
    */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; fresh?: boolean }): Promise<Chat> {
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
     const pick = { model: o.model ?? this.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
-    // `fresh` always adds a tab: an unused one may hold a draft the engine can't see, since the composer keeps it (D-133).
-    const unused = o.fresh ? undefined : this.chatTabs(ws.id).find((c) => c.kind !== 'terminal' && !c.sessionId && !this.sessions.isRunning(c.id) && !this.sessions.queued(c.id).length && !this.store.items(c.id).length)
-    // The default "Lead" title gives way to the first message's; a name the user gave stays.
-    const chat = unused
-      ? this.saveChat({ ...await this.sessions.configure(unused.id, pick), ...(unused.title === LEAD_CHAT ? { title: NEW_CHAT } : {}) })
-      : this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
+    const chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
     return chat
@@ -1987,6 +2012,8 @@ export class Kernel {
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
       'rooms.create': async (req) => this.createRoom(req),
       'rooms.update': async ({ roomId, patch }) => this.updateRoom(roomId, patch),
+      'rooms.setIcon': async ({ roomId, icon }) => this.setRoomIcon(roomId, icon),
+      'rooms.icon': async ({ roomId }) => this.roomIcons.dataUrl(this.mustRoom(roomId).icon),
       'rooms.remove': async ({ roomId, deleteWorktrees }) => { await this.removeRoom(roomId, deleteWorktrees); return { ok: true } },
       'rooms.inspectFolder': async ({ path }) => inspectFolder(path, this.home),
       'rooms.recentFolders': async () => recentFolders(this.store.rooms().map((r) => r.path), this.home),
@@ -2031,7 +2058,7 @@ export class Kernel {
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),
       'linear.plan': async ({ id, roomId }) => {
         const issue = await getIssue(await this.linearKey(), id, this.linearFetch)
-        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true, fresh: true })
+        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),

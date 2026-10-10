@@ -67,10 +67,11 @@ describe('chat names (KERNEL-202)', () => {
     const room = await s.k.addRoom(s.repo)
     const first = await s.k.leadChat(room.id)
     expect(first).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
-    // The first message turns "Lead" into "New chat", and it stays auto-named.
+    // A brief opens its own auto-named "New chat" and leaves "Lead" as it was (KERNEL-242).
     const started = await s.k.startLeadChat(room.id, { prompt: 'Plan the release' })
-    expect(started.id).toBe(first.id)
-    expect(s.chat(first.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(started.id).not.toBe(first.id)
+    expect(s.chat(started.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(first.id)).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
 
     const ws = await s.k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
     const h = s.k.handlers()
