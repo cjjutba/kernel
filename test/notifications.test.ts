@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Approval, Chat, Notification, Workspace } from '../src/shared/types'
@@ -10,6 +10,7 @@ import { KEEP_SETTLED_MS, Notifications, approvalNotificationId, inQuietHours, r
 import { Approvals } from '../src/main/services/approvals'
 import { startHookServer } from '../src/main/services/hookServer'
 import type { PushEvent } from '../src/shared/ipc'
+import { Kernel } from '../src/main/kernel'
 
 const open: Notifications[] = []
 afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
@@ -303,5 +304,25 @@ describe('rows that are over (KERNEL-155)', () => {
     const later = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, now: () => NOW + KEEP_SETTLED_MS + 3 * DAY })
     later.prune()
     expect(later.list().map((x) => x.id).sort()).toEqual([approvalNotificationId('still-waiting'), 'old-needs-you'])
+  })
+})
+
+describe('Kernel start (KERNEL-155)', () => {
+  it('expires an approval the last run left pending, and settles its row as read', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    // The last run: Rowan's plan waits for an answer, with its row in Needs you. Then the app quits.
+    const before = new Store(join(dataDir, 'kernel.db'))
+    const plan = approval({ id: 'plan', kind: 'plan', toolName: undefined, title: 'Plan for the Ulat release' })
+    before.saveApproval(plan)
+    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', roomId: 'r', agentId: 'noor', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
+    before.db.close()
+
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop())
+    expect(k.store.approvals().find((a) => a.id === 'plan')?.status).toBe('expired')
+    expect(k.store.notification(approvalNotificationId('plan'))).toMatchObject({ needsYou: false, read: true, resolved: 'This request ended before you answered.' })
   })
 })
