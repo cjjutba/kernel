@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { join, relative } from 'node:path'
+import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { buildEnv, EnvStore, type Cipher } from '../src/main/services/env'
+import { buildEnv, EnvStore, readEnvFiles, type Cipher } from '../src/main/services/env'
 import { sessionEnv } from '../src/main/services/sessions'
 
 /** Stands in for safeStorage, which doesn't work under ELECTRON_RUN_AS_NODE. Its output never holds the text it was given. */
@@ -27,6 +27,19 @@ describe('buildEnv', () => {
       kernel: { F: 'kernel' }
     })
     expect(env).toEqual({ A: 'mac', B: 'app', C: 'file1', D: 'file2', E: 'room', F: 'kernel' })
+  })
+})
+
+describe('readEnvFiles', () => {
+  it('reads files inside the folder only, so a room\'s settings can\'t pull in the rest of the Mac', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'kernel-outside-'))
+    await writeFile(join(outside, 'secrets.env'), 'STOLEN=1\n')
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-ws-'))
+    await mkdir(join(dir, 'apps'))
+    await writeFile(join(dir, 'apps', '.env'), 'OK=1\n')
+    await symlink(join(outside, 'secrets.env'), join(dir, 'linked.env'))
+    const read = readEnvFiles(dir, ['apps/.env', join(outside, 'secrets.env'), relative(dir, join(outside, 'secrets.env')), 'linked.env'])
+    expect(read.map((f) => [f.missing, f.vars])).toEqual([[false, { OK: '1' }], [true, {}], [true, {}], [true, {}]])
   })
 })
 
@@ -89,6 +102,7 @@ describe('Kernel env', () => {
     k.sessions.send = async () => ({ queued: false })
     const h = k.handlers()
     const room = await k.addRoom(repo)
+    await trustRoom(k, room.id)
 
     await h['env.set']({ name: 'APP_ONLY', value: 'app-value-77' })
     await h['env.set']({ name: 'ANTHROPIC_API_KEY', value: 'sk-user-key' })

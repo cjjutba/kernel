@@ -1,9 +1,10 @@
-import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { join, dirname, resolve } from 'node:path'
+import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
+import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
@@ -93,6 +94,9 @@ function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['wo
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
 
+/** What files.copy is when neither settings file sets it. Kernel's own list, so it never needs trusting (KERNEL-209). */
+const DEFAULT_COPY = ['.env', '.env.local']
+
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
@@ -137,8 +141,10 @@ function stored(g: Group, v: unknown): unknown {
 function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
   return {
-    scripts: picked(doc.scripts, ['setup', 'run', 'archive', 'runMode']),
-    files: picked(doc.files, ['copy', 'symlinkNodeModules']),
+    // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
+    // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
+    scripts: { ...picked(doc.scripts, ['setup', 'run', 'archive'], isString), ...picked(doc.scripts, ['runMode']) },
+    files: { ...Object.fromEntries(Object.entries(picked(doc.files, ['copy'], Array.isArray)).map(([k, v]) => [k, strings(v)])), ...picked(doc.files, ['symlinkNodeModules']) },
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
@@ -180,7 +186,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
-    files: { copy: files.copy ?? ['.env', '.env.local'], symlinkNodeModules: files.symlinkNodeModules },
+    files: { copy: files.copy ?? [...DEFAULT_COPY], symlinkNodeModules: files.symlinkNodeModules },
     workspace,
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),
@@ -188,6 +194,136 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     preview: { urls: preview.urls ?? [] },
     env: { files: env.files ?? [] },
     sources
+  }
+}
+
+/** The text a room runs or copies on its own: the three scripts and the files.copy list, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy'>
+
+/**
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script and the
+ * files.copy list the room runs, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
+ * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
+ * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
+ */
+export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } = {}): TrustSubject | undefined {
+  const fromRepo = (key: string) => {
+    const source = repo.sources?.[key]
+    return !!source && (source === 'shared' || !o.localIsOwn)
+  }
+  const scripts: TrustSubject['scripts'] = {}
+  for (const k of ['setup', 'run', 'archive'] as const) if (repo.scripts[k]?.trim() && fromRepo(`scripts.${k}`)) scripts[k] = repo.scripts[k]
+  const isDefault = repo.files.copy.length === DEFAULT_COPY.length && repo.files.copy.every((f, i) => f === DEFAULT_COPY[i])
+  const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
+  // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
+  const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
+  if (!Object.keys(scripts).length && !runScripts.length && !copy.length) return undefined
+  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy }
+}
+
+/**
+ * Is the room's personal settings file the user's own, so its text runs without asking (KERNEL-209)? Only when every
+ * check below passes. Anything else, a git error included, means no, and its text needs trusting like the repo's.
+ * - No link on the way: `.kernel` and the file are not symlinks, and the file's real path is this path.
+ * - `.kernel` belongs to the room's own repo: git run inside it names the room as its top level, so a submodule or a
+ *   repo nested there fails.
+ * - Neither the index nor HEAD has an entry at `.kernel` itself (a gitlink, file or link), a gitlink anywhere under it,
+ *   or the personal file, compared without case. A case-insensitive disk reads a committed `.Kernel/Settings.local.toml`
+ *   as this file. Skip-worktree entries are in the index, so they count. Committed files beside it, like
+ *   `settings.toml`, are fine.
+ */
+export async function localSettingsOwn(repo: string): Promise<boolean> {
+  const KERNEL = '.kernel'
+  const target = LOCAL_SETTINGS.toLowerCase()
+  const lower = (p: string) => p.toLowerCase()
+  const root = await realpath(repo).catch(() => undefined)
+  if (!root) return false
+
+  for (const part of [KERNEL, LOCAL_SETTINGS]) if ((await lstat(join(repo, part)).catch(() => undefined))?.isSymbolicLink()) return false
+  const real = await realpath(join(repo, LOCAL_SETTINGS)).catch(() => undefined)
+  if (real && lower(relative(root, real).split(sep).join('/')) !== target) return false
+
+  if (await lstat(join(repo, KERNEL)).then(() => true, () => false)) {
+    const top = await exec('git', ['-C', join(repo, KERNEL), 'rev-parse', '--show-toplevel'])
+    if (top.code !== 0 || await realpath(top.stdout.trim()).catch(() => undefined) !== root) return false
+  }
+
+  /** An entry that makes the personal file someone else's: `.kernel` itself, a gitlink under it, or the file. */
+  const foreign = (mode: string, path: string) => lower(path) === KERNEL || mode === '160000' || lower(path) === target
+  // `<mode> <object> <stage>\t<path>`, NUL-separated.
+  const index = await exec('git', ['-C', repo, 'ls-files', '-s', '-z', '--', `:(icase)${KERNEL}`])
+  if (index.code !== 0) return false
+  for (const rec of index.stdout.split('\0').filter(Boolean)) {
+    const [meta, path] = [rec.slice(0, rec.indexOf('\t')), rec.slice(rec.indexOf('\t') + 1)]
+    if (foreign(meta.split(' ')[0], path)) return false
+  }
+
+  const head = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', 'HEAD'])
+  // No commit yet: nothing can have brought the file. Any other failure is an error.
+  if (head.code === 1 && !head.stdout.trim() && !head.stderr.trim()) return true
+  if (head.code !== 0) return false
+  // `<mode> <type> <object>\t<path>`, NUL-separated.
+  const entries = (out: string) => out.split('\0').filter(Boolean).map((rec) => ({ mode: rec.split(' ')[0], path: rec.slice(rec.indexOf('\t') + 1) }))
+  const top = await exec('git', ['-C', repo, 'ls-tree', '-z', 'HEAD'])
+  if (top.code !== 0) return false
+  const dirs = entries(top.stdout).filter((e) => lower(e.path) === KERNEL)
+  if (!dirs.length) return true
+  // Recursive, so `.kernel` as a gitlink, file or link is listed under its own path, and so is a gitlink below it.
+  const tree = await exec('git', ['-C', repo, 'ls-tree', '-r', '-z', 'HEAD', '--', ...dirs.map((e) => e.path)])
+  return tree.code === 0 && !entries(tree.stdout).some((e) => foreign(e.mode, e.path))
+}
+
+/** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
+export function trustHash(s: TrustSubject): string {
+  const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs])).digest('hex')
+}
+
+/** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
+const TRUSTED_PER_ROOM = 20
+
+/**
+ * The hashes the user trusted, per room, in Kernel's data folder (`trust.json`), never in the repo, so a commit can't
+ * trust itself (KERNEL-209).
+ */
+export class ScriptTrustStore {
+  private rooms?: Record<string, string[]>
+  private writing = Promise.resolve()
+
+  constructor(private file: string) {}
+
+  private async load(): Promise<Record<string, string[]>> {
+    if (this.rooms) return this.rooms
+    let saved: unknown
+    try { saved = JSON.parse(await readFile(this.file, 'utf8')) } catch { saved = {} }
+    const rooms: Record<string, string[]> = {}
+    for (const [id, list] of Object.entries(saved && typeof saved === 'object' ? saved : {})) rooms[id] = strings(list)
+    return (this.rooms ??= rooms)
+  }
+
+  async has(roomId: string, hash: string): Promise<boolean> { return (await this.load())[roomId]?.includes(hash) ?? false }
+
+  async add(roomId: string, hash: string): Promise<void> {
+    const rooms = await this.load()
+    rooms[roomId] = [hash, ...(rooms[roomId] ?? []).filter((h) => h !== hash)].slice(0, TRUSTED_PER_ROOM)
+    await this.save()
+  }
+
+  async forget(roomId: string): Promise<void> {
+    const rooms = await this.load()
+    if (!(roomId in rooms)) return
+    delete rooms[roomId]
+    await this.save()
+  }
+
+  /** One write at a time, each with the whole map as it is then. */
+  private save() {
+    this.writing = this.writing.catch(() => undefined).then(async () => {
+      await mkdir(dirname(this.file), { recursive: true })
+      await writeFile(this.file, JSON.stringify(this.rooms ?? {}, null, 2))
+    })
+    return this.writing
   }
 }
 

@@ -85,6 +85,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.resolveOverlap': async () => ok,
     'rooms.inspectFolder': async ({ path }) => f.folders?.find((x) => x.path === path) ?? { path, git: true, branch: 'main', dirty: 0 },
     'rooms.recentFolders': async () => f.folders ?? [],
+    'rooms.scriptTrust': async () => null,
+    'rooms.trust': async () => ok,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
     'agents.list': async ({ roomId, retired }) => (f.agents[roomId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ roomId }) => f.status[roomId] ?? {},

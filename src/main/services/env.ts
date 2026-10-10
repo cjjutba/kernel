@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
 import { ENV_NAME, isKernelVar, type KernelVar } from '@shared/kernelVars'
 
@@ -33,11 +33,19 @@ export function buildEnv(l: {
 export const kernelVars = (ws: { id: string; path: string; port: number }, root: string): Record<KernelVar, string> =>
   ({ KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: root })
 
-/** A room's env files resolved against `dir`, in order. A file that can't be read is missing and gives no variables. */
+const inside = (root: string, file: string) => { const r = relative(root, file); return !!r && !r.startsWith('..') && !isAbsolute(r) }
+
+/**
+ * A room's env files resolved against `dir`, in order. A file that can't be read is missing and gives no variables. So is
+ * one outside `dir`, through `..`, an absolute path or a link: the room's settings can come from a repo nobody trusted
+ * yet, and they mustn't read the rest of the Mac into a session (KERNEL-209).
+ */
 export function readEnvFiles(dir: string, files: string[]): { path: string; missing: boolean; vars: Record<string, string> }[] {
   return files.map((path) => {
     try {
-      const vars = parseEnv(readFileSync(resolve(dir, path), 'utf8')) as Record<string, string>
+      const real = realpathSync(resolve(dir, path))
+      if (!inside(realpathSync(dir), real)) throw new Error('outside the folder')
+      const vars = parseEnv(readFileSync(real, 'utf8')) as Record<string, string>
       return { path, missing: false, vars }
     } catch { return { path, missing: true, vars: {} } }
   })
