@@ -132,7 +132,7 @@ export function App() {
         return
       }
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
-      if (e.key === ',') { e.preventDefault(); actions.ui.go({ name: 'settings', page: 'general' }) }
+      if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
       // Option turns B into ∫, so match the physical key.
       if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
