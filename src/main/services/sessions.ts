@@ -122,6 +122,10 @@ export class Sessions {
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
+  /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
+  private reasons = new Map<string, QueueReason | undefined>()
+  /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
+  private unsent = new Set<string>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
@@ -166,6 +170,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.global = { open, release, reasons: new Set([reason]) }
+    this.pushReasons()
   }
 
   /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
@@ -176,6 +181,7 @@ export class Sessions {
     g.release()
     for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
     this.carryOn()
+    this.pushReasons()
   }
 
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
@@ -190,6 +196,7 @@ export class Sessions {
     this.waiting.delete(chatId)
     this.saveHeld()
     if (!this.live.get(chatId)?.running) this.drain(chatId)
+    this.pushReasons()
   }
 
   /** Hands Kernel what every chat held for setup is holding, to save. */
@@ -222,6 +229,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.paused.set(roomId, { open, release })
+    this.pushReasons()
   }
 
   /** Let the room's agents go on and send what was held while it was paused. */
@@ -232,6 +240,7 @@ export class Sessions {
     gate.release()
     for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
     this.carryOn()
+    this.pushReasons()
   }
 
   private pausedChat(chat: Chat) {
@@ -360,8 +369,9 @@ export class Sessions {
   }
 
   /**
-   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends.
-   * `pastPause` sends it from an idle chat even though its room is paused, which Kernel asks for when a limit paused it.
+   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. An idle chat
+   * held only by the agent limit sends it at once. `pastPause` sends it from an idle chat even though its room is paused,
+   * which Kernel asks for when a limit paused it.
    */
   async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
@@ -369,8 +379,10 @@ export class Sessions {
     const rest = this.queued(chatId).filter((q) => q.id !== id)
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
+    const why = this.waitsFor(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
-    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
+    // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271).
+    else if (why === 'capacity' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -462,6 +474,8 @@ export class Sessions {
   drainWaiting() {
     for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
     this.carryOn()
+    // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
+    this.pushReasons()
   }
 
   /**
@@ -495,10 +509,36 @@ export class Sessions {
   private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
     if (queue.length) this.queues.set(chatId, queue)
     else this.queues.delete(chatId)
-    bus.push({ type: 'chat.queue', chatId, queue })
+    this.pushQueue(chatId)
     // A held brief edited or removed in the composer is saved too.
     if (this.waiting.has(chatId)) this.saveHeld()
     return queue
+  }
+
+  /**
+   * Tell the renderer the chat's queue and what it waits for, once the current step is done. A held message going out
+   * changes both the queue and the reason, and the renderer gets one event with where they ended up (KERNEL-271).
+   */
+  private pushQueue(chatId: string) {
+    if (!this.unsent.size) queueMicrotask(() => this.flushQueues())
+    this.unsent.add(chatId)
+  }
+
+  private flushQueues() {
+    const ids = [...this.unsent]
+    this.unsent.clear()
+    for (const chatId of ids) {
+      const queue = this.queued(chatId)
+      const why = this.queueReason(chatId)
+      if (queue.length) this.reasons.set(chatId, why)
+      else this.reasons.delete(chatId)
+      bus.push({ type: 'chat.queue', chatId, queue, ...(why ? { why } : {}) })
+    }
+  }
+
+  /** A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. */
+  private pushReasons() {
+    for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
   }
 
   /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
@@ -808,6 +848,8 @@ export class Sessions {
     if (live.running === running) return
     live.running = running
     bus.push({ type: 'chat.running', chatId: chat.id, running })
+    // This chat's queue now waits for something else, and a slot was taken or freed for the others.
+    this.pushReasons()
     // An agent that gave up after a hook refused it still needs someone to look.
     if (!running && this.showBlocked(ws, live)) return
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')
