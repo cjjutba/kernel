@@ -62,17 +62,23 @@ export interface WaitCheck {
   mode?: WorkspaceMode
   reviewOf?: string
   isLead: (w: Workspace) => boolean
+  /** The waiter asks for itself (KERNEL-262), so the refusal speaks to a teammate, not the Lead. */
+  teammate?: boolean
 }
 
 /** Why the wait can't be set, as the end of a tool's refusal, or nothing when it can. */
 export function waitRefusal(c: WaitCheck): string | undefined {
   if (c.waiter?.reviewOf ?? c.reviewOf) return 'a review starts from the work it reviews, so it never waits for another PR.'
-  if ((c.waiter?.mode ?? c.mode) === 'current') return "a workspace on the main checkout has no branch of its own to start later, so it can't wait for a PR. Use worktree mode."
+  if ((c.waiter?.mode ?? c.mode) === 'current') {
+    return c.teammate
+      ? "you work on the main checkout, which has no branch of its own to rebase later, so you can't wait for a PR. Say in your reply what you are waiting for, and the Lead picks it up."
+      : "a workspace on the main checkout has no branch of its own to start later, so it can't wait for a PR. Use worktree mode."
+  }
   for (const ref of c.refs) {
     const t = resolveTarget(c.workspaces, ref)
-    if (!t) return `there is no workspace "${ref}" in this room to wait for. Pass a workspace id from list_workspaces, a PR number like #164, or a Linear issue key.`
+    if (!t) return `there is no workspace "${ref}" in this room to wait for. Pass ${c.teammate ? 'a PR number like #164, a Linear issue key or a workspace id' : 'a workspace id from list_workspaces, a PR number like #164, or a Linear issue key'}.`
     if (c.waiter && t.id === c.waiter.id) return `${t.name} can't wait for itself.`
-    if (c.isLead(t)) return `${t.name} is your own workspace, which never opens a pull request.`
+    if (c.isLead(t)) return `${t.name} is ${c.teammate ? "the Lead's" : 'your own'} workspace, which never opens a pull request.`
     if (t.reviewOf) return `${t.name} is a review. Wait for the work it reviews instead (workspace ${t.reviewOf}).`
     if (t.mode === 'current') return `${t.name} works on the main checkout and never opens a pull request of its own.`
     if (t.prState === 'closed') return `${t.prNumber ? `PR #${t.prNumber}` : `${t.name}'s PR`} was closed without merging, so it will never merge.`

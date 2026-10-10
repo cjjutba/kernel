@@ -5,13 +5,14 @@ import { fileURLToPath } from 'node:url'
 import electronUpdater from 'electron-updater'
 import { bus } from './bus'
 import { Kernel } from './kernel'
-import { fixtureHandlers } from './fixtures'
+import { fixtureHandlers, fixturePush } from './fixtures'
 import { exec } from './services/exec'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
 import type { Channel, KernelApi } from '@shared/ipc'
+import { isWebUrl } from '@shared/previewUrl'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
@@ -53,7 +54,9 @@ function createWindow() {
     }
   })
   if (!headless) win.once('ready-to-show', () => win?.show())
-  win.webContents.setWindowOpenHandler(({ url }) => { void shell.openExternal(url); return { action: 'deny' } })
+  // A link with target="_blank" never opens a window. A web page goes to the browser, and anything else, like a file: link
+  // in an agent's message, goes nowhere (KERNEL-246).
+  win.webContents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) void shell.openExternal(url); return { action: 'deny' } })
   if (process.env.ELECTRON_RENDERER_URL) void win.loadURL(process.env.ELECTRON_RENDERER_URL)
   else void win.loadFile(join(here, '../renderer/index.html'))
 }
@@ -125,8 +128,13 @@ app.whenReady().then(async () => {
     const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] })
     return r.canceled ? null : r.filePaths[0]
   })
-  ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => { await shell.openExternal(url); return { ok: true } })
-  ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixture.push } : null))
+  // Only web pages: a URL a run script printed or a room's settings name must not open a file or another app (KERNEL-246).
+  ipcMain.handle('system.openExternal' satisfies Channel, async (_e, { url }) => {
+    if (typeof url !== 'string' || !isWebUrl(url)) throw new Error('Kernel only opens http and https links')
+    await shell.openExternal(url)
+    return { ok: true }
+  })
+  ipcMain.handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
   ipcMain.handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
   ipcMain.handle('system.openInEditor' satisfies Channel, async (_e, { path }) => { const r = await exec('code', [path]); if (r.code !== 0) await shell.openPath(path); return { ok: true } })
   bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })

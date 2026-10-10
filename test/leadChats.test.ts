@@ -189,6 +189,25 @@ describe("create_workspace when the teammate's setup fails (KERNEL-126)", () => 
   })
 })
 
+describe('create_workspace when every agent slot is in use (KERNEL-272)', () => {
+  it("says Kai hasn't started after the Created prefix, while the brief waits in Kai's queue", async () => {
+    const { k, first, call, byTitle } = await setup()
+    // The real send, so the brief meets the agent limit. One slot, taken by another teammate's running turn.
+    delete (k.sessions as { send?: unknown }).send
+    k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 1 } }
+    const live = k.sessions['live'] as Map<string, unknown>
+    live.set('busy', { running: true, abort: new AbortController(), query: {} })
+    try {
+      const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Back and forward', brief: 'Build KERNEL-200' })
+      expect(said).toMatch(/^Created \S+ on \S+ for kai\. Every agent slot in Settings, Models is in use, so Kai hasn't started\. The brief goes out when a slot frees up\.$/)
+      expect(/^Created (\S+) on /.exec(said)?.[1]).toBe(byTitle('Back and forward').id)
+      const brief = k.chatTabs(byTitle('Back and forward').id).find((c) => c.kind !== 'terminal')!
+      expect(k.sessions.queued(brief.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build KERNEL-200' }]])
+      expect(k.sessions.isRunning(brief.id)).toBe(false)
+    } finally { live.delete('busy') }
+  })
+})
+
 describe('message_agent says what really happened (KERNEL-118)', () => {
   it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
     const { k, first, run, byTitle, sent } = await setup()
@@ -224,7 +243,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
       ['setup', "Setup failed in Kai's workspace, so the message waits until the user clicks Run again."],
       ['paused', 'The room is paused, so the message goes out when the user resumes it.'],
       ['offline', 'Kernel is offline or signed out, so the message goes out once it is back.'],
-      ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.']
+      ['capacity', 'Every agent slot in Settings, Models is in use, so the message goes out when a slot frees up.']
     ]
     for (const [why, note] of said) {
       Object.assign(answer, { queued: true, why })
