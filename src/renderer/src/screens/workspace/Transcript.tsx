@@ -20,6 +20,10 @@ import { ReviewCard } from './pr/ReviewCard'
 
 const EMPTY: ChatItem[] = []
 
+/** What a new chat offers to start with, by who you're talking to (KERNEL-274): the Lead plans and checks on the team. */
+const LEAD_SUGGESTIONS = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
+const SUGGESTIONS = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
+
 const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text' ? [p.text] : [])).join(' ')
 
 function PartChip({ part }: { part: ChatPart }) {
@@ -156,7 +160,7 @@ function Block({ block, chat, changes, agentName, onEdit, onFork, onTerminal }: 
     case 'text': return <ReplyMessage item={item} chat={chat} onFork={onFork} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
-    case 'note': return <div className="note"><span className="grow">{item.text}</span>{item.link && <NoteLink link={item.link} />}</div>
+    case 'note': return <div className="note inline"><span className="note-text">{item.text}</span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
     // Result is folded into a meta row or an error card by buildThread.
@@ -187,6 +191,7 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
   // The agent is waiting on you, not working, while its plan waits.
   const planWaits = useStore((s) => !!waitingPlan(s.approvals, chat))
   const agentName = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.name ?? 'the agent' })
+  const isLead = useStore((s) => { const ws = s.workspaces.find((w) => w.id === workspaceId); return !!s.agents[ws?.roomId ?? '']?.find((a) => a.id === ws?.agentId)?.lead })
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const pr = useStore((s) => s.prs[workspaceId])
   const blocks = useMemo(() => buildThread(items), [items])
@@ -220,8 +225,8 @@ export function Transcript({ chat, workspaceId, changes, onEdit, onForked }: { c
           <h2>{chat.kind === 'terminal' ? 'Big terminal' : `New chat with ${agentName}`}</h2>
           <span className="muted">Same worktree and branch, fresh context.</span>
           <div className="chat-suggest">
-            {['Review the diff so far', 'Write tests for the table', 'Explain this branch'].map((text) => (
-              <button key={text} type="button" onClick={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))}>{text}</button>
+            {(isLead ? LEAD_SUGGESTIONS : SUGGESTIONS).map(({ text, icon }) => (
+              <button key={text} type="button" onClick={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))}><Icon name={icon} size={14} />{text}</button>
             ))}
           </div>
         </div>
