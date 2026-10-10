@@ -595,7 +595,9 @@ export class Kernel {
     await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
-    await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
+    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
+    // waits for it. Kernel can't answer it once it quits, so its connection ends now, and the quit fits KERNEL-214's cap.
+    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.close(() => r()); this.hookServer.closeAllConnections() })
     // The last write, so the next start can tell a quit from a crash.
     this.store.saveMeta('cleanExit', true)
     this.store.db.close()

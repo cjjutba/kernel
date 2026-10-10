@@ -1,17 +1,18 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdtemp, stat, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Chat, ChatItem, Workspace } from '@shared/types'
 import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
+import { hookToken } from '../src/main/services/hookToken'
 import { Store } from '../src/main/db'
-import { CRASH_NOTE, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
+import { CRASH_NOTE, LIMIT_LIFTED, QUIT_BUDGET_MS, QUIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
 
 // A scripted SDK: each query() records its options and yields what the test feeds it. An interrupt ends the turn with
 // error_during_execution, as the real one does, and an abort ends the stream.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], onQuery: undefined as undefined | (() => void) }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void }[], onQuery: undefined as undefined | (() => void), deaf: false }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   createSdkMcpServer: () => ({}), tool: () => ({}),
   query: ({ options }: { options: { abortController?: AbortController } }) => {
@@ -28,7 +29,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
           : signal?.aborted ? Promise.reject(aborted()) : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
       }),
-      interrupt: async () => { feed({ type: 'result', subtype: 'error_during_execution', uuid: `i${sdk.calls.length}`, duration_ms: 1 }) },
+      interrupt: async () => { if (!sdk.deaf) feed({ type: 'result', subtype: 'error_during_execution', uuid: `i${sdk.calls.length}`, duration_ms: 1 }) },
       setModel: async () => {}, setPermissionMode: async () => {}, applyFlagSettings: async () => {}
     }
   }
@@ -178,6 +179,31 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(notes(k2, kai)).toEqual([CRASH_NOTE])
       expect(k2.sessions.isRunning(kai.id)).toBe(true)
     } finally { sdk.onQuery = undefined }
+  }, 30000)
+
+  it("stops inside KERNEL-214's 5 second quit cap when a turn ignores the interrupt and an outside approval is waiting", async () => {
+    const { k, where, kai } = await working()
+    const port = JSON.parse(await readFile(join(where.dataDir, 'settings.json'), 'utf8')).hookPort
+    const repo = k.store.rooms()[0].path
+    // A Claude Code session outside Kernel waits on an approval in the Inbox, which holds its request to the hook server open.
+    const outside = fetch(`http://127.0.0.1:${port}/hooks`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(where.dataDir) },
+      body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: repo, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm db:reset' } })
+    }).catch(() => undefined)
+    await vi.waitFor(() => expect(k.store.approvals({ pendingOnly: true }).some((a) => a.source === 'hook')).toBe(true))
+    sdk.deaf = true
+    try {
+      const t0 = Date.now()
+      await k.stop()
+      const took = Date.now() - t0
+      expect(took).toBeGreaterThanOrEqual(QUIT_BUDGET_MS)
+      expect(took).toBeLessThan(4000)
+    } finally { sdk.deaf = false }
+    await outside
+    const store = new Store(join(where.dataDir, 'kernel.db'))
+    expect(store.meta('cleanExit')).toBe(true)
+    expect(store.meta('working')).toContain(kai.id)
+    store.db.close()
   }, 30000)
 
   it("loads a cut-off list saved before KERNEL-215 as a limit, and the chat carries on with its agent's prompt", async () => {
