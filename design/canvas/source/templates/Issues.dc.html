@@ -144,7 +144,7 @@
 <sc-if value="{{ noroom }}" hint-placeholder-val="{{ false }}">
 <div role="status" style="display: flex; align-items: center; gap: 12px; padding: 10px 10px 10px 14px; border-radius: 10px; border: 1px solid #26272b; background: #141517">
 <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#d0d6e0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7"></path></svg>
-<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500">KERNEL isn't linked to a room</span><span style="font-size: 12.5px; color: #8a8f98">Link it to Client A to plan and start chats from its issues. You can change it in Settings.</span></span>
+<span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500">KERNEL isn't linked to a room</span><span style="font-size: 12.5px; color: #8a8f98">Link it to Client A so its issues open there by default.</span></span>
 <button type="button" style="flex-shrink: 0; height: 30px; padding: 0 12px; border: 0; border-radius: 7px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">Link KERNEL to Client A</button>
 </div>
 </sc-if>
@@ -152,8 +152,8 @@
 <button type="button" aria-label="Room: Client A" style="display: inline-flex; align-items: center; gap: 8px; height: 32px; box-sizing: border-box; padding: 0 10px; border: 1px solid #23252a; border-radius: 8px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer"><span style="color: #8a8f98">Room</span><span aria-hidden="true" style="width: 18px; height: 18px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid #2a2b30; background: #1c1d21; font-size: 10px; font-weight: 600">A</span>Client A<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
 <span style="flex: 1"></span>
 <a href="https://linear.app/cj-jutba/issue/KERNEL-31" target="_blank" rel="noreferrer" style="display: inline-flex; align-items: center; gap: 6px; height: 32px; box-sizing: border-box; padding: 0 14px; border-radius: 8px; border: 1px solid #2a2b30; color: #f7f8f8; text-decoration: none; font-size: 13px; font-weight: 500">Open in Linear<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11 11 5M6 5h5v5"></path></svg></a>
-<button type="button" aria-disabled="{{ noroom }}" style="height: 32px; padding: 0 14px; border: 1px solid {{ btn.border }}; border-radius: 8px; background: transparent; color: {{ btn.color }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">New chat</button>
-<button type="button" aria-disabled="{{ noroom }}" style="height: 32px; padding: 0 16px; border: 1px solid {{ btn.pBorder }}; border-radius: 8px; background: {{ btn.pBg }}; color: {{ btn.pColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Plan with Rowan</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 1px solid #2a2b30; border-radius: 8px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">New chat</button>
+<button type="button" style="height: 32px; padding: 0 16px; border: 1px solid #f7f8f8; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Plan with Rowan</button>
 </div>
 </div>
 </div>
@@ -206,9 +206,7 @@ class Component extends DCLogic {
         group('triage', [row('KERNEL-46', 'Clients cannot reset their password', 'Accounts', 'triage', 'high', '3h', false)]),
         group('started', [row('KERNEL-24', 'Invoice table with sorting and empty states', 'Invoices', 'started', 'high', 'Kai · PR open', sel === 'KERNEL-24', true), row('KERNEL-27', 'Rate limit the invite endpoint', 'Accounts', 'started', 'medium', 'Noor · Working', false, true)]),
         group('todo', [row('KERNEL-31', 'Export invoices as PDF', 'Invoices', 'todo', 'high', '2d', false), row('KERNEL-36', 'Invoice emails send twice', 'Billing', 'todo', 'urgent', '4d', false)]),
-        group('backlog', [row('KERNEL-40', 'Dark mode for the invoice PDF', 'Invoices', 'backlog', 'none', '1w', false)]),
-        group('done', [row('KERNEL-19', 'Seed demo clients and invoices', 'Invoices', 'done', 'low', '2d', false)]),
-        group('canceled', [row('KERNEL-21', 'Support tax IDs on invoices', 'Billing', 'canceled', 'low', '1w', false)])
+        group('backlog', [row('KERNEL-40', 'Dark mode for the invoice PDF', 'Invoices', 'backlog', 'none', '1w', false)])
       ];
     } else {
       groups = [
@@ -253,7 +251,6 @@ class Component extends DCLogic {
       var on = t.pressed === 'true';
       return { label: t.label, count: t.count, pressed: t.pressed, bg: on ? '#1c1d21' : 'transparent', border: on ? '#2a2b30' : '#1f2024', color: on ? '#f7f8f8' : '#8a8f98' };
     });
-    var disabled = mode === 'noroom';
     return {
       connected: mode !== 'connect',
       showFilters: mode !== 'connect' && mode !== 'error',
@@ -262,11 +259,7 @@ class Component extends DCLogic {
       tabs: tabs,
       filters: [{ label: 'Team', value: 'KERNEL' }, { label: 'Project', value: mode === 'empty' ? 'Billing' : 'All' }, { label: 'Cycle', value: 'Current' }],
       q: mode === 'empty' ? 'webhook' : '',
-      groups: groups, d: D[sel], linked: linked,
-      btn: {
-        border: disabled ? '#26272b' : '#2a2b30', color: disabled ? '#62666d' : '#f7f8f8',
-        pBorder: disabled ? '#26272b' : '#f7f8f8', pBg: disabled ? '#1c1d21' : '#f7f8f8', pColor: disabled ? '#62666d' : '#08090a'
-      }
+      groups: groups, d: D[sel], linked: linked
     };
   }
 }
