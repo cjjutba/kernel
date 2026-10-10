@@ -145,7 +145,8 @@ export class Sessions {
   /**
    * What Kernel saved before it last quit: the usage windows, the chats a limit stopped, and the queues of chats held for
    * setup (KERNEL-128). A rejection without a reset time is dropped, since nothing could tell when it ends, so it no longer
-   * holds anything. A held queue comes back only while its workspace's setup still has to pass.
+   * holds anything. A held queue comes back only while its workspace's setup still has to pass, or while a ready workspace's
+   * brief waits for a PR to merge (KERNEL-259). One still in setup is left to Kernel's `recoverSetups`, which holds it once.
    */
   restore(limits: RateLimit[], cutOff: string[], held: Record<string, QueuedMessage[]> = {}) {
     for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
@@ -154,7 +155,8 @@ export class Sessions {
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
       const ws = chat && this.d.store.workspace(chat.workspaceId)
-      if (ws?.status !== 'failed' || !Array.isArray(queue)) continue
+      const waiting = ws?.status === 'ready' && !!ws.waitsFor?.held
+      if ((ws?.status !== 'failed' && !waiting) || !Array.isArray(queue)) continue
       this.waiting.add(id)
       this.setQueue(id, queue)
     }
