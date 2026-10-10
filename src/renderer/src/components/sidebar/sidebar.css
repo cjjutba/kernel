@@ -1,6 +1,6 @@
 /* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. */
 .nav-glyph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.nav-item .nav-glyph[data-tone='ink'] svg { color: var(--ink); }
+.nav-item .nav-glyph[data-tone='needs'] svg { color: var(--needs); }
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
@@ -39,6 +39,8 @@
 .ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
 /* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap. */
 .nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }
+/* The Inbox count: what waits on you, in amber (KERNEL-274). */
+.nav-count { flex-shrink: 0; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--needs); }
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }

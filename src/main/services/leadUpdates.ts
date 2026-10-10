@@ -6,6 +6,7 @@ import { UPDATE_HEADER } from './handoff'
 import type { TurnDone } from './notifications'
 import type { TurnBy } from './sessions'
 import { capText, firstLine } from './text'
+import { isBroken } from './waits'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
@@ -67,7 +68,16 @@ export interface TeamEvent {
   told?: boolean
   /** A review: the verdict, and the work it is about, with its author's name and PR number (KERNEL-130). */
   review?: { verdict: ReviewVerdict['verdict']; summary: string; blockers?: ReviewVerdict['blockers']; total?: number; of: string; ofName: string; ofPr?: number; sha?: string; current: boolean }
+  /** A wait on other PRs (KERNEL-259), and on a setup that passed while one stands. */
+  wait?: WaitNews
 }
+
+/**
+ * What a wait event says (KERNEL-259). `label` names the PRs ("PR #164 by Noor"). `held`: the brief hasn't gone out, as
+ * opposed to a teammate that already started. `target` and `gone`: the PR that broke the wait and how. `told`: the Lead
+ * read it in its own tool's result, so it rides along.
+ */
+export interface WaitNews { on: string[]; label: string; held?: boolean; target?: string; gone?: 'closed' | 'archived'; told?: boolean }
 
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
 interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
@@ -124,7 +134,10 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
-    case 'setup.passed': return `Setup passed on Run again, and ${name}'s brief was released.`
+    case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `Setup passed on Run again, and ${name}'s brief was released.`
+    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge. Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
+    case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged, so Kernel ${e.wait?.held === false ? `told ${name} to rebase onto it and carry on` : `sent ${name} the brief`}.`
+    case 'wait.broken': return `${name} is waiting for ${e.wait?.label ?? 'a PR'}, which was ${e.wait?.gone ?? 'closed'} without merging.`
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review.'
@@ -151,7 +164,10 @@ function cardText(e: TeamEvent, status = ''): string {
     case 'error': return 'Stopped with an error'
     case 'crash': return 'Session ended unexpectedly'
     case 'setup.failed': return 'Setup failed'
-    case 'setup.passed': return 'Setup passed'
+    case 'setup.passed': return e.wait ? 'Setup passed, still waiting' : 'Setup passed'
+    case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'}`
+    case 'wait.released': return `${upper(e.wait?.label ?? 'the PR it waited for')} merged`
+    case 'wait.broken': return `${upper(e.wait?.label ?? 'the PR it waited for')} ${e.wait?.gone ?? 'closed'} without merging`
     case 'review': {
       const r = e.review
       if (!r) return 'Sent a review'
@@ -174,6 +190,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   const state = last((e) => !!STATE_OF[e.kind])
   const setup = last((e) => e.kind === 'setup.failed' || e.kind === 'setup.passed')
   const review = last((e) => e.kind === 'review')
+  const wait = last((e) => e.kind.startsWith('wait.'))
   // Once per PR: after Continue moved the workspace on, its new PR's opening is news too.
   const seen = new Set<string>()
   return sorted.filter((e) => {
@@ -182,6 +199,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     if (STATE_OF[e.kind]) return e === state && (!ws || ws.prState === STATE_OF[e.kind])
     if (e.kind === 'setup.failed' || e.kind === 'setup.passed') return e === setup
     if (e.kind === 'review') return e === review
+    if (e.kind.startsWith('wait.')) return e === wait
     // A close the PR has since left, by reopening or Continue, says nothing any more.
     if (e.kind === 'pr.closed' && ws && ws.prState !== 'closed') return false
     if (ONCE.has(e.kind)) { const key = `${e.kind}:${e.pr ?? ''}`; if (seen.has(key)) return false; seen.add(key); return true }
@@ -323,9 +341,18 @@ export class LeadUpdates {
    * A teammate's workspace setup failed, or passed on Run again (KERNEL-126). `told` marks a failure the Lead already read in
    * create_workspace's result, which rides along instead of waking it again.
    */
-  setup(ws: Workspace, ok: boolean, o: { told?: boolean; code?: number | null } = {}) {
+  setup(ws: Workspace, ok: boolean, o: { told?: boolean; code?: number | null; wait?: WaitNews } = {}) {
     if (this.d.isLead(ws)) return
-    this.add(ws, ok ? { kind: 'setup.passed' } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}) })
+    this.add(ws, ok ? { kind: 'setup.passed', ...(o.wait ? { wait: o.wait } : {}) } : { kind: 'setup.failed', ...(o.code !== undefined ? { code: o.code } : {}), ...(o.told ? { told: true } : {}) })
+  }
+
+  /**
+   * A teammate's wait on other PRs started, was released by their merge, or broke because one closed or was archived
+   * without merging (KERNEL-259). Only a broken wait, and a started one the Lead didn't set itself, wake the Lead.
+   */
+  waits(ws: Workspace, kind: 'wait.started' | 'wait.released' | 'wait.broken', wait: WaitNews) {
+    if (this.d.isLead(ws)) return
+    this.add(ws, { kind, wait })
   }
 
   /** A reviewer's submit_review (KERNEL-130). It always wakes the Lead, on the reviewer's own workspace. */
@@ -446,7 +473,8 @@ export class LeadUpdates {
         const ws = this.d.store.workspace(id)
         if (!ws || this.d.isLead(ws)) continue
         // A verdict is current while the reviewed PR's head is the commit it reviewed, as of now, not as of the verdict.
-        const kept = collapse(events, ws).map((e) => {
+        // A wait that broke and came back, as when its PR reopened, says nothing (KERNEL-259).
+        const kept = collapse(events, ws).filter((e) => e.kind !== 'wait.broken' || stillBroken(ws, e, (id) => this.d.store.workspace(id))).map((e) => {
           if (!e.review?.sha) return e
           const head = this.d.store.workspace(e.review.of)?.prHead
           return { ...e, review: { ...e.review, current: !head || head === e.review.sha } }
@@ -571,6 +599,16 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'pr.changes': wake(`Tell ${name} about the changes requested on ${pr} with message_agent ${at}.`); break
       case 'pr.conflict': wake(`Ask ${name} to resolve the conflicts on ${pr} with message_agent ${at}.`); break
       case 'pr.closed': if (ws.prState === 'closed') wake(`${upper(pr)} was closed without merging. Ask the user whether ${name}'s work is still wanted.`); break
+      case 'wait.broken':
+        if (stillBroken(ws, e, c.workspace)) {
+          const label = e.wait?.label ?? 'a PR'
+          wake(`${name} is waiting for ${label}, which was ${e.wait?.gone ?? 'closed'} without merging. Ask the user whether ${name} should ${e.wait?.held === false ? 'carry on without it' : 'start anyway'} (wait_for_merge with an empty list) or archive ${name}'s workspace.`)
+        }
+        break
+      // A wait the Lead set itself is in its tool's result. One a teammate set mid-task is news (KERNEL-262).
+      case 'wait.started': if (!e.wait?.told) wake(`${name} is waiting for ${e.wait?.label ?? 'another PR'} to merge. Tell the user that merging it moves ${name} on.`); break
+      // Kernel already sent the brief or the rebase, so the Lead has nothing to do.
+      case 'wait.released': break
       case 'pr.merged':
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
@@ -594,6 +632,13 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
     }
   }
   return out
+}
+
+/** A wait.broken event whose PR still can't merge, and that the workspace still waits for. Unknown targets count as broken. */
+function stillBroken(ws: Workspace, e: TeamEvent, workspace?: (id: string) => Workspace | undefined): boolean {
+  const target = e.wait?.target
+  if (!target || !ws.waitsFor?.on.includes(target)) return false
+  return !workspace || isBroken(workspace(target))
 }
 
 /** The To do line once the last task a chat handed off has merged. */

@@ -663,6 +663,32 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await again.k.stop()
   }, 60000)
 
+  it('keeps a trusted workspace that waits for a PR waiting, and never reruns changed setup text untrusted (KERNEL-259)', async () => {
+    const repo = await clonedRepo()
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo first > ran.txt"\n')
+    const { k, room, h, released } = await kernelFor(repo)
+    const first = await k.createWorkspace(room.id, { prompt: 'Build the API', agentId: 'kai', title: 'API' })
+    const waiter = await k.createWorkspace(room.id, { prompt: 'Build the UI on it', agentId: 'kai', title: 'UI', waitFor: [first.id] })
+    expect([first.status, waiter.status]).toEqual(['trust', 'trust'])
+    const chat = k.store.chats(waiter.id).find((c) => c.kind !== 'terminal')!
+
+    await h['rooms.trust']({ roomId: room.id, hash: (await h['rooms.scriptTrust']({ roomId: room.id }))!.hash })
+    await vi.waitFor(() => expect(k.store.workspace(waiter.id)?.status).toBe('ready'), { timeout: 15000 })
+    // Set up, and still waiting for the API to merge: its brief stays held.
+    expect(await readFile(join(waiter.path, 'ran.txt'), 'utf8')).toBe('first\n')
+    expect(k.store.workspace(waiter.id)?.waitsFor?.held).toBe(true)
+    expect(k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the UI on it' }]])
+    expect(released).not.toContain(chat.id)
+
+    // A pull changes setup while it waits. When the merge would rerun setup, the new text waits for trust instead.
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed > ran.txt"\n')
+    const held = await (k as unknown as { startBrief: (...a: unknown[]) => Promise<{ status: string }> }).startBrief(k.store.workspace(waiter.id)!, room, chat, { setup: true, released: k.store.workspace(waiter.id)?.waitsFor })
+    expect(held.status).toBe('trust')
+    expect(await readFile(join(waiter.path, 'ran.txt'), 'utf8')).toBe('first\n')
+    expect(released).not.toContain(chat.id)
+    await k.stop()
+  }, 60000)
+
   it('archives a waiting workspace without running its archive script', async () => {
     const repo = await clonedRepo()
     const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'archived')
