@@ -48,9 +48,21 @@ async function setup() {
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
   // What the tests wait for instead of a fixed time: a busy CI runner can stretch the archive's git work past one.
   const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), WAIT)
-  /** Kernel decided to archive the review once its turn ends, which `archiveReviews` marks before it checks anything. */
-  const marked = (kernel: Kernel = k) => vi.waitFor(() => expect(kernel.store.meta<string[]>('reviewsToArchive') ?? []).toContain(review.id), WAIT)
-  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, status }
+  /**
+   * `trigger` merges the work, and Kernel looks at the busy review and leaves it for its turn's end: no archive starts,
+   * and it stays marked for later. The mark alone proves nothing, since `archiveReviews` sets it before it checks whether
+   * the review is working, so this runs `archiveReviews` to the end and watches the archive itself.
+   */
+  const deferred = async (trigger: () => Promise<unknown>) => {
+    const archive = vi.spyOn(k, 'archiveWorkspace')
+    try {
+      await trigger()
+      await (k as unknown as { archiveReviews(id: string): Promise<void> }).archiveReviews(author.id)
+      expect(archive).not.toHaveBeenCalled()
+      expect(k.store.meta<string[]>('reviewsToArchive')).toContain(review.id)
+    } finally { archive.mockRestore() }
+  }
+  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, deferred, status }
 }
 
 describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
@@ -84,13 +96,12 @@ describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
   })
 
   it('archive a review workspace that was still working once its turn ends', async () => {
-    const { k, gh, author, review, archived, marked, status } = await setup()
+    const { k, gh, author, review, archived, deferred, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
-    await k.refreshPr(author.id)
-    await marked()
+    await deferred(() => k.refreshPr(author.id))
     expect(status(review)).not.toBe('archived')
     k.sessions.isRunning = running
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
@@ -102,13 +113,12 @@ describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
 
 describe('review workspaces, edge cases (KERNEL-131)', () => {
   it('waits for a message queued in the review to go out and its turn to end', async () => {
-    const { k, gh, author, review, archived, marked, status } = await setup()
+    const { k, gh, author, review, archived, deferred, status } = await setup()
     const chat = k.store.chats(review.id)[0].id
     const queued = k.sessions.queued
     k.sessions.queued = (id) => (id === chat ? [{ id: 'q', chatId: chat, parts: [{ type: 'text', text: 'One more look' }], ts: 1 }] : queued.call(k.sessions, id))
     gh.pr = info('merged')
-    await k.refreshPr(author.id)
-    await marked()
+    await deferred(() => k.refreshPr(author.id))
     expect(status(review)).not.toBe('archived')
     k.sessions.queued = queued
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
@@ -124,12 +134,11 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
   })
 
   it('archives at start a review that was still working when Kernel quit, and leaves one the user restored', async () => {
-    const { k, gh, author, review, marked, status } = await setup()
+    const { k, gh, author, review, deferred, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
-    await k.refreshPr(author.id)
-    await marked()
+    await deferred(() => k.refreshPr(author.id))
     expect(status(review)).not.toBe('archived')
     const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o
     await k.stop()
