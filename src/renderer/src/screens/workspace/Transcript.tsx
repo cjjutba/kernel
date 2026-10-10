@@ -78,7 +78,7 @@ function StepRow({ icon, failed, label, detail, mono, meta, compact, children }:
       <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
         {icon && <span style={{ color: failed ? 'var(--del)' : 'var(--muted)' }}><Icon name={icon} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} /></span>}
         <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
-        <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined}>{mono || !open ? detail : null}</span>
+        <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
         {can && <span className="chev step-chev" data-open={open}><Icon name="right" size={12} /></span>}
       </button>
@@ -91,9 +91,47 @@ function ThinkingRow({ item, compact }: { item: Extract<ChatItem, { kind: 'think
   return <StepRow icon="bulb" label="Thinking" detail={item.text} compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
 }
 
-/** What a tool shows when opened: its output. */
+const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
+
+/** Edit shows what it took out and put in, one prefixed line each. */
+function EditDiff({ from, to }: { from: string; to: string }) {
+  return (
+    <>
+      {from.split('\n').map((l, i) => <div key={`-${i}`} className="del">-{l}</div>)}
+      {to.split('\n').map((l, i) => <div key={`+${i}`} className="add">+{l}</div>)}
+    </>
+  )
+}
+
+/** The tool's input as the text a person would have typed: the command, the path, the pattern, the prompt. Anything else is JSON. */
+function inputView(item: Tool): ReactNode {
+  const i = item.input
+  if (!i || !Object.keys(i).length) return null
+  const lines = (...rows: (string | undefined)[]) => rows.filter((r): r is string => r !== undefined).join('\n')
+  const known = ((): ReactNode => {
+    switch (item.name) {
+      case 'Bash': return text(i.command)
+      case 'Edit': return typeof i.old_string === 'string' && typeof i.new_string === 'string' ? <EditDiff from={i.old_string} to={i.new_string} /> : undefined
+      case 'Write': return text(i.file_path) && typeof i.content === 'string' ? lines(text(i.file_path), '', i.content) : undefined
+      case 'Read': return text(i.file_path) && lines(text(i.file_path), typeof i.offset === 'number' ? `offset: ${i.offset}` : undefined, typeof i.limit === 'number' ? `limit: ${i.limit}` : undefined)
+      case 'Grep': case 'Glob': return text(i.pattern) && lines(`pattern: ${text(i.pattern)}`, text(i.path) && `path: ${text(i.path)}`)
+      case 'Agent': case 'Task': return text(i.prompt)
+      default: return undefined
+    }
+  })()
+  return known || JSON.stringify(i, null, 2)
+}
+
+/** What a tool shows when opened: its input, then its output. A tool with neither has nothing to open. */
 function toolBody(item: Tool): ReactNode {
-  return item.output ? <div className="code tool-out">{item.output}</div> : null
+  const input = inputView(item)
+  if (!input && !item.output) return null
+  return (
+    <>
+      {input && <div className="code tool-out">{input}</div>}
+      {item.output && <div className="code tool-out">{item.output}{item.outputCut && <span className="step-cut">Output cut at 20,000 characters</span>}</div>}
+    </>
+  )
 }
 
 function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
@@ -111,7 +149,7 @@ function toolMeta(item: Tool, changes: ChangedFile[]): string {
 function GroupItem({ item, changes }: { item: ChatItem; changes: ChangedFile[] }) {
   if (item.kind === 'tool') return <div className="group-item"><ToolRow item={item} meta={toolMeta(item, changes)} compact /></div>
   if (item.kind === 'thinking') return <div className="group-item"><ThinkingRow item={item} compact /></div>
-  if (item.kind === 'text') return <div className="group-item"><StepRow label="Message" detail={item.text} compact><div className="step-text"><Markdown text={item.text} /></div></StepRow></div>
+  if (item.kind === 'text') return <div className="group-item"><StepRow label="Message" detail={item.text} compact>{item.text.trim() && <div className="step-text"><Markdown text={item.text} /></div>}</StepRow></div>
   return null
 }
 
