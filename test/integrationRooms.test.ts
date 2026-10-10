@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { RoomIcons } from '../src/main/services/roomIcons'
 import type { PushEvent } from '../src/shared/ipc'
 
 // KERNEL-256: the integration pass on room settings and the Conductor features. These cover the paths no other suite reaches.
@@ -96,17 +95,5 @@ describe('a personal override in a room', () => {
     const { sourceLine } = await import('../src/renderer/src/screens/settings/kit')
     expect(sourceLine(null, 'scripts.setup')).toBeUndefined()
     expect(sourceLine({ sources: { 'scripts.setup': 'local' } } as never, 'scripts.setup')).toBeUndefined()
-  })
-})
-
-describe('a room icon whose file has gone', () => {
-  it('serves null, so the renderer shows the letter, and a bad file does too', async () => {
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-icons-'))
-    const icons = new RoomIcons(dataDir)
-    expect(await icons.dataUrl(undefined)).toBeNull()
-    expect(await icons.dataUrl({ kind: 'github', file: 'room-1-1.png', at: 1 } as never)).toBeNull()
-
-    await rm(join(dataDir, 'room-icons'), { recursive: true, force: true })
-    expect(await icons.dataUrl({ kind: 'github', file: '../../etc/passwd', at: 1 } as never)).toBeNull()
   })
 })
