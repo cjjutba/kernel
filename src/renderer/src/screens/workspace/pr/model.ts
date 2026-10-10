@@ -1,4 +1,5 @@
 import type { AppSettings, ChatItem, ChatPart, PrInfo, PrState, ReviewComment, Toast, Workspace } from '@shared/types'
+import { stripRemote } from '../../settings/remote'
 
 /** What the header shows for each PR state, in the canvas order (WorkspacePRMenu, DraftPR, CIFailed, ChangesRequested, Merged, PRClosed). */
 export interface PrHeaderView {
@@ -81,11 +82,11 @@ const LANDED: Record<AppSettings['pr']['mergeMethod'], string> = { squash: 'Squa
  * The toast a PR state change earns: created, merged, or a create that ended without a PR. Failed calls toast where they are made.
  * `before` is undefined the first time a workspace is seen, which never toasts.
  */
-export function prToast(before: PrState | undefined, ws: Workspace, o: { method?: AppSettings['pr']['mergeMethod']; agent?: string } = {}): Omit<Toast, 'id'> | undefined {
+export function prToast(before: PrState | undefined, ws: Workspace, o: { method?: AppSettings['pr']['mergeMethod']; agent?: string; remote?: string } = {}): Omit<Toast, 'id'> | undefined {
   if (!before || before === ws.prState) return undefined
   const n = ws.prNumber ? `PR #${ws.prNumber}` : 'PR'
   const view = ws.prUrl ? { action: { label: 'View', href: ws.prUrl } } : {}
-  const base = ws.baseRef.replace(/^origin\//, '')
+  const base = stripRemote(ws.baseRef, o.remote ?? 'origin')
   if (before === 'creating' && ws.prState === 'none') return { title: 'Could not create the PR', sub: `${o.agent ?? 'The agent'} finished without opening one.` }
   if (before === 'creating') return { title: `${n} created`, sub: ws.prState === 'draft' ? 'Opened as a draft' : ws.prTitle || undefined, ...view }
   if (ws.prState === 'merged') return { title: `${n} merged`, sub: before === 'merging' && o.method ? `${LANDED[o.method]} ${base}` : 'Merged on GitHub', ...view }

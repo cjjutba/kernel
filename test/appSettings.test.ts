@@ -50,6 +50,15 @@ describe('applySettingsPatch', () => {
 })
 
 describe('loadAppSettings', () => {
+  it('moves the old default branch pattern to the new one, and keeps a custom pattern (KERNEL-275)', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ workspace: { branchPattern: 'feat/{slug}' } }))
+    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('{type}/{task}-{slug}')
+    await writeFile(file, JSON.stringify({ workspace: { branchPattern: 'cj/{task}-{slug}' } }))
+    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('cj/{task}-{slug}')
+    await writeFile(file, JSON.stringify({}))
+    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('{type}/{task}-{slug}')
+  })
   it('drops unknown models and efforts from a saved effort memory', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ models: { effortByModel: { 'claude-opus-5-5': 'xhigh', 'claude-nope': 'low', 'claude-sonnet-5-5': 'max' } } }))
