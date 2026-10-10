@@ -6,16 +6,18 @@ import { copyText, MessageActions } from '../MessageActions'
 import { cardData, eventTone, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
+/** One workspace by id, so a row redraws only when its own workspace changes, not when any workspace does. */
+const useWorkspaceById = (id: string) => useStore((s) => s.workspaces.find((w) => w.id === id))
+
 /**
  * Kernel's team update in a Lead chat (KERNEL-127): one row per teammate, with what happened and the reply it sent, so it
  * no longer reads as a message the user typed. The Lead reads the item's text; this draws the data saved with it.
  */
 export function TeamUpdateCard({ item }: { item: Extract<ChatItem, { kind: 'user' }> }) {
-  const workspaces = useStore((s) => s.workspaces)
-  return <TeamUpdateView item={item} workspaceOf={(id) => workspaces.find((w) => w.id === id)} />
+  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} />
 }
 
-/** The card itself, given how to find a row's workspace: the store in the app, a stub in tests. */
+/** The card itself, given how to find a row's workspace: a store hook in the app, a stub in tests. Each row calls it, so it may be a hook. */
 export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: (id: string) => Workspace | undefined }) {
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
@@ -29,7 +31,7 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", a Lead chat that is now closed</div>}
-            {s.rows.map((row) => <Row key={row.workspaceId} row={row} ws={workspaceOf(row.workspaceId)} />)}
+            {s.rows.map((row) => <Row key={row.workspaceId} row={row} workspaceOf={workspaceOf} />)}
           </div>
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
@@ -39,7 +41,8 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
   )
 }
 
-function Row({ row, ws }: { row: TeamUpdateRow; ws: Workspace | undefined }) {
+function Row({ row, workspaceOf }: { row: TeamUpdateRow; workspaceOf: (id: string) => Workspace | undefined }) {
+  const ws = workspaceOf(row.workspaceId)
   const archived = ws?.status === 'archived'
   const { key, title } = taskParts(row.task)
   return (
