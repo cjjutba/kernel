@@ -628,3 +628,69 @@ describe('who sent a message (KERNEL-116)', () => {
     expect(s.sessions.post('chat', [{ type: 'text', text: HEADER }], { update })).toBe(true)
   })
 })
+
+describe('Agent rows name the subagent model (KERNEL-158)', () => {
+  type Tool = ChatItem & { kind: 'tool' }
+  const row = (store: Store, toolUseId: string) => store.items('chat').find((i): i is Tool => i.kind === 'tool' && i.toolUseId === toolUseId)
+  const agent = (id: string, input: Record<string, unknown>) => ({ type: 'assistant', uuid: `a-${id}`, parent_tool_use_id: null, message: { model: 'claude-opus-5-5', content: [{ type: 'tool_use', id, name: 'Agent', input: { prompt: 'Look around', ...input } }] } })
+  const sub = (parent: string, model: string, n: number) => ({ type: 'assistant', uuid: `s-${parent}-${n}`, parent_tool_use_id: parent, message: { model, content: [{ type: 'tool_use', id: `in-${parent}-${n}`, name: 'Read', input: { file_path: 'README.md' } }] } })
+  const result = (id: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: 'Found it' }] } })
+
+  it('names the model from the call at once, and a subagent message never changes it', async () => {
+    const { call, store } = await setup()
+    call.feed(agent('ag1', { description: 'Explore engine for Linear plan', model: 'haiku' }))
+    await flush()
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'running' })
+    call.feed(sub('ag1', 'claude-sonnet-5-5', 1))
+    call.feed(result('ag1'))
+    await flush()
+    expect(row(store, 'ag1')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Explore engine for Linear plan', status: 'done' })
+  })
+
+  it("names the subagent's real model from its first message and keeps it on the saved done row", async () => {
+    const { call, store, kinds } = await setup()
+    call.feed(agent('ag2', { description: 'Explore design canvas and docs' }))
+    await flush()
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent', detail: 'Explore design canvas and docs' })
+    call.feed(sub('ag2', 'claude-sonnet-5-5', 1))
+    call.feed(sub('ag2', 'claude-opus-5-5', 2))
+    await flush()
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent · Sonnet 5.5', status: 'running' })
+    call.feed(result('ag2'))
+    await flush()
+    expect(row(store, 'ag2')).toMatchObject({ label: 'Agent · Sonnet 5.5', detail: 'Explore design canvas and docs', status: 'done', output: 'Found it' })
+    // The subagent's own steps stay inside the row.
+    expect(kinds()).toEqual(['user', 'tool'])
+  })
+
+  it('names a subagent that answers after its row is done, keeps an unknown model id as it is, and reads the old Task name', async () => {
+    const { call, store } = await setup()
+    call.feed({ type: 'assistant', uuid: 'a-ag3', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 'ag3', name: 'Task', input: { description: 'Check the logs', prompt: 'Go' } }] } })
+    call.feed(result('ag3'))
+    call.feed(sub('ag3', 'claude-mystery-9', 1))
+    await flush()
+    expect(row(store, 'ag3')).toMatchObject({ label: 'Task · claude-mystery-9', detail: 'Check the logs', status: 'done' })
+  })
+
+  it('leaves the row as Agent when no model is known', async () => {
+    const { call, store } = await setup()
+    call.feed(agent('ag4', { description: 'Stopped early' }))
+    call.feed(result('ag4'))
+    await flush()
+    expect(row(store, 'ag4')).toMatchObject({ label: 'Agent', detail: 'Stopped early' })
+  })
+
+  it('leaves other tool rows as they were', async () => {
+    const { call, store } = await setup()
+    call.feed({ type: 'assistant', uuid: 'o1', parent_tool_use_id: null, message: { model: 'claude-sonnet-5-5', content: [
+      { type: 'tool_use', id: 'b1', name: 'Bash', input: { command: 'pnpm test\necho done', description: 'Run tests', model: 'haiku' } },
+      { type: 'tool_use', id: 'r1', name: 'Read', input: { file_path: 'src/main/db.ts' } },
+      { type: 'tool_use', id: 'm1', name: 'mcp__kernel__say', input: { text: 'Hi', description: 'Greet' } }
+    ] } })
+    call.feed(sub('b1', 'claude-haiku-4-5-20251001', 1))
+    await flush()
+    expect(row(store, 'b1')).toMatchObject({ label: 'Run pnpm test', detail: 'pnpm test' })
+    expect(row(store, 'r1')).toMatchObject({ label: 'Read', detail: 'src/main/db.ts' })
+    expect(row(store, 'm1')).toMatchObject({ label: 'kernel · say', detail: '{"text":"Hi","description":"Greet"}' })
+  })
+})

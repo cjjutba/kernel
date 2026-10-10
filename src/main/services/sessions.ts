@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { isKernelUpdate } from '@shared/teamUpdate'
@@ -64,6 +65,8 @@ interface Live {
   /** Who sent the message that started the running turn: Kernel, the Lead, or the user when unset (KERNEL-116). */
   from?: MessageFrom
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
+  /** Agent rows whose label already names the subagent's model, by tool use id. The call's own `model` is final (KERNEL-158). */
+  agentModels: Set<string>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
 }
@@ -589,7 +592,7 @@ export class Sessions {
       pathToClaudeCodeExecutable: packagedClaude()
     }
     const q = query({ prompt: input, options })
-    const live: Live = { query: q, input, abort, running: false, interrupted: false, toolItems: new Map(), commands }
+    const live: Live = { query: q, input, abort, running: false, interrupted: false, toolItems: new Map(), agentModels: new Set(), commands }
     this.live.set(chat.id, live)
     void this.consume(chat.id, ws, live)
     return live
@@ -664,6 +667,7 @@ export class Sessions {
         // saves. The transcript starts over too, as the CLI's screen does. The old conversation stays in Claude Code's own history.
         this.d.store.clearItems(chatId)
         live.toolItems.clear()
+        live.agentModels.clear()
         if (msg.trigger === 'clear') live.cleared = true
         bus.push({ type: 'chat.cleared', chatId })
         return
@@ -674,14 +678,18 @@ export class Sessions {
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
         this.d.onReply?.(ws, chat)
-        if (msg.parent_tool_use_id) return // subagent chatter stays inside the tool row
+        // Subagent chatter stays inside the tool row. Only the model it runs on reaches the row's label.
+        if (msg.parent_tool_use_id) { this.subagentModel(chat, live, msg.parent_tool_use_id, msg.message.model); return }
         msg.message.content.forEach((block: any, i: number) => {
           const id = `${msg.uuid}:${i}`
           if (block.type === 'text' && block.text?.trim()) this.item(chat, { kind: 'text', id, ts: now, text: block.text })
           else if (block.type === 'thinking' && block.thinking?.trim()) this.item(chat, { kind: 'thinking', id, ts: now, text: block.thinking })
           else if (block.type === 'tool_use') {
             const d = describeTool(block.name, block.input)
-            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label: d.title, detail: toolDetail(block.name, block.input), status: 'running' }
+            const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model ? String(block.input.model) : undefined
+            if (model) live.agentModels.add(block.id)
+            const label = model ? `${d.title} · ${modelName(model)}` : d.title
+            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running' }
             live.toolItems.set(block.id, item)
             this.item(chat, item)
           }
@@ -883,6 +891,20 @@ export class Sessions {
   }
 
   /**
+   * A subagent's messages carry the model it runs on. The first one names its Agent row, which is saved again so the
+   * name survives a restart. A row that is already done keeps its status. With no message and no `model` in the call,
+   * the row stays "Agent": the model is never guessed.
+   */
+  private subagentModel(chat: Chat, live: Live, toolUseId: string, model: string | undefined) {
+    const row = live.toolItems.get(toolUseId)
+    if (!row || !model || !SUBAGENT_TOOLS.has(row.name) || live.agentModels.has(toolUseId)) return
+    live.agentModels.add(toolUseId)
+    const named = { ...row, label: `${row.label} · ${modelName(model)}` }
+    live.toolItems.set(toolUseId, named)
+    this.item(chat, named)
+  }
+
+  /**
    * Where a new plan-mode plan in this chat is saved (D-092). After "Request changes" the revision overwrites the last
    * plan's file. Once a plan here was approved, the next one gets a file of its own.
    */
@@ -925,8 +947,18 @@ export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
   return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
 }
 
+/** The tool that starts a subagent. Task is its old name. */
+const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
+
+/** "Haiku 4.5" for a model id or alias, matched the way the team screens match (sameModel). An unknown model stays as it is. */
+function modelName(model: string): string {
+  const m = model.toLowerCase()
+  return MODELS.find(({ id }) => m === id || m === id.split('-')[1] || id.includes(`-${m}-`))?.label ?? model
+}
+
 function toolDetail(name: string, input: any): string {
   if (name === 'Bash') return String(input?.command ?? '').split('\n')[0]
+  if (SUBAGENT_TOOLS.has(name) && input?.description) return String(input.description)
   if (input?.file_path) return String(input.file_path)
   if (input?.pattern) return String(input.pattern)
   return JSON.stringify(input ?? {}).slice(0, 120)
