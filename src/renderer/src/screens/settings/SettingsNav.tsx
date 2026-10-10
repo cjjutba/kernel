@@ -35,12 +35,12 @@ let lastRoomId: string | undefined
 
 /**
  * The left column of Settings: back to the app, search, the app pages, and each room with its own pages under it.
- * Search filters the list by name. The nav scrolls, and the open page scrolls into view.
+ * Search filters the list by name. The top stays put; the list under it scrolls, and the open page scrolls into view there.
  */
 export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
-  const nav = useRef<HTMLElement>(null)
+  const list = useRef<HTMLDivElement>(null)
   if (page === 'room' && roomId) lastRoomId = roomId
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
@@ -63,8 +63,8 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   // A room's pages run past the bottom of the window, so a room page brings the end of its room into view, then the open page.
   useEffect(() => {
     if (page !== 'room') return
-    nav.current?.querySelector('[data-room-end]')?.scrollIntoView({ block: 'nearest' })
-    nav.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
+    list.current?.querySelector('[data-room-end]')?.scrollIntoView({ block: 'nearest' })
+    list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label)) })).filter((g) => g.items.length)
@@ -75,7 +75,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
-    <nav ref={nav} aria-label="Settings" className="set-nav">
+    <nav aria-label="Settings" className="set-nav">
       <div className="drag" style={{ height: 42, flexShrink: 0 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
@@ -83,6 +83,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         <Icon name="search" size={14} />
         <input id="set-q" type="text" autoComplete="off" placeholder="Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
+      <div ref={list} className="set-list">
       {groups.map((g) => (
         <div key={g.title}>
           <p className="set-group">{g.title}</p>
@@ -116,6 +117,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         </div>
       )}
       {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
+      </div>
     </nav>
   )
 }

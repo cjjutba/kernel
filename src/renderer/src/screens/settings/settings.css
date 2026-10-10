@@ -1,5 +1,6 @@
 /* Settings shell and app pages (KERNEL-25). Tokens only. */
-.set-nav { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow-y: auto; }
+.set-nav { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow: hidden; }
+.set-list { flex: 1; min-height: 0; overflow-y: auto; }
 .set-back { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
 .set-back:hover { background: var(--nav-hover); }
 .set-search { position: relative; margin: 8px 0 6px; }
