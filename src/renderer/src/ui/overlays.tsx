@@ -32,7 +32,7 @@ function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (Me
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null)
   useEffect(() => { (ref.current?.querySelector<HTMLElement>(`${ITEM_ON}[aria-checked=true]`) ?? ref.current?.querySelector<HTMLElement>(ITEM_ON))?.focus({ preventScroll: true }) }, [])
   const onKey = (e: KeyboardEvent) => {
-    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(':scope > .menu-row > :is([role=menuitem], [role=menuitemradio]):not(:disabled)') ?? [])]
+    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(`:scope > .menu-row > ${ITEM_ON}`) ?? [])]
     const i = nodes.indexOf(document.activeElement as HTMLElement)
     const handled = (go: () => void) => { e.preventDefault(); e.stopPropagation(); go() }
     if (e.key === 'ArrowDown') handled(() => nodes[(i + 1) % nodes.length]?.focus())
