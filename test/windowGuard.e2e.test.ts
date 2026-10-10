@@ -64,5 +64,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('the w
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.loadURL('data:text/html,<p>not Kernel</p>'))
     expect(await invoke('rooms.list')).toContain('refused rooms.list')
     expect(await invoke('system.pickFolder')).toContain('refused system.pickFolder')
+    expect(await invoke('system.pickImage')).toContain('refused system.pickImage')
+    expect(await invoke('rooms.setIcon', { roomId: 'r', icon: { kind: 'image', path: '/etc/hosts' } })).toContain('refused rooms.setIcon')
   })
 })

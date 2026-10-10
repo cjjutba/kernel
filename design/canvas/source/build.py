@@ -18,8 +18,23 @@ RAIL='''<nav aria-label="Sidebar" style="width: 64px; flex-shrink: 0; box-sizing
 <a href="WorkspaceLead.dc.html" aria-label="Client A" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: #1c1d21; color: #f7f8f8; font-size: 11px; font-weight: 600">A</a>
 <a href="WorkspaceLead.dc.html" aria-label="Client B" style="width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: #d0d6e0; font-size: 11px; font-weight: 600">B</a>
 </nav>'''
-def sidebar(active, empty=False, menu=None):
-    s=side_t.replace('%%ROOMS%%', EMPTY if empty else rooms)
+def fold_rooms(r):
+    # KERNEL-205: a chat that started workspaces folds like a room. Its workspaces are hidden and it shows the question icon,
+    # because the hidden invoice-schema needs you.
+    lines=r.split('\n')
+    keep=[l for l in lines if 'class="row"' not in l or not ('>invoice-table<' in l or '>invoice-schema<' in l)]
+    ask=re.search(r'<svg[^>]*>(?:(?!</svg>).)*M13\.5 8a5\.5 5\.5 0 1 1-11 0.*?</svg>', next(l for l in lines if 'aria-label="invoice-schema, Needs you"' in l)).group(0)
+    out=[]
+    for l in keep:
+        if 'aria-label="Invoice table and empty states, Working"' in l:
+            l=l.replace('aria-label="Invoice table and empty states, Working"','aria-label="Invoice table and empty states, Needs you"')
+            l,n=re.subn(r'<span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0;.*?</span></span>', lambda m: ask, l, count=1)
+            assert n==1
+        out.append(l)
+    return '\n'.join(out)
+rooms_folded=fold_rooms(rooms)
+def sidebar(active, empty=False, menu=None, fold=False):
+    s=side_t.replace('%%ROOMS%%', EMPTY if empty else (rooms_folded if fold else rooms))
     s=s.replace('%%INBOXBADGE%%','' if empty else '<span style="font-size: 12px; color: #8a8f98">3</span>')
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
@@ -35,9 +50,9 @@ def sidebar(active, empty=False, menu=None):
     return s
 out=[]
 HOOKS_DOWN='''<a href="CheckHooks.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks down<span style="margin-left: 4px; color: #f7f8f8; text-decoration: underline">Check hooks</span></a>'''
-def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False):
+def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False):
     t=t.replace('<!--HELMET-->',helmet)
-    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu))
+    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold))
     t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else '<span></span>'))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
     assert 'Agent Office' not in t, name
@@ -52,6 +67,7 @@ emit('WhatsNew', rd('WhatsNew.dc.html'), 'home', update=True)
 emit('UpdateReady', rd('Home.dc.html'), 'home', update=True)
 emit('HomeLight', rd('Home.dc.html'), 'home', light=True)
 emit('SidebarRoomsMenu', rd('Home.dc.html'), 'home', menu='rooms')
+emit('SidebarChatFolded', rd('Home.dc.html'), 'home', fold=True)
 emit('AccountMenu', rd('Home.dc.html'), 'home', menu='acct')
 # The floor and Board screens (Main, Floor*, Board, BoardEmpty, TaskDetail) are hidden (D-104). Their pages keep the sidebar they
 # were drawn with and are not rebuilt, so they still show the screens as they were. Board.dc.html and Main.dc.html stay as templates.
@@ -81,7 +97,8 @@ for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('Confir
 su=rd('Setup.dc.html')
 for n,k in [('SetupClaudeMissing','missing'),('SetupClaudeOld','old'),('SetupTeamsOff','teams'),('SetupGhSignedOut','gh'),('SetupPortBusy','port'),('RoomSetup','room')]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
-for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','team'),('SettingsPermissions','permissions'),('SettingsSkills','skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','room-a')]:
+# KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
+for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','r-agents'),('SettingsPermissions','permissions'),('SettingsSkills','r-skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','r-files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','r-general'),('SettingsRoomGit','r-git'),('SettingsRoomScripts','r-scripts'),('SettingsRoomInstructions','r-instructions'),('SettingsRoomPermissions','r-permissions')]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))

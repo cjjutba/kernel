@@ -183,6 +183,10 @@ app.whenReady().then(async () => {
     const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
     return r.canceled ? null : r.filePaths[0]
   })
+  handle('system.pickImage' satisfies Channel, async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] })
+    return r.canceled ? null : r.filePaths[0]
+  })
   handle('system.openExternal' satisfies Channel, async (_e, { url }: KernelApi['system.openExternal']['req']) => {
     if (!isSafeExternal(url)) throw new Error('Kernel only opens https links.')
     await shell.openExternal(url)

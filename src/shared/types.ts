@@ -91,6 +91,11 @@ export interface Room {
   archived?: boolean
   /** Bash rules the user chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
+  /**
+   * The room's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's room-icons.
+   * No icon means the letter. The image itself comes from `rooms.icon`, so room pushes stay small (KERNEL-241).
+   */
+  icon?: { kind: 'github' | 'image'; file: string; at: number }
   createdAt: number
 }
 
@@ -333,6 +338,8 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
+  autoTitle?: { turns: number }
   createdAt: number
 }
 
@@ -792,7 +799,7 @@ export interface AppSettings {
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
-  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; createInstructions: string; resolveInstructions: string }
+  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
 }
@@ -806,11 +813,27 @@ export interface RoomSettings {
   disabled?: { skills: string[]; mcp: string[] }
   /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
+  /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
+  pr?: Partial<PrInstructions>
+  /**
+   * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
+   * A path missing here means the app default applies (KERNEL-190).
+   */
+  sources: Record<string, RoomSettingSource>
 }
+
+/** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per room). */
+export interface PrInstructions { createInstructions: string; resolveInstructions: string; fixChecksInstructions: string; addressReviewInstructions: string }
+
+/** `shared`: only `.kernel/settings.toml` sets the value. `local`: only `.kernel/settings.local.toml`. `override`: both, and the personal one wins. */
+export type RoomSettingSource = 'shared' | 'local' | 'override'
+
+/** The sections of a room's settings page. A route without one opens General. */
+export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
 
 /** A patch to a room's settings file. `null` removes the key so the app default applies again. */
 export type RoomSettingsPatch = {
-  [K in keyof RoomSettings]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+  [K in Exclude<keyof RoomSettings, 'sources'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 }
 
 /** Recursive partial for settings patches. */
@@ -832,7 +855,8 @@ export type Route =
   | { name: 'workspace'; workspaceId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   | { name: 'issues'; issueId?: string }
-  | { name: 'settings'; page: SettingsPage; roomId?: string }
+  /** `section` is for `page: 'room'`, and none means General. */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
@@ -890,12 +914,22 @@ export interface WorkspaceView {
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
-  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
-  tab?: string
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
   /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */
   contextOpen?: boolean
+}
+
+/** One workspace's open tabs. They outlast the workspace screen, so Settings or another workspace never resets them. */
+export interface WorkspaceTabs {
+  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
+  tab?: string
+  /** The chat the composer is on while a file, diff, image or text tab is active. */
+  lastChat?: string
+  /** Paths of the open file tabs. */
+  files: string[]
+  /** Paths of the open diff tabs. An empty path is All changes. */
+  diffs: string[]
 }
 
 export interface UiState {
@@ -908,6 +942,8 @@ export interface UiState {
   /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
   stage?: string
   workspace: WorkspaceView
+  /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
+  tabs: Record<string, WorkspaceTabs>
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */

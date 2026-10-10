@@ -6,6 +6,7 @@ import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
+import { tabOf } from '../../nav'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
@@ -103,12 +104,10 @@ function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: R
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.chatId === chat.id && a.status === 'pending'), [approvals, chat.id])
   const running = useStore((s) => !!s.running[chat.id])
-  // A workspace with no tab chosen opens on its first tab that isn't closed, as the workspace screen does.
+  // The chat the workspace shows, which is none while a file or diff tab is open there (D-139).
   const current = useStore((s) => {
     const r = s.ui.route
-    if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
-    const tab = s.ui.workspace.tab
-    return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
+    return r.name === 'workspace' && r.workspaceId === chat.workspaceId && tabOf(s, chat.workspaceId) === chat.id
   })
   const g = chatGlyph({ waiting, running })
   return (
@@ -296,7 +295,7 @@ export function Sidebar() {
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
+        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
@@ -324,7 +323,7 @@ export function Sidebar() {
         {plan && <PlanButton plan={plan} />}
         <span className="grow" />
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
-        <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
+        <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => actions.ui.openSettings()} />
       </div>
       <ResizeHandle
         targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={widthLimit} defaultWidth={sidebarDefault}
