@@ -73,9 +73,10 @@ describe('change request attachments', () => {
     expect(await saveAttachments(repo, [{ name: 'image.png', dataUrl: png('fourth') }])).toEqual([join(repo, '.kernel/attachments/image-3.png')])
   })
 
-  it('refuses something that is not an image data URL', async () => {
+  it('refuses something that is not an image data URL, and writes none of the request', async () => {
     const repo = await tempRepo()
-    await expect(saveAttachments(repo, [{ name: 'notes.txt', dataUrl: 'data:text/plain;base64,aGk=' }])).rejects.toThrow("notes.txt isn't an image")
+    await expect(saveAttachments(repo, [{ name: 'image.png', dataUrl: png('first') }, { name: 'notes.txt', dataUrl: 'data:text/plain;base64,aGk=' }])).rejects.toThrow("notes.txt isn't an image")
+    await expect(access(join(repo, '.kernel/attachments'))).rejects.toThrow()
   })
 
   it('adds one line per image after the typed change, or stands alone without one', () => {
