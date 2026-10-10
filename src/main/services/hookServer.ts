@@ -47,7 +47,7 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
 
     const ev = parsed.event as HookPayload
     if (ev.hook_event_name === 'PermissionRequest') {
-      // A session outside every room asks in its own window, as if Kernel weren't installed (D-137).
+      // A session outside every room asks in its own window, as if Kernel weren't installed (D-138).
       if (!ctx.roomId) return json(res, 200, permissionResponse(null))
       // Claude Code stops waiting when the user answers in the terminal or the session ends, so the approval ends too.
       const closed = new AbortController()

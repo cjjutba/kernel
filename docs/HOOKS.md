@@ -40,7 +40,7 @@ Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, s
 
 ## Permission requests
 
-Kernel only asks about sessions inside one of its rooms (D-137). A `PermissionRequest` whose `cwd` maps to no room gets `{}` at once and opens no approval, so Superset, Conductor and terminal sessions elsewhere on the Mac ask in their own window as if Kernel weren't installed.
+Kernel only asks about sessions inside one of its rooms (D-138). A `PermissionRequest` whose `cwd` maps to no room gets `{}` at once and opens no approval, so Superset, Conductor and terminal sessions elsewhere on the Mac ask in their own window as if Kernel weren't installed.
 
 For a session in a room, the server holds the `PermissionRequest` open and creates an approval in the Inbox. When the user decides, it answers with `hookSpecificOutput.decision` (`allow`, or `deny` with a message). If nobody decides within the approval timeout (Settings > Permissions, 300s default), it answers `{}` and Claude Code falls back to its normal prompt in the terminal. curl prints the answer to stdout, where Claude Code reads it. curl's `-m` is the approval timeout plus 20s and the hook's `timeout` is plus 30s, so the server always answers first and curl exits before Claude Code would kill it.
 
