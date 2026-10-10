@@ -70,6 +70,12 @@ const kernelFiles: RoomSettings = {
   sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
+/** Client A's Environment page: two variables and two env files from its personal file, `src/backend/.env` missing. */
+const envFiles = ['.env', 'src/backend/.env']
+const envRoomA: Partial<Fixture> = {
+  ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
+  env: { rooms: { [ids.roomA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
+}
 const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
 /** What approvals saved with Always allow in this room. Two are long enough to clamp to two lines. */
 const roomRules = [
@@ -166,6 +172,10 @@ export const platformFixtures: Record<string, Fixture> = {
     preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
     sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   })),
+  // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
+  SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
+  SettingsRoomEnvironment: roomPage('environment', envRoomA),
+  SettingsEnvironmentAdd: scene(() => ({ ...envRoomA, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'environment' }, modal: { name: 'envVar', roomId: ids.roomA } } })),
   SettingsRoomInstructions: roomPage('instructions', clientA()),
   SettingsRoomPermissions: scene((f) => ({
     ...clientA(),
