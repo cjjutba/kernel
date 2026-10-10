@@ -21,7 +21,7 @@ import { reviewRule } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
+import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
@@ -297,6 +297,9 @@ export class Kernel {
   private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   async start() {
+    // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
+    const clean = this.store.meta<boolean>('cleanExit') === true
+    this.store.saveMeta('cleanExit', false)
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
     this.o.onSettings?.(this.settings)
@@ -316,10 +319,15 @@ export class Kernel {
     }
     this.tasks.attach()
     for (const r of this.store.rooms()) void this.remoteFor(r.path)
+    // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.
+    await this.sessions.endLeftovers()
+    // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
+    await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.agents(r.id).catch(() => undefined)))
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
-    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
+    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
+    // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {})
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}, this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}, { clean })
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
@@ -540,7 +548,13 @@ export class Kernel {
     }
   }
 
-  async stop() {
+  /**
+   * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
+   * Their queues are saved, and they carry on at the next start (KERNEL-215).
+   */
+  async stop(o: { budgetMs?: number } = {}) {
+    // Its database is closed after the first stop, so a second one has nothing left to do.
+    if (this.stopped) return
     this.stopped = true
     this.unlisten()
     this.notifications.detach()
@@ -555,10 +569,12 @@ export class Kernel {
     this.limitCheck = undefined
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
-    this.sessions.stopAll()
+    await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
     await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
+    // The last write, so the next start can tell a quit from a crash.
+    this.store.saveMeta('cleanExit', true)
     this.store.db.close()
   }
 

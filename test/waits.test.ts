@@ -7,6 +7,7 @@ import type { AgentDef, Chat, PrInfo, PrState, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { exec, run } from '../src/main/services/exec'
 import { listCheckpoints } from '../src/main/services/checkpoints'
+import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { resolveTarget, waitBroken, waitMet, waitRefusal } from '../src/main/services/waits'
 import { tempRepo } from './helpers'
@@ -337,11 +338,16 @@ describe('a teammate that already started', () => {
     await flush()
     expect(users(k, chat)).toEqual([['Build T-15', 'lead'], [REBASE, 'kernel']])
     expect(k.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true })
-    await k.stop()
+    await k.stop({ budgetMs: 0 })
     const before = callsIn(w).length
     const k2 = await again()
-    await vi.waitFor(() => expect(users(k2, chat).filter(([t]) => t === REBASE)).toHaveLength(2), SLOW)
+    // The cut-off turn carries on first (KERNEL-215), and the rebase message goes again once it ends.
+    await vi.waitFor(() => expect(users(k2, chat).at(-1)).toEqual([RELAUNCH_NUDGE, 'kernel']), SLOW)
+    await vi.waitFor(() => expect(queue(k2, chat)).toEqual([[REBASE, 'kernel']]), SLOW)
     callsIn(w)[before].feed(result('r2'))
+    await vi.waitFor(() => expect(users(k2, chat).filter(([t]) => t === REBASE)).toHaveLength(2), SLOW)
+    expect(k2.store.workspace(w.id)?.waitsFor).toMatchObject({ releasing: true })
+    callsIn(w)[before].feed(result('r3'))
     await released(k2, w)
     await k2.stop()
   })
