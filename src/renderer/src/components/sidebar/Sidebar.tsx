@@ -226,7 +226,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
           <span className="room-mark">
-            <RoomIcon room={room} className="room-letter" />
+            <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
           </span>
           <span className="grow ellipsis">{room.name}</span>

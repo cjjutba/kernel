@@ -15,7 +15,7 @@ const roomsScene = (f: Fixture): Partial<Fixture> => {
     { ...f.rooms[0], desc: 'Invoicing SaaS · MVP Sprint', kind: 'repo', path: '/Users/you/Projects/client-a', createdAt: ago(2 * MIN) },
     { ...f.rooms[1], desc: 'Discovery Sprint', kind: 'repo', createdAt: ago(14 * MIN) },
     { ...f.rooms[2], desc: 'Nights and weekends', kind: 'folder', repo: undefined, path: '/Users/you/Projects/own-app', createdAt: ago(HOUR) },
-    { ...f.rooms[3], icon: undefined, desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
+    { ...f.rooms[3], desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
     { id: 'room-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'samrivera/starter-kit', path: '/Users/you/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
   ]
   const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)

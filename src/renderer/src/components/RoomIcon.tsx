@@ -19,7 +19,9 @@ function fetchIcon(roomId: string, key: string) {
   if (!p) {
     // A room only needs its newest image, so older keys for it go.
     for (const k of [...loaded.keys(), ...loading.keys()]) if (k.startsWith(`${roomId}:`) && k !== key) { loaded.delete(k); loading.delete(k) }
-    p = call('rooms.icon', { roomId }).then((url) => { loaded.set(key, url) })
+    // An icon that changed while this read was out has dropped its key from `loading`, so the late answer isn't kept.
+    const read: Promise<void> = call('rooms.icon', { roomId }).then((url) => { if (loading.get(key) === read) loaded.set(key, url) })
+    p = read
     // A failed read isn't cached, so the next mount asks again.
     p.catch(() => loading.delete(key))
     loading.set(key, p)
@@ -42,15 +44,15 @@ export function useRoomIcon(room: Pick<Room, 'id' | 'icon'> | undefined): string
 
 /**
  * `className` carries the place's own look (border, fill, letter size). `size` sets both sides in px for places with no class of
- * their own. `fallback` is the letter for a place that has no room yet.
+ * their own. `fallback` is the letter for a place that has no room yet. `current` marks the room in view, for a place that fills its tile then.
  */
-export function RoomIcon({ room, className, size, fallback = '' }: { room: Pick<Room, 'id' | 'name' | 'icon'> | undefined; className?: string; size?: number; fallback?: string }) {
+export function RoomIcon({ room, className, size, fallback = '', current }: { room: Pick<Room, 'id' | 'name' | 'icon'> | undefined; className?: string; size?: number; fallback?: string; current?: boolean }) {
   const url = useRoomIcon(room)
   const [failed, setFailed] = useState<string | null>(null)
   const style: CSSProperties | undefined = size ? { width: size, height: size } : undefined
   const shown = url && failed !== url ? url : null
   return (
-    <span className={['room-icon', className].filter(Boolean).join(' ')} style={style} aria-hidden="true" data-image={shown ? '' : undefined}>
+    <span className={['room-icon', className].filter(Boolean).join(' ')} style={style} aria-hidden="true" data-image={shown ? '' : undefined} data-current={current || undefined}>
       {shown ? <img className="room-icon-img" src={shown} alt="" draggable={false} onError={() => setFailed(shown)} /> : room ? roomLetter(room.name) : fallback}
     </span>
   )
