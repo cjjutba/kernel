@@ -2,9 +2,9 @@ import { useId, useRef, useState, type FormEvent } from 'react'
 import { KERNEL_VARS, SCRIPT_VARS } from '@shared/kernelVars'
 import type { Room, RoomSettings } from '@shared/types'
 import { call } from '../../../api'
-import { actions } from '../../../store'
+import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Icon, Modal, useBusy } from '../../../ui'
-import { NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { isOverride, NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { envChanged, useEnv, type EnvList } from '../env'
 import { patchRoomSettings } from '../useSettings'
 
@@ -37,7 +37,7 @@ function Variables({ roomId, room, env, error }: { roomId?: string; room?: Room;
   const remove = (name: string) => run('delete', async () => {
     try {
       await call('env.set', { roomId, name, value: null })
-      envChanged()
+      await envChanged()
     } catch (e) {
       actions.ui.toast({ title: `Could not delete ${name}`, sub: (e as Error).message })
     }
@@ -88,7 +88,7 @@ function VariableRow({ roomId, name, onDelete }: { roomId?: string; name: string
         desc={shown ? <span className="set-env-value">{value}</span> : <span className="set-mask" role="img" aria-label="Value hidden">{'•'.repeat(8)}</span>}
       >
         <div className="set-entry-actions">
-          <Button variant="ghost" aria-label={`${shown ? 'Hide' : 'Show'} ${name}`} busy={busy === 'show'} busyLabel="Showing" onClick={() => (shown ? hide() : void show())}>{shown ? 'Hide' : 'Show'}</Button>
+          <Button variant="ghost" aria-label={busy === 'show' ? `Showing ${name}` : `${shown ? 'Hide' : 'Show'} ${name}`} busy={busy === 'show'} busyLabel="Showing" onClick={() => (shown ? hide() : void show())}>{shown ? 'Hide' : 'Show'}</Button>
           <Button variant="ghost" aria-label={`Edit ${name}`} disabled={busy !== null} onClick={() => actions.ui.openModal({ name: 'envVar', roomId, editName: name })}>Edit</Button>
           <Button variant="ghost" aria-label={`Delete ${name}`} disabled={busy !== null} onClick={onDelete}>Delete</Button>
         </div>
@@ -97,20 +97,26 @@ function VariableRow({ roomId, name, onDelete }: { roomId?: string; name: string
   )
 }
 
-/** The room's env files. The list is saved whole in the personal file, so Remove works on files settings.toml set too. */
+/**
+ * The room's env files. The list is saved whole in the personal file, so Remove works on files settings.toml set too. Each save is
+ * built from the saved list as it is now, and the page waits for the list to reload before another can start, so two quick Removes
+ * can't bring a file back.
+ */
 function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null; env: EnvList | null }) {
   const [adding, setAdding] = useState(false)
+  const [busy, run] = useBusy()
   const files = env?.files ?? []
   const path = 'env.files'
-  const save = async (next: string[] | null) => {
-    await patchRoomSettings(roomId, { env: { files: next } })
-    envChanged()
-  }
+  const latest = () => getState().roomSettings[roomId]?.env?.files ?? files.map((f) => f.path)
+  const save = (key: string, next: () => string[] | null) => run(key, async () => {
+    await patchRoomSettings(roomId, { env: { files: next() } })
+    await envChanged()
+  })
   return (
     <>
       <Section
         title="Env files"
-        action={<Button disabled={!env} onClick={() => setAdding(true)}>Add env file</Button>}
+        action={<Button disabled={!env || busy !== null} onClick={() => setAdding(true)}>Add env file</Button>}
         note="Read in this order each time a chat or script starts. A later file wins, and a missing file is skipped."
       >
         {env && files.length === 0 && <div className="set-empty">No env files. Add one, like .env, and its variables reach every chat and script.</div>}
@@ -119,13 +125,13 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
           <Row key={f.path} label={<span className="set-mono">{f.path}</span>} source={i === 0 ? sourceLine(rs, path) : undefined}>
             {f.missing && <span className="set-tag">Missing</span>}
             <div className="set-entry-actions">
-              {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset env files" onClick={() => void save(null)}>Reset</Button>}
-              <Button variant="ghost" aria-label={`Remove ${f.path}`} onClick={() => void save(files.filter((_, j) => j !== i).map((x) => x.path))}>Remove</Button>
+              {i === 0 && isOverride(rs, path) && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}
+              <Button variant="ghost" aria-label={`Remove ${f.path}`} busy={busy === `remove:${f.path}`} busyLabel="Removing" disabled={busy !== null} onClick={() => void save(`remove:${f.path}`, () => latest().filter((p) => p !== f.path))}>Remove</Button>
             </div>
           </Row>
         ))}
       </Section>
-      {adding && <EnvFileForm paths={files.map((f) => f.path)} onSave={save} onClose={() => setAdding(false)} />}
+      {adding && <EnvFileForm paths={files.map((f) => f.path)} onSave={(added) => save('add', () => [...latest(), added])} onClose={() => setAdding(false)} />}
     </>
   )
 }
@@ -138,7 +144,7 @@ export function pathProblem(path: string, taken: string[]): string | undefined {
   return undefined
 }
 
-function EnvFileForm({ paths, onSave, onClose }: { paths: string[]; onSave: (next: string[]) => Promise<void>; onClose: () => void }) {
+function EnvFileForm({ paths, onSave, onClose }: { paths: string[]; onSave: (added: string) => Promise<void>; onClose: () => void }) {
   const id = useId()
   const [path, setPath] = useState('')
   const [shown, setShown] = useState(false)
@@ -148,7 +154,7 @@ function EnvFileForm({ paths, onSave, onClose }: { paths: string[]; onSave: (nex
     e.preventDefault()
     setShown(true)
     if (problem) return
-    void run('save', async () => { await onSave([...paths, path]); onClose() })
+    void run('save', async () => { await onSave(path); onClose() })
   }
   return (
     <Modal
@@ -188,7 +194,7 @@ function KernelVars({ startOpen }: { startOpen: boolean }) {
       <h2>Kernel's variables</h2>
       <div className="set-card">
         <Row label={label} desc="Set by Kernel in every chat, script and big terminal tab. You can't override them.">
-          <button type="button" className="set-disclose" aria-label={label} aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}><Icon name="chevron" size={10} stroke={1.9} /></button>
+          <button type="button" className="set-disclose" aria-label={label} aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}><Icon name="chevron" size={10} stroke={1.9} /></button>
         </Row>
         {open && (
           <div id={id}>

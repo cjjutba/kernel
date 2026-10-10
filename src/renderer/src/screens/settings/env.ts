@@ -4,10 +4,10 @@ import { call } from '../../api'
 /** What `env.get` returns: names only. A value only ever comes from `env.reveal`, and stays in the component that asked. */
 export interface EnvList { names: string[]; files: { path: string; missing: boolean }[] }
 
-const listeners = new Set<() => void>()
+const listeners = new Set<() => Promise<void>>()
 
-/** The add form and Delete tell every open Environment page to read the list again. */
-export const envChanged = () => listeners.forEach((l) => l())
+/** The add form, Delete and the env files tell every open Environment page to read the list again. It resolves once they have. */
+export const envChanged = () => Promise.all([...listeners].map((l) => l()))
 
 /**
  * The names and env files of one scope: a room, or the app with no `roomId`. They sit in component state, not the store, and
