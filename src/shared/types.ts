@@ -744,6 +744,8 @@ export interface AppUpdate {
   error?: string
   /** True on the first `update.get` after Kernel starts on a newly installed version, so What's new opens once. `notes` are that version's. */
   installed?: boolean
+  /** The running version's notes, for What's new when no update is ready (KERNEL-154). Release builds carry them; dev runs have none. */
+  currentNotes?: { title: string; body: string }[]
 }
 
 export interface Integration {

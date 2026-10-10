@@ -93,9 +93,25 @@ const whatsNew: Fixture = {
   update: { status: 'ready', current: '0.1.0', version: '0.2.0', notes: whatsNewNotes },
   ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
 }
+// What's new opened from the sidebar with no update ready (KERNEL-154): the running 0.1.1's notes and Done. No PNG
+// draws it; it reuses the layout What's new has after an update installs.
+const whatsNewCurrent: Fixture = {
+  ...teamFixtures.UpdateReady,
+  update: {
+    status: 'idle',
+    current: '0.1.1',
+    currentNotes: [
+      { title: 'New', body: 'Hovering a workspace in the sidebar shows an archive button, so you can archive it without opening it.\nA new chat takes a short title from its first message instead of staying "New chat".' },
+      { title: 'Improved', body: 'A file\'s diff opens in its own tab, so the chat stays where you left it.' },
+      { title: 'Fixed', body: 'Fixed Create PR showing in a workspace with no changes.\nFixed Rowan starting a new turn right after you pressed Stop.' }
+    ]
+  },
+  ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
+}
 
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
+  WhatsNewCurrent: whatsNewCurrent,
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
