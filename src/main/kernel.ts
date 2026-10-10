@@ -174,8 +174,8 @@ export class Kernel {
    * workspace keeps `waitsFor.releasing` until a turn Kernel started there ends, and a restart sends the message again.
    */
   private releaseSent = new Set<string>()
-  /** Chats with a turn running, to their workspace. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
-  private runningChats = new Map<string, string>()
+  /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
+  private runningChats = new Set<string>()
 
   constructor(private o: {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
@@ -295,9 +295,9 @@ export class Kernel {
     }
     const onPush = (e: PushEvent) => {
       // A turn waiting on an approval or a question is still running, so its agent still counts as working.
+      // No database read here: the count looks the chats up when the quit asks for it.
       if (e.type === 'chat.running') {
-        const ws = this.store.chat(e.chatId)?.workspaceId
-        if (e.running && ws) this.runningChats.set(e.chatId, ws)
+        if (e.running) this.runningChats.add(e.chatId)
         else this.runningChats.delete(e.chatId)
       }
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
@@ -579,7 +579,8 @@ export class Kernel {
 
   /** Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). */
   workingAgents(): number {
-    return new Set(this.runningChats.values()).size
+    const workspaces = [...this.runningChats].map((id) => this.store.chat(id)?.workspaceId).filter(Boolean)
+    return new Set(workspaces).size
   }
 
   /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window. */
