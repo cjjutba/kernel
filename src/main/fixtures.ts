@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import { join } from 'node:path'
 import type { Handlers } from './kernel'
@@ -42,7 +42,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount
-  const roomSettings = (roomId: string) => f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+  const roomSettings = (roomId: string): RoomSettings => {
+    const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+    return { ...rs, disabled: { skills: [], mcp: [], ...rs.disabled }, sources: rs.sources ?? {} }
+  }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
@@ -198,12 +201,24 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
-    'settings.setRoom': async ({ roomId, patch }) => {
-      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing.
-      const cur = roomSettings(roomId) as unknown as Record<string, Record<string, unknown>>
-      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled }, linear: { ...cur.linear } }
-      for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
+    'settings.setRoom': async ({ roomId, patch, shared }) => {
+      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
+      // the patch names is applied the same way, and the sources follow the file it was written to.
+      const cur = roomSettings(roomId)
+      const next: Record<string, unknown> = { ...cur }
+      const sources = { ...cur.sources }
+      for (const [group, values] of Object.entries(patch)) {
+        const g = { ...(cur as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
+        for (const [k, v] of Object.entries(values ?? {})) {
+          const path = `${group}.${k}`
+          if (v === null) { delete g[k]; delete sources[path] } else {
+            g[k] = v
+            sources[path] = sources[path] && sources[path] !== (shared ? 'shared' : 'local') ? 'override' : shared ? 'shared' : 'local'
+          }
+        }
+        next[group] = g
+      }
+      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
       return roomSettings(roomId)
     },
     'mcp.list': async () => f.mcp ?? [],
