@@ -1144,6 +1144,19 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(texts(s.store).at(-1)).toBe('Then add a test')
   })
 
+  it("keeps Kernel's own updates out of a chat that waits for the launch check, so it still gets the nudge", async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s, { before: (sessions) => sessions.holdCarryOn() })
+    // The Lead's update batch fires while the checks still run: refused, like any held message, and the chat stays cut off.
+    expect(next.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel' }])).toBe(false)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    next.sessions.releaseCarryOn()
+    expect(texts(s.store).at(-1)).toBe(RELAUNCH_NUDGE)
+  })
+
   it('leaves a closed chat and an archived workspace alone', async () => {
     const s = await midTurn()
     await s.sessions.shutdown(0)

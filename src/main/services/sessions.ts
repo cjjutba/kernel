@@ -461,7 +461,8 @@ export class Sessions {
    */
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
-    if (this.closing || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
