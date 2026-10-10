@@ -30,11 +30,12 @@ import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/ker
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
+import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
+import { buildEnv, EnvStore, kernelVars, readEnvFiles, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -135,6 +136,8 @@ export class Kernel {
   readonly overlaps: Overlaps
   readonly ptys = new Ptys()
   readonly roomIcons: RoomIcons
+  /** App-wide and per-room variables, encrypted in `env.json` (KERNEL-247). */
+  readonly envStore: EnvStore
   /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
   avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
@@ -184,9 +187,12 @@ export class Kernel {
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
     /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
     fetch?: typeof fetch
+    /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
+    cipher?: Cipher
   }) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.roomIcons = new RoomIcons(o.dataDir)
+    this.envStore = new EnvStore({ file: join(o.dataDir, 'env.json'), cipher: o.cipher })
     this.approvals = new Approvals(this.store)
     this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
     this.notifications = new Notifications({
@@ -207,6 +213,7 @@ export class Kernel {
       // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
       rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
+      envFor: (ws) => this.envFor(ws),
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
         if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
@@ -784,6 +791,7 @@ export class Kernel {
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.overlaps.forget(roomId)
     this.store.deleteRoom(roomId)
+    this.envStore.dropRoom(roomId)
     await this.roomIcons.remove(room.icon)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
@@ -1039,7 +1047,7 @@ export class Kernel {
     const script = repo.runScripts.find((r) => r.name === name)?.command
     if (!script) throw new Error(name === 'run' ? 'No run script in .kernel/settings.toml' : `No run script named ${name} in .kernel/settings.toml`)
     if (repo.scripts.runMode === 'single') for (const other of this.store.workspaces(room.id)) if (other.id !== ws.id && other.status !== 'archived') stopRuns(other.id)
-    void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, port: ws.port, root: room.path })
+    void runScript({ workspaceId: ws.id, kind: 'run', name, script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
   }
 
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
@@ -1058,7 +1066,7 @@ export class Kernel {
     const repo = await loadRepoSettings(room.path)
     const chat = this.store.chats(ws.id).find((c) => c.kind !== 'terminal')
     if (repo.scripts.setup) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, port: ws.port, root: room.path })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.envFor(ws, { script: true }) })
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
@@ -1092,7 +1100,7 @@ export class Kernel {
   private async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor } = {}): Promise<Workspace> {
     const script = o.setup && this.settings.scripts.setupOnCreate ? (await loadRepoSettings(room.path)).scripts.setup : undefined
     if (script) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
         if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
@@ -1111,7 +1119,7 @@ export class Kernel {
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
-    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, port: ws.port, root: room.path })
+    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
     return this.setupPassed(ws, code)
   }
 
@@ -1145,7 +1153,7 @@ export class Kernel {
     const repo = await loadRepoSettings(room.path)
     // A folder deleted outside Kernel has nothing to run the script in, and counts as removed (KERNEL-109).
     const gone = await folderGone(ws.path)
-    if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, port: ws.port, root: room.path })
+    if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, env: this.envFor(ws, { script: true }) })
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
@@ -1502,6 +1510,18 @@ export class Kernel {
     return fork
   }
 
+  /**
+   * Every variable a session, script or terminal in the workspace gets: the Mac's, the app's, the room's env files, the
+   * room's, then Kernel's own (KERNEL-247). Synchronous, since a session starts synchronously. Scripts also get PORT and
+   * FORCE_COLOR=0. Sessions and terminals drop the API key afterwards, in `sessionEnv`.
+   */
+  envFor(ws: Workspace, o: { script?: boolean } = {}): Record<string, string> {
+    const room = this.store.room(ws.roomId)
+    const files = room ? readEnvFiles(ws.path, loadRepoSettingsSync(room.path).env.files).map((f) => f.vars) : []
+    const kernel: Record<string, string> = { ...kernelVars(ws, room?.path ?? ws.path), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
+    return buildEnv({ base: process.env, app: this.envStore.values(), files, room: this.envStore.values(ws.roomId), kernel })
+  }
+
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
@@ -1511,7 +1531,7 @@ export class Kernel {
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
     this.ptys.start(id, {
       cwd: ws.path,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.settings.models.agentTeams }),
+      env: sessionEnv(this.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
       command: plain ? undefined : 'claude',
       ...size
     })
@@ -2563,7 +2583,7 @@ export class Kernel {
         const script = repo.scripts[kind]
         if (!script) throw new Error(`No ${kind} script in .kernel/settings.toml`)
         if (kind === 'setup' && ws.status === 'failed') { void this.retrySetup(workspaceId).catch(() => undefined); return { ok: true } }
-        void runScript({ workspaceId, kind, script, cwd: ws.path, port: ws.port, root: room.path })
+        void runScript({ workspaceId, kind, script, cwd: ws.path, env: this.envFor(ws, { script: true }) })
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
@@ -2591,6 +2611,21 @@ export class Kernel {
       'files.preview': async ({ roomId, patterns }) => {
         const { path } = this.mustRoom(roomId)
         return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
+      },
+      'env.get': async ({ roomId }) => {
+        const room = roomId ? this.mustRoom(roomId) : undefined
+        // The room's files are checked in its main checkout. A workspace reads its own copies when something starts there.
+        const files = room ? readEnvFiles(room.path, (await loadRepoSettings(room.path)).env.files).map(({ path, missing }) => ({ path, missing })) : []
+        return { names: this.envStore.names(roomId), files }
+      },
+      'env.set': async ({ roomId, name, value }) => {
+        if (roomId) this.mustRoom(roomId)
+        this.envStore.set(roomId, name, value)
+        return { ok: true }
+      },
+      'env.reveal': async ({ roomId, name }) => {
+        if (roomId) this.mustRoom(roomId)
+        return this.envStore.reveal(roomId, name)
       },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined

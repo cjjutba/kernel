@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, safeStorage, shell } from 'electron'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,6 +98,10 @@ app.whenReady().then(async () => {
       inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
       probeNetwork: () => probeNetwork(),
       refreshPath,
+      // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
+      cipher: safeStorage.isEncryptionAvailable()
+        ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }
+        : undefined,
       version: app.getVersion(),
       updater,
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.

@@ -15,6 +15,7 @@ import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } f
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import { IMAGE_DATA_URL, savePlan } from './plans'
 import type { AppSettings } from './settings'
+import { buildEnv, kernelVars } from './env'
 
 /**
  * The SDK's `claude` binary in a packaged app. The SDK finds it with require.resolve, which points inside app.asar,
@@ -94,6 +95,8 @@ export interface SessionDeps {
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
+  /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
+  envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
@@ -704,7 +707,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.d.settings().models?.agentTeams }),
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude()
     }
     const q = query({ prompt: input, options })

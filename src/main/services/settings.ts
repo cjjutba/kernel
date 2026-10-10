@@ -1,4 +1,5 @@
 import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
 import { join, dirname, resolve } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
@@ -78,6 +79,10 @@ async function readToml(file: string): Promise<Record<string, any>> {
   try { return parseToml(await readFile(file, 'utf8')) as Record<string, any> } catch { return {} }
 }
 
+function readTomlSync(file: string): Record<string, any> {
+  try { return parseToml(readFileSync(file, 'utf8')) as Record<string, any> } catch { return {} }
+}
+
 /** The room's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
 function workspaceKeys(table: Record<string, any> | undefined): RoomSettings['workspace'] {
   const out: Record<string, unknown> = {}
@@ -91,7 +96,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
@@ -138,7 +143,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
     pr: picked(doc.pr, PR_KEYS, isString),
-    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)]))
+    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
+    env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)]))
   }
 }
 
@@ -147,8 +153,15 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const sharedDoc = await readToml(repoFile(repo, 'settings.toml'))
-  const localDoc = await readToml(repoFile(repo, 'settings.local.toml'))
+  return repoSettingsOf(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
+}
+
+/** The same, read synchronously, for a session that starts synchronously and needs the room's env files (KERNEL-247). */
+export function loadRepoSettingsSync(repo: string): RepoSettings {
+  return repoSettingsOf(readTomlSync(repoFile(repo, 'settings.toml')), readTomlSync(repoFile(repo, 'settings.local.toml')))
+}
+
+function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string, any>): RepoSettings {
   const shared = roomValues(sharedDoc)
   const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
@@ -163,7 +176,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
@@ -173,6 +186,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
     ...(linear.team ? { linear: { team: linear.team } } : {}),
     ...(Object.keys(pr).length ? { pr } : {}),
     preview: { urls: preview.urls ?? [] },
+    env: { files: env.files ?? [] },
     sources
   }
 }

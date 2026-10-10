@@ -65,6 +65,14 @@ describe('IPC contract', () => {
     expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
   })
 
+  it('fixture mode answers env names and files only, with no value to reveal (KERNEL-247)', async () => {
+    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], rooms: { 'room-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
+    expect(await h['env.get']({})).toEqual({ names: ['A', 'B'], files: [] })
+    expect(await h['env.get']({ roomId: 'room-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
+    await expect(h['env.reveal']({ roomId: 'room-a', name: 'TOKEN' })).rejects.toThrow('no values')
+    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
