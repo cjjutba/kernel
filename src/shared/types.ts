@@ -202,6 +202,8 @@ export interface Workspace {
   title?: string
   branch: string
   baseRef: string
+  /** Set when fetching origin failed as the workspace started: git's reason and how old `baseRef` is, as a sentence. */
+  fetchFailed?: string
   path: string
   mode: WorkspaceMode
   agentId: string
