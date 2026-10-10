@@ -44,10 +44,12 @@ async function setup() {
   const onActivity = (e: { kind: string; text: string; actor?: string; quote?: string }) => { if (e.kind === 'note' && e.text === 'kept the review workspace') notes.push(`${e.actor}: ${e.quote}`) }
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
+  // Resolves on the review's archive. Every caller expects one, so the fallback only bounds a failure: a CI runner can
+  // take over a second for the archive's git work, which a 1.5 s fallback turned into a failure (KERNEL-215 CI runs).
   const settle = () => new Promise<void>((resolve) => {
     const done = (e: PushEvent) => { if (e.type === 'workspace' && e.workspace.id === review.id && e.workspace.status === 'archived') { bus.off('push', done); resolve() } }
     bus.on('push', done)
-    setTimeout(() => { bus.off('push', done); resolve() }, 1500)
+    setTimeout(() => { bus.off('push', done); resolve() }, 15_000)
   })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
   return { k, gh, room, lead, author, review, other, otherReview, notes, settle, status }
