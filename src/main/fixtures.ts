@@ -1,10 +1,11 @@
+import { isRunName } from '@shared/types'
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS, isRunName, previewUrlsOf } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 

@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
@@ -104,12 +105,6 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
   return out
 }
-
-/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
-export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
-
-/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
-export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 /** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
 function runScriptsOf(table: unknown): Map<string, string> {
@@ -311,6 +306,16 @@ export class ScriptTrustStore {
     })
     return this.writing
   }
+}
+
+/**
+ * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
+ */
+export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
 
 /**

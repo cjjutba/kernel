@@ -136,6 +136,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 /* Kernel's notes in a chat ("PR #42 was merged on GitHub.") read as a quiet line with a hairline after it (KERNEL-274). */
 .note.inline { padding: 2px 0; border-radius: 0; background: transparent; color: var(--muted); }
 .note.inline .note-text { min-width: 0; }
+.note.inline { gap: 8px; }
+.note.inline > svg { flex-shrink: 0; }
+.note.inline[data-pr='merged'] > svg { color: var(--pr-merged-text); }
+.note.inline[data-pr='cifail'] > svg { color: var(--pr-fail-text); }
+.note.inline[data-pr='closed'] > svg { color: var(--ink-3); }
 .note.inline .note-rule { flex: 1; min-width: 24px; height: 1px; background: var(--line); }
 
 /* right panel */
@@ -162,6 +167,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .script-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px 24px; color: var(--muted); font: 12px/1.5 var(--font); text-align: center; }
 .script-empty .btn { margin: 4px 0; }
 .script-empty-icon { display: inline-flex; color: var(--ink-3); }
+.run-picker { flex-shrink: 0; padding: 10px 16px 0; }
 .log { flex: 1; min-height: 0; overflow: auto; padding: 6px 16px 12px; font-size: 12px; line-height: 1.7; }
 .log[data-empty] { display: flex; padding: 0; }
 

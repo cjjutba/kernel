@@ -97,6 +97,8 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
+  /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
+  disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
@@ -844,6 +846,8 @@ export class Sessions {
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     this.managedIds.add(sessionId)
+    const mcpServers = this.d.mcpFor(ws, agent, chat)
+    const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
     const options: Options = {
       cwd: ws.path,
       model: chat.model,
@@ -854,13 +858,14 @@ export class Sessions {
       canUseTool: this.canUseTool(chat, ws, agent, commands),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)) },
-      mcpServers: this.d.mcpFor(ws, agent, chat),
+      mcpServers,
+      ...(off ? { settings: off } : {}),
       hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false,
         agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.d.settings().models?.agentTeams }),
+      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.d.settings().models?.agentTeams, compact: true }),
       pathToClaudeCodeExecutable: packagedClaude(),
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
@@ -1458,18 +1463,41 @@ export function roomRule(command: string, suggestions?: PermissionUpdate[], supp
 }
 
 /** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean; compact?: boolean } = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  // A chat on a 1M model compacts near 200k instead of near 1M. A window the user set themselves wins (KERNEL-226).
+  if (o.compact && !env[COMPACT_WINDOW]) env[COMPACT_WINDOW] = String(COMPACT_AT)
   return env
 }
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
+
+/**
+ * The window Claude Code compacts against. It compacts about 33k tokens below it, and a model's own smaller window still
+ * applies. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` didn't move the threshold in the pinned CLI (KERNEL-226).
+ */
+export const COMPACT_WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+export const COMPACT_AT = 200_000
+
+/**
+ * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
+ * server never started. Kernel's own servers (`own`) stay whatever their name. Nothing switched off adds nothing (KERNEL-226).
+ */
+export function switchedOff(off: { skills: string[]; mcp: string[] } | undefined, own: string[] = []): Options['settings'] | undefined {
+  const skills = [...new Set(off?.skills ?? [])]
+  const mcp = [...new Set(off?.mcp ?? [])].filter((name) => !own.includes(name))
+  if (!skills.length && !mcp.length) return undefined
+  return {
+    ...(skills.length ? { skillOverrides: Object.fromEntries(skills.map((name) => [name, 'off' as const])) } : {}),
+    ...(mcp.length ? { deniedMcpServers: mcp.map((serverName) => ({ serverName })) } : {})
+  }
+}
 
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'] as const
 

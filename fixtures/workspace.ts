@@ -1,3 +1,4 @@
+import type { PushEvent } from '@shared/ipc'
 import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
@@ -19,7 +20,7 @@ const prTurn = (id: string, lines: string[], tools: number, reply: string): Chat
   { kind: 'text', id: `${id}-reply`, ts: at(10, 34), text: reply },
   { kind: 'result', id: `${id}-res`, ts: at(10, 34), durationMs: 65_000, ok: true }
 ]
-const prNote = (id: string, text: string): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text })
+const prNote = (id: string, text: string, pr: 'merged' | 'closed' | 'cifail'): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text, pr })
 
 /** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
 const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'checks' = 'changes') =>
@@ -29,6 +30,29 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     ...extra,
     ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false }, ...extra.ui }
   }))
+
+/** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
+function runScripts(): Fixture {
+  const open = prScene('open', [], { prs: prInfo('open') })
+  const frontend = ['$ pnpm --filter web dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4312', 'Studio ready on http://localhost:4314', 'Compiled /invoices', 'GET /invoices 200 in 84ms', 'GET /api/invoices 200 in 31ms']
+  return {
+    ...open,
+    roomSettings: { [ids.roomA]: {
+      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
+      runScripts: [
+        { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+        { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+        { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+      ],
+      files: { copy: [] }, workspace: {}
+    } },
+    // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
+    push: [
+      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', line, stream: 'stdout' }))
+    ]
+  }
+}
 
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
@@ -454,7 +478,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
   WorkspaceCIFailed: prScene('cifail', [
     ...prTurn('c', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42.'),
-    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.')
+    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.', 'cifail')
   ], {
     prs: prInfo('cifail', {
       checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }],
@@ -477,9 +501,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   WorkspaceMerged: prScene('merged', [
     ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Theo approved it and every check passed.'),
-    prNote('m-note', 'PR #42 was squashed into main.')
+    prNote('m-note', 'PR #42 was squashed into main.', 'merged')
   ], { prs: prInfo('merged') }),
-  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.')], { prs: prInfo('closed') }),
+  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.', 'closed')], { prs: prInfo('closed') }),
   // The PR header in the states the canvas above doesn't draw (KERNEL-274, design/redesign/Pr*.png).
   WorkspacePRNoChanges: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
@@ -489,6 +513,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRNone: prScene('none', []),
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
+  WorkspaceRunScripts: runScripts(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
   WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
   WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),

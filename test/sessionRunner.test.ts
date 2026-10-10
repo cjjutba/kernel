@@ -48,7 +48,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -58,7 +58,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
+    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -87,6 +87,22 @@ describe('questions to the user', () => {
     const seen: string[] = []
     const { chat } = await setup('acceptEdits', { mcpFor: (_ws, _agent, c) => { seen.push(c.id); return undefined } })
     expect(seen).toEqual([chat.id])
+  })
+
+  it("starts the session without the room's switched-off skills and MCP servers, and never without Kernel's own server (KERNEL-226)", async () => {
+    const kernel = { type: 'sdk', name: 'kernel', instance: {} } as never
+    const { options } = await setup('acceptEdits', { mcpFor: () => ({ kernel }), disabledFor: () => ({ skills: ['impeccable', 'impeccable'], mcp: ['chrome-devtools', 'kernel'] }) })
+    expect(options.mcpServers).toEqual({ kernel })
+    expect(options.settings).toEqual({ skillOverrides: { impeccable: 'off' }, deniedMcpServers: [{ serverName: 'chrome-devtools' }] })
+    // Everything else Claude Code finds still loads: plugin skills, claude.ai connectors, servers Settings doesn't list.
+    expect(options).not.toHaveProperty('strictMcpConfig')
+    expect(options).not.toHaveProperty('skills')
+  })
+
+  it('adds no settings when the room switched nothing off, and compacts a long chat near 200k (KERNEL-226)', async () => {
+    const { options } = await setup('acceptEdits', { disabledFor: () => ({ skills: [], mcp: [] }) })
+    expect(options).not.toHaveProperty('settings')
+    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
   })
 
   it('leaves plan mode once the plan is approved', async () => {
