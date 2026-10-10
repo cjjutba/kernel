@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname, resolve } from 'node:path'
+import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
+import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
@@ -165,11 +165,19 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
  * answers cleanly that neither the index nor HEAD holds it, compared without case: on a case-insensitive disk a
  * committed `.Kernel/Settings.local.toml` is the file Kernel reads. Any git error, no git at all, or an answer Kernel
  * can't read means no, and the file's text needs trusting like the repo's. Skip-worktree entries are in the index, so
- * they count as committed too.
+ * they count as committed too. So does a file reached through a link: `.kernel` committed as a link to a tracked
+ * folder, or the file itself a link to a tracked file, reads committed text that git doesn't name at this path.
  */
 export async function localSettingsOwn(repo: string): Promise<boolean> {
   const target = LOCAL_SETTINGS.toLowerCase()
   const has = (out: string) => out.split('\0').some((p) => p.toLowerCase() === target)
+  // A link on the way, or a real path that isn't this one, means git's answer below is about another file: ask.
+  for (const part of ['.kernel', LOCAL_SETTINGS]) if ((await lstat(join(repo, part)).catch(() => undefined))?.isSymbolicLink()) return false
+  const real = await realpath(join(repo, LOCAL_SETTINGS)).catch(() => undefined)
+  if (real) {
+    const root = await realpath(repo).catch(() => undefined)
+    if (!root || relative(root, real).split(sep).join('/').toLowerCase() !== target) return false
+  }
   const index = await exec('git', ['-C', repo, 'ls-files', '-z', '--', `:(icase)${LOCAL_SETTINGS}`])
   if (index.code !== 0 || has(index.stdout)) return false
   const head = await exec('git', ['-C', repo, 'rev-parse', '--verify', '-q', 'HEAD'])
