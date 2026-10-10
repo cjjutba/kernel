@@ -3,7 +3,8 @@ import type { ChangedFile, FileEntry, PrCheck, PrInfo, Workspace } from '@shared
 import { call } from '../../api'
 import { actions, go, setState, useStore } from '../../store'
 import { Button, Icon, Tabs } from '../../ui'
-import { useRoomSettings } from '../settings/useSettings'
+import { stripRemote } from '../settings/remote'
+import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { TerminalView } from './terminal/Terminal'
 import { openByDefault, visibleRows } from './tree'
@@ -86,13 +87,15 @@ function CheckIcon({ state }: { state: CheckState }) {
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
 }
 
-export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo): { title: string; rows: CheckRow[] }[] {
+/** `remote` is the room's git remote, which a base ref like `origin/main` names. */
+export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin'): { title: string; rows: CheckRow[] }[] {
   const hasPr = !!ws.prNumber
+  const base = stripRemote(ws.baseRef, remote)
   const merged = ws.prState === 'merged'
   const conflict = ws.prState === 'conflict'
   const git: CheckRow = conflict
-    ? { state: 'warn', label: `${pr?.conflicts.length || 1} ${(pr?.conflicts.length || 1) === 1 ? 'conflict' : 'conflicts'} with ${ws.baseRef.replace('origin/', '')}` }
-    : { state: 'ok', label: merged ? `Merged into ${ws.baseRef.replace('origin/', '')}` : `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed, up to date with ${ws.baseRef.replace('origin/', '')}` }
+    ? { state: 'warn', label: `${pr?.conflicts.length || 1} ${(pr?.conflicts.length || 1) === 1 ? 'conflict' : 'conflicts'} with ${base}` }
+    : { state: 'ok', label: merged ? `Merged into ${base}` : `${changes.length} ${changes.length === 1 ? 'file' : 'files'} changed, up to date with ${base}` }
   const prRow: CheckRow = hasPr
     ? { state: conflict ? 'warn' : 'ok', label: `#${ws.prNumber}${ws.prTitle ? ` ${ws.prTitle}` : ''}`, meta: merged ? 'merged' : ws.prState === 'closed' ? 'closed' : 'open' }
     : { state: 'idle', label: 'No pull request yet', meta: '⌘⇧P', dim: true }
@@ -108,7 +111,7 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo):
 
 function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   const pr = useStore((s) => s.prs[ws.id])
-  const groups = checkGroups(ws, changes, pr)
+  const groups = checkGroups(ws, changes, pr, useRemote(ws.roomId))
   return (
     <div className="panel-scroll" style={{ gap: 14, padding: '6px 16px' }}>
       {groups.map((g) => (
@@ -169,7 +172,7 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <span className="grow" />
         {bottom === 'run' && running && <Button className="small" onClick={() => void attempt('Could not stop', () => call('scripts.stop', { workspaceId: ws.id, kind: 'run' }))}>Stop</Button>}
         {bottom === 'run' && !running && <Button className="small" icon="play" onClick={start}>Run</Button>}
-        {bottom === 'setup' && noSetup && <Button className="small" onClick={() => go({ name: 'settings', page: 'scripts', roomId: ws.roomId })}>Add setup script</Button>}
+        {bottom === 'setup' && noSetup && <Button className="small" onClick={() => go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })}>Add setup script</Button>}
         {bottom === 'setup' && !noSetup && <Button className="small" disabled={running} onClick={start}>Run setup</Button>}
       </div>
       {bottom === 'terminal' && <TerminalView id={`shell:${ws.id}`} label="Terminal" compact />}

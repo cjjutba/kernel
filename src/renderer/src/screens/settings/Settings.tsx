@@ -1,6 +1,6 @@
 import './settings.css'
 import type { ReactNode } from 'react'
-import type { RoomSettingsSection, SettingsPage } from '@shared/types'
+import type { AppSettings, RoomSettingsSection, SettingsPage } from '@shared/types'
 import { useSettings } from './useSettings'
 import { About } from './pages/About'
 import { Account } from './pages/Account'
@@ -16,6 +16,10 @@ import { Hooks } from './pages/Hooks'
 import { Integrations } from './pages/Integrations'
 import { PRs } from './pages/PRs'
 import { Room } from './pages/Room'
+import { RoomGit } from './pages/RoomGit'
+import { RoomInstructions } from './pages/RoomInstructions'
+import { RoomPermissions } from './pages/RoomPermissions'
+import { RoomScripts } from './pages/RoomScripts'
 import { Scripts } from './pages/Scripts'
 import { Shortcuts } from './pages/Shortcuts'
 import { Skills } from './pages/Skills'
@@ -23,7 +27,7 @@ import { Team } from './pages/Team'
 
 export { SettingsNav } from './SettingsNav'
 
-/** The page to the right of the Settings nav. */
+/** The page to the right of the Settings nav. A room's pages are `page: 'room'`, and `section` picks one. */
 export function Settings({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const settings = useSettings()
   let body: ReactNode
@@ -42,9 +46,21 @@ export function Settings({ page, roomId, section }: { page: SettingsPage; roomId
   else if (page === 'prs') body = <PRs s={settings} />
   else if (page === 'hooks') body = <Hooks s={settings} />
   else if (page === 'integrations') body = <Integrations />
-  else if (page === 'room' && section === 'files') body = <Files />
-  else if (page === 'room' && section === 'agents') body = <Team s={settings} />
-  else if (page === 'room' && section === 'skills') body = <Skills />
-  else if (page === 'room') body = <Room roomId={roomId} s={settings} />
+  else if (page === 'room') body = <RoomBody roomId={roomId} section={section} s={settings} />
   return <div className="panel">{body}</div>
+}
+
+/** One of a room's pages. Each reads and writes its own room only. */
+function RoomBody({ roomId, section = 'general', s }: { roomId?: string; section?: RoomSettingsSection; s: AppSettings }) {
+  switch (section) {
+    case 'git': return <RoomGit roomId={roomId} s={s} />
+    case 'scripts': return <RoomScripts roomId={roomId} />
+    case 'files': return <Files roomId={roomId} />
+    case 'instructions': return <RoomInstructions roomId={roomId} s={s} />
+    case 'permissions': return <RoomPermissions roomId={roomId} />
+    case 'agents': return <Team roomId={roomId} s={s} />
+    case 'skills': return <Skills roomId={roomId} />
+    // Environment (KERNEL-254) has no page yet.
+    default: return <Room roomId={roomId} />
+  }
 }

@@ -1,6 +1,7 @@
 import type { AgentDef, Approval, Room, Route, SettingsPage, Workspace } from '@shared/types'
 
 import { roomLetter } from '../rooms/roomInfo'
+import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
 
 export type Section = 'Suggested' | 'Go to' | 'Rooms' | 'Results'
@@ -122,7 +123,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
     goto('go-issues', 'Issues', { name: 'issues' }, { also: 'linear tickets' }),
     ...(shown ? [goto('go-ws', `${shown.name} workspace`, { name: 'workspace', workspaceId: shown.id })] : []),
-    goto('go-settings', 'Settings: Git and worktrees', { name: 'settings', page: 'git' }, { keys: ['⌘', ','], also: 'preferences' }),
+    goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
     ...(room ? [goto('go-team', 'Team', { name: 'team', roomId: room.id }, { also: 'agents' })] : []),
     goto('go-history', 'History', { name: 'history' }, { also: 'archived restore' }),
     item('go-new', 'Go to', '◇', "What's new", act.whatsNew, { also: 'update release notes' })
@@ -147,7 +148,9 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
       ]
     }),
     ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${w.name} workspace`, { name: 'workspace', workspaceId: w.id }, { also: w.branch })),
-    ...settingsPages.filter(([p]) => p !== 'git').map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' }))
+    ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
+    // Each room's own pages, named after the room: "Settings: Client A, Scripts".
+    ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))
   ]
 
   return { items: [...suggested, ...goDefault, ...roomItems], more }

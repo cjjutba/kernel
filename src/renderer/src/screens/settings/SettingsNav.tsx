@@ -1,9 +1,10 @@
 import './settings.css'
-import { useEffect, useState } from 'react'
-import type { SettingsPage } from '@shared/types'
+import { useEffect, useRef, useState } from 'react'
+import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
 import { roomLetter } from '../rooms/roomInfo'
 import { Icon } from '../../ui'
+import { ROOM_PAGES } from './roomPages'
 
 export const GROUPS: { title: string; items: { page: SettingsPage; label: string; icon: string }[] }[] = [
   { title: 'Personal', items: [
@@ -28,9 +29,18 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
 const isTextField = (el: HTMLElement) =>
   el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !/^(checkbox|radio|button|submit|range|color|file)$/.test(el.type))
 
-/** The left column of Settings: back to the app, search, and every page. Search filters the list by name. */
-export function SettingsNav({ page, roomId }: { page: SettingsPage; roomId?: string }) {
+/** The room whose pages were open last, so the room stays expanded when you move to an app page. */
+let lastRoomId: string | undefined
+
+/**
+ * The left column of Settings: back to the app, search, the app pages, and each room with its own pages under it.
+ * Search filters the list by name. The nav scrolls, and the open page scrolls into view.
+ */
+export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const [q, setQ] = useState('')
+  const [folded, setFolded] = useState<string | null>(null)
+  const nav = useRef<HTMLElement>(null)
+  if (page === 'room' && roomId) lastRoomId = roomId
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
   // Escape: the search box clears first. Other text fields keep it for themselves, and elsewhere it leaves Settings.
@@ -49,10 +59,22 @@ export function SettingsNav({ page, roomId }: { page: SettingsPage; roomId?: str
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [q])
+  // A room's pages run past the bottom of the window, so a room page brings the end of its room into view, then the open page.
+  useEffect(() => {
+    if (page !== 'room') return
+    nav.current?.querySelector('[data-room-end]')?.scrollIntoView({ block: 'nearest' })
+    nav.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
+  }, [page, roomId, section])
+  useEffect(() => setFolded(null), [page, roomId])
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label)) })).filter((g) => g.items.length)
-  const shownRooms = rooms.filter((r) => match(r.name))
+  // The room you are in is expanded. On an app page, it is the one you were in last, or the first.
+  const open = rooms.find((r) => r.id === (page === 'room' ? roomId : lastRoomId))?.id ?? rooms[0]?.id
+  const searching = !!q.trim()
+  // A search that matches a room's name shows all its pages, and one that matches a page name shows that page.
+  const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
+  const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
-    <nav aria-label="Settings" className="set-nav">
+    <nav ref={nav} aria-label="Settings" className="set-nav">
       <div className="drag" style={{ height: 42, flexShrink: 0 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
@@ -73,11 +95,23 @@ export function SettingsNav({ page, roomId }: { page: SettingsPage; roomId?: str
       {shownRooms.length > 0 && (
         <div>
           <p className="set-group">Rooms</p>
-          {shownRooms.map((r) => (
-            <button key={r.id} type="button" className="nav-item set-item" aria-current={page === 'room' && roomId === r.id ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id })}>
-              <span className="set-letter" aria-hidden="true">{roomLetter(r.name)}</span>{r.name}
-            </button>
-          ))}
+          {shownRooms.map(({ room: r, pages }) => {
+            const expanded = searching ? true : open === r.id && folded !== r.id
+            return (
+              <div key={r.id}>
+                <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
+                  // Another room opens on its General page. Its own row folds and unfolds its pages.
+                  if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
+                  else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
+                }}>
+                  <span className="set-letter" aria-hidden="true">{roomLetter(r.name)}</span><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
+                </button>
+                {expanded && pages.map((p, n) => (
+                  <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
+                ))}
+              </div>
+            )
+          })}
         </div>
       )}
       {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}

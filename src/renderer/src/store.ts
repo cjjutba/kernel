@@ -154,7 +154,7 @@ function rememberRoom(route: Route) {
   if (!id || route.name === 'settings') return
   try { localStorage.setItem(LAST_ROOM, id) } catch { /* not remembered */ }
 }
-function lastRoom(): string | null {
+export function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
 const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }

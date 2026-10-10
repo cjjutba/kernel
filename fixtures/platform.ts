@@ -49,23 +49,33 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 // KERNEL-25: the app-wide settings pages. The seed's rooms fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
 /** One of Client A's room pages (KERNEL-191). */
-const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section } } }))
+const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section }, ...(menu ? { menu } : {}) } }))
 const accountUsage: RateLimit[] = [
   { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
   { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
   { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextMonday()), model: 'claude-fable-5-1' }
 ]
 
-// KERNEL-26: the repo pages read the first room's .kernel files, so the fixture gives Client A the values the canvas shows.
+// KERNEL-26, KERNEL-191: the room pages read their own room's .kernel files, so the fixture gives Client A the values the canvas shows.
+// `sources` says which file set what: both files are there, so the settings files button offers both.
 const kernelFiles: RoomSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
-  workspace: {},
+  workspace: { baseRef: 'origin/dev' },
   disabled: { skills: [], mcp: ['Figma'] },
-  sources: {}
+  pr: { createInstructions: '# Create a pull request\n1. Rebase on origin/dev and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk\n4. Link the Linear issue in the description' },
+  sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
-const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
+/** What approvals saved with Always allow in this room. Two are long enough to clamp to two lines. */
+const roomRules = [
+  'pnpm test', 'pnpm typecheck',
+  'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName,url,isDraft,mergeStateStatus,author,labels',
+  'node design/canvas/source/render.mjs Settings SettingsAppearance SettingsNotifications SettingsAccount SettingsShortcuts SettingsModels SettingsPermissions SettingsGit SettingsScripts SettingsPRs',
+  'for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | grep -v "pixelHeight: 900"',
+  'git log --oneline origin/main..HEAD'
+]
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
@@ -130,16 +140,24 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsExperimental: settingsPage('experimental'),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
+  SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
+  SettingsRoomScripts: roomPage('scripts', clientA()),
+  SettingsRoomInstructions: roomPage('instructions', clientA()),
+  SettingsRoomPermissions: scene((f) => ({
+    ...clientA(),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, allow: roomRules } : r)),
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } }
+  })),
   SettingsPRs: settingsPage('prs', { settings: prSettings }),
-  SettingsScripts: settingsPage('scripts', clientA()),
+  SettingsScripts: settingsPage('scripts'),
   SettingsFiles: roomPage('files', clientA()),
   SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
-  SettingsTeam: scene((f) => ({ agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  SettingsTeam: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
   SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
   SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
   SettingsRoom: scene((f) => ({
     ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
     agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
     // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
     integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
