@@ -1,9 +1,9 @@
-import { useId, useLayoutEffect, useRef, useState } from 'react'
+import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ChatItem, TeamUpdateRow, Workspace } from '@shared/types'
 import { go, useStore } from '../../../store'
 import { KernelNote } from '../KernelNote'
 import { copyText, MessageActions } from '../MessageActions'
-import { cardData, sections, sentenceOf, textOf } from './teamUpdate'
+import { cardData, eventTone, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
 /**
@@ -41,22 +41,30 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
 
 function Row({ row, ws }: { row: TeamUpdateRow; ws: Workspace | undefined }) {
   const archived = ws?.status === 'archived'
+  const { key, title } = taskParts(row.task)
   return (
     <div className="tucard-row">
       <div className="tucard-line">
         <span className="tucard-name">{row.name}</span>
-        <span className="tucard-dot muted" aria-hidden="true">·</span>
-        <span className="tucard-task ellipsis">{row.task}</span>
+        {key && <span className="tucard-key">{key}</span>}
+        <span className="tucard-task ellipsis">{title}</span>
         {ws && (
-          <button type="button" className="tucard-open" aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
+          <button type="button" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
             onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
             {archived ? 'In History' : 'Open'}
           </button>
         )}
       </div>
+      {/* The events as one line of text between dots, colored only for what failed, merged or passed (KERNEL-274). */}
       {row.events.length > 0 && (
         <p className="tucard-events">
-          {row.events.map((e, i) => <span key={i} className={e.actionable ? 'ink2' : 'muted'}>{sentenceOf(e.text)}{i < row.events.length - 1 ? ' ' : ''}</span>)}
+          {row.events.map((e, i) => (
+            <Fragment key={i}>
+              {i > 0 && <span className="tucard-sep" aria-hidden="true">·</span>}
+              {/* A screen reader hears a full stop between events, unless one already ends the sentence. */}
+              <span className="tucard-ev" data-tone={eventTone(e)}>{e.text.replace(/\.$/, '')}<span className="sr-only">{/[!?…]$/.test(e.text) ? ' ' : '. '}</span></span>
+            </Fragment>
+          ))}
         </p>
       )}
       {row.reply && <Reply text={row.reply} />}

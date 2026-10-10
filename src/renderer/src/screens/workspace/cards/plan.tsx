@@ -79,7 +79,7 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   return (
     <div ref={ref} className="plan-inline">
       <div className="trow">
-        <span className="muted"><Icon name="doc" size={15} stroke={1.3} /></span>
+        <span className="plan-doc-icon"><Icon name="doc" size={15} stroke={1.3} /></span>
         <span className="ink2">Propose plan</span>
         {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
         <IconButton icon={copied ? 'check' : 'copy'} size={13} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
@@ -111,6 +111,8 @@ export function PlanBar({ a }: { a: Approval }) {
   }, [a.id])
   return (
     <div className="cmp-planbar" role="group" aria-label="Plan">
+      <span className="cmp-planbar-icon" aria-hidden="true"><Icon name="plan" size={15} /></span>
+      <span className="grow" />
       <Button variant="ghost" icon={copied ? 'check' : 'copy'} onClick={copy}>{copied ? 'Copied' : 'Copy'}</Button>
       <Button variant="primary" aria-keyshortcuts="Meta+Shift+Enter" busy={!!busy} busyLabel="Approving" onClick={approve}>Approve<span className="cmp-planbar-kbd" aria-hidden="true">⌘⇧↵</span></Button>
     </div>
