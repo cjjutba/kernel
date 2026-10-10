@@ -1,6 +1,6 @@
 import type { ChatPart, IssueSummary, LinearComment, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, LinearStateType } from '@shared/types'
 
-// Linear issues: the new workspace modal's search, the Issues screen, Plan with Rowan and the move to In Progress (D-136).
+// Linear issues: the new workspace modal's search, the Issues screen, Plan with Rowan and the move to In Progress (D-137).
 // The token comes from Settings > Integrations (KERNEL-26), else LINEAR_API_KEY in the environment.
 // Field names follow Linear's GraphQL schema (github.com/linear/linear, packages/sdk/src/schema.graphql).
 
