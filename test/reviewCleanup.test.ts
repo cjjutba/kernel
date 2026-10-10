@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -140,8 +140,9 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
     const k2 = new Kernel(where)
     await k2.start()
     onTestFinished(() => k2.stop())
-    await new Promise((r) => setTimeout(r, 600))
-    expect(k2.store.workspace(review.id)!.status).toBe('archived')
+    // The sweep runs in the background after start(), and archiving takes git work that a busy CI runner can stretch
+    // past a fixed wait, so this waits for the archive itself.
+    await vi.waitFor(() => expect(k2.store.workspace(review.id)!.status).toBe('archived'), { timeout: 15_000 })
     // The user brings it back from History. The next launch leaves it be.
     await k2.restoreWorkspace(review.id)
     await k2.stop()
