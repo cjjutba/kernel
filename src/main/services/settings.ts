@@ -6,6 +6,7 @@ import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
+import { terminalSettingsOf } from './terminalPresets'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
@@ -33,7 +34,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
     addressReviewInstructions: '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  experimental: { bigTerminal: true, bigTerminalWorktreeOnly: true, walking: true, floor3d: false, voice: false }
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
+  experimental: { walking: true, floor3d: false, voice: false }
 })
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
@@ -53,6 +55,13 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
     s.models.effortByModel = effortMemory(s.models.effortByModel)
     // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
     if (s.workspace.branchPattern === 'feat/{slug}') s.workspace.branchPattern = defaults.workspace.branchPattern
+    // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
+    const exp = s.experimental as { bigTerminal?: unknown; bigTerminalWorktreeOnly?: unknown }
+    if (typeof exp.bigTerminal === 'boolean' && saved?.terminal?.enabled === undefined) s.terminal.enabled = exp.bigTerminal
+    if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && saved?.terminal?.onlyInWorktrees === undefined) s.terminal.onlyInWorktrees = exp.bigTerminalWorktreeOnly
+    delete exp.bigTerminal
+    delete exp.bigTerminalWorktreeOnly
+    s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
     return s
   } catch { return defaults }
 }
@@ -69,6 +78,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
+  next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   return next
 }
 

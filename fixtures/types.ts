@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
-  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -67,6 +67,8 @@ export interface Fixture {
    * with whether each is missing (KERNEL-247).
    */
   env?: { app?: string[]; rooms?: Record<string, { names?: string[]; files?: { path: string; missing: boolean }[] }> }
+  /** The CLIs `terminal.presets` lists as found on the PATH, after the built-ins and before the custom ones. None when unset (KERNEL-248). */
+  terminalClis?: TerminalPreset[]
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
