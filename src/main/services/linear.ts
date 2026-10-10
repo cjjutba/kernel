@@ -182,6 +182,6 @@ export function planParts(issue: LinearIssueDetail): ChatPart[] {
   const description = issue.description.trim() || 'The issue has no description.'
   return [
     { type: 'issue', name: issue.id, title: issue.title, url: issue.url, source: 'linear' },
-    { type: 'text', text: `${description}\n\nLinear's branch name for this issue is ${issue.branchName}. When you hand it off, pass ${issue.id} as issue to create_workspace.` }
+    { type: 'text', text: `${description}\n\nWhen you hand it off, pass ${issue.id} as issue to create_workspace.` }
   ]
 }

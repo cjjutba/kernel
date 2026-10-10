@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel composer states</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.k{--canvas:#08090a;--panel:#0f1011;--surface:#141516;--surface-2:#18191b;--surface-3:#1c1d21;--line:#1a1b1e;--line-2:#23252a;--line-3:#2a2b30;--ink:#f7f8f8;--ink-2:#d0d6e0;--ink-3:#b7bcc4;--muted:#8a8f98;--faint:#62666d;--on-ink:#08090a;--input-bg:#0b0c0d}
+.k{font-family:'Inter',-apple-system,system-ui,sans-serif;font-feature-settings:'cv01','ss03';-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45;color:var(--ink);background:var(--panel)}
+.k *{box-sizing:border-box}
+.k button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.cap{font-size:12px;color:var(--faint);margin:0 0 10px}
+.cmp{position:relative;overflow:hidden;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 10px 10px 14px}
+.cmp.focus{border-color:#3a3c42}
+.cmp > *{position:relative;z-index:1}
+.cmp.plan{border-color:rgba(90,162,255,.45);background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%),#0c0d10}
+.cmp.plan.focus{border-color:rgba(90,162,255,.7)}
+.cmp.plan .caret{background:#5aa2ff}
+.cmp.plan .send.on{background:#5aa2ff;color:#06101e}
+.cmp.plan:has(.planbar) .send.on{background:var(--ink);color:var(--on-ink)}
+.cmp > .ruler{display:none}
+.cmp-text{min-height:48px;font-size:14px;line-height:24px;color:var(--ink)}
+.cmp-text.ph{color:var(--faint)}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px}
+.cmp-foot{display:flex;align-items:center;gap:10px;margin-top:10px}
+.agent{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px;font-size:12.5px}
+.agent .n{color:var(--ink-2)}.agent .r{color:var(--faint)}
+.sep{width:1px;height:16px;background:var(--line-3)}
+.model{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.model .r{color:var(--faint)}
+.k .ib{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.k .send{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center}
+.k .send.off{background:var(--surface-3);color:var(--faint)}
+.k .send.on{background:var(--ink);color:var(--on-ink)}
+.planbar{display:flex;justify-content:flex-end;gap:6px;margin:-12px -10px 12px -14px;padding:8px;background:rgba(90,162,255,.08);border-bottom:1px solid rgba(90,162,255,.24)}
+.k .pb{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;font-size:12.5px;font-weight:500}
+.k .pb.ghost{color:var(--ink-2)}
+.k .pb.primary{background:#5aa2ff;color:#06101e}
+.pb .kb{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-weight:400;opacity:.55}
+</style>
+</helmet>
+<div class="k" style="width: 1440px; height: 900px; display: flex; align-items: center; justify-content: center">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 80px; row-gap: 44px; width: 1280px">
+
+<div>
+<p class="cap">Normal</p>
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send off" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Normal, typing</p>
+<div class="cmp focus">
+<div class="cmp-text">Go for back and forward this round. On restart, reopen where I left off. Write the full plan.<span class="caret"></span></div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send on" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Plan mode</p>
+<div class="cmp plan">
+<div class="ruler" aria-hidden="true"></div>
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send off" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Plan mode, typing</p>
+<div class="cmp plan focus">
+<div class="ruler" aria-hidden="true"></div>
+<div class="cmp-text">Go for back and forward this round. On restart, reopen where I left off. Write the full plan.<span class="caret"></span></div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send on" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Plan waiting for you</p>
+<div class="cmp plan">
+<div class="planbar"><button class="pb ghost">Copy</button><button class="pb primary">Approve<span class="kb">⌘⇧↵</span></button></div>
+<div class="ruler static" aria-hidden="true"></div>
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send off" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Plan waiting, typing changes</p>
+<div class="cmp plan focus">
+<div class="planbar"><button class="pb ghost">Copy</button><button class="pb primary">Approve<span class="kb">⌘⇧↵</span></button></div>
+<div class="ruler static" aria-hidden="true"></div>
+<div class="cmp-text">Split step 2 into its own PR, after step 1 merges.<span class="caret"></span></div>
+<div class="cmp-foot">
+<span class="agent"><span class="n">Rowan</span><span class="r">Lead</span></span><span class="sep"></span>
+<span class="model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send on" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
