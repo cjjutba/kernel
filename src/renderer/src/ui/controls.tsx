@@ -75,8 +75,8 @@ export function Select({ options, label, className, ...rest }: Omit<SelectHTMLAt
   )
 }
 
-/** One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. */
-export function SegmentedControl({ options, value, onChange, label }: { options: { value: string; label: string }[]; value: string; onChange: (v: string) => void; label: string }) {
+/** One choice of a few (Theme: Dark, Light, System). Arrow keys move and select, like a radio group. `busy` puts the spinner arc before an option's label, for a script that is running. */
+export function SegmentedControl({ options, value, onChange, label }: { options: { value: string; label: string; busy?: boolean }[]; value: string; onChange: (v: string) => void; label: string }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([])
   const onKey = (e: KeyboardEvent, i: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
@@ -89,7 +89,7 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   return (
     <div role="radiogroup" aria-label={label} className="segmented">
       {options.map((o, i) => (
-        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)}>{o.label}</button>
+        <button key={o.value} ref={(el) => { refs.current[i] = el }} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => onChange(o.value)} onKeyDown={(e) => onKey(e, i)} aria-label={o.busy ? `${o.label}, running` : undefined}>{o.busy && <span className="spin" aria-hidden="true" />}{o.label}</button>
       ))}
     </div>
   )

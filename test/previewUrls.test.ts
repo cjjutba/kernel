@@ -41,7 +41,7 @@ async function run(files: Record<string, string>, script: string, name = 'run') 
   const cwd = await mkdtemp(join(tmpdir(), 'kernel-run-'))
   for (const [f, text] of Object.entries(files)) await writeFile(join(cwd, f), text)
   const workspaceId = `ws-${++n}`
-  const done = runScript({ workspaceId, kind: 'run', name, script, cwd, port: 4300, root: cwd })
+  const done = runScript({ workspaceId, kind: 'run', name, script, cwd, env: process.env as Record<string, string> })
   return { workspaceId, done }
 }
 
@@ -175,7 +175,7 @@ describe('the URL a run script prints (KERNEL-246)', () => {
 
   it('finds no URL in setup output', async () => {
     const cwd = await mkdtemp(join(tmpdir(), 'kernel-run-'))
-    await runScript({ workspaceId: 'ws-setup', kind: 'setup', script: 'echo http://localhost:4300/', cwd, port: 4300, root: cwd })
+    await runScript({ workspaceId: 'ws-setup', kind: 'setup', script: 'echo http://localhost:4300/', cwd, env: process.env as Record<string, string> })
     expect(events.filter((e) => e.type === 'script.url')).toEqual([])
   })
 
@@ -183,7 +183,7 @@ describe('the URL a run script prints (KERNEL-246)', () => {
     const first = await run({}, "trap 'echo http://localhost:4399/; exit 0' TERM; echo http://localhost:4300/; sleep 30 & wait")
     await until(() => urls(first.workspaceId).includes('http://localhost:4300/'), 'the first URL')
     const cwd = await mkdtemp(join(tmpdir(), 'kernel-run-'))
-    void runScript({ workspaceId: first.workspaceId, kind: 'run', name: 'run', script: 'echo http://localhost:4301/; sleep 30', cwd, port: 4300, root: cwd })
+    void runScript({ workspaceId: first.workspaceId, kind: 'run', name: 'run', script: 'echo http://localhost:4301/; sleep 30', cwd, env: process.env as Record<string, string> })
     await until(() => exits(first.workspaceId) === 1 && urls(first.workspaceId).includes('http://localhost:4301/'), 'the restart')
     // The old process's last words and its exit change nothing: the new run's URL stands.
     expect(urls(first.workspaceId)).toEqual([null, 'http://localhost:4300/', null, 'http://localhost:4301/'])
