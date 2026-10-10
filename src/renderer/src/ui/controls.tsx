@@ -70,7 +70,7 @@ export function Select({ options, label, className, ...rest }: Omit<SelectHTMLAt
   return (
     <span className={['select', className].filter(Boolean).join(' ')}>
       <select aria-label={label} {...rest}>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      <Icon name="chevron" size={11} />
+      <Icon name="chevron" size={11} stroke={1.9} />
     </span>
   )
 }

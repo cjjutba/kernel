@@ -145,7 +145,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
-              <span className="nw-letter" aria-hidden="true">{letter(current?.name)}</span>{current?.name ?? 'Pick a room'}<Icon name="chevron" size={10} />
+              <span className="nw-letter" aria-hidden="true">{letter(current?.name)}</span>{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
             </Button>
             {roomMenu && (
               <Menu label="Room" anchorRef={roomAnchor} onClose={() => setRoomMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}
@@ -159,7 +159,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
           <span className="grow" />
           <span ref={fromAnchor}>
             <button type="button" className="nw-trigger" aria-label="Start from a PR, branch or issue" aria-haspopup="dialog" aria-expanded={menu === 'from'} onClick={() => toggle('from')}>
-              <Icon name="pr" size={14} />{label.button}<Icon name="chevron" size={10} />
+              <Icon name="pr" size={14} />{label.button}<Icon name="chevron" size={11} stroke={1.9} />
             </button>
           </span>
           {menu === 'from' && <FromPopover roomId={room} branches={branches} tab={tab} onTab={setTab} onPick={pick} anchorRef={fromAnchor} />}
@@ -176,7 +176,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
 
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
-            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={10} /></Button>
+            <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
           <span className="grow">

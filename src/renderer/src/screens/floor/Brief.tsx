@@ -57,7 +57,7 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
             <option value="">{lead ? `To ${lead.name}` : 'To the Lead'}</option>
             {reachable.map((a) => <option key={a.id} value={a.id}>To {a.name}</option>)}
           </select>
-          <Icon name="chevron" size={10} stroke={1.4} />
+          <Icon name="chevron" size={11} stroke={1.9} />
         </span>
         <span className="grow" />
         <span ref={plusAnchor} style={{ position: 'relative' }}>
