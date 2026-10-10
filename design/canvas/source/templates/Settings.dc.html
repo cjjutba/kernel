@@ -159,7 +159,8 @@ class Component extends DCLogic {
     var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
     return {
       general: { title: 'General', sections: [
-        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter']), seg('newteam', 'Default team for new rooms', ['Starter team', 'Pair'], 0, 'What an empty room starts with')] }
+        { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] },
+        { title: 'Team', rows: [seg('newteam', 'Default team for new rooms', ['Starter team', 'Pair'], 0, 'What an empty room starts with'), tog('names', 'Show names instead of roles', true)] }
       ] },
       appearance: { title: 'Appearance', sections: [
         { title: 'Interface', rows: [seg('theme', 'Theme', ['Dark', 'Light', 'System']), sel('font', 'Font size', ['Default', 'Small', 'Large']), seg('density', 'Density', ['Comfortable', 'Compact']), tog('pointer', 'Use pointer cursors', false), tog('motion', 'Reduce motion', false)] }
