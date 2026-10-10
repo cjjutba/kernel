@@ -15,7 +15,7 @@
 .select { position: relative; display: inline-flex; align-items: center; }
 .select select { appearance: none; height: 28px; padding: 0 28px 0 11px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--surface); color: var(--ink); font-weight: 500; font-size: 12.5px; cursor: pointer; }
 .select select:hover { background: var(--surface-3); }
-.select svg { position: absolute; right: 10px; pointer-events: none; color: var(--muted); }
+.select svg { position: absolute; right: 11px; pointer-events: none; color: var(--muted); }
 
 /* segmented control */
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); }

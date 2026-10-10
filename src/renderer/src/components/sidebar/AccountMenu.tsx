@@ -27,7 +27,7 @@ export function AccountButton() {
       <button type="button" className="acct" aria-haspopup="menu" aria-expanded={open} aria-label={`Account menu, ${name}`} onClick={() => actions.ui.toggleMenu('account')}>
         <span className="acct-av" aria-hidden="true">{initials(name)}</span>
         <span className="ellipsis">{name}</span>
-        <Icon name="chevron" size={12} />
+        <Icon name="chevron" size={11} stroke={1.9} />
       </button>
       {open && (
         <Menu
