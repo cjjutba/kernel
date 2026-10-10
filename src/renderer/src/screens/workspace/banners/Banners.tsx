@@ -4,7 +4,7 @@ import { call } from '../../../api'
 import { actions, go, loadWorkspace, useStore } from '../../../store'
 import { Banner, Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
-import { commandComposer } from '../composer/bus'
+import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
 import { bannerFor, type BannerAction, type BannerView } from './model'
 import './banners.css'
 
@@ -73,6 +73,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       case 'newChat': return run(id, 'Could not start a new chat', async () => {
         const c = await call('chats.create', { workspaceId: ws.id, kind: 'chat' })
         await loadWorkspace(ws.id)
+        focusComposerWhenOpen(c.id)
         actions.ui.setWorkspaceView({ tab: c.id })
       })
       case 'compact': return chat && run(id, 'Could not compact', () => call('chats.compact', { chatId: chat.id }))
