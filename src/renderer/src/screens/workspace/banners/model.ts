@@ -147,7 +147,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'newChat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
   }
 
-  if (i.hooks && !i.hooks.listening) return {
+  // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.
+  if (i.hooks && (!i.hooks.listening || i.hooks.needsInstall)) return {
     id: 'hooks', kind: 'hooks', title: 'Hooks are disconnected', sub: 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.',
     actions: [{ id: 'checkHooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }], blocks: false
   }

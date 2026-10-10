@@ -28,7 +28,8 @@ import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
-import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
+import { hookToken } from './services/hookToken'
+import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
@@ -145,6 +146,8 @@ export class Kernel {
   titleFor: typeof askTitle = askTitle
   settings!: AppSettings
   private hookServer?: Server
+  /** The start-up rewrite of out-of-date hooks failed (KERNEL-206). The hooks banner shows until a write succeeds. */
+  private hooksNeedInstall = false
   private agentCache = new Map<string, AgentDef[]>()
   private agentWatchers = new Map<string, () => void>()
   private statuses = new Map<string, Record<string, AgentStatus>>()
@@ -303,6 +306,8 @@ export class Kernel {
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
     this.o.onSettings?.(this.settings)
+    // Hooks from before KERNEL-206, or from another port or timeout, get a 401. Rewrite Kernel's own entries, never add any.
+    this.hooksNeedInstall = await refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
     await this.listenHooks(this.settings.hookPort)
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
@@ -337,6 +342,7 @@ export class Kernel {
     try {
       this.hookServer = await startHookServer({
         port,
+        token: this.hookToken,
         approvals: this.approvals,
         approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
         isManaged: (id) => this.sessions.isManaged(id),
@@ -363,7 +369,7 @@ export class Kernel {
       this.settings = { ...this.settings, hookPort: port }
       await saveAppSettings(this.settingsFile, this.settings)
     }
-    if (wasInstalled) await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec)
+    if (wasInstalled) await this.writeHooks(port)
     return this.pushHooks()
   }
 
@@ -379,7 +385,7 @@ export class Kernel {
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await installHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec)
+    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await this.writeHooks(this.settings.hookPort)
     return this.settings
   }
 
@@ -391,6 +397,13 @@ export class Kernel {
     const lines = this.store.activity(undefined, 5000).reverse().map((e) => `${new Date(e.ts).toISOString()} ${[e.actor, e.text, e.object].filter(Boolean).join(' ')}`)
     await writeFile(path, lines.join('\n') + '\n')
     return { path }
+  }
+
+  /** Install, and every rewrite after a port or timeout change. A write that works clears the start-up failure. */
+  private async writeHooks(port: number): Promise<string[]> {
+    const events = await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken)
+    this.hooksNeedInstall = false
+    return events
   }
 
   private async pushHooks(): Promise<HookStatus> {
@@ -534,12 +547,14 @@ export class Kernel {
   }
 
   private async hooksStatus(): Promise<HookStatus> {
-    const installed = new Set(await hookStatus(this.claudeSettings).catch(() => [] as string[]))
+    const installed = new Set(await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[]))
     return {
       port: this.settings.hookPort,
       listening: !!this.hookServer?.listening,
       installed: KERNEL_HOOK_EVENTS.every((e) => installed.has(e)),
-      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) }))
+      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) })),
+      token: this.hookToken,
+      needsInstall: this.hooksNeedInstall
     }
   }
 
@@ -2410,7 +2425,7 @@ export class Kernel {
         return this.hooksStatus()
       },
       'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
-      'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec) }),
+      'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await this.writeHooks(port) }),
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
       'rooms.create': async (req) => this.createRoom(req),
@@ -2620,5 +2635,6 @@ export class Kernel {
     return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
   }
 
+  private get hookToken() { return hookToken(this.o.dataDir) }
   private get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }
 }
