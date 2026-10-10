@@ -1,10 +1,30 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
 import { branchExists, branchName, changedFiles, createWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, slugify, snapshotBaseline } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
+
+// Lets a test make the next N branch checks fail as if git couldn't start. Everything else runs for real.
+const spawnFailures = vi.hoisted(() => ({ left: 0 }))
+vi.mock('../src/main/services/exec', async (original) => {
+  const real = await original<typeof import('../src/main/services/exec')>()
+  return {
+    ...real,
+    exec: (cmd: string, args: string[], opts?: Parameters<typeof real.exec>[2]) => {
+      if (spawnFailures.left > 0 && args.includes('rev-parse') && args.includes('--verify')) {
+        spawnFailures.left--
+        return Promise.resolve({ code: 127, stdout: '', stderr: 'Error: spawn git ENOENT' })
+      }
+      return real.exec(cmd, args, opts)
+    },
+  }
+})
+function failNextBranchChecks(n: number) {
+  spawnFailures.left = n
+  onTestFinished(() => { spawnFailures.left = 0 })
+}
 
 describe('naming', () => {
   it('slugifies task titles', () => {
@@ -100,6 +120,28 @@ describe('worktrees', () => {
     await chmod(root, 0o755)
     await expect(createWorktree({ repo, root, branch: 'feat/first', baseRef: 'main' })).rejects.toThrow(/already exists/)
     expect(await branchExists(repo, 'feat/first')).toBe(true)
+  })
+
+  it('keeps a branch that was already there when git could not say so before a failed add (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-unknown-' + Date.now())
+    await git(repo, 'branch', 'feat/kept')
+    // The check before the add can't start git, so it doesn't know feat/kept is there. `-b` then refuses it.
+    failNextBranchChecks(1)
+    await expect(createWorktree({ repo, root, branch: 'feat/kept', baseRef: 'main' })).rejects.toThrow(/already exists/)
+    expect(await branchExists(repo, 'feat/kept')).toBe(true)
+  })
+
+  it('never calls a branch name free when git cannot say whether it is taken (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    await git(repo, 'branch', 'feat/taken')
+    failNextBranchChecks(1)
+    await expect(freeBranch(repo, 'feat/taken')).rejects.toThrow(/couldn't check whether the branch feat\/taken exists/)
+    expect(await freeBranch(repo, 'feat/taken')).toBe('feat/taken-2')
+    // Outside a repo git exits 128, not 1, so that's unknown too.
+    const notRepo = await mkdtemp(join(tmpdir(), 'kernel-not-repo-'))
+    onTestFinished(() => rm(notRepo, { recursive: true, force: true }))
+    await expect(freeBranch(notRepo, 'feat/x')).rejects.toThrow(/couldn't check/)
   })
 
   it('still refuses a folder that exists but is not a worktree', async () => {

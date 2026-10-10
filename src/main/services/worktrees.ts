@@ -87,14 +87,26 @@ export async function remoteRepo(repo: string, remote = 'origin'): Promise<strin
 }
 
 export async function branchExists(repo: string, branch: string): Promise<boolean> {
-  return (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0
+  return (await branchState(repo, branch)) === 'exists'
 }
 
-/** Pick a branch name that does not exist yet by appending -2, -3... */
+/**
+ * Whether a local branch exists. `rev-parse --verify --quiet` exits 1 only for a missing ref; any other failure (128
+ * outside a repo, 127 when git can't start) is `unknown`, which must count as neither free nor safe to delete (KERNEL-276).
+ */
+export async function branchState(repo: string, branch: string): Promise<'exists' | 'missing' | 'unknown'> {
+  const { code } = await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+  return code === 0 ? 'exists' : code === 1 ? 'missing' : 'unknown'
+}
+
+/** Pick a branch name that does not exist yet by appending -2, -3... Throws when git can't say whether a name is taken. */
 export async function freeBranch(repo: string, wanted: string): Promise<string> {
-  let name = wanted
-  for (let i = 2; await branchExists(repo, name); i++) name = `${wanted}-${i}`
-  return name
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? wanted : `${wanted}-${i}`
+    const state = await branchState(repo, name)
+    if (state === 'missing') return name
+    if (state === 'unknown') throw new Error(`Kernel couldn't check whether the branch ${name} exists.`)
+  }
 }
 
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
@@ -119,16 +131,16 @@ export async function freeWorktreePath(repo: string, root: string, branch: strin
 /**
  * Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path.
  * `worktree add -b` makes the branch before it checks the folder, so a failed add deletes the branch it made, never one
- * that was already there (KERNEL-276).
+ * that was already there (KERNEL-276). A check git can't answer counts as "keep the branch".
  */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
   const path = await freeWorktreePath(o.repo, o.root, o.branch)
-  const existed = await branchExists(o.repo, o.branch)
+  const wasMissing = (await branchState(o.repo, o.branch)) === 'missing'
   try {
     await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
   } catch (e) {
-    if (!existed && await branchExists(o.repo, o.branch)) await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
+    if (wasMissing && (await branchState(o.repo, o.branch)) === 'exists') await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
     throw e
   }
   return path
