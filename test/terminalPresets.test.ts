@@ -72,7 +72,7 @@ describe('terminal presets', () => {
     const claude = await run(ws.id, 'claude')
     expect(claude.command).toBe('claude')
     expect(claude.chat).toMatchObject({ title: 'Terminal (claude)', terminal: { preset: 'claude', command: 'claude' } })
-    expect((await run(ws.id, 'claude-skip')).command).toBe('claude --dangerously-skip-permissions')
+    expect(await run(ws.id, 'claude-skip')).toMatchObject({ command: 'claude --dangerously-skip-permissions', chat: { title: 'Terminal (claude-skip)' } })
     const shell = await run(ws.id, 'shell')
     expect(shell.command).toBeUndefined()
     expect(shell.chat).toMatchObject({ title: 'Terminal (shell)', terminal: { preset: 'shell', command: null } })
@@ -111,6 +111,35 @@ describe('terminal presets', () => {
 
     await h['settings.set']({ patch: { terminal: { onlyInWorktrees: false } } })
     expect((await run(current.id, 'claude-skip')).command).toBe('claude --dangerously-skip-permissions')
+    await k.stop()
+  })
+
+  it('finds and drops the skip flag in every form the shell still hands to claude', async () => {
+    // The shell takes off quotes and backslashes, so each of these still skips permissions.
+    const rows: [string, string][] = [
+      ['claude "--dangerously-skip-permissions"', 'claude'],
+      ["claude '--dangerously-skip-permissions' --verbose", 'claude --verbose'],
+      ['claude \\--dangerously-skip-permissions', 'claude'],
+      ['claude --dangerously-skip-permissions>log', 'claude>log'],
+      ['claude --dangerously-skip-permissions<in', 'claude<in'],
+      ['claude --dangerously-skip-permissions=true --verbose', 'claude --verbose'],
+      ['claude "--dangerously-skip-permissions=true"', 'claude'],
+      ['claude\t--dangerously-skip-permissions --dangerously-skip-permissions', 'claude'],
+      ['cd app;--dangerously-skip-permissions', 'cd app;'],
+      ['claude --dangerously-skip-permissions|tee log', 'claude|tee log'],
+      ['claude --dangerously-skip-permissions&&echo done', 'claude&&echo done']
+    ]
+    const custom = rows.map(([command], i) => ({ id: `c${i}`, name: `C${i}`, command }))
+    const { k, h, room, run } = await kernel({ terminal: { custom: [...custom, { id: 'other', name: 'Other', command: 'claude --dangerously-skip-permissions-x' }] } })
+    const current = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Here', mode: 'current' })
+    const list = await h['terminal.presets']()
+    for (const [i, [command, stripped]] of rows.entries()) {
+      expect(list.find((p) => p.id === `c${i}`)?.skipsPermissions, command).toBe(true)
+      expect((await run(current.id, `c${i}`)).command, command).toBe(stripped)
+    }
+    // Another word that starts with the flag isn't the flag.
+    expect(list.find((p) => p.id === 'other')?.skipsPermissions).toBe(false)
+    expect((await run(current.id, 'other')).command).toBe('claude --dangerously-skip-permissions-x')
     await k.stop()
   })
 
@@ -162,6 +191,15 @@ describe('terminal settings', () => {
     const s = await loadAppSettings(await file({ terminal: { custom, preset: 7 } }), '/home')
     expect(s.terminal.custom).toEqual([{ id: 'a', name: 'A', command: 'echo a' }])
     expect(s.terminal.preset).toBe('claude')
+  })
+
+  it('leaves out a custom command whose id a built-in or a known CLI uses', async () => {
+    const custom = ['claude', 'claude-skip', 'shell', 'codex', 'opencode', 'amp', 'copilot', 'gemini', 'mine'].map((id) => ({ id, name: id, command: `echo ${id}` }))
+    const s = await loadAppSettings(await file({ terminal: { custom } }), '/home')
+    expect(s.terminal.custom).toEqual([{ id: 'mine', name: 'mine', command: 'echo mine' }])
+    const { k, h } = await kernel()
+    expect((await h['settings.set']({ patch: { terminal: { custom: [{ id: 'codex', name: 'My codex', command: 'codex --yolo' }] } } })).terminal.custom).toEqual([])
+    await k.stop()
   })
 
   it('saves the migrated file without the old keys', async () => {

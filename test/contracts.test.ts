@@ -85,6 +85,8 @@ describe('IPC contract', () => {
     const workspaceId = fixtures.Workspace.workspaces[0].id
     expect(await h['chats.create']({ workspaceId, kind: 'terminal', preset: 'codex' })).toMatchObject({ kind: 'terminal', title: 'Terminal (codex)', terminal: { preset: 'codex', command: 'codex' } })
     expect((await h['chats.create']({ workspaceId })).terminal).toBeUndefined()
+    await h['settings.set']({ patch: { terminal: { enabled: false } } })
+    await expect(h['chats.create']({ workspaceId, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
   })
 
   it('serves app and room settings', async () => {

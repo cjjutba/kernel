@@ -142,6 +142,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
       if (!first) throw new Error(`Unknown workspace ${workspaceId}`)
       const base = { ...first, id: `fixture-chat-${Date.now()}`, sessionId: undefined, plan: false, terminal: undefined, autoTitle: undefined }
       if (kind !== 'terminal') return { ...base, kind: 'chat', title: 'New chat' }
+      if (!settings.terminal.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
       const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
       return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },

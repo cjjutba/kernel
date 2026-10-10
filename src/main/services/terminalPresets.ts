@@ -6,8 +6,11 @@ import type { AppSettings, Chat, TerminalPreset, WorkspaceMode } from '@shared/t
 type TerminalSettings = AppSettings['terminal']
 
 export const SKIP_FLAG = '--dangerously-skip-permissions'
-/** The flag as a whole word, so `--dangerously-skip-permissions-x` is left alone and `...;` or `...&&` still counts. */
-const SKIP_WORD = /(^|\s)--dangerously-skip-permissions(?=$|[\s;&|)])/g
+/**
+ * The flag as the shell hands it to `claude`: quoted, after a backslash, with `=value`, or next to `;`, `|`, `&`, `<` and `>`.
+ * `--dangerously-skip-permissions-x` is another word and is left alone. A variable or an alias can't be caught (KERNEL-248).
+ */
+const SKIP_WORD = /(^|[\s;&|(])\\?(["']?)--dangerously-skip-permissions(?:=[^\s;&|()<>"']*)?\2(?=$|[\s;&|)<>])/g
 
 export const BUILTIN_PRESETS: readonly TerminalPreset[] = [
   { id: 'claude', name: 'Claude', command: 'claude', builtin: true, skipsPermissions: false },
@@ -25,7 +28,8 @@ export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
 ]
 
 export const skipsPermissions = (command: string) => new RegExp(SKIP_WORD.source).test(command)
-const withoutSkip = (command: string) => command.replace(SKIP_WORD, '').trim()
+/** Removes every form of the flag. The space before it goes with it, a `;` or `(` before it stays. */
+const withoutSkip = (command: string) => command.replace(SKIP_WORD, (_, before: string) => (/\s/.test(before) ? '' : before)).trim()
 
 /** An executable file named `bin` in one of PATH's folders. Nothing is run. */
 async function onPath(bin: string, path: string): Promise<boolean> {
@@ -70,17 +74,20 @@ export function resolvePreset(list: TerminalPreset[], t: TerminalSettings, mode:
   return { preset, terminal: { preset: preset.id, command } }
 }
 
-/** "Terminal (codex)": a built-in or found CLI by its name in lower case, a custom command by the name the user gave it. */
-export const terminalTitle = (p: TerminalPreset) => `Terminal (${p.builtin ? p.name.toLowerCase() : p.name})`
+/** "Terminal (codex)": a built-in or found CLI by its id, a custom command by the name the user gave it. */
+export const terminalTitle = (p: TerminalPreset) => `Terminal (${p.builtin ? p.id : p.name})`
 
 /** The command a terminal chat types in. Chats from before presets have no `terminal` and ran `claude`. */
 export const terminalCommand = (chat: Chat): string | null => (chat.terminal ? chat.terminal.command : 'claude')
 
-/** Settings as saved, made safe to use: custom commands need an id, a name and a command, and ids don't repeat. */
+/**
+ * Settings as saved, made safe to use: custom commands need an id, a name and a command, and ids don't repeat. An id a
+ * built-in or a known CLI uses is left out, or the custom command would vanish once that CLI is installed.
+ */
 export function terminalSettingsOf(v: unknown, defaults: TerminalSettings): TerminalSettings {
   const t = (v && typeof v === 'object' ? v : {}) as Partial<Record<keyof TerminalSettings, unknown>>
   const bool = (x: unknown, d: boolean) => (typeof x === 'boolean' ? x : d)
-  const seen = new Set<string>()
+  const seen = new Set<string>([...BUILTIN_PRESETS, ...KNOWN_CLIS].map((p) => p.id))
   const custom = (Array.isArray(t.custom) ? t.custom : [])
     .filter((c): c is TerminalSettings['custom'][number] => typeof c?.id === 'string' && !!c.id && typeof c.name === 'string' && typeof c.command === 'string' && !!c.command.trim())
     .filter((c) => !seen.has(c.id) && !!seen.add(c.id))
