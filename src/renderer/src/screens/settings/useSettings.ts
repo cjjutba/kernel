@@ -56,8 +56,9 @@ export function useRoomSettings(roomId?: string): RoomSettings | null {
 
 /** Apply a room patch the way main writes it: a `null` removes the key. */
 export function applyRoomPatch(rs: RoomSettings, patch: RoomSettingsPatch): RoomSettings {
-  const out: Record<string, Record<string, unknown>> = { scripts: { ...rs.scripts }, files: { ...rs.files }, workspace: { ...rs.workspace }, disabled: { ...(rs.disabled ?? { skills: [], mcp: [] }) } }
+  const out: Record<string, Record<string, unknown>> = { scripts: { ...rs.scripts }, files: { ...rs.files }, workspace: { ...rs.workspace }, disabled: { ...(rs.disabled ?? { skills: [], mcp: [] }) }, linear: { ...rs.linear } }
   for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete out[group][k]; else out[group][k] = v }
+  if (!Object.keys(out.linear).length) delete (out as Record<string, unknown>).linear
   return out as unknown as RoomSettings
 }
 
