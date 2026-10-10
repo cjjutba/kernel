@@ -8,7 +8,7 @@
 <body>
 <x-dc>
 <!--HELMET-->
-<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
 
 <nav aria-label="Settings" style="width: 236px; flex-shrink: 0; box-sizing: border-box; display: flex; flex-direction: column; padding: 0 8px 0 10px">
 <div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 6px">
@@ -63,15 +63,17 @@
 </div>
 <sc-for list="{{ page.sections }}" as="sec" hint-placeholder-count="2">
 <section style="display: flex; flex-direction: column; gap: 10px">
-<h2 style="margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2>
+<div style="display: flex; align-items: center; gap: 16px"><h2 style="flex: 1; min-width: 0; margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2><sc-if value="{{ sec.hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 28px; margin: -3px 0; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ sec.action }}</button></sc-if></div>
 <div style="border-radius: 10px; border: 1px solid #1f2024; background: #141516">
 <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
-<div style="display: flex; flex-wrap: wrap; align-items: center; column-gap: 24px; row-gap: 10px; min-height: 58px; box-sizing: border-box; padding: 12px 18px; border-top: {{ r.border }}">
-<div style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+<div style="display: flex; flex-wrap: {{ r.wrap }}; align-items: center; column-gap: 24px; row-gap: 10px; min-height: {{ r.minH }}; box-sizing: border-box; padding: {{ r.pad }}; border-top: {{ r.border }}">
+<sc-if value="{{ r.isPreset }}" hint-placeholder-val="{{ false }}"><button type="button" role="radio" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" style="width: 16px; height: 16px; flex-shrink: 0; margin-right: -10px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 50%; border: 1px solid {{ r.ringBorder }}; background: {{ r.ringBg }}; color: #08090a; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer">{{ r.mark }}</button></sc-if>
+<div style="flex: 1 1 {{ r.basis }}; min-width: 0; display: flex; flex-direction: column; gap: 2px">
 <sc-if value="{{ r.isRule }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.labelAct }}" aria-expanded="{{ r.expanded }}" style="{{ r.labelStyle }}">{{ r.label }}</button></sc-if>
-<sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}</span></sc-if>
+<sc-if value="{{ r.notRule }}" hint-placeholder-val="{{ true }}"><span style="{{ r.labelStyle }}">{{ r.label }}<sc-if value="{{ r.hasTail }}" hint-placeholder-val="{{ false }}"><span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; font-weight: 400; color: #d0d6e0"> {{ r.tail }}</span></sc-if></span></sc-if>
 <sc-if value="{{ r.hasSource }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.source }}</span></sc-if>
 <sc-if value="{{ r.hasDesc }}" hint-placeholder-val="{{ true }}"><span style="font-size: 12.5px; color: #8a8f98">{{ r.desc }}</span></sc-if>
+<sc-if value="{{ r.hasMono }}" hint-placeholder-val="{{ false }}"><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.6; color: #b7bcc4; {{ r.monoStyle }}">{{ r.mono }}</span></sc-if>
 </div>
 <sc-if value="{{ r.hasReset }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.reset }}" aria-label="Reset {{ r.label }}" style="height: 30px; margin-right: -10px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reset</button></sc-if>
 <sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ r.act }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-if>
@@ -87,15 +89,51 @@
 <sc-if value="{{ r.isRemove }}" hint-placeholder-val="{{ false }}"><button type="button" aria-label="Remove {{ r.label }}" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Remove</button></sc-if>
 <sc-if value="{{ r.isEditor }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre-wrap">{{ ln }}</span></sc-for></div></sc-if>
 <sc-if value="{{ r.isCode }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; display: flex; flex-direction: column; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.lines }}" as="ln" hint-placeholder-count="2"><span style="white-space: pre">{{ ln }}</span></sc-for></div></sc-if>
+<sc-if value="{{ r.isCommand }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">{{ r.value }}</span></sc-if>
+<sc-if value="{{ r.isNote }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; font-size: 12.5px; color: #8a8f98">{{ r.value }}</span></sc-if>
+<sc-if value="{{ r.hasTag }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; height: 22px; box-sizing: border-box; padding: 0 8px; border-radius: 999px; border: 1px solid #2a2b30; font-size: 12px; line-height: 20px; color: #b7bcc4">{{ r.tag }}</span></sc-if>
+<sc-if value="{{ r.hasActions }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; margin-right: -10px"><sc-for list="{{ r.actions }}" as="a" hint-placeholder-count="2"><button type="button" aria-label="{{ a.label }} {{ r.label }}" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ a.label }}</button></sc-for></div></sc-if>
+<sc-if value="{{ r.isIcon }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 10px">
+<span aria-hidden="true" style="width: 28px; height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 7px; border: 1px solid #2a2b30; font-size: 12px; font-weight: 600; color: #f7f8f8">{{ r.tileLetter }}<sc-if value="{{ r.tileAvatar }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg></sc-if></span>
+<button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
+<sc-if value="{{ r.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Room icon" style="position: absolute; top: 36px; right: 0; z-index: 60; width: 224px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
+<sc-for list="{{ r.menuItems }}" as="m" hint-placeholder-count="3"><button type="button" role="menuitemradio" aria-checked="{{ m.checked }}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
+<span aria-hidden="true" style="width: 16px; height: 16px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; border-radius: 4px; border: 1px solid #2a2b30; font-size: 9px; font-weight: 600; color: #d0d6e0">{{ m.letter }}<sc-if value="{{ m.isAvatar }}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg></sc-if><sc-if value="{{ m.isImage }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 3.5h11v9h-11ZM2.5 11l3.5-3.5 3 3 1.5-1.5 3 3"></path></svg></sc-if></span>
+<span style="flex: 1">{{ m.label }}</span>
+<sc-if value="{{ m.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f7f8f8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"></path></svg></sc-if>
+</button></sc-for>
+</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ r.isPreview }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; position: relative; box-sizing: border-box; height: 148px; overflow-y: auto; padding: 10px 14px 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.files }}" as="f" hint-placeholder-count="6"><div style="white-space: pre">{{ f }}</div></sc-for></div></sc-if>
+<sc-if value="{{ r.hasHint }}" hint-placeholder-val="{{ false }}"><p style="flex-basis: 100%; margin: 0; font-size: 12.5px; color: #8a8f98"><sc-for list="{{ r.hint }}" as="h" hint-placeholder-count="3"><span style="{{ h.style }}">{{ h.t }}</span></sc-for></p></sc-if>
 </div>
 </sc-for>
 </div>
+<sc-if value="{{ sec.hasNote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 0 2px; font-size: 12.5px; color: #8a8f98">{{ sec.note }}</p></sc-if>
 </section>
 </sc-for>
 </div>
 </div>
 <!--FOOTER-->
 </div>
+
+<sc-if value="{{ page.hasModal }}" hint-placeholder-val="{{ false }}"><div class="scrim" style="position: absolute; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.55)"></div>
+<section role="dialog" aria-modal="true" aria-labelledby="set-add-title" style="position: absolute; z-index: 50; left: 50%; top: 200px; transform: translateX(-50%); width: 480px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 14px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px">
+<h2 id="set-add-title" style="flex: 1; margin: 0; font-size: 14px; font-weight: 500">{{ modal.title }}</h2>
+<button type="button" aria-label="Close" style="width: 28px; height: 28px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 7px; background: transparent; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button>
+</div>
+<div style="display: flex; flex-direction: column; gap: 16px; padding: 6px 18px 18px">
+<p style="margin: 0; color: #8a8f98">{{ modal.intro }}</p>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="set-add-name" style="font-size: 12px; font-weight: 500; color: #8a8f98">Name</label><input id="set-add-name" type="text" autocomplete="off" spellcheck="false" value="{{ modal.name }}" placeholder="VARIABLE_NAME" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"></div>
+<div style="display: flex; flex-direction: column; gap: 6px"><label for="set-add-value" style="font-size: 12px; font-weight: 500; color: #8a8f98">Value</label><input id="set-add-value" type="text" autocomplete="off" spellcheck="false" value="{{ modal.value }}" placeholder="Value" style="height: 34px; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011; color: #f7f8f8; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; outline: none"><span style="font-size: 12.5px; color: #8a8f98">{{ modal.hint }}</span></div>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
+<span style="flex: 1"></span>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Cancel</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: #f7f8f8; color: #08090a; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ modal.confirm }}</button>
+</div>
+</section></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
@@ -129,7 +167,7 @@ class Component extends DCLogic {
     };
   }
 
-  // The final nav. Environment and Big terminal draw their rows now and their pages in a later design issue (KERNEL-255).
+  // The final nav. Environment and Big terminal rows have their pages since KERNEL-255.
   // Room pages sit indented under their room row and only the room row has the letter. The current room is expanded, the other collapsed.
   nav() {
     var pages = [['r-general', 'General'], ['r-git', 'Git'], ['r-scripts', 'Scripts'], ['r-files', 'Files to copy'], ['r-env', 'Environment'], ['r-instructions', 'Instructions'], ['r-permissions', 'Permissions'], ['r-agents', 'Agents'], ['r-skills', 'Skills and MCP']];
@@ -156,8 +194,26 @@ class Component extends DCLogic {
     var over = function (row) { row.source = 'Overriding settings.toml'; row.reset = true; return row; };
     var rule = function (text, open) { return { label: text, type: 'rule', open: !!open, id: 'rule-' + text }; };
     var instr = function (id, label, desc, lines, open, overridden) { var r = { id: id, label: label, type: 'instr', desc: desc, lines: lines, open: open }; if (overridden) { over(r); r.desc = ''; } return r; };
+    // KERNEL-255. Masked values are a fixed run of dots, never the length of the value. Lists of things (variables, env files, presets,
+    // run scripts, preview URLs) end each row in text actions, and a section's Add button sits at the right of its heading.
+    var vr = function (id, name, value, shown) { return { id: id, label: name, type: 'var', value: value || '', shown: !!shown }; };
+    var envfile = function (path, missing) { return { label: path, type: 'file', missing: !!missing }; };
+    var kern = function (name, desc, under) { return { label: name, type: 'kernel', value: desc, under: under }; };
+    var kdisc = function (id, desc, open) { return { id: id, label: "Kernel's variables", type: 'kdisc', desc: desc, open: !!open }; };
+    var preset = function (label, desc, command, on, custom) { return { label: label, type: 'preset', desc: desc, value: command, on: !!on, custom: !!custom }; };
+    var entry = function (label, mono) { return { label: label, type: 'entry', mono: mono }; };
+    var preview = function (count, from, files) { return { label: count + ' files will be copied from', tail: from, type: 'preview', value: 'Refresh', files: files }; };
+    var iconrow = function (kind, open) { return { id: 'icon', label: 'Icon', desc: 'Shown next to the room in the sidebar and on its chats', type: 'icon', kind: kind, open: !!open }; };
+    var KERNEL_DESC = 'Set by Kernel in every chat, script and big terminal tab. You can\u2019t override them.';
+    var kernelRows = function (id) { return [kdisc(id, KERNEL_DESC, id === 'rk'), kern('KERNEL_PORT', 'The first of this workspace\u2019s 10 ports', id), kern('KERNEL_WORKSPACE_ID', 'This workspace\u2019s id', id), kern('KERNEL_WORKSPACE', 'This workspace\u2019s folder', id), kern('KERNEL_ROOT_PATH', 'The room\u2019s repository folder', id), kern('PORT', 'The same as KERNEL_PORT', id)]; };
     var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
-    return {
+    var generalSections = function (kind, open) {
+      return [
+        { title: 'Room', rows: [iconrow(kind, open), val('Repository', 'cjjutba/client-a'), val('Local path', '~/Projects/client-a'), val('Team', 'Lead, Frontend, Backend, QA, Reviewer'), sel('r-linear', 'Linear team', ['KERNEL', 'None'], 'Issues from this team open in this room')] },
+        { title: 'Danger zone', rows: [btn('Archive room', 'Archive', 'Stops every agent and archives all workspaces. You can restore it later.')] }
+      ];
+    };
+    var all = {
       general: { title: 'General', sections: [
         { title: 'General', rows: [sel('home', 'Default home view', ['Home', 'Inbox', 'Last room'], 'What opens when you launch Kernel'), tog('login', 'Open at login', true), tog('menubar', 'Show in menu bar', true, 'Approve requests and brief the Lead without opening the window'), sel('send', 'Send messages with', ['Enter', '⌘ Enter'])] },
         { title: 'Team', rows: [seg('newteam', 'Default team for new rooms', ['Starter team', 'Pair'], 0, 'What an empty room starts with'), tog('names', 'Show names instead of roles', true)] }
@@ -207,16 +263,32 @@ class Component extends DCLogic {
       integrations: { title: 'Integrations', sections: [
         { title: 'Connected', rows: [btn('GitHub', 'Manage', 'Through the GitHub CLI as cjjutba'), btn('Linear', 'Connect', 'Create workspaces from issues'), btn('Vercel', 'Connect', 'Preview deployments show up in Checks'), btn('Remote Control', 'Set up', 'Approvals and briefs from your phone')] }
       ] },
+      env: { title: 'Environment', intro: 'Variables every chat, script and big terminal tab gets, in every room. Changes apply to chats and scripts started afterwards.', sections: [
+        { title: 'Variables', action: 'Add variable', rows: [vr('ev1', 'GH_TOKEN'), vr('ev2', 'NPM_TOKEN'), vr('ev3', 'NODE_OPTIONS', '--max-old-space-size=4096', true)] },
+        { title: "Kernel's variables", rows: kernelRows('ek') }
+      ] },
+      bigterm: { title: 'Big terminal', intro: 'A terminal tab next to your chats. Hooks still report to Kernel.', sections: [
+        { title: 'Tab', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens a terminal tab in the workspace folder'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('Shortcut', ['⌘', '⇧', 'T'])] },
+        { title: 'New tab preset', action: 'Add custom command', note: 'A new tab runs the selected preset. The + menu in the tab strip lists every preset.', rows: [
+          preset('Claude', 'Claude Code in the workspace folder', 'claude', true),
+          preset('Claude without permission prompts', 'Worktrees only, never your current branch', 'claude --dangerously-skip-permissions'),
+          preset('Shell', 'Your login shell', ''),
+          preset('Codex', 'Found on your PATH', 'codex'),
+          preset('Dev server logs', 'Custom command', 'tail -f logs/dev.log', false, true)
+        ] }
+      ] },
       experimental: { title: 'Experimental', intro: 'Early features. They may change or go away.', sections: [
-        { title: 'Big terminal', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens Claude Code itself in a terminal tab, next to your chats'), code('Runs', ['claude --dangerously-skip-permissions'], 'In the workspace worktree. Hooks still report to Kernel.'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('New chat tab', ['⌘', 'T']), kbd('Big terminal tab', ['⌘', '⇧', 'T'])] },
         { title: 'Voice', rows: [tog('voice', 'Voice briefs', false, 'Hold Fn and talk to Rowan')] }
       ] },
       about: { title: 'About', sections: [
         { title: 'Kernel', rows: [val('Version', '0.1.0'), btn('Updates', 'Check for updates'), val('Data', '~/Library/Application Support/Kernel'), btn('Logs', 'Export logs'), btn('Onboarding', 'Show again')] }
       ] },
-      'r-general': roomPage('General', 'How Client A is set up in Kernel.', [
-        { title: 'Room', rows: [val('Repository', 'cjjutba/client-a'), val('Local path', '~/Projects/client-a'), val('Team', 'Lead, Frontend, Backend, QA, Reviewer'), sel('r-linear', 'Linear team', ['KERNEL', 'None'], 'Issues from this team open in this room')] },
-        { title: 'Danger zone', rows: [btn('Archive room', 'Archive', 'Stops every agent and archives all workspaces. You can restore it later.')] }
+      'r-general': roomPage('General', 'How Client A is set up in Kernel.', generalSections('letter', false)),
+      'r-icon': roomPage('General', 'How Client A is set up in Kernel.', generalSections('avatar', true)),
+      'r-env': roomPage('Environment', 'Variables for Client A. Changes apply to chats and scripts started afterwards.', [
+        { title: 'Variables', action: 'Add variable', rows: [vr('rv1', 'DATABASE_URL'), vr('rv2', 'STRIPE_SECRET_KEY')] },
+        { title: 'Env files', action: 'Add env file', note: 'Read in this order each time a chat or script starts. A later file wins, and a missing file is skipped.', rows: [envfile('.env'), envfile('src/backend/.env', true)] },
+        { title: "Kernel's variables", rows: kernelRows('rk') }
       ]),
       'r-git': roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', [
         { title: 'New workspaces', rows: [
@@ -226,15 +298,23 @@ class Component extends DCLogic {
         ] }
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
+        { title: 'Run scripts', action: 'Add run script', note: 'Each workspace gets 10 ports, $KERNEL_PORT to $((KERNEL_PORT + 9)).', rows: [
+          Object.assign(over(entry('run', 'pnpm dev --port $KERNEL_PORT')), { actions: ['Edit', 'Remove'] }),
+          Object.assign(entry('frontend', 'pnpm --filter web dev --port $KERNEL_PORT'), { actions: ['Edit', 'Remove'] }),
+          Object.assign(entry('backend', 'pnpm --filter api dev --port $((KERNEL_PORT + 1))'), { actions: ['Edit', 'Remove'] }),
+          seg('rs-mode', 'Run mode', ['Concurrent', 'One at a time'])
+        ] },
+        { title: 'Preview URLs', action: 'Add preview URL', note: '$KERNEL_PORT and $((KERNEL_PORT + 1)) work in addresses.', rows: [
+          Object.assign(from(entry('Web app', 'http://localhost:$KERNEL_PORT')), { actions: ['Edit', 'Remove'] }),
+          Object.assign(entry('API docs', 'http://localhost:$((KERNEL_PORT + 1))/docs'), { actions: ['Edit', 'Remove'] })
+        ] },
         { title: 'Workspace scripts', rows: [
           from(code('Setup', ['pnpm install', 'cp ../../.env.local .env.local'], 'Runs when a workspace is created')),
-          over(code('Run', ['pnpm dev --port $KERNEL_PORT'], 'Each workspace gets its own port')),
-          code('Archive', ['docker compose down'], 'Runs before a workspace is archived'),
-          seg('rs-mode', 'Run mode', ['Concurrent', 'One at a time'])
+          code('Archive', ['docker compose down'], 'Runs before a workspace is archived')
         ] }
       ]),
       'r-files': roomPage('Files to copy', 'Gitignored files that Client A copies into every new worktree.', [
-        { title: 'Gitignored files', rows: [from(code('Copy into every new worktree', ['.env.local', '.env.test', 'certs/*.pem'])), tog('symlink', 'Symlink node_modules', false, 'Faster setup, but workspaces share dependencies')] }
+        { title: 'Gitignored files', rows: [Object.assign(from(code('Copy into every new worktree', ['.env*', 'certs/*.pem', '.npmrc'])), { hint: [['*', 1], [' and ', 0], ['**', 1], [' don\u2019t match dot files. A pattern only reaches inside an ignored folder when it names that folder, like ', 0], ['certs/*.pem', 1], ['.', 0]] }), preview(11, '~/Projects/client-a', ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem']), tog('symlink', 'Symlink node_modules', false, 'Faster setup, but workspaces share dependencies')] }
       ]),
       'r-instructions': roomPage('Instructions', 'What agents are told in Client A. A row you leave alone uses the text from Settings, Pull requests.', [
         { title: 'Instructions', rows: [
@@ -263,6 +343,10 @@ class Component extends DCLogic {
         { title: 'MCP servers', rows: [tog('mcp1', 'GitHub', true), tog('mcp2', 'Linear', true), tog('mcp3', 'Vercel', true), tog('mcp4', 'Figma', false)] }
       ])
     };
+    // The add form opens over the room's Environment page, and the icon picker is the General page with its menu open.
+    all['r-env-add'] = Object.assign({}, all['r-env'], { nav: 'r-env', modal: { title: 'Add variable', intro: 'For Client A. It wins over the same name in Settings, Environment.', name: 'API_BASE_URL', value: 'http://localhost:4000', hint: 'Stored encrypted on your Mac, never in the repo. The list shows it as dots.', confirm: 'Add' } });
+    all['r-icon'].nav = 'r-general';
+    return all;
   }
 
   renderVals() {
@@ -276,7 +360,7 @@ class Component extends DCLogic {
     var groups = this.nav().map(function (g) {
       var items = g.items.filter(function (it) { return !q || it[1].toLowerCase().indexOf(q) >= 0; }).map(function (it) {
         var isRoom = !!it[2], isPage = it[3] === 'page';
-        var on = s.page === it[0] && !isRoom;
+        var on = (pageMap[s.page].nav || s.page) === it[0] && !isRoom;
         return {
           label: it[1], isIcon: !isRoom && !isPage, isLetter: isRoom, letter: it[2] || '', icon: icons[it[0]] || '',
           isRoom: isRoom, notRoom: !isRoom, expanded: it[3] === 'open' ? 'true' : 'false', chevron: it[3] === 'open' ? 'M2.5 4 5 6.5 7.5 4' : 'M4 2.5 6.5 5 4 7.5',
@@ -290,19 +374,57 @@ class Component extends DCLogic {
     var setVal = function (id, v) { var n = Object.assign({}, self.state.vals); n[id] = v; self.setState({ vals: n }); };
     var P = pageMap[s.page];
     var LABEL = 'font-size: 13.5px; font-weight: 500';
+    var MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
     var RULE = "width: 100%; padding: 0; border: 0; background: none; text-align: left; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 20px; color: #d0d6e0; overflow-wrap: anywhere; cursor: pointer; ";
     var sections = P.sections.map(function (sec) {
-      return { title: sec.title, rows: sec.rows.map(function (r, i) {
+      // Kernel's variables: the lines under the disclosure row only show while it is open.
+      var openOf = function (id) { var row = sec.rows.filter(function (x) { return x.id === id; })[0]; return s.vals[id] === undefined ? row.open : s.vals[id]; };
+      var rows = sec.rows.filter(function (r) { return !r.under || openOf(r.under); });
+      return { title: sec.title, hasAction: !!sec.action, action: sec.action || '', hasNote: !!sec.note, note: sec.note || '', rows: rows.map(function (r, i) {
         var v = r.id && s.vals[r.id] !== undefined ? s.vals[r.id] : undefined;
         var o = {
           label: r.label, desc: r.desc || '', hasDesc: !!r.desc, source: r.source || '', hasSource: !!r.source, hasReset: !!r.reset, reset: function () {},
           border: i === 0 ? '0' : '1px solid #1d1e22', labelStyle: LABEL, labelAct: function () {},
           isSelect: r.type === 'select', isToggle: r.type === 'toggle', isSegment: r.type === 'segment', isButton: r.type === 'button',
           isValue: r.type === 'value', isCode: r.type === 'code', isKbd: r.type === 'kbd', isMeter: r.type === 'meter',
-          isRule: r.type === 'rule', notRule: r.type !== 'rule', isDisclose: r.type === 'instr', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
+          isRule: r.type === 'rule', notRule: r.type !== 'rule', isDisclose: r.type === 'instr' || r.type === 'kdisc', isEditor: false, isRemove: r.type === 'rule', chevron: '', toggleLabel: '', expanded: 'false',
           pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
-          value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {}
+          value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
+          wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
+          hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
+          isIcon: false, isPreview: false, files: r.files || []
         };
+        if (r.actions) { o.hasActions = true; o.actions = (r.reset ? ['Reset'].concat(r.actions) : r.actions).map(function (l) { return { label: l }; }); o.hasReset = false; o.wrap = 'nowrap'; o.basis = '120px'; }
+        if (r.type === 'var') {
+          o.labelStyle = LABEL + "; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px";
+          o.hasMono = true; o.mono = r.shown ? r.value : MASK; o.monoStyle = r.shown ? '' : 'font-size: 15px; line-height: 20px; letter-spacing: 1px; color: #8a8f98';
+          o.hasActions = true; o.actions = [{ label: r.shown ? 'Hide' : 'Show' }, { label: 'Edit' }, { label: 'Delete' }]; o.wrap = 'nowrap'; o.basis = '120px';
+        }
+        if (r.type === 'file') {
+          o.labelStyle = LABEL + "; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px";
+          o.hasTag = r.missing; o.tag = 'Missing';
+          o.hasActions = true; o.actions = [{ label: 'Remove' }]; o.wrap = 'nowrap'; o.basis = '120px';
+        }
+        if (r.type === 'kernel') {
+          o.labelStyle = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0";
+          o.isNote = true; o.minH = '36px'; o.pad = '8px 18px'; o.wrap = 'nowrap'; o.basis = '120px';
+        }
+        if (r.type === 'preset') {
+          o.isPreset = true; o.checked = r.on ? 'true' : 'false'; o.mark = r.on ? '\u2713' : '';
+          o.ringBg = r.on ? '#f7f8f8' : 'transparent'; o.ringBorder = r.on ? '#f7f8f8' : '#4a4c52';
+          o.isCommand = !!r.value; o.wrap = 'nowrap'; o.basis = '120px';
+          if (r.custom) { o.hasActions = true; o.actions = [{ label: 'Edit' }, { label: 'Remove' }]; }
+        }
+        if (r.type === 'preview') { o.isPreview = true; o.isButton = true; o.wrap = 'wrap'; }
+        if (r.type === 'icon') {
+          var avatar = r.kind === 'avatar';
+          o.isIcon = true; o.value = avatar ? 'GitHub avatar' : 'Letter'; o.tileAvatar = avatar; o.tileLetter = avatar ? '' : 'A';
+          o.menuShown = !!r.open; o.menuOpen = r.open ? 'true' : 'false'; o.selBorder = r.open ? '#3a3c42' : '#23252a';
+          o.menuItems = [['Letter', 'letter'], ['GitHub avatar', 'avatar'], ['Choose image', 'image']].map(function (m) {
+            var on = m[1] === r.kind;
+            return { label: m[0], letter: m[1] === 'letter' ? 'A' : '', isAvatar: m[1] === 'avatar', isImage: m[1] === 'image', on: on, checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent' };
+          });
+        }
         if (r.type === 'select') {
           var idx = v === undefined ? 0 : v;
           o.value = r.opts[idx];
@@ -319,6 +441,12 @@ class Component extends DCLogic {
             var sel = cur === j;
             return { label: lab, checked: sel ? 'true' : 'false', bg: sel ? '#24252a' : 'transparent', color: sel ? '#f7f8f8' : '#8a8f98', pick: function () { setVal(r.id, j); } };
           });
+        }
+        if (r.type === 'kdisc') {
+          var kopen = v === undefined ? r.open : v;
+          o.label = (kopen ? 'Hide ' : 'Show ') + r.label; o.expanded = kopen ? 'true' : 'false'; o.toggleLabel = o.label;
+          o.chevron = kopen ? 'M2.5 6 5 3.5 7.5 6' : 'M2.5 4 5 6.5 7.5 4';
+          o.act = function () { setVal(r.id, !kopen); };
         }
         if (r.type === 'instr') {
           var open = v === undefined ? r.open : v;
@@ -340,9 +468,10 @@ class Component extends DCLogic {
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       groups: groups,
       navShift: inRoom ? '-142px' : '0',
+      modal: P.modal || {},
       page: {
         title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
-        isRoom: !!P.isRoom, menuShown: !!s.menu, menuOpen: s.menu ? 'true' : 'false', menuBg: s.menu ? '#1c1d21' : 'transparent',
+        isRoom: !!P.isRoom, hasModal: !!P.modal, menuShown: !!s.menu, menuOpen: s.menu ? 'true' : 'false', menuBg: s.menu ? '#1c1d21' : 'transparent',
         toggleMenu: function () { self.setState({ menu: !self.state.menu }); }
       }
     };
