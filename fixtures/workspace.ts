@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -61,6 +61,26 @@ const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<
 const PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
+
+/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select with descriptions. */
+const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
+  { question: 'Should the download keep the invoice number in the file name?', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
+  {
+    question: 'Where should the Download PDF action appear?', multiSelect: true,
+    options: [
+      { label: 'Row actions menu', description: 'Next to Duplicate and Void on every invoice row.' },
+      { label: 'Invoice detail header', description: 'Beside the status badge when an invoice is open.' },
+      { label: 'Bulk actions bar', description: 'Download the selected invoices as one zip.' }
+    ]
+  },
+  {
+    question: 'What should happen when the download fails?',
+    options: [
+      { label: 'Show a toast with a retry action', description: 'The same toast the invoice table uses.' },
+      { label: 'Show an inline error on the row', description: 'Stays until the next try.' }
+    ]
+  }
+]
 
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
@@ -386,6 +406,36 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
+  WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qs1', 'Build T-15b from the approved plan.', true),
+    ...folded('qs', 6, 0),
+    { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+  })),
+  // The card keeps its place in the transcript once answered, and the agent's reply comes after it.
+  WorkspaceQuestionAnswers: scene((f) => {
+    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+      userMsg('qa1', 'Build T-15b from the approved plan.', true),
+      ...folded('qa', 6, 0),
+      { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+    ], {
+      approvals: [{
+        ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),
+        status: 'answered',
+        answer: 'Yes, invoice-009.pdf · Row actions menu, Invoice detail header · Show a toast with a retry action',
+        answers: {
+          [DOWNLOAD_QUESTIONS[0].question]: 'Yes, invoice-009.pdf',
+          [DOWNLOAD_QUESTIONS[1].question]: 'Row actions menu, Invoice detail header',
+          [DOWNLOAD_QUESTIONS[2].question]: 'Show a toast with a retry action'
+        }
+      }, ...f.approvals]
+    })
+    const reply: ChatItem[] = [
+      { kind: 'text', id: 'qa-reply', ts: at(10, 31), text: 'Got it. I will keep the invoice number in the file name, add Download PDF to the row menu and the invoice header, and show a toast with a retry if it fails.' }
+    ]
+    return { ...s, items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), ...reply] } }
+  }),
   WorkspaceInterrupted: scene(() => ({
     items: { [ids.tableChat]: [
       userMsg('i0', 'Refactor the invoice table to use the shared DataTable component.'),
