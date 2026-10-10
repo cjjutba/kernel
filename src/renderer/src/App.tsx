@@ -61,7 +61,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'team': return <Team roomId={route.roomId} />
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
-    case 'settings': return <Settings page={route.page} roomId={route.roomId} />
+    case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} />
     case 'devUi': return <DevUi page={route.page} />
   }
 }
@@ -177,7 +177,7 @@ export function App() {
   if (!booted || (route.name === 'onboarding' && route.step === 'loading')) return <div className="app"><Loading /></div>
   return (
     <div className="app" data-sidebar={hidden ? 'hidden' : undefined}>
-      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} />}
+      {route.name === 'settings' && <SettingsNav page={route.page} roomId={route.roomId} section={route.section} />}
       {!fullWindow(route) && sidebar && <Sidebar />}
       <div className="main" style={fullWindow(route) ? { padding: 8 } : undefined}>
         <Screen route={route} />

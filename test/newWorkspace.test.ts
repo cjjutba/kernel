@@ -15,6 +15,9 @@ describe('branch naming', () => {
   it('uses feat/{task}-{slug} when a Linear issue is linked', () => {
     expect(taskBranch('feat/{slug}', 'Client portal login', 'KERNEL-16')).toBe('feat/kernel-16-client-portal-login')
     expect(taskBranch('feat/{task}-{slug}', 'Client portal login', 'T-16')).toBe('feat/t-16-client-portal-login')
+    expect(taskBranch('{type}/{task}-{slug}', "A review can't start when the reviewed branch name is long", 'KERNEL-267', 'fix')).toBe('fix/kernel-267-review-cant-start-reviewed-branch')
+    expect(taskBranch('{type}/{task}-{slug}', 'Create in the New chat modal puts the brief in an empty Lead', 'KERNEL-242')).toBe('feat/kernel-242-create-in-new-chat-modal-puts-brief')
+    expect(taskBranch('{type}/{slug}', 'Sidebar rows', '#41')).toBe('feat/41-sidebar-rows')
   })
   it('uses the plain pattern without a task', () => {
     expect(taskBranch('feat/{slug}', 'Export invoices as PDF')).toBe('feat/export-invoices-as-pdf')

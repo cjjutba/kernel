@@ -1,27 +1,31 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings } from '@shared/types'
 import { call } from '../../../api'
+import { useStore } from '../../../store'
 import { SegmentedControl, Select, Toggle } from '../../../ui'
 import { Page, Row, Section } from '../kit'
-import { patchSettings, useProjectRoom } from '../useSettings'
+import { patchSettings } from '../useSettings'
 
 type Workspace = AppSettings['workspace']
 const set = (patch: Partial<Workspace>) => void patchSettings({ workspace: patch })
 const withCurrent = (list: string[], current: string) => [...new Set([current, ...list])].map((v) => ({ value: v, label: v }))
 const home = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
 
-/** Settings > Git and worktrees (SettingsGit.png). The app defaults. A room can override them from its own page. */
+/** Settings > Git and worktrees (SettingsGit.png). The defaults for every room. A room can override them from its own Git page. */
 export function Git({ s }: { s: AppSettings }) {
   const w = s.workspace
-  const room = useProjectRoom()
+  // The defaults belong to no room, so the branches and remotes to pick from are every room's.
+  const roomIds = useStore((x) => x.rooms.filter((r) => !r.hidden && !r.archived).map((r) => r.id).join(','))
   const [branches, setBranches] = useState<string[]>([])
   useEffect(() => {
-    if (!room) return
-    void call('git.branches', { roomId: room.id }).then(setBranches).catch(() => setBranches([]))
-  }, [room?.id])
+    let live = true
+    void Promise.all(roomIds.split(',').filter(Boolean).map((roomId) => call('git.branches', { roomId }).catch(() => [] as string[])))
+      .then((lists) => live && setBranches([...new Set(lists.flat())]))
+    return () => { live = false }
+  }, [roomIds])
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
   return (
-    <Page title="Git and worktrees">
+    <Page title="Git and worktrees" intro="Defaults for every room. Each room can override them on its own Git page.">
       <Section title="New workspaces">
         <Row label="Default workspace type" desc="A worktree is an isolated copy on its own branch">
           <SegmentedControl label="Default workspace type" value={w.mode} onChange={(v) => set({ mode: v as Workspace['mode'] })} options={[{ value: 'worktree', label: 'New worktree' }, { value: 'current', label: 'Current branch' }]} />
