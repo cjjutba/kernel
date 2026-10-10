@@ -12,7 +12,7 @@ const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
-// The five checks, in canvas order. Copy matches src/main/services/preflight.ts.
+// The checks, in canvas order. Copy matches src/main/services/preflight.ts.
 const claudeOk: PreflightCheck = { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
 const authOk: PreflightCheck = { id: 'auth', ok: true, blocking: true, title: 'Signed in', detail: 'Claude Max' }
 const teamsOk: PreflightCheck = { id: 'teams', ok: true, blocking: false, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
@@ -154,10 +154,10 @@ export const platformFixtures: Record<string, Fixture> = {
     hooks: { port: 7420, listening: true, installed: true, events: hookEvents },
     ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
   })),
-  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } })),
-  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later.', meta: 'v2.0.14', fix: { command: 'claude update' } })),
+  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
+  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),
   SetupTeamsOff: setup(failing({ id: 'teams', ok: false, blocking: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
-  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } })),
+  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),

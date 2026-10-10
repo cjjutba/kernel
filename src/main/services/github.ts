@@ -208,9 +208,40 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   return undefined
 }
 
-export async function ghUser(): Promise<string | null> {
-  const r = await exec('gh', ['api', 'user', '--jq', '.login'], { timeoutMs: 10000 })
-  return r.code === 0 ? r.stdout.trim() : null
+/** Where the GitHub CLI stands. `offline` means gh has an account but couldn't reach GitHub to check its token. */
+export interface GhAuth { state: 'missing' | 'signed-out' | 'offline' | 'ok'; login?: string }
+
+/** Reads `gh auth status --json hosts` for github.com's active account. Null when it isn't that JSON. */
+export function parseGhAuth(json: string): GhAuth | null {
+  let hosts: Record<string, { state?: string; error?: string; active?: boolean; login?: string }[]> | undefined
+  try { hosts = (JSON.parse(json) as { hosts?: typeof hosts }).hosts } catch { return null }
+  if (!hosts) return null
+  const active = hosts['github.com']?.find((a) => a.active)
+  if (!active) return { state: 'signed-out' }
+  const login = active.login || undefined
+  if (active.state === 'success') return { state: 'ok', login }
+  // GitHub rejecting the token is a 401. Any other error (no network, a timeout, an outage) leaves the sign-in standing.
+  if (active.state === 'error' && /\b401\b|Bad credentials/.test(active.error ?? '')) return { state: 'signed-out', login }
+  return { state: 'offline', login }
+}
+
+/** `gh auth status`, which reads gh's own config and doesn't fail just because GitHub is out of reach. */
+export async function ghAuth(cmd: typeof exec = exec): Promise<GhAuth> {
+  const r = await cmd('gh', ['auth', 'status', '--hostname', 'github.com', '--json', 'hosts'], { timeoutMs: 15000 })
+  if (r.code === 127) return { state: 'missing' }
+  const parsed = r.code === 0 ? parseGhAuth(r.stdout) : null
+  if (parsed) return parsed
+  if (!/unknown flag/.test(r.stderr)) return { state: 'offline' }
+  // gh before `--json` on auth status: exit 0 means signed in and checked.
+  const t = await cmd('gh', ['auth', 'status', '--hostname', 'github.com'], { timeoutMs: 15000 })
+  const login = /Logged in to github\.com (?:account|as) (\S+)/.exec(t.stdout + t.stderr)?.[1]
+  return t.code === 0 ? { state: 'ok', login } : { state: 'signed-out' }
+}
+
+/** The signed-in GitHub login, when gh could check it with GitHub. */
+export async function ghUser(cmd: typeof exec = exec): Promise<string | null> {
+  const a = await ghAuth(cmd)
+  return a.state === 'ok' ? a.login ?? null : null
 }
 
 /** `gh pr list --json number,title,headRefName,author` rows as the From popover shows them. */
