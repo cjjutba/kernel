@@ -88,6 +88,19 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
 }
 
 /**
+ * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
+ * of review_of (KERNEL-299). Only for a Reviewer, so a task branched off another task is never archived with it. The base
+ * may carry `origin/`. A workspace on the main checkout has no branch of its own to review. An open workspace wins;
+ * `done` also takes an archived one whose PR merged or closed, for the start sweep.
+ */
+export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | undefined, workspaces: Workspace[], o: { self?: string; done?: boolean } = {}): Workspace | undefined {
+  if (!agent || agent.lead || !/\breview/i.test(agent.role) || !baseRef) return undefined
+  const branch = baseRef.trim().replace(/^origin\//, '')
+  const on = workspaces.filter((w) => w.id !== o.self && w.mode !== 'current' && w.branch === branch).sort((a, b) => b.createdAt - a.createdAt)
+  return on.find((w) => w.status !== 'archived') ?? (o.done ? on.find((w) => w.prState === 'merged' || w.prState === 'closed') : undefined)
+}
+
+/**
  * Tools exposed to the Lead as mcp__kernel__*. They are how a plan turns into workspaces:
  * Rowan proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
@@ -183,13 +196,15 @@ export function kernelTools(d: KernelToolDeps) {
       issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged')
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of, wait_for }) => {
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
       const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A reviewer started on another workspace's branch is a review of it, with the same checks (KERNEL-299).
+      const review_of = askedReview ?? reviewedByBase(pick, base_ref, d.workspaces())?.id
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
       // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
       if (!review_of) {

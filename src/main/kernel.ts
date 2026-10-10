@@ -26,7 +26,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
@@ -1963,6 +1963,26 @@ export class Kernel {
       if (!r?.reviewOf || r.status === 'archived') { this.unmarkReviews(id); continue }
       await this.archiveReviews(r.reviewOf, id).catch(() => undefined)
     }
+    // Reviews the Lead started with base_ref instead of review_of are linked now (KERNEL-299). Those whose work already
+    // merged or closed get no PR event, so they are archived here. Each is linked once, so a kept one is noted once. A quit
+    // right after start closes the database under it.
+    for (const r of await this.linkReviews().catch(() => [])) await this.archiveReviews(r.reviewOf!, r.id).catch(() => undefined)
+  }
+
+  /** Links each open reviewer workspace with no `reviewOf` to the workspace whose branch its base names (KERNEL-299). */
+  private async linkReviews() {
+    const linked: Workspace[] = []
+    for (const room of this.store.rooms()) {
+      const agents = await this.agents(room.id).catch(() => [])
+      const all = this.store.workspaces(room.id)
+      for (const w of all) {
+        if (w.status === 'archived' || w.reviewOf) continue
+        const of = reviewedByBase(agents.find((a) => a.id === w.agentId), w.baseRef, all, { self: w.id, done: true })
+        if (!of || of.reviewOf) continue
+        linked.push(this.saveWs({ ...w, reviewOf: of.id }))
+      }
+    }
+    return linked
   }
 
   // ---------- waits (KERNEL-259)
