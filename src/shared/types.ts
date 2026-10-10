@@ -817,7 +817,7 @@ export type SettingsPage =
 export interface AppSettings {
   hookPort: number
   worktreeRoot: string
-  general: { homeView: 'home' | 'inbox' | 'lastRoom'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
+  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
   floor: { style: 'isometric' | 'plan' | 'list'; nameTags: boolean; animate: boolean }
   appearance: { theme: Theme | 'system'; fontSize: 'default' | 'small' | 'large'; density: 'comfortable' | 'compact'; pointerCursors: boolean; reduceMotion: boolean }
   notifications: {

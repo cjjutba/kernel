@@ -1,4 +1,4 @@
-import type { Route } from '@shared/types'
+import type { Route, UiState } from '@shared/types'
 import type { State } from './store'
 
 /**
@@ -70,4 +70,56 @@ export function nearest(route: Route, s: State): Route {
     if (stillThere(home, s)) return home
   }
   return { name: 'home' }
+}
+
+/** What `kernel.lastPlace` holds: the route and every workspace's tabs, enough to open the app where it was left. */
+export interface SavedPlace { v: 1; route: Route; tabs: UiState['tabs'] }
+
+/**
+ * The value to save for the state as it is now, or nothing when this is not somewhere to reopen. Onboarding and the dev pages are not,
+ * and Settings saves the place it was opened from (`openedFrom`), so a relaunch never lands in Settings. An image or text tab lives in
+ * the screen and is gone after a restart, so a workspace on one is saved on the chat it was last on.
+ */
+export function placeToSave(s: State, openedFrom?: Place): SavedPlace | undefined {
+  const route = s.ui.route.name === 'settings' ? openedFrom?.route : s.ui.route
+  if (!route || route.name === 'onboarding' || route.name === 'devUi') return undefined
+  const tabs: UiState['tabs'] = {}
+  for (const [id, t] of Object.entries(s.ui.tabs)) tabs[id] = t.tab?.startsWith('image:') || t.tab?.startsWith('text:') ? { ...t, tab: t.lastChat } : t
+  return { v: 1, route, tabs }
+}
+
+const isText = (v: unknown): v is string => typeof v === 'string' && v !== ''
+/** Paths, where an empty one is real: the diff tab of all changes is `diff:` with no path. */
+const paths = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [])
+
+/** A saved route made sound, or nothing. Missing ids would open a screen with no room or workspace, so they are rejected here. */
+function soundRoute(r: any): Route | undefined {
+  switch (r?.name) {
+    case 'home': case 'inbox': case 'history': case 'rooms': return { name: r.name }
+    case 'issues': return isText(r.issueId) ? { name: 'issues', issueId: r.issueId } : { name: 'issues' }
+    case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
+    // Agents load after the first route is chosen, and the floor and the Board are hidden (D-104), so these open their room's Team page.
+    case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? { name: 'team', roomId: r.roomId } : undefined
+    default: return undefined // onboarding, devUi, settings and anything unknown are never reopened
+  }
+}
+
+/**
+ * Reads `kernel.lastPlace` into where to open and the tabs to bring back. The tabs are only those of workspaces that are still live, and
+ * the route is the nearest place that is still there (a closed workspace opens its room's Lead chat, a removed room opens Home). Nothing
+ * when there is nothing saved, it is not JSON, or it is a version this build doesn't know.
+ */
+export function restorePlace(raw: string | null, s: State): { route: Route; tabs: UiState['tabs'] } | undefined {
+  let saved: any
+  try { saved = raw ? JSON.parse(raw) : undefined } catch { return undefined }
+  if (saved?.v !== 1) return undefined
+  const route = soundRoute(saved.route)
+  if (!route) return undefined
+  const tabs: UiState['tabs'] = {}
+  for (const w of s.workspaces) {
+    const t = saved.tabs?.[w.id]
+    if (w.status === 'archived' || !t || typeof t !== 'object') continue
+    tabs[w.id] = { ...(isText(t.tab) ? { tab: t.tab } : {}), ...(isText(t.lastChat) ? { lastChat: t.lastChat } : {}), files: paths(t.files), diffs: paths(t.diffs) }
+  }
+  return { route: nearest(route, s), tabs }
 }

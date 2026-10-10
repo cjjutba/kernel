@@ -132,7 +132,7 @@ export const platformFixtures: Record<string, Fixture> = {
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
-  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openAtLogin: true } } }),
+  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),

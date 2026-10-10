@@ -6,7 +6,7 @@ import type {
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
-import { hasTab, isChatTab, nearest, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
+import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -181,6 +181,34 @@ const placeNow = (): Place => {
 let returnTo: Place | undefined
 let lastSettings: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection } | undefined
 let launch: Route = { name: 'home' }
+/**
+ * The place a relaunch reopens (KERNEL-201), kept in localStorage like the other `kernel.*` keys, which may be missing or blocked.
+ * Nothing is written before the first route is chosen (`system.booted`), so a restore never overwrites what it read, and none in fixture mode.
+ */
+const LAST_PLACE = 'kernel.lastPlace'
+let fixtureMode = false
+/** Fixture mode runs on a shared folder of its own and must neither read nor write what a real launch saved. */
+export const isFixture = () => fixtureMode
+function savePlace() {
+  if (!state.system.booted || fixtureMode) return
+  const place = placeToSave(state, returnTo)
+  if (!place) return
+  try { localStorage.setItem(LAST_PLACE, JSON.stringify(place)) } catch { /* not remembered */ }
+}
+function savedPlace(): string | null {
+  try { return localStorage.getItem(LAST_PLACE) } catch { return null }
+}
+// A tab closed, or a workspace's tabs dropped with the workspace, changes what a relaunch shows without being a move. Every write to
+// `ui.tabs` makes a new object (`dropTabs` keeps the old one when it drops nothing), so a changed identity is a changed tab list.
+let savedTabs = state.ui.tabs
+subscribe(() => {
+  if (state.ui.tabs === savedTabs) return
+  savedTabs = state.ui.tabs
+  savePlace()
+})
+/** The workspaces whose whole chat list has been read. `chats[id]` alone can't say: a pushed chat creates the entry with just itself. Drafts use it (KERNEL-201). */
+const loadedChats = new Set<string>()
+export const chatsLoaded = (workspaceId: string) => loadedChats.has(workspaceId)
 /** Back and forward: the places you left, newest last, and the ones Back stepped over. Module level like `returnTo`, so a restart starts empty. */
 const HISTORY_LIMIT = 50
 let past: Place[] = []
@@ -194,6 +222,8 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
     if (from.route.name !== 'settings') returnTo = from
     lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }
   }
+  // Callers apply the move before calling this, so the state is already `to` with its tabs. Saved ahead of the history block, which returns early, and for Back and Forward too.
+  savePlace()
   if (history === 'none' || samePlace(from, to)) return
   // Onboarding and the dev pages are not somewhere to come back to, and nor is a page of Settings once you are in Settings.
   const quiet = to.route.name === 'onboarding' || to.route.name === 'devUi' || from.route.name === 'onboarding' || (from.route.name === 'settings' && to.route.name === 'settings')
@@ -362,7 +392,7 @@ export const actions = {
     })
   },
   chats: {
-    set: (workspaceId: string, list: Chat[]) => setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })),
+    set: (workspaceId: string, list: Chat[]) => { loadedChats.add(workspaceId); setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })) },
     upsert: (chat: Chat) => setState((s) => ({ chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) } })),
     setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
@@ -483,6 +513,7 @@ export async function boot() {
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
+  fixtureMode = !!fixture
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
@@ -491,12 +522,15 @@ export async function boot() {
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)
+  // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
+  // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.
+  const opening = launchRoute()
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
   else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' }, replace)
-  else { launch = homeRoute(settings); go(launch, replace) }
+  else go(opening, replace)
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
@@ -506,14 +540,25 @@ export async function boot() {
 }
 
 /**
- * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
- * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
+ * Where the app opens once the checks pass: `boot` goes there, and so does Continue on the checks screen (call it with `go(..., { history: 'replace' })`),
+ * so the two can't drift. Settings > General > Default home view picks it. Where I left off reopens the saved place and brings back the tabs
+ * of its workspaces that are still live (a tab already open wins, so asking twice changes nothing). Without a saved place (a first launch,
+ * unreadable JSON, fixture mode) it opens the last room's Lead chat, found the way the sidebar does (the `lead` workspace on the main
+ * checkout), since agents load after this. A room nobody has briefed opens Team (D-104). Also the route Settings falls back to (`launch`).
  */
-function homeRoute(settings: AppSettings): Route {
-  const { homeView } = settings.general
-  if (homeView === 'inbox') return { name: 'inbox' }
-  const last = homeView === 'lastRoom' ? state.rooms.find((r) => r.id === lastRoom()) : undefined
-  return last ? nearest(roomHome(last.id, state), state) : { name: 'home' }
+export function launchRoute(): Route {
+  const openTo = state.settings?.general.openTo
+  let route: Route = { name: 'home' }
+  if (openTo === 'inbox') route = { name: 'inbox' }
+  else if (openTo === 'lastPlace') {
+    const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)
+    const last = state.rooms.find((r) => r.id === lastRoom())
+    if (restored) {
+      setState((s) => ({ ui: { ...s.ui, tabs: { ...restored.tabs, ...s.ui.tabs } } }))
+      route = restored.route
+    } else if (last) route = nearest(roomHome(last.id, state), state)
+  }
+  return launch = route
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */

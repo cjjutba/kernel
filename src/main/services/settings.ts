@@ -13,7 +13,7 @@ export type RepoSettings = RoomSettings
 export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
-  general: { homeView: 'home', openAtLogin: false, menuBar: true, sendWith: 'enter' },
+  general: { openTo: 'lastPlace', openAtLogin: false, menuBar: true, sendWith: 'enter' },
   floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
@@ -37,7 +37,15 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
   const defaults = DEFAULT_SETTINGS(home)
   try {
-    const s = deepMerge(defaults, JSON.parse(await readFile(file, 'utf8')))
+    const saved = JSON.parse(await readFile(file, 'utf8'))
+    const s = deepMerge(defaults, saved)
+    // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
+    // The check reads the file, since the merge above always fills openTo. Dropping homeView makes this run once.
+    const old = (s.general as { homeView?: string }).homeView
+    if (old !== undefined) {
+      if (saved?.general?.openTo === undefined) s.general.openTo = old === 'inbox' ? 'inbox' : 'lastPlace'
+      delete (s.general as { homeView?: string }).homeView
+    }
     // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
     delete (s.models as { maxConcurrent?: number }).maxConcurrent
     s.models.effortByModel = effortMemory(s.models.effortByModel)
