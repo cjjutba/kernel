@@ -895,6 +895,18 @@ export interface TerminalPreset {
   skipsPermissions: boolean
 }
 
+/** The flag Only in worktrees takes out of a command on a current-branch workspace (KERNEL-248). */
+export const SKIP_FLAG = '--dangerously-skip-permissions'
+
+/** Other agent CLIs the big terminal lists when they are on the PATH. Settings checks a custom command's name against these (KERNEL-248, KERNEL-251). */
+export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
+  { id: 'codex', name: 'Codex' },
+  { id: 'opencode', name: 'OpenCode' },
+  { id: 'amp', name: 'Amp' },
+  { id: 'copilot', name: 'Copilot' },
+  { id: 'gemini', name: 'Gemini' }
+]
+
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
