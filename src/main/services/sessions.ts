@@ -90,7 +90,7 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
-  /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and Settings, Integrations (KERNEL-226). */
+  /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
