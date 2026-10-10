@@ -89,7 +89,7 @@ function StepRow({ icon, failed, label, detail, mono, meta, compact, children }:
 }
 
 function ThinkingRow({ item, compact }: { item: Extract<ChatItem, { kind: 'thinking' }>; compact?: boolean }) {
-  return <StepRow icon="bulb" label="Thinking" detail={item.text} compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
+  return <StepRow icon={compact ? undefined : 'bulb'} label="Thinking" detail={item.text} compact={compact}>{item.text.trim() && <div className="step-text">{item.text}</div>}</StepRow>
 }
 
 const text = (v: unknown) => (typeof v === 'string' && v ? v : undefined)
