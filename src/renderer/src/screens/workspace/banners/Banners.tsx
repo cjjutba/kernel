@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react'
-import type { Chat, Workspace } from '@shared/types'
+import { useEffect, useMemo, useState } from 'react'
+import type { Chat, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../../api'
 import { actions, go, loadWorkspace, useStore } from '../../../store'
 import { Banner, Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
-import { bannerFor, type BannerAction, type BannerView } from './model'
+import { bannerFor, setupCommand, type BannerAction, type BannerView } from './model'
 import './banners.css'
-
-const NO_LINES: never[] = []
 
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
@@ -23,7 +21,10 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const online = useStore((s) => s.system.online)
   const hooks = useStore((s) => s.system.hooks)
   const retry = useStore((s) => (chat ? s.retry[chat.id] : undefined))
-  const scripts = useStore((s) => (ws ? s.scripts[ws.id] ?? NO_LINES : NO_LINES))
+  // Only a failed setup reads the script log, and only for the command that failed. Selecting that string, not the log, keeps a
+  // noisy script from rendering the workspace for every line it prints.
+  const setupCmd = useStore((s) => (ws?.status === 'failed' ? setupCommand(s.scripts[ws.id]) : undefined))
+  const scripts = useMemo<ScriptLine[] | undefined>(() => (setupCmd ? [{ kind: 'setup', line: `$ ${setupCmd}`, stream: 'stdout' }] : undefined), [setupCmd])
   const setupCode = useStore((s) => (ws ? s.scriptExit[ws.id]?.setup : undefined))
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -86,7 +87,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       })
       case 'terminal': return run(id, 'Could not open Terminal', () => call('app.openTerminal', { cwd: ws.path, command: 'claude /login' }))
       case 'signIn': return run(id, 'Could not sign in', async () => actions.account.set(await call('account.signIn', undefined)))
-      case 'editScript': return go({ name: 'settings', page: 'scripts', roomId: ws.roomId })
+      case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })
         await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })

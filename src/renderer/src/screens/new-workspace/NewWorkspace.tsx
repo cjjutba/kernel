@@ -12,6 +12,7 @@ import { effortFor } from '@shared/effort'
 import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
+import { useRemote } from '../settings/useSettings'
 import { FromPopover } from './FromPopover'
 import { briefParts, leadMessage, pickedLines } from './brief'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
@@ -60,9 +61,10 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const [error, setError] = useState<{ message: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
-  const fallback = `origin/${current?.defaultBranch ?? 'main'}`
+  const remote = useRemote(room)
+  const fallback = `${remote}/${current?.defaultBranch ?? 'main'}`
   const target = baseRef || fallback
-  const targets = useMemo(() => targetOptions(branches, fallback, target), [branches, fallback, target])
+  const targets = useMemo(() => targetOptions(branches, fallback, target, remote), [branches, fallback, target, remote])
   const modeInfo = MODES.find((m) => m.id === mode) ?? MODES[0]
   const label = sourceLabel(source)
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model

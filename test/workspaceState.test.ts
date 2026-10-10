@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState } from '@shared/types'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 import { run } from '../src/main/services/exec'
 import { unpushedCommits } from '../src/main/services/archive'
 import { Kernel } from '../src/main/kernel'
@@ -34,6 +34,7 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
     reopen: async () => undefined
   }
   const room = await k.addRoom(repo)
+  await trustRoom(k, room.id)
   return { k, room, gh }
 }
 

@@ -20,7 +20,13 @@ import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsF
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
-const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
+/** Routes hold only strings, so equal fields mean the same page. An unset field and a missing one are the same. */
+const same = (a: Route, b: Route) => {
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>
+  for (const k in x) if (x[k] !== y[k]) return false
+  for (const k in y) if (!(k in x) && y[k] !== undefined) return false
+  return true
+}
 
 /** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
 const HINT_DELAY = 400
@@ -274,7 +280,12 @@ const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDE
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps)).filter(needsYou).length)
+  // The count reads these four slices and nothing else, so terminal chunks and script lines leave it alone.
+  const notifications = useStore((s) => s.notifications)
+  const approvals = useStore((s) => s.approvals)
+  const allRooms = useStore((s) => s.rooms)
+  const overlaps = useStore((s) => s.overlaps)
+  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou).length, [notifications, approvals, allRooms, overlaps])
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()
@@ -313,7 +324,7 @@ export function Sidebar() {
       <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
-        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
+        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
