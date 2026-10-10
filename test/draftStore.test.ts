@@ -148,6 +148,22 @@ describe('drafts on disk', () => {
   })
 })
 
+describe('fixture mode', () => {
+  it('neither reads nor writes what a real launch saved', async () => {
+    const real = await launch()
+    real.saveDraft('a', words('real draft'), 'w1')
+    vi.advanceTimersByTime(500)
+    const before = disk.get('kernel.drafts')
+    const fixture = await launch()
+    fixture.persistDrafts(false)
+    expect(fixture.loadDraft('a')).toBeUndefined()
+    fixture.saveDraft('b', words('typed in a fixture'), 'w1')
+    vi.advanceTimersByTime(500)
+    expect(disk.get('kernel.drafts')).toBe(before)
+    expect(fixture.loadDraft('b')).toEqual(words('typed in a fixture'))
+  })
+})
+
 describe('pruning drafts', () => {
   const s = {
     workspaces: [{ id: 'w1', status: 'ready' }, { id: 'w2', status: 'archived' }, { id: 'w3', status: 'ready' }],

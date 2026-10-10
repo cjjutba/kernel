@@ -3,8 +3,8 @@ import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, pastedText } from './attach'
 import { ComposerChip } from './Chip'
-import { chatsLoaded, getState, subscribe } from '../../../store'
-import { loadDraft, pruneDrafts, saveDraft } from './draftStore'
+import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
+import { loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
 
 const text = (t: string): ChatPart => ({ type: 'text', text: t })
 
@@ -17,6 +17,7 @@ subscribe(() => {
   const s = getState()
   if (!s.system.booted || (seen && seen.chats === s.chats && seen.workspaces === s.workspaces)) return
   seen = { chats: s.chats, workspaces: s.workspaces }
+  persistDrafts(!isFixture())
   pruneDrafts(s, chatsLoaded)
 })
 

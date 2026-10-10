@@ -14,6 +14,9 @@ const DELAY_MS = 500
 /** A draft bigger than this once serialized stays in memory only. */
 const MAX_DRAFT_BYTES = 100 * 1024
 
+/** Off in fixture mode, which must not read or write what a real launch saved. */
+let enabled = true
+export const persistDrafts = (on: boolean) => { enabled = on }
 let loaded = false
 let dirty = false
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -21,7 +24,7 @@ let listening = false
 
 /** The drafts on disk, read once on first use. A value that isn't what this wrote is ignored. */
 function load() {
-  if (loaded) return
+  if (loaded || !enabled) return
   loaded = true
   try {
     const file: unknown = JSON.parse(localStorage.getItem(KEY) ?? 'null')
@@ -39,7 +42,7 @@ function load() {
 function flush() {
   if (timer) clearTimeout(timer)
   timer = undefined
-  if (!dirty) return
+  if (!dirty || !enabled) return
   dirty = false
   const drafts: Record<string, Draft> = {}
   for (const [chatId, d] of saved) {

@@ -185,6 +185,8 @@ let launch: Route = { name: 'home' }
  */
 const LAST_PLACE = 'kernel.lastPlace'
 let fixtureMode = false
+/** Fixture mode runs on a shared folder of its own and must neither read nor write what a real launch saved. */
+export const isFixture = () => fixtureMode
 function savePlace() {
   if (!state.system.booted || fixtureMode) return
   const place = placeToSave(state, returnTo)
@@ -511,12 +513,16 @@ export async function boot() {
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)
+  // Where I left off brings back every workspace's tabs before any route is chosen. A launch that stops at the checks still keeps them,
+  // or the first move after the checks would save an empty tab list over them.
+  const restored = settings.general.openTo === 'lastPlace' && !fixtureMode ? restorePlace(savedPlace(), state) : undefined
+  if (restored) setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, ...restored.tabs } } }))
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
   else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' }, replace)
-  else { launch = homeRoute(settings); go(launch, replace) }
+  else { launch = homeRoute(settings, restored?.route); go(launch, replace) }
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
@@ -526,20 +532,16 @@ export async function boot() {
 }
 
 /**
- * Settings > General > Default home view: where the app opens. Where I left off reopens the saved place and brings back the tabs
- * of its workspaces that are still live. Without one (a first launch, unreadable JSON, fixture mode) it opens the last room's Lead chat,
+ * Settings > General > Default home view: where the app opens. Where I left off reopens the saved place (`restored`, read by `boot`,
+ * which also brought back the tabs of its workspaces that are still live). Without one (a first launch, unreadable JSON, fixture mode) it opens the last room's Lead chat,
  * found the way the sidebar does (the `lead` workspace on the main checkout), since agents load after this. A room nobody
  * has briefed opens Team (D-104).
  */
-function homeRoute(settings: AppSettings): Route {
+function homeRoute(settings: AppSettings, restored?: Route): Route {
   const { openTo } = settings.general
   if (openTo === 'inbox') return { name: 'inbox' }
   if (openTo === 'home') return { name: 'home' }
-  const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)
-  if (restored) {
-    setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, ...restored.tabs } } }))
-    return restored.route
-  }
+  if (restored) return restored
   const last = state.rooms.find((r) => r.id === lastRoom())
   return last ? nearest(roomHome(last.id, state), state) : { name: 'home' }
 }
