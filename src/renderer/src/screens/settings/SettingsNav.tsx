@@ -2,7 +2,7 @@ import './settings.css'
 import { useEffect, useRef, useState } from 'react'
 import type { RoomSettingsSection, SettingsPage } from '@shared/types'
 import { actions, getState, go, useStore } from '../../store'
-import { roomLetter } from '../rooms/roomInfo'
+import { RoomIcon } from '../../components/RoomIcon'
 import { Icon } from '../../ui'
 import { ROOM_PAGES } from './roomPages'
 
@@ -104,7 +104,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
                   if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
                   else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
                 }}>
-                  <span className="set-letter" aria-hidden="true">{roomLetter(r.name)}</span><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
+                  <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
                 </button>
                 {expanded && pages.map((p, n) => (
                   <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>

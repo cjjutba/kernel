@@ -109,17 +109,27 @@ const DETAIL = `query IssueDetail($id: String!) {
   issue(id: $id) { ${ISSUE_FIELDS}
     description
     comments(first: 50) { nodes { id body createdAt user { name } } }
+    inverseRelations { nodes { type issue { identifier } } }
   }
 }`
 
-/** One issue by identifier ("KERNEL-83"), which Linear's `issue(id:)` takes as well as the uuid. Comments oldest first. */
-export async function getIssue(token: string | undefined, id: string, fetchImpl: typeof fetch = fetch): Promise<LinearIssueDetail> {
-  type Node = IssueNode & { description: string | null; comments: { nodes: { id: string; body: string; createdAt: string; user: { name: string } | null }[] } }
+/**
+ * One issue by identifier ("KERNEL-83"), which Linear's `issue(id:)` takes as well as the uuid. Comments oldest first.
+ * `blockedBy` holds the identifiers of the issues that block it: Linear saves "A blocks B" once, as a relation of A's,
+ * so B reads it among its inverse relations (KERNEL-263).
+ */
+export async function getIssue(token: string | undefined, id: string, fetchImpl: typeof fetch = fetch): Promise<LinearIssueDetail & { blockedBy: string[] }> {
+  type Node = IssueNode & {
+    description: string | null
+    comments: { nodes: { id: string; body: string; createdAt: string; user: { name: string } | null }[] }
+    inverseRelations?: { nodes: { type: string; issue: { identifier: string } | null }[] }
+  }
   const { issue } = await linearRequest<{ issue: Node }>(token, DETAIL, { id }, fetchImpl)
   const comments: LinearComment[] = issue.comments.nodes
     .map((c) => ({ id: c.id, body: c.body, ...(c.user ? { author: c.user.name } : {}), createdAt: c.createdAt }))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  return { ...toIssue(issue), description: issue.description ?? '', comments }
+  const blockedBy = [...new Set((issue.inverseRelations?.nodes ?? []).flatMap((r) => (r.type === 'blocks' && r.issue ? [r.issue.identifier] : [])))]
+  return { ...toIssue(issue), description: issue.description ?? '', comments, blockedBy }
 }
 
 const SCOPE = `query Scope {

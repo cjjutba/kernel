@@ -43,7 +43,17 @@ async function openRows(page: Page, rows: string[]) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
+async function stepToSecondQuestion(page: Page) {
+  await page.getByRole('button', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('checkbox', { name: 'Row actions menu' }).click()
+  await page.getByRole('checkbox', { name: 'Invoice detail header' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page) => Promise<void>> = {
+  WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
 }

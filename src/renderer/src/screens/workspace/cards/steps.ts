@@ -1,5 +1,5 @@
 import { linkText } from '@shared/links'
-import type { Approval, ChatPart, PlanStep } from '@shared/types'
+import type { Approval, AskedQuestion, ChatPart, Decision, PlanStep } from '@shared/types'
 import { leadingTitle, parseBlocks, type Block } from '../mdParse'
 
 type PlanSource = Pick<Approval, 'steps' | 'detail' | 'input'>
@@ -67,4 +67,35 @@ export function outcome(a: Approval): string {
     case 'answered': return a.answer ? `You answered: ${a.answer}` : 'Answered'
     default: return 'Expired'
   }
+}
+
+/** What one question holds while you step through them: the options ticked, and a typed answer when Something else is on. */
+export interface Picked { sel: string[]; other: boolean; text: string }
+
+export const emptyPick = (): Picked => ({ sel: [], other: false, text: '' })
+
+/** Several questions, or any that takes more than one answer, step one at a time. One single-select question is one click. */
+export const isStepped = (a: Pick<Approval, 'questions'>): boolean => (a.questions?.length ?? 0) > 1 || !!a.questions?.some((q) => q.multiSelect)
+
+/** Next or Send waits until something is checked, and until Something else has text. */
+export const pickReady = (p: Picked): boolean => (p.sel.length > 0 || p.other) && (!p.other || !!p.text.trim())
+
+/** One question's answer: the ticked labels in the order asked, then the typed text, joined with ", ". */
+export function pickAnswer(q: AskedQuestion, p: Picked): string {
+  const labels = q.options.map((o) => o.label).filter((l) => p.sel.includes(l))
+  return [...labels, ...(p.other && p.text.trim() ? [p.text.trim()] : [])].join(', ')
+}
+
+/** The one decision that sends every answer: keyed by question text, joined with " · " for display. */
+export function answerDecision(questions: AskedQuestion[], picks: Picked[]): Extract<Decision, { behavior: 'answer' }> {
+  const answers: Record<string, string> = {}
+  questions.forEach((q, i) => { answers[q.question] = pickAnswer(q, picks[i] ?? emptyPick()) })
+  return { behavior: 'answer', text: Object.values(answers).join(' · '), answers }
+}
+
+/** The answered list for several questions, in the order asked. Nothing when the answers were not kept, so the plain line shows. */
+export function answeredList(a: Pick<Approval, 'questions' | 'answers'>): { question: string; answer: string }[] | undefined {
+  const qs = a.questions
+  if (!qs || qs.length < 2 || !a.answers) return undefined
+  return qs.map((q) => ({ question: q.question, answer: a.answers?.[q.question] ?? '' }))
 }
