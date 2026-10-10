@@ -64,6 +64,10 @@ export async function openRoom(roomId: string): Promise<void> {
  * so the tab is set first and the navigation shows it.
  */
 export async function openLeadChat(roomId: string, chatId: string): Promise<void> {
+  // With the Lead's workspace already on screen there is nothing to look up, so switching chats doesn't wait on the engine.
+  const s = getState()
+  const shown = s.ui.route.name === 'workspace' ? s.workspaces.find((w) => w.id === (s.ui.route as { workspaceId: string }).workspaceId) : undefined
+  if (shown && isLeadWorkspace(shown, roomId, leadOf(s.agents, roomId)?.id)) return actions.ui.openTab(shown.id, chatId)
   const ws = await leadWorkspace(roomId)
   if (!ws) return
   actions.ui.openTab(ws.id, chatId)

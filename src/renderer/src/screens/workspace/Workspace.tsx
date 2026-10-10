@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
-import { actions, loadWorkspace, useStore } from '../../store'
+import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
@@ -61,7 +61,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const [panelWidth, setPanelWidth] = useState(() => readWidth(PANEL_KEY, PANEL_MIN, PANEL_MAX))
   const panelLimit = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, (aside.current?.parentElement?.clientWidth ?? window.innerWidth) - CHAT_MIN))
 
-  const lastChat = chats.some((c) => c.id === tabs?.lastChat) ? tabs?.lastChat : undefined
+  const lastChat = chats.some((c) => !c.closed && c.id === tabs?.lastChat) ? tabs?.lastChat : undefined
   // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
   const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
   const tab = gone ? lastChat ?? chats[0]?.id : stored
@@ -77,8 +77,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
-  // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace.
-  useEffect(() => { setImages([]); setTexts([]) }, [workspaceId])
+  // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
+  // store from before goes back to the chat, or the sidebar and closing a chat would still think it is the one on screen.
+  useEffect(() => {
+    setImages([]); setTexts([])
+    const t = getState().ui.tabs[workspaceId]
+    if (t?.tab?.startsWith('image:') || t?.tab?.startsWith('text:')) actions.ui.setTabs(workspaceId, { tab: t.lastChat })
+  }, [workspaceId])
 
   useEffect(() => { void loadWorkspace(workspaceId) }, [workspaceId])
   const refresh = () => call('workspaces.changes', { workspaceId }).then(setChanges).catch(() => setChanges([]))
