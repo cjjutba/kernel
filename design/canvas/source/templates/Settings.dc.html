@@ -105,7 +105,7 @@
 </div></sc-if>
 </div></sc-if>
 <sc-if value="{{ r.isPreview }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; position: relative; box-sizing: border-box; height: 148px; overflow-y: auto; padding: 10px 14px 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.files }}" as="f" hint-placeholder-count="6"><div style="white-space: pre">{{ f }}</div></sc-for></div></sc-if>
-<sc-if value="{{ r.hasHint }}" hint-placeholder-val="{{ false }}"><p style="flex-basis: 100%; margin: 0; font-size: 12.5px; color: #8a8f98; text-wrap: balance">{{ r.hint }}</p></sc-if>
+<sc-if value="{{ r.hasHint }}" hint-placeholder-val="{{ false }}"><p style="flex-basis: 100%; margin: 0; font-size: 12.5px; color: #8a8f98"><sc-for list="{{ r.hint }}" as="h" hint-placeholder-count="3"><span style="{{ h.style }}">{{ h.t }}</span></sc-for></p></sc-if>
 </div>
 </sc-for>
 </div>
@@ -268,7 +268,7 @@ class Component extends DCLogic {
         { title: "Kernel's variables", rows: kernelRows('ek') }
       ] },
       bigterm: { title: 'Big terminal', intro: 'A terminal tab next to your chats. Hooks still report to Kernel.', sections: [
-        { title: 'Tab', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens a terminal tab in the workspace folder'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('Big terminal tab', ['⌘', '⇧', 'T'])] },
+        { title: 'Tab', rows: [tog('bigterm', 'Big terminal tab', true, 'Opens a terminal tab in the workspace folder'), tog('bigtermwt', 'Only in worktrees', true, 'Never skip permissions on your current branch'), kbd('Shortcut', ['⌘', '⇧', 'T'])] },
         { title: 'New tab preset', action: 'Add custom command', note: 'A new tab runs the selected preset. The + menu in the tab strip lists every preset.', rows: [
           preset('Claude', 'Claude Code in the workspace folder', 'claude', true),
           preset('Claude without permission prompts', 'Worktrees only, never your current branch', 'claude --dangerously-skip-permissions'),
@@ -299,13 +299,13 @@ class Component extends DCLogic {
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
         { title: 'Run scripts', action: 'Add run script', note: 'Each workspace gets 10 ports, $KERNEL_PORT to $((KERNEL_PORT + 9)).', rows: [
-          Object.assign(entry('run', 'pnpm dev --port $KERNEL_PORT'), { actions: ['Edit', 'Remove'] }),
+          Object.assign(over(entry('run', 'pnpm dev --port $KERNEL_PORT')), { actions: ['Edit', 'Remove'] }),
           Object.assign(entry('frontend', 'pnpm --filter web dev --port $KERNEL_PORT'), { actions: ['Edit', 'Remove'] }),
           Object.assign(entry('backend', 'pnpm --filter api dev --port $((KERNEL_PORT + 1))'), { actions: ['Edit', 'Remove'] }),
           seg('rs-mode', 'Run mode', ['Concurrent', 'One at a time'])
         ] },
-        { title: 'Preview URLs', action: 'Add preview URL', rows: [
-          Object.assign(entry('Web app', 'http://localhost:$KERNEL_PORT'), { actions: ['Edit', 'Remove'] }),
+        { title: 'Preview URLs', action: 'Add preview URL', note: '$KERNEL_PORT and $((KERNEL_PORT + 1)) work in addresses.', rows: [
+          Object.assign(from(entry('Web app', 'http://localhost:$KERNEL_PORT')), { actions: ['Edit', 'Remove'] }),
           Object.assign(entry('API docs', 'http://localhost:$((KERNEL_PORT + 1))/docs'), { actions: ['Edit', 'Remove'] })
         ] },
         { title: 'Workspace scripts', rows: [
@@ -314,7 +314,7 @@ class Component extends DCLogic {
         ] }
       ]),
       'r-files': roomPage('Files to copy', 'Gitignored files that Client A copies into every new worktree.', [
-        { title: 'Gitignored files', rows: [Object.assign(from(code('Copy into every new worktree', ['.env*', 'certs/*.pem', '.npmrc'])), { hint: '* and ** don\u2019t match dot files. A pattern only reaches inside an ignored folder when it names that folder, like certs/*.pem.' }), preview(11, '~/Projects/client-a', ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem']), tog('symlink', 'Symlink node_modules', false, 'Faster setup, but workspaces share dependencies')] }
+        { title: 'Gitignored files', rows: [Object.assign(from(code('Copy into every new worktree', ['.env*', 'certs/*.pem', '.npmrc'])), { hint: [['*', 1], [' and ', 0], ['**', 1], [' don\u2019t match dot files. A pattern only reaches inside an ignored folder when it names that folder, like ', 0], ['certs/*.pem', 1], ['.', 0]] }), preview(11, '~/Projects/client-a', ['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem']), tog('symlink', 'Symlink node_modules', false, 'Faster setup, but workspaces share dependencies')] }
       ]),
       'r-instructions': roomPage('Instructions', 'What agents are told in Client A. A row you leave alone uses the text from Settings, Pull requests.', [
         { title: 'Instructions', rows: [
@@ -391,10 +391,10 @@ class Component extends DCLogic {
           pct: (r.pct || 0) + '%', num: String(r.pct || 0), barColor: (r.pct || 0) >= 85 ? '#d0d6e0' : '#f7f8f8',
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
-          hasHint: !!r.hint, hint: r.hint || '', isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
+          hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
           isIcon: false, isPreview: false, files: r.files || []
         };
-        if (r.actions) { o.hasActions = true; o.actions = r.actions.map(function (l) { return { label: l }; }); o.wrap = 'nowrap'; o.basis = '120px'; }
+        if (r.actions) { o.hasActions = true; o.actions = (r.reset ? ['Reset'].concat(r.actions) : r.actions).map(function (l) { return { label: l }; }); o.hasReset = false; o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'var') {
           o.labelStyle = LABEL + "; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px";
           o.hasMono = true; o.mono = r.shown ? r.value : MASK; o.monoStyle = r.shown ? '' : 'font-size: 15px; line-height: 20px; letter-spacing: 1px; color: #8a8f98';
