@@ -234,6 +234,20 @@ export interface Workspace {
   createdAt: number
   mergedAt?: number
   archivedAt?: number
+  /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
+  waitsFor?: WaitsFor
+}
+
+/**
+ * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't
+ * gone out. `base` is HEAD when the brief was held. `releasing` means they merged and the teammate, which had already
+ * started, hasn't taken Kernel's message yet.
+ */
+export interface WaitsFor {
+  on: string[]
+  held: boolean
+  base?: string
+  releasing?: boolean
 }
 
 /** Git facts the archive and discard confirmations show (ConfirmArchive.png, ConfirmDiscard.png). */
@@ -380,6 +394,12 @@ export interface QueuedMessage {
   update?: TeamUpdate
 }
 
+/**
+ * What a chat's queue waits for: the running turn, the workspace's setup, a paused room, every room held (`offline` covers
+ * a lost connection and a sign-out alike), or the agent limit in Settings, Models. Computed, never saved (KERNEL-271).
+ */
+export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'
 
@@ -388,6 +408,7 @@ export type TeamEventKind =
   | 'turn' | 'error' | 'crash' | 'setup.failed' | 'setup.passed'
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   | 'review'
+  | 'wait.started' | 'wait.released' | 'wait.broken'
 
 /** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
 export interface TeamUpdateEvent {

@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Chat, Decision, Workspace } from '@shared/types'
@@ -119,6 +119,19 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
+  })
+})
+
+describe('waiting for another PR (KERNEL-259)', () => {
+  it('tells the Lead to pass wait_for, to call wait_for_merge for a teammate that waits, and how to start one anyway', async () => {
+    expect(LEAD_RULE).toContain("When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it.")
+    expect(LEAD_RULE).toContain('When a teammate says it is waiting on another PR, call wait_for_merge for it.')
+    expect(LEAD_RULE).toContain('To start a waiting teammate anyway, call wait_for_merge with an empty list.')
+    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
+    expect(rowan).toContain("pass that workspace's id in wait_for and tell the user which merge starts it")
+    const tools = kernelTools({} as KernelToolDeps)
+    expect(tools.find((x) => x.name === 'create_workspace')!.description).not.toContain('Starts the agent right away')
+    expect(tools.map((x) => x.name)).toContain('wait_for_merge')
   })
 })
 

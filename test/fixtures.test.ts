@@ -6,7 +6,8 @@ import { fixtureHandlers } from '../src/main/fixtures'
 
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
-const noCanvas = ['WorkspaceTabStates', 'WorkspaceRowsOpen', 'WorkspaceRowsFolded', 'WorkspaceDiffTab', 'WorkspaceLeadPlan', 'WorkspaceLeadUpdate', 'WorkspaceContextRing', 'WorkspaceContextPopover', 'InboxOverlap', 'TeamEmpty', 'QuickAskAnswered', 'QuickAskOpenChat', 'QuickAskLeadGone', 'NavMemory', 'SidebarLeadChats', 'WhatsNewCurrent', 'UpdateReadyLight']
+const noCanvas = ['WorkspaceTabStates', 'WorkspaceRowsOpen', 'WorkspaceRowsFolded', 'WorkspaceDiffTab', 'WorkspaceLeadPlan', 'WorkspaceLeadUpdate', 'WorkspaceContextRing', 'WorkspaceContextPopover', 'InboxOverlap', 'TeamEmpty', 'QuickAskAnswered', 'QuickAskOpenChat', 'QuickAskLeadGone', 'NavMemory', 'SidebarLeadChats', 'WhatsNewCurrent', 'UpdateReadyLight',
+  ...['NoChanges', 'None', 'Creating', 'Open', 'Checks', 'Conflict', 'Resolving', 'Ready', 'Merging'].map((s) => `WorkspacePR${s}`)]
 
 describe('fixtures', () => {
   it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {

@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -112,6 +112,8 @@ export interface KernelApi {
   /** Start a crashed session again (FloorOffline "Restart session"). */
   'chats.restart': { req: { chatId: string }; res: Ok }
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
+  /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
+  'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
@@ -220,7 +222,11 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
-  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[] }
+  /**
+   * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
+   * and is absent once it is empty (KERNEL-271).
+   */
+  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
   | { type: 'terminal.data'; chatId: string; data: string }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }

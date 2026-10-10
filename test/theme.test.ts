@@ -28,7 +28,7 @@ const channel = (h: string, i: number) => { const v = parseInt(h.slice(i, i + 2)
 const lum = (h: string) => 0.2126 * channel(h, 1) + 0.7152 * channel(h, 3) + 0.0722 * channel(h, 5)
 const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
 
-const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover', 'card-bg', 'code-bg', 'input-bg']
+const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover', 'card-bg', 'code-bg', 'input-bg', 'aside']
 const TEXT = ['ink', 'ink-2', 'ink-3', 'muted', 'add', 'del', 'merged', 'working', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 
@@ -42,7 +42,7 @@ describe('theme contrast', () => {
   })
   it('dark text, diff, merged and terminal colors reach 4.5:1 on the main surfaces', () => {
     const fails: string[] = []
-    for (const t of [...TEXT, ...TERM.filter((n) => n !== 'term-black')]) for (const s of ['canvas', 'panel', 'surface', 'surface-2', 'code-bg']) if (contrast(dark[t], dark[s]) < 4.5) fails.push(`${t} on ${s}: ${contrast(dark[t], dark[s]).toFixed(2)}`)
+    for (const t of [...TEXT, ...TERM.filter((n) => n !== 'term-black')]) for (const s of ['canvas', 'panel', 'surface', 'surface-2', 'code-bg', 'aside']) if (contrast(dark[t], dark[s]) < 4.5) fails.push(`${t} on ${s}: ${contrast(dark[t], dark[s]).toFixed(2)}`)
     expect(fails).toEqual([])
   })
   it('hover card status words reach 4.5:1 on their pill in both themes', () => {
@@ -55,6 +55,23 @@ describe('theme contrast', () => {
     expect(contrast(light['on-solid'], light.danger)).toBeGreaterThanOrEqual(4.5)
     expect(contrast(light['on-solid'], light['merged-solid'])).toBeGreaterThanOrEqual(4.5)
     expect(contrast(light['on-ink'], light.ink)).toBeGreaterThanOrEqual(4.5)
+  })
+  it('PR header bands keep their label, link and button text readable in both themes', () => {
+    const fails: string[] = []
+    for (const [name, theme] of [['light', light], ['dark', dark]] as const) for (const t of ['merged', 'ready', 'fail']) {
+      for (const fg of ['text', 'fg']) for (const bg of ['band', 'soft']) {
+        const c = contrast(theme[`pr-${t}-${fg}`], theme[`pr-${t}-${bg}`])
+        if (c < 4.5) fails.push(`${name} pr-${t}-${fg} on pr-${t}-${bg}: ${c.toFixed(2)}`)
+      }
+      if (theme[`pr-${t}-solid`] && contrast('#ffffff', theme[`pr-${t}-solid`]) < 4.5) fails.push(`${name} white on pr-${t}-solid`)
+    }
+    expect(fails).toEqual([])
+  })
+  it('plan mode blue reads as text and carries its button label in both themes', () => {
+    for (const theme of [light, dark]) {
+      expect(contrast(theme['on-plan'], theme.plan)).toBeGreaterThanOrEqual(4.5)
+      for (const s of ['panel', 'input-bg']) expect(contrast(theme.plan, theme[s])).toBeGreaterThanOrEqual(4.5)
+    }
   })
   it('every token exists in both themes', () => {
     expect(Object.keys(light).sort()).toEqual(Object.keys(dark).sort())

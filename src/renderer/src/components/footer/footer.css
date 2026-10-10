@@ -11,19 +11,25 @@
 .ft-btn:focus-visible, .ft-pill:focus-visible, .ft-down:focus-visible { outline-offset: 2px; }
 .qa-anchor { position: relative; display: inline-flex; }
 
-.qa { position: absolute; z-index: 60; right: -4px; bottom: calc(100% + 10px); width: 344px; display: flex; flex-direction: column; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
-.qa-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 12px; }
+/* Ask Rowan (KERNEL-274): a layer of its own, inset from the panel's edge. The field is the popover's middle, with no box
+   inside the box; hairlines split the header, the field and the footer. */
+.qa { position: absolute; z-index: 60; right: 4px; bottom: calc(100% + 10px); width: 400px; display: flex; flex-direction: column; overflow: hidden; border-radius: var(--r-lg); border: 1px solid var(--line-4); background: var(--surface-2); }
+/* Focus shows on the popover's border, since the field has no box of its own to ring. */
+.qa:has(.qa-text:focus) { border-color: color-mix(in srgb, var(--ink) 30%, var(--line-4)); }
+.qa .qa-text:focus-visible { outline: none; }
+.qa-head { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--line-3); }
 .qa-name { font-size: 13px; font-weight: 500; color: var(--ink); }
 .qa-room { font-size: 12.5px; color: var(--muted); }
-.qa-open { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; }
-.qa-open:hover { color: var(--ink); }
-.qa-text { height: 80px; margin: 0 12px; padding: 10px 12px; resize: none; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--input-bg); color: var(--ink); font: inherit; font-size: 13px; outline: none; }
-.qa-text:focus { border-color: var(--line-4); }
-.qa-text::placeholder { color: var(--muted); }
-.qa-thread { margin: 0 12px; max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.qa-q { margin: 0; padding: 8px 10px; border-radius: var(--r); background: var(--surface-3); color: var(--ink-2); font-size: 13px; }
-.qa-a { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
-.qa-wait { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 13px; }
-.qa-err { margin: 8px 12px 0; color: var(--danger); font-size: 12.5px; }
-.qa-foot { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; }
+.qa-open { display: inline-flex; align-items: center; gap: 2px; height: 26px; padding: 0 6px 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--muted); font-size: 12px; }
+.qa-open:hover { background: var(--surface-3); color: var(--ink); }
+.qa-text { display: block; height: 100px; margin: 0; padding: 14px 16px; resize: none; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13.5px; line-height: 1.5; outline: none; }
+.qa-text::placeholder { color: var(--faint); }
+.qa-thread { margin: 0; padding: 16px; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.qa-q { align-self: flex-end; max-width: 86%; margin: 0; padding: 7px 11px; border-radius: var(--r-md); background: var(--hover); color: var(--ink); font-size: 13px; line-height: 1.45; }
+.qa-who { margin-bottom: -6px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.qa-a { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.qa-wait { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--muted); font-size: 12.5px; }
+.qa-err { margin: 8px 16px 0; color: var(--danger); font-size: 12.5px; }
+.qa-foot { display: flex; align-items: center; gap: 8px; min-height: 50px; padding: 0 10px 0 16px; border-top: 1px solid var(--line-3); }
 .qa-note { font-size: 12px; color: var(--muted); }
+.qa-kbd { margin-left: 2px; font: 400 11px var(--mono); opacity: 0.55; }
