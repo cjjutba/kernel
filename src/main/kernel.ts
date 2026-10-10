@@ -1712,12 +1712,16 @@ export class Kernel {
 
   /**
    * Sessions brings back only the queues of workspaces whose setup failed. One waiting for trust holds its brief, and the
-   * Lead's messages after it, the same way, so trusting after a restart still sends them in order (KERNEL-209).
+   * Lead's messages after it, the same way, so trusting after a restart still sends them in order (KERNEL-209). So does
+   * one whose setup trusting started: its brief waits in the chat's queue, not in a `setups` hold, so `recoverSetups`
+   * finds no brief to bring back. It still turns the workspace failed with its note, and Run again sends the queue.
    */
   private recoverTrust(held: Record<string, QueuedMessage[]>) {
+    const setups = this.store.meta<Record<string, SetupHold>>('setups') ?? {}
     for (const [chatId, queue] of Object.entries(held)) {
-      const chat = this.store.chat(chatId)
-      if (!chat || this.store.workspace(chat.workspaceId)?.status !== 'trust' || !Array.isArray(queue)) continue
+      const ws = this.store.chat(chatId) && this.store.workspace(this.store.chat(chatId)!.workspaceId)
+      const waiting = ws?.status === 'trust' || (ws?.status === 'setup' && !setups[ws.id])
+      if (!waiting || !Array.isArray(queue)) continue
       for (const m of queue) this.sessions.hold(chatId, m.parts, { ...(m.from ? { from: m.from } : {}), ...(m.update ? { update: m.update } : {}) })
     }
   }

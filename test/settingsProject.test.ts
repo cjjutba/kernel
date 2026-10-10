@@ -403,6 +403,30 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await again.k.stop()
   }, 60000)
 
+  it('keeps the brief when Kernel quits during the setup trusting started, and sends it once Run again passes', async () => {
+    const repo = await clonedRepo()
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "test -f ok.txt || sleep 30"\n')
+    const first = await kernelFor(repo)
+    const ws = await first.k.createWorkspace(first.room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Table' })
+    const chat = first.k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!
+    const { hash } = (await first.h['rooms.scriptTrust']({ roomId: first.room.id }))!
+    await first.h['rooms.trust']({ roomId: first.room.id, hash })
+    // Setup runs, and Kernel quits before it ends.
+    await vi.waitFor(() => expect(first.k.store.workspace(ws.id)?.status).toBe('setup'))
+    await first.k.stop()
+
+    const again = await kernelFor(repo, first.dataDir)
+    expect(again.k.store.workspace(ws.id)?.status).toBe('failed')
+    expect(again.k.sessions.queued(chat.id).map((q) => q.parts)).toEqual([[{ type: 'text', text: 'Build the table' }]])
+    const sentOnRelease: unknown[] = []
+    again.k.sessions.release = (chatId) => { sentOnRelease.push(again.k.sessions.queued(chatId).map((q) => q.parts)) }
+    await writeFile(join(ws.path, 'ok.txt'), '')
+    await again.h['scripts.run']({ workspaceId: ws.id, kind: 'setup' })
+    await vi.waitFor(() => expect(again.k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    expect(sentOnRelease).toEqual([[[{ type: 'text', text: 'Build the table' }]]])
+    await again.k.stop()
+  }, 60000)
+
   it('archives a waiting workspace without running its archive script', async () => {
     const repo = await clonedRepo()
     const marker = join(await mkdtemp(join(tmpdir(), 'kernel-marker-')), 'archived')
