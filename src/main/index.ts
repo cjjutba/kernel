@@ -12,6 +12,7 @@ import { fixtureHandlers, fixturePush } from './fixtures'
 import { exec } from './services/exec'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
+import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
 import { insideRoots, isAppUrl } from './windowGuard'
@@ -151,6 +152,20 @@ app.whenReady().then(async () => {
           notesFile: join(app.getAppPath(), 'out', 'release-notes', `${app.getVersion()}.md`)
         })
       : undefined
+    // Every quit goes through here: it asks while agents work and waits for the stop (KERNEL-214).
+    const quit: QuitGuard = new QuitGuard({
+      working: (): number => kernel.workingAgents(),
+      ask: async (d) => {
+        // A closed window gets no dialog parent, and the dialog shows on its own. focusWindow would open a new one.
+        const w = BrowserWindow.getAllWindows()[0]
+        if (!w) return (await dialog.showMessageBox(d)).response === 0
+        focusWindow()
+        return (await dialog.showMessageBox(w, d)).response === 0
+      },
+      stop: async () => { updater?.stop(); await kernel.stop() },
+      quit: () => app.quit(),
+      quiet: headless
+    })
     const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
@@ -167,13 +182,15 @@ app.whenReady().then(async () => {
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
         banner.on('click', () => focusWindow())
         banner.show()
-      }
+      },
+      confirmQuit: () => quit.confirmUpdate()
     })
-    app.on('before-quit', () => { updater?.stop(); void kernel.stop() })
+    app.on('before-quit', (e) => quit.beforeQuit(e))
+    powerMonitor.on('shutdown', () => quit.shutdown())
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     // PATH comes first so sessions and git calls made during start() find Homebrew and npm tools.
     started = refreshPath().then(() => kernel.start())
-    started.catch(bootFailed)
+    started.catch((err: unknown) => { quit.bootFailed(); bootFailed(err) })
     void started.then(() => updater?.start(), () => undefined)
     // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake.
     powerMonitor.on('resume', () => void started.then(() => kernel.checkLimits(), () => undefined))
