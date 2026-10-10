@@ -63,7 +63,8 @@ describe('repo settings files', () => {
     expect(rs.workspace).toEqual({ remote: 'upstream' })
     expect(rs.pr).toEqual({ createInstructions: '# Mine' })
     // An array is one value, so files.copy in both files is an override. Nothing reports scripts.archive: the app default applies.
-    expect(rs.sources).toEqual({ 'scripts.setup': 'override', 'scripts.run': 'shared', 'files.copy': 'override', 'workspace.remote': 'shared', 'pr.createInstructions': 'local' })
+    // The run script reports under both its names (KERNEL-244).
+    expect(rs.sources).toEqual({ 'scripts.setup': 'override', 'scripts.run': 'shared', 'runScripts.run': 'shared', 'files.copy': 'override', 'workspace.remote': 'shared', 'pr.createInstructions': 'local' })
     expect(rs.scripts.archive).toBeUndefined()
     expect(await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).toContain('[pr]\ncreate_instructions = "# Mine"')
     expect((await loadRepoSettings(await mkdtemp(join(tmpdir(), 'kernel-repo-')))).sources).toEqual({})
@@ -179,18 +180,72 @@ describe('the room remote (KERNEL-190)', () => {
 describe('hooks installer without SessionStart', () => {
   const old = { SessionStart: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks', timeout: 10 }] }, { hooks: [{ type: 'command', command: './mine.sh' }] }] }
   it('does not write a SessionStart entry and removes the one an old install left', () => {
-    const next = withKernelHooks({ hooks: old }, 7420, 300)
+    const next = withKernelHooks({ hooks: old }, 7420, 300, 'ab'.repeat(32))
     expect(next.hooks!.SessionStart).toEqual([{ hooks: [{ type: 'command', command: './mine.sh' }] }])
-    expect(JSON.stringify(withKernelHooks({}, 7420, 300))).not.toContain('SessionStart')
+    expect(JSON.stringify(withKernelHooks({}, 7420, 300, 'ab'.repeat(32)))).not.toContain('SessionStart')
   })
 
   it('reinstall rewrites the file and uninstall leaves other hooks alone', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-hooks-')), 'settings.json')
     await writeFile(file, JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks' }] }] } }))
-    await installHooks(file, 7420, 300)
+    await installHooks(file, 7420, 300, 'ab'.repeat(32))
     expect(JSON.parse(await readFile(file, 'utf8')).hooks.SessionStart).toBeUndefined()
     await uninstallHooks(file)
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
+  })
+})
+
+describe('bringing out-of-date hooks up to date at start (KERNEL-206)', () => {
+  const boot = async (content?: string) => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const port = 18000 + Math.floor(Math.random() * 800)
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: port }))
+    const claudeSettingsFile = join(await mkdtemp(join(tmpdir(), 'kernel-claude-')), 'settings.json')
+    if (content !== undefined) await writeFile(claudeSettingsFile, content)
+    const k = new Kernel({ dataDir, home: await mkdtemp(join(tmpdir(), 'kernel-home-')), claudeSettingsFile })
+    await k.start()
+    return { k, h: k.handlers(), port, claudeSettingsFile }
+  }
+  const tokenless = (port: number) => `/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:${port}/hooks || true`
+  const mine = { matcher: 'Bash', hooks: [{ type: 'command', command: './guard.sh' }] }
+
+  it('rewrites tokenless Kernel entries with the token and leaves other hooks alone', async () => {
+    const before = { hooks: { PreToolUse: [mine, { matcher: '*', hooks: [{ type: 'command', command: tokenless(7420), timeout: 10 }] }] } }
+    const { k, h, claudeSettingsFile } = await boot(JSON.stringify(before))
+    const status = await h['hooks.status']()
+    const after = JSON.parse(await readFile(claudeSettingsFile, 'utf8'))
+    expect(after.hooks.PreToolUse[0]).toEqual(mine)
+    expect(after.hooks.PreToolUse[1].hooks[0].command).toContain(`X-Kernel-Token: ${status.token}`)
+    expect(after.hooks.PreToolUse[1].hooks[0].command).toContain(`127.0.0.1:${status.port}/hooks`)
+    expect(Object.keys(after.hooks)).toEqual(['PreToolUse'])
+    expect(status.events.find((e) => e.name === 'PreToolUse')?.installed).toBe(true)
+    expect(status.needsInstall).toBe(false)
+    await k.stop()
+  })
+
+  it('writes nothing for a user who never installed', async () => {
+    const empty = await boot()
+    await expect(stat(empty.claudeSettingsFile)).rejects.toThrow()
+    await empty.k.stop()
+    const text = JSON.stringify({ hooks: { PreToolUse: [mine] } })
+    const other = await boot(text)
+    expect(await readFile(other.claudeSettingsFile, 'utf8')).toBe(text)
+    await expect(stat(other.claudeSettingsFile + '.kernel-backup')).rejects.toThrow()
+    expect((await other.h['hooks.status']()).needsInstall).toBe(false)
+    await other.k.stop()
+  })
+
+  it('leaves a file it cannot parse alone and asks for Install until a write works', async () => {
+    const text = `{ "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": "${tokenless(7420)}" }] }] }, }`
+    const { k, h, port, claudeSettingsFile } = await boot(text)
+    expect(await readFile(claudeSettingsFile, 'utf8')).toBe(text)
+    await expect(stat(claudeSettingsFile + '.kernel-backup')).rejects.toThrow()
+    expect((await h['hooks.status']()).needsInstall).toBe(true)
+    // The user fixes the file and clicks Install.
+    await writeFile(claudeSettingsFile, '{}')
+    await h['hooks.install']({ port })
+    expect((await h['hooks.status']()).needsInstall).toBe(false)
+    await k.stop()
   })
 })
 
@@ -217,6 +272,10 @@ describe('rewriting the hooks on a settings change', () => {
     expect(await read()).not.toContain('"http"')
     expect(await read()).toContain('-m 320 ')
     expect((await h['hooks.status']()).installed).toBe(true)
+    // The hooks carry the token the hook server checks, from the data folder.
+    const { token } = await h['hooks.status']()
+    expect(token).toMatch(/^[0-9a-f]{64}$/)
+    expect(await read()).toContain(`X-Kernel-Token: ${token}`)
 
     // Current entries: a port change moves them.
     await h['hooks.restart']({ port })

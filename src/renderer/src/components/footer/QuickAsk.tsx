@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
 import { actions, useStore } from '../../store'
 import { openLead, openLeadChat } from '../../lead'
-import { Avatar, Button, Icon, Spinner, useBusy } from '../../ui'
+import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
 
@@ -61,7 +61,6 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   return (
     <div ref={ref} role="dialog" aria-label={`Ask ${name}`} className="qa">
       <div className="qa-head">
-        <Avatar name={name} size={20} solid />
         <span className="qa-name">Ask {name}</span>
         {room && <span className="qa-room">{room.name}</span>}
         <span className="grow" />
@@ -71,6 +70,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
       {asked ? (
         <div className="qa-thread" aria-live="polite">
           <p className="qa-q">{asked.question}</p>
+          {(answer || failed) && <span className="qa-who" aria-hidden="true">{name}</span>}
           {answer ? <p className="qa-a selectable">{answer}</p> : failed ? <p className="qa-a">{name} could not answer. Open the chat to retry.</p> : <p className="qa-wait"><Spinner label={`${name} is answering`} />{name} is answering</p>}
         </div>
       ) : (
@@ -89,7 +89,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
             <Button variant="primary" disabled={!lead} onClick={() => void openChat()}>{done ? 'Open full chat' : 'Open chat'}</Button>
           </>
         ) : (
-          <Button variant="primary" busy={!!busy || sending} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask</Button>
+          <Button variant="primary" busy={!!busy || sending} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask<span className="qa-kbd" aria-hidden="true">↵</span></Button>
         )}
       </div>
     </div>

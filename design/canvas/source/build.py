@@ -33,8 +33,17 @@ def fold_rooms(r):
         out.append(l)
     return '\n'.join(out)
 rooms_folded=fold_rooms(rooms)
-def sidebar(active, empty=False, menu=None, fold=False):
-    s=side_t.replace('%%ROOMS%%', EMPTY if empty else (rooms_folded if fold else rooms))
+# KERNEL-258: a room can show an icon in place of its letter. A GitHub avatar is drawn in grayscale so the sidebar stays monochrome.
+# Only a page that passes icons={'Client B': avatar(16)} changes; every other page gets the rooms exactly as _rooms.html has them.
+def avatar(px): return '<svg width="%d" height="%d" viewBox="0 0 56 56" aria-hidden="true" style="display: block"><rect width="56" height="56" fill="#3a3c42"></rect><path d="M16 8h24v8H16zM8 16h16v8H8zM32 16h16v8H32zM8 24h8v8H8zM24 24h8v8H24zM40 24h8v8H40zM8 32h40v8H8zM8 40h8v8H8zM40 40h8v8H40z" fill="#b7bcc4"></path></svg>'%(px,px)
+def room_icons(r, icons):
+    for room,svg in icons.items():
+        m=re.search(r'(<span aria-hidden="true" style="[^"]*?)(font-size: 10px; font-weight: 600">)\w(</span><span style="flex: 1">'+re.escape(room)+'</span>)', r)
+        assert m, room
+        r=r[:m.start()]+m.group(1)+'overflow: hidden; '+m.group(2)+svg+m.group(3)+r[m.end():]
+    return r
+def sidebar(active, empty=False, menu=None, fold=False, icons=None):
+    s=side_t.replace('%%ROOMS%%', EMPTY if empty else room_icons(rooms_folded if fold else rooms, icons or {}))
     s=s.replace('%%INBOXBADGE%%','' if empty else '<span style="font-size: 12px; color: #8a8f98">3</span>')
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
@@ -50,9 +59,9 @@ def sidebar(active, empty=False, menu=None, fold=False):
     return s
 out=[]
 HOOKS_DOWN='''<a href="CheckHooks.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks down<span style="margin-left: 4px; color: #f7f8f8; text-decoration: underline">Check hooks</span></a>'''
-def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False):
+def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False, icons=None):
     t=t.replace('<!--HELMET-->',helmet)
-    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold))
+    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons))
     t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else '<span></span>'))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
     assert 'Agent Office' not in t, name
@@ -69,6 +78,13 @@ emit('HomeLight', rd('Home.dc.html'), 'home', light=True)
 emit('SidebarRoomsMenu', rd('Home.dc.html'), 'home', menu='rooms')
 emit('SidebarChatFolded', rd('Home.dc.html'), 'home', fold=True)
 emit('AccountMenu', rd('Home.dc.html'), 'home', menu='acct')
+# KERNEL-258: Client B uses a GitHub avatar. Home shows it in the sidebar and on the room's card, so one room has one icon.
+hi=rd('Home.dc.html')
+tile='border: 1px solid #2a2b30; background: #1c1d21; font-size: 10.5px; font-weight: 600">{{ r.letter }}</span>'
+assert hi.count(tile)==1 and hi.count("{ letter: 'B', name: 'Client B',")==1
+hi=hi.replace(tile,'overflow: hidden; '+tile[:-7]+'<sc-if value="{{ r.avatar }}" hint-placeholder-val="{{ false }}">'+avatar(18)+'</sc-if></span>')
+hi=hi.replace("{ letter: 'B', name: 'Client B',","{ letter: '', avatar: true, name: 'Client B',")
+emit('HomeRoomIcon', hi, 'home', icons={'Client B': avatar(16)})
 # The floor and Board screens (Main, Floor*, Board, BoardEmpty, TaskDetail) are hidden (D-104). Their pages keep the sidebar they
 # were drawn with and are not rebuilt, so they still show the screens as they were. Board.dc.html and Main.dc.html stay as templates.
 ib=rd('Inbox.dc.html')
@@ -82,10 +98,13 @@ for n,mode,title in [('ConnectRepo','repo','Connect a repo'),('OpenFolder','fold
 emit('SidebarRoomMenu', rd('Team.dc.html'), None, menu='room')
 emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
-WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
+WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceQuestionSteps','questionsteps'),('WorkspaceQuestionAnswers','questionanswers'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
     ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading'),('WorkspaceIssue','issue')]
 for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
+# KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
+wp=rd('WorkspacePanels.dc.html')
+for n,sc in [('WorkspaceRunScripts','runscripts'),('WorkspacePreview','preview'),('WorkspaceTerminalPresets','presets')]: emit(n, wp.replace('%%SCENARIO%%',sc), None)
 emit('WorkspaceLight', ws.replace('%%SCENARIO%%','done'), 'ws', light=True)
 nw=rd('NewWorkspace.dc.html')
 for n,m in [('NewWorkspace','none'),('NewWorkspaceBranch','branch'),('NewWorkspaceFrom','from'),('NewWorkspaceModel','model'),('NewWorkspacePlus','plus')]:
@@ -97,8 +116,9 @@ for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('Confir
 su=rd('Setup.dc.html')
 for n,k in [('SetupClaudeMissing','missing'),('SetupClaudeOld','old'),('SetupTeamsOff','teams'),('SetupGhSignedOut','gh'),('SetupPortBusy','port'),('RoomSetup','room')]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
+# KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
 # KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
-for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','r-agents'),('SettingsPermissions','permissions'),('SettingsSkills','r-skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','r-files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','r-general'),('SettingsRoomGit','r-git'),('SettingsRoomScripts','r-scripts'),('SettingsRoomInstructions','r-instructions'),('SettingsRoomPermissions','r-permissions')]:
+for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','r-agents'),('SettingsPermissions','permissions'),('SettingsSkills','r-skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','r-files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','r-general'),('SettingsRoomGit','r-git'),('SettingsRoomScripts','r-scripts'),('SettingsRoomInstructions','r-instructions'),('SettingsRoomPermissions','r-permissions'),('SettingsEnvironment','env'),('SettingsRoomEnvironment','r-env'),('SettingsEnvironmentAdd','r-env-add'),('SettingsBigTerminal','bigterm'),('SettingsRoomIcon','r-icon')]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))

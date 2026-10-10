@@ -1,6 +1,6 @@
 /* The state icon in front of a workspace row. Muted by default, like every sidebar icon. Tokens only. */
 .nav-glyph { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.nav-item .nav-glyph[data-tone='ink'] svg { color: var(--ink); }
+.nav-item .nav-glyph[data-tone='needs'] svg { color: var(--needs); }
 .nav-item .nav-glyph[data-tone='add'] svg { color: var(--add); }
 .nav-item .nav-glyph[data-tone='del'] svg { color: var(--del); }
 .nav-item .nav-glyph[data-tone='merged'] svg { color: var(--merged); }
@@ -14,6 +14,15 @@
 .room-chev[data-open='true'] svg { transform: rotate(90deg); }
 .room-row:hover .room-letter, .room-row:has(:focus-visible) .room-letter { display: none; }
 .room-row:hover .room-chev, .room-row:has(:focus-visible) .room-chev { display: inline-flex; }
+/* A chat row that started workspaces folds like a room. Its chevron sits over the 16px icon slot, a sibling of the title button so no
+   button holds another, and replaces the icon on hover or keyboard focus. It is transparent, not display: none, so Tab can reach it. */
+.chat-row { position: relative; }
+.chat-row:hover > .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
+.chat-chev { position: absolute; left: 20px; top: 50%; width: 16px; height: 16px; margin-top: -8px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); display: inline-flex; align-items: center; justify-content: center; opacity: 0; }
+.chat-chev:hover { color: var(--ink); }
+.chat-chev[aria-expanded='true'] svg { transform: rotate(90deg); }
+.chat-row:hover .chat-chev, .chat-row:has(:focus-visible) .chat-chev { opacity: 1; }
+.chat-row:hover .nav-glyph[data-owned], .chat-row:has(:focus-visible) .nav-glyph[data-owned] { visibility: hidden; }
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }
@@ -30,6 +39,8 @@
 .ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
 /* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap. */
 .nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }
+/* The Inbox count: what waits on you, in amber (KERNEL-274). */
+.nav-count { flex-shrink: 0; font: 500 11.5px var(--mono); font-variant-numeric: tabular-nums; color: var(--needs); }
 .ws-row[data-key] .ws-archive { visibility: hidden; }
 /* The hairline under the top nav runs edge to edge, past the sidebar's 10px left and 8px right padding. */
 .sb-rule { flex-shrink: 0; height: 1px; margin: 10px -8px 0 -10px; background: var(--panel-line); }
@@ -69,6 +80,5 @@
 .hc-status[data-accent='merged'] { --tone: var(--merged); --tint: var(--tint-merged); }
 /* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
-/* A workspace under the chat that started it sits one level in, under the chat's title rather than its icon: the sub row's 30px
-   plus the 16px icon and 10px gap. Chat rows keep the sub row's padding. */
-.nav-item.nav-nested { padding-left: 56px; }
+/* A workspace under the chat that started it sits one level in, 12px past the chat's icon: the sub row's 20px plus 12px. Chat rows keep the sub row's padding. */
+.nav-item.nav-nested { padding-left: 32px; }

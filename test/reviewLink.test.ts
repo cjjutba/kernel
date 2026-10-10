@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { reviewTools } from '../src/main/services/reviewMcp'
-import { reviewRule } from '../src/main/services/handoff'
+import { reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
@@ -44,7 +44,7 @@ async function setup() {
 describe('the review link (KERNEL-130)', () => {
   it("starts the review worktree from the author's branch, under its own branch, and saves the link", async () => {
     const { review, author, tip } = await setup()
-    expect(review).toMatchObject({ reviewOf: author.id, mode: 'worktree', baseRef: author.branch, branch: `${author.branch}-review` })
+    expect(review).toMatchObject({ reviewOf: author.id, mode: 'worktree', baseRef: author.branch, branch: 'review/remove-try-section' })
     expect((await git(review.path, 'rev-parse', 'HEAD')).trim()).toBe(tip)
   })
 
@@ -52,12 +52,13 @@ describe('the review link (KERNEL-130)', () => {
     const { k, review, author, agent, deps } = await setup()
     const chat = k.store.chats(review.id)[0]
     expect(deps.mcpFor(review, agent('theo'), chat)).toHaveProperty('kernel')
-    expect(deps.mcpFor(author, agent('kai'), chat)).toBeUndefined()
+    // The author has its own kernel server, with wait_for_merge (KERNEL-262), and the teammate rule.
+    expect(deps.mcpFor(author, agent('kai'), chat)).toHaveProperty('kernel')
     const rule = deps.rulesFor(review, agent('theo'))!
     expect(rule).toContain(`You are reviewing Kai's work on "Remove the Try section" (workspace ${author.id})`)
     expect(rule).toContain(`git reset --hard ${author.branch}`)
     expect(rule).toContain('mcp__kernel__submit_review')
-    expect(deps.rulesFor(author, agent('kai'))).toBeUndefined()
+    expect(deps.rulesFor(author, agent('kai'))).toBe(TEAMMATE_RULE)
   })
 
   it("resets to the PR's commit on GitHub once the work has a PR, the commit verdicts are checked against (KERNEL-136)", async () => {
@@ -75,17 +76,29 @@ describe('the review link (KERNEL-130)', () => {
     await git(author.path, 'commit', '-qm', 'rows')
     const tip = (await git(author.path, 'rev-parse', 'HEAD')).trim()
     const again = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the rows', leadChatId: lead.id, reviewOf: author.id })
-    expect(again.branch).toBe('kernel-99-sidebar-review')
+    expect(again.branch).toBe('review/remove-try-section-2')
     expect((await git(again.path, 'rev-parse', 'HEAD')).trim()).toBe(tip)
   })
 
-  it('starts reviews of work on a branch name over 80 characters, each in its own folder (KERNEL-267)', async () => {
+  it('names a review of an issue\'s work review/<key> (KERNEL-275)', async () => {
     const { k, room, lead } = await setup()
-    const branch = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts-the-brief-in-an-empty-lead'
-    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', title: 'Fix the tab', branch, leadChatId: lead.id })
+    const source = { kind: 'issue', id: 'KERNEL-242', title: 'Create in the New chat modal puts the brief in an empty Lead' } as const
+    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', source, labels: ['Bug'], leadChatId: lead.id })
+    expect(author.branch).toBe('fix/kernel-242-create-in-new-chat-modal-puts-brief')
+    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    expect(review.branch).toBe('review/kernel-242')
+  })
+
+  it('starts reviews of work on a long branch name, each in its own folder (KERNEL-267)', async () => {
+    const { k, room, lead } = await setup()
+    const asked = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts-the-brief-in-an-empty-lead'
+    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', title: 'Fix the tab', branch: asked, leadChatId: lead.id })
+    // A branch the Lead names is cut to 60 characters (KERNEL-275).
+    const branch = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts'
+    expect(author.branch).toBe(branch)
     const first = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
     const second = await k.createWorkspace(room.id, { prompt: 'Review it again', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
-    expect([first.branch, second.branch]).toEqual([`${branch}-review`, `${branch}-review-2`])
+    expect([first.branch, second.branch]).toEqual(['review/fix-tab', 'review/fix-tab-2'])
     expect(new Set([author.path, first.path, second.path]).size).toBe(3)
     for (const ws of [first, second]) expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ws.branch)
     expect((await git(author.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(branch)

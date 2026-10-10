@@ -98,6 +98,65 @@ describe('questions to the user', () => {
     expect(store.chat('chat')?.plan).toBe(false)
   })
 
+  const asked = {
+    questions: [
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ]
+  }
+  const ask = (options: Options, id: string) => (options.canUseTool as CanUseTool)('AskUserQuestion', asked, { signal: new AbortController().signal, toolUseID: id, requestId: `r-${id}` })
+
+  it('keeps every question of an AskUserQuestion call on one approval, titled with the first', async () => {
+    const { options, store } = await setup('bypassInWorktrees')
+    void ask(options, 'q1')
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ kind: 'question', title: 'Which store?', options: ['Postgres', 'SQLite'] })
+    expect(pending[0].questions).toEqual([
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ])
+  })
+
+  it('sends each answer back in the tool input, and saves them on the approval', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q2')
+    await flush()
+    const id = store.approvals({ pendingOnly: true })[0].id
+    const answers = { 'Which store?': 'Postgres', 'Which regions?': 'EU, US', 'Ship it today?': 'No' }
+    approvals.decide(id, { behavior: 'answer', text: 'Postgres · EU, US · No', answers })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...asked, answers } })
+    expect(store.approvals().find((a) => a.id === id)).toMatchObject({ status: 'answered', answer: 'Postgres · EU, US · No', answers })
+  })
+
+  it('tells the model a text-only answer to several questions covered only the first, so it asks the rest again', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q3')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'deny', message: 'The user saw and answered only your first question, "Which store?": Use whatever is cheapest. Ask the other 2 again.' })
+  })
+
+  it('treats an empty answers map as a text-only answer', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q4')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Postgres', answers: {} })
+    expect(await result).toMatchObject({ behavior: 'deny', message: expect.stringContaining('Ask the other 2 again.') })
+  })
+
+  it('gives a text-only answer to a lone question', async () => {
+    const { options, approvals, store } = await setup()
+    const one = { questions: [asked.questions[0]] }
+    const result = (options.canUseTool as CanUseTool)('AskUserQuestion', one, { signal: new AbortController().signal, toolUseID: 'q5', requestId: 'r-q5' })
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...one, answers: { 'Which store?': 'Use whatever is cheapest' } } })
+  })
+
   it('still lets bypass answer an ordinary tool', async () => {
     const { options } = await setup('bypassInWorktrees')
     expect(await (options.canUseTool as CanUseTool)('Edit', { file_path: 'a.ts' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })).toMatchObject({ behavior: 'allow' })
@@ -761,5 +820,91 @@ describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
     const multi = row(store, 'm1')!.input as { edits: { old_string: string; new_string: string }[] }
     expect(multi.edits[0].old_string).toHaveLength(20_000)
     expect(multi.edits[0].new_string).toBe('r')
+  })
+})
+
+describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', () => {
+  const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+
+  /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same room, idle. */
+  async function busy() {
+    const s = await setup('acceptEdits', { models: { agentLimit: 1 } })
+    s.store.saveWorkspace({ id: 'ws2', roomId: 'room', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2', title: 'PDF export' })
+    const why: Record<string, (string | undefined)[]> = {}
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') (why[e.chatId] ??= []).push(e.why) }
+    bus.on('push', onPush)
+    return { ...s, why, done: () => bus.off('push', onPush) }
+  }
+
+  it('queues a second chat for a slot, and Send now starts it over the limit', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      expect(await sessions.send('other', text('Export the invoice'))).toEqual({ queued: true, why: 'capacity' })
+      expect(sessions.queueReason('other')).toBe('capacity')
+      await flush()
+      expect(why.other).toEqual(['capacity'])
+      const before = sdk.calls.length
+      expect(await sessions.sendNow('other', sessions.queued('other')[0].id)).toEqual([])
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sdk.calls).toHaveLength(before + 1)
+      // The running chat goes on: Send now in one chat never stops another.
+      expect(sessions.isRunning('chat')).toBe(true)
+      expect(call.interrupts).toBe(0)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      await flush()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('tells the renderer when what a queue waits for changes', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      await sessions.send('other', text('Export the invoice'))
+      await sessions.send('chat', text('Then add a test'))
+      await flush()
+      expect(why.chat).toEqual(['running'])
+      sessions.pause('room')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      expect(why.chat.at(-1)).toBe('running')
+      sessions.holdAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('offline')
+      sessions.releaseAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      // The turn ends while the room is paused: the chat's own queue now waits for the pause, not the turn.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('chat')).toBe(false)
+      expect(why.chat.at(-1)).toBe('paused')
+      // Resuming sends the chat's own message first, which takes the slot again.
+      sessions.resume('room')
+      expect(sessions.isRunning('chat')).toBe(true)
+      await flush()
+      expect(why.other.at(-1)).toBe('capacity')
+      // The running turn ends and the slot frees: the second chat's message goes out.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('keeps a user pause: Send now waits for Resume', async () => {
+    const { sessions, call, done } = await busy()
+    try {
+      call.feed(result)
+      await flush()
+      sessions.pause('room')
+      await sessions.send('other', text('Export the invoice'))
+      expect(sessions.queueReason('other')).toBe('paused')
+      await sessions.sendNow('other', sessions.queued('other')[0].id)
+      expect(sessions.isRunning('other')).toBe(false)
+      expect(sessions.queued('other')).toHaveLength(1)
+    } finally { done() }
   })
 })

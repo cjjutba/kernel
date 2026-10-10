@@ -1,9 +1,9 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchExists, branchName, changedFiles, createWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, slugify, snapshotBaseline } from '../src/main/services/worktrees'
+import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, reviewBranch, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 describe('naming', () => {
@@ -16,6 +16,54 @@ describe('naming', () => {
     expect(branchName('feat/{slug}', { slug: 'invoice-table' })).toBe('feat/invoice-table')
     expect(branchName('feat/{task}-{slug}', { slug: 'invoice-table', task: 'T-14' })).toBe('feat/t-14-invoice-table')
     expect(branchName('feat/{task}-{slug}', { slug: 'x' })).toBe('feat/x')
+  })
+})
+
+describe('short branch names (KERNEL-275)', () => {
+  it('keeps a few words of a title, without apostrophes or filler', () => {
+    expect(shortSlug("A review can't start when the reviewed branch name is long")).toBe('review-cant-start-reviewed-branch')
+    expect(shortSlug('Create in the New chat modal puts the brief in an empty Lead')).toBe('create-in-new-chat-modal-puts-brief')
+    expect(shortSlug('Export invoices as PDF')).toBe('export-invoices-as-pdf')
+    expect(shortSlug('Fix ' + 'x'.repeat(50))).toBe('fix')
+    expect(shortSlug('y'.repeat(50))).toBe('y'.repeat(35))
+    expect(shortSlug('When is the a')).toBe('when-is-the-a')
+    expect(shortSlug('')).toBe('workspace')
+    expect(shortSlug("'?!")).toBe('workspace')
+    expect(shortSlug('Rename the thing', 10)).toBe('rename')
+  })
+  it('turns a key into a branch token', () => {
+    expect(taskToken('KERNEL-267')).toBe('kernel-267')
+    expect(taskToken('#41')).toBe('41')
+    expect(taskToken('T_14 x')).toBe('t14x')
+  })
+  it('cuts a name to 60 characters at its last dash or slash', () => {
+    const lead = 'cjjutbaofficial/kernel-267-a-review-cant-start-when-the-reviewed-branch-name-is-long'
+    expect(capBranch(lead)).toBe('cjjutbaofficial/kernel-267-a-review-cant-start-when-the')
+    expect(capBranch(lead).length).toBeLessThanOrEqual(60)
+    expect(capBranch('feat/short-name')).toBe('feat/short-name')
+    expect(capBranch(`feat/${'a'.repeat(55)}-b`)).toBe(`feat/${'a'.repeat(55)}`)
+    expect(capBranch(`fix/${'a'.repeat(70)}`)).toBe('fix')
+    expect(capBranch('z'.repeat(70))).toBe('z'.repeat(60))
+    expect(capBranch(`feat/${'a'.repeat(54)}.-${'b'.repeat(10)}`)).toBe(`feat/${'a'.repeat(54)}`)
+  })
+  it('picks fix for a Bug label in any case, else feat', () => {
+    expect(branchType(['Engine', 'Bug'])).toBe('fix')
+    expect(branchType(['bug'])).toBe('fix')
+    expect(branchType(['Engine', 'Bugfix'])).toBe('feat')
+    expect(branchType([])).toBe('feat')
+    expect(branchType()).toBe('feat')
+  })
+  it('fills {type} and cuts the result', () => {
+    expect(branchName('{type}/{task}-{slug}', { slug: 'issues-screen', task: 'KERNEL-83', type: 'fix' })).toBe('fix/kernel-83-issues-screen')
+    expect(branchName('{type}/{task}-{slug}', { slug: 'issues-screen', task: 'KERNEL-83' })).toBe('feat/kernel-83-issues-screen')
+    expect(branchName('{type}/{task}-{slug}', { slug: 'export-invoices-as-pdf' })).toBe('feat/export-invoices-as-pdf')
+    expect(branchName('{type}/{task}-{slug}', { slug: 'a'.repeat(35), task: `KERNEL-${'9'.repeat(30)}` }).length).toBeLessThanOrEqual(60)
+  })
+  it('names a review after the issue, or a few words of the reviewed title', () => {
+    expect(reviewBranch('Create in the New chat modal puts the brief in an empty Lead', 'KERNEL-242')).toBe('review/kernel-242')
+    expect(reviewBranch('Remove the Try section')).toBe('review/remove-try-section')
+    expect(reviewBranch('Sidebar', '#41')).toBe('review/41')
+    expect(reviewBranch('Sidebar', '#')).toBe('review/sidebar')
   })
 })
 
@@ -105,6 +153,65 @@ describe('worktrees', () => {
     // stat fails with EACCES, not ENOENT, so the files may still be there and git's record must stay.
     await expect(removeWorktree(repo, path, { force: true })).rejects.toThrow(/EACCES/)
     expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
+  })
+
+  it('detaches a worktree by moving it into .trash, then prunes it and deletes its branch (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/detach', baseRef: 'main' })
+    await writeFile(join(path, 'draft.ts'), 'export {}\n')
+    const moved = await detachWorktree(repo, path, { force: true, deleteBranch: 'feat/detach' })
+    expect(moved).toMatch(new RegExp(`^${join(root, '.trash', 'feat-detach-')}\\d+$`))
+    expect(await readFile(join(moved!, 'draft.ts'), 'utf8')).toBe('export {}\n')
+    await expect(stat(path)).rejects.toThrow(/ENOENT/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-detach')
+    expect(await branchExists(repo, 'feat/detach')).toBe(false)
+    // A gone folder has nothing to move: it only prunes, and the branch follows what was asked (KERNEL-109).
+    const gone = await createWorktree({ repo, root, branch: 'feat/gone', baseRef: 'main' })
+    await rm(gone, { recursive: true, force: true })
+    expect(await detachWorktree(repo, gone, { force: true })).toBeUndefined()
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-gone')
+    expect(await branchExists(repo, 'feat/gone')).toBe(true)
+  })
+
+  it('detach refuses a folder that is not a worktree, the repo itself, and one it cannot read (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const folder = await mkdtemp(join(tmpdir(), 'kernel-not-a-worktree-'))
+    await writeFile(join(folder, 'notes.md'), 'mine\n')
+    await expect(detachWorktree(repo, folder, { force: true })).rejects.toThrow(/not a worktree/)
+    expect(await readFile(join(folder, 'notes.md'), 'utf8')).toBe('mine\n')
+    await expect(detachWorktree(repo, repo, { force: true })).rejects.toThrow(/not a worktree/)
+    expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('# demo\n')
+
+    const root = join(repo, '..', 'wt-detach-locked-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/locked', baseRef: 'main' })
+    await chmod(root, 0o000)
+    onTestFinished(() => chmod(root, 0o755))
+    await expect(detachWorktree(repo, path, { force: true })).rejects.toThrow(/EACCES/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
+  })
+
+  it('detach refuses a locked worktree, since prune would keep its record (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-lock-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/held', baseRef: 'main' })
+    await git(repo, 'worktree', 'lock', path)
+    await expect(detachWorktree(repo, path, { force: true, deleteBranch: 'feat/held' })).rejects.toThrow(/locked/)
+    expect((await stat(path)).isDirectory()).toBe(true)
+    expect(await branchExists(repo, 'feat/held')).toBe(true)
+  })
+
+  it('detach falls back to git worktree remove when the folder cannot move (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-fallback-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/fallback', baseRef: 'main' })
+    // A file where the .trash folder would go stops the move.
+    await writeFile(join(root, '.trash'), '')
+    const saved: string[] = []
+    expect(await detachWorktree(repo, path, { force: true, moving: (p) => saved.push(p) })).toBeUndefined()
+    expect(saved).toHaveLength(1)
+    await expect(stat(path)).rejects.toThrow(/ENOENT/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-fallback')
   })
 
   it('hides pre-existing changes for current-branch workspaces', async () => {
