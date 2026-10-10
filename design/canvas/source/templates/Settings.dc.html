@@ -122,9 +122,9 @@ class Component extends DCLogic {
     var code = function (label, lines, desc) { return { label: label, type: 'code', lines: lines, desc: desc }; };
     var kbd = function (label, keys) { return { label: label, type: 'kbd', keys: keys }; };
     var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
-    var room = function (name, repo, path) {
+    var room = function (name, repo, path, linear) {
       return { title: name, sections: [
-        { title: 'Room', rows: [val('Repository', repo), val('Local path', path), val('Team', 'Lead, Frontend, Backend, QA, Reviewer')] },
+        { title: 'Room', rows: [val('Repository', repo), val('Local path', path), val('Team', 'Lead, Frontend, Backend, QA, Reviewer'), sel('r-linear-' + name, 'Linear team', linear, 'Issues from this team open in this room')] },
         { title: 'Overrides', rows: [
           seg('r-mode-' + name, 'Default workspace type', ['Use default', 'New worktree', 'Current branch']),
           sel('r-from-' + name, 'Branch new workspaces from', ['Use default', 'origin/dev', 'origin/main']),
@@ -201,9 +201,9 @@ class Component extends DCLogic {
       about: { title: 'About', sections: [
         { title: 'Kernel', rows: [val('Version', '0.1.0'), btn('Updates', 'Check for updates'), val('Data', '~/Library/Application Support/Kernel'), btn('Logs', 'Export logs'), btn('Onboarding', 'Show again')] }
       ] },
-      'room-a': room('Client A', 'cjjutba/client-a', '~/Projects/client-a'),
-      'room-b': room('Client B', 'cjjutba/client-b', '~/Projects/client-b'),
-      'room-o': room('Own app', 'local folder', '~/Projects/own-app')
+      'room-a': room('Client A', 'cjjutba/client-a', '~/Projects/client-a', ['KERNEL', 'None']),
+      'room-b': room('Client B', 'cjjutba/client-b', '~/Projects/client-b', ['None', 'KERNEL']),
+      'room-o': room('Own app', 'local folder', '~/Projects/own-app', ['None', 'KERNEL'])
     };
   }
 

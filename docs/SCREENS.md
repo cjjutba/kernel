@@ -1,6 +1,6 @@
 # Screens
 
-All 119 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
+All 126 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
 
 Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src/shared/types.ts` that shows the screen: `team` is `{ name: 'team', roomId }`, `modal newRoom` is `{ name: 'newRoom' }`, `+ menu pr` sets `ui.menu` to `'pr'`. Component is the file under `src/renderer/src/` that draws it. The lane that owns the row creates or replaces that file, and nobody else edits it. Files that exist today are placeholders or re-export the prototype in `screens/Pages.tsx`, `Floor.tsx`, `Workspace.tsx` or `Modals.tsx` (KERNEL-8). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
@@ -23,6 +23,12 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | Home | Home | [png](../design/screens/Home.png) | [dc.html](../design/canvas/project/Home.dc.html) | KERNEL-17 | Team | home | `screens/home/Home.tsx` | done |
 | Inbox | Inbox | [png](../design/screens/Inbox.png) | [dc.html](../design/canvas/project/Inbox.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
 | InboxEmpty | Inbox · all caught up | [png](../design/screens/InboxEmpty.png) | [dc.html](../design/canvas/project/InboxEmpty.dc.html) | KERNEL-17 | Team | inbox | `screens/inbox/Inbox.tsx` | done |
+| Issues | Issues | [png](../design/screens/Issues.png) | [dc.html](../design/canvas/project/Issues.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| IssuesWorking | Issues · linked workspaces | [png](../design/screens/IssuesWorking.png) | [dc.html](../design/canvas/project/IssuesWorking.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| IssuesNoRoom | Issues · team not linked to a room | [png](../design/screens/IssuesNoRoom.png) | [dc.html](../design/canvas/project/IssuesNoRoom.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| IssuesEmpty | Issues · nothing matches | [png](../design/screens/IssuesEmpty.png) | [dc.html](../design/canvas/project/IssuesEmpty.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| IssuesConnect | Issues · connect Linear | [png](../design/screens/IssuesConnect.png) | [dc.html](../design/canvas/project/IssuesConnect.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
+| IssuesError | Issues · Linear unreachable | [png](../design/screens/IssuesError.png) | [dc.html](../design/canvas/project/IssuesError.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | todo |
 | CommandPalette | Search · ⌘K | [png](../design/screens/CommandPalette.png) | [dc.html](../design/canvas/project/CommandPalette.dc.html) | KERNEL-21 | Team | modal search | `screens/search/CommandPalette.tsx` | done |
 | Rooms | All rooms | [png](../design/screens/Rooms.png) | [dc.html](../design/canvas/project/Rooms.dc.html) | KERNEL-20 | Team | rooms | `screens/rooms/Rooms.tsx` | done |
 | NewRoom | New room | [png](../design/screens/NewRoom.png) | [dc.html](../design/canvas/project/NewRoom.dc.html) | KERNEL-20 | Team | modal newRoom | `screens/rooms/NewRoom.tsx` | done |
@@ -88,6 +94,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | WorkspaceMerged | Merged | [png](../design/screens/WorkspaceMerged.png) | [dc.html](../design/canvas/project/WorkspaceMerged.dc.html) | KERNEL-15 | Workspace | workspace | `screens/workspace/pr/PrHeader.tsx` | done |
 | WorkspacePRClosed | Closed without merging | [png](../design/screens/WorkspacePRClosed.png) | [dc.html](../design/canvas/project/WorkspacePRClosed.dc.html) | KERNEL-15 | Workspace | workspace | `screens/workspace/pr/PrHeader.tsx` | done |
 | WorkspaceToast | Toasts | [png](../design/screens/WorkspaceToast.png) | [dc.html](../design/canvas/project/WorkspaceToast.dc.html) | KERNEL-15 | Workspace | workspace, ui.toasts | `components/Toasts.tsx` | done |
+| WorkspaceIssue | Workspace · issue key in the header | [png](../design/screens/WorkspaceIssue.png) | [dc.html](../design/canvas/project/WorkspaceIssue.dc.html) | KERNEL-161 | Workspace | workspace | `screens/workspace/Workspace.tsx` | todo |
 | WorkspaceRunning | Working | [png](../design/screens/WorkspaceRunning.png) | [dc.html](../design/canvas/project/WorkspaceRunning.dc.html) | KERNEL-10 | Workspace | workspace | `screens/workspace/Transcript.tsx` | done |
 | WorkspacePlan | Plan mode | [png](../design/screens/WorkspacePlan.png) | [dc.html](../design/canvas/project/WorkspacePlan.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | done |
 | WorkspacePerm | Permission request | [png](../design/screens/WorkspacePerm.png) | [dc.html](../design/canvas/project/WorkspacePerm.dc.html) | KERNEL-14 | Workspace | workspace | `screens/workspace/cards/ApprovalCard.tsx` | done |
@@ -124,7 +131,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | SettingsIntegrations | Integrations | [png](../design/screens/SettingsIntegrations.png) | [dc.html](../design/canvas/project/SettingsIntegrations.dc.html) | KERNEL-26 | Platform | settings/integrations | `screens/settings/pages/Integrations.tsx` | done |
 | SettingsExperimental | Experimental | [png](../design/screens/SettingsExperimental.png) | [dc.html](../design/canvas/project/SettingsExperimental.dc.html) | KERNEL-25 | Platform | settings/experimental | `screens/settings/pages/Experimental.tsx` | done |
 | SettingsAbout | About | [png](../design/screens/SettingsAbout.png) | [dc.html](../design/canvas/project/SettingsAbout.dc.html) | KERNEL-25 | Platform | settings/about | `screens/settings/pages/About.tsx` | done |
-| SettingsRoom | Room · Client A | [png](../design/screens/SettingsRoom.png) | [dc.html](../design/canvas/project/SettingsRoom.dc.html) | KERNEL-26 | Platform | settings/room + roomId | `screens/settings/pages/Room.tsx` | done |
+| SettingsRoom | Room · Client A | [png](../design/screens/SettingsRoom.png) | [dc.html](../design/canvas/project/SettingsRoom.dc.html) | KERNEL-26, KERNEL-161 | Platform | settings/room + roomId | `screens/settings/pages/Room.tsx` | todo |
 | HomeLight | Home · light | [png](../design/screens/HomeLight.png) | [dc.html](../design/canvas/project/HomeLight.dc.html) | KERNEL-29 | Platform | home, theme light | `tokens.css` | done |
 | WorkspaceLight | Workspace · light | [png](../design/screens/WorkspaceLight.png) | [dc.html](../design/canvas/project/WorkspaceLight.dc.html) | KERNEL-29 | Platform | workspace, theme light | `tokens.css` | done |
 
