@@ -2,7 +2,7 @@
 
 > This is a record of how Kernel was built, kept as written. "CJ" is the maintainer.
 
-Add an entry when you make a choice someone might later "fix". Newest at the bottom.
+This file holds D-001 to D-139 and takes no new entries. New decisions go in `docs/decisions/`, one file each (see [its README](decisions/README.md)).
 
 **D-001 Sessions run on the Claude Agent SDK, not a wrapped terminal.** Structured messages give a real transcript, `canUseTool` gives approvals, `rate_limit_event` gives usage. The big terminal (KERNEL-12) is the exception, for people who want the TUI.
 
