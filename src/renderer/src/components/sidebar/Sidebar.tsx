@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Room, Workspace } from '@shared/types'
+import type { Chat, Room, Workspace } from '@shared/types'
 import { call } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
-import { isLeadWorkspace, leadOf, openLead, useLeadWaiting } from '../../lead'
+import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
 import { roomLetter } from '../../screens/rooms/roomInfo'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
@@ -15,8 +15,8 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
-import { liveWorkspaces, slotKey, slotsFor } from './slots'
-import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
+import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
 const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
@@ -50,10 +50,10 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-function NavItem({ route, icon, label, right, sub, describedBy, slot }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; describedBy?: string; slot?: RowKey }) {
+function NavItem({ route, icon, label, right, sub, nested, describedBy, slot }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; describedBy?: string; slot?: RowKey }) {
   const current = useStore((s) => same(s.ui.route, route))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => go(route)}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => go(route)}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {slot?.hint ? <KeyHint n={slot.n} /> : right}
@@ -71,8 +71,8 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
 }
 
 /**
- * The room's Lead, under Board. It opens the Lead's chat, and works before the first brief too: `lead.open` makes the workspace.
- * Its icon shows the Lead's floor status, and hovering it shows the Lead's card.
+ * The room's Lead, shown only while it has no open chat to list. It opens the Lead's chat, and works before the first brief too:
+ * `lead.open` makes the workspace. Its icon shows the Lead's floor status, and hovering it shows the Lead's card.
  */
 function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
@@ -91,6 +91,34 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
       </button>
       {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} />}
     </div>
+  )
+}
+
+/**
+ * One of the Lead's open chats. Its icon is the one its tab shows (a plan to review, something that needs you, a running turn), from
+ * the same approvals and `running` flag. It opens the Lead's workspace on that chat's tab, and the full title is the tooltip.
+ */
+function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: RowKey }) {
+  const approvals = useStore((s) => s.approvals)
+  const waiting = useMemo(() => approvals.filter((a) => a.chatId === chat.id && a.status === 'pending'), [approvals, chat.id])
+  const running = useStore((s) => !!s.running[chat.id])
+  // A workspace with no tab chosen opens on its first tab that isn't closed, as the workspace screen does.
+  const current = useStore((s) => {
+    const r = s.ui.route
+    if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
+    const tab = s.ui.workspace.tab
+    return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
+  })
+  const g = chatGlyph({ waiting, running })
+  return (
+    <button
+      className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${chat.title}, ${g.label}` : chat.title}
+      aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => void openLeadChat(roomId, chat.id)}
+    >
+      <span className="nav-glyph" data-tone={g.tone} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
+      <span className="grow ellipsis">{chat.title}</span>
+      {slot?.hint && <KeyHint n={slot.n} />}
+    </button>
   )
 }
 
@@ -114,7 +142,7 @@ async function archiveFromSidebar(ws: Workspace) {
  * A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals
  * for Archive and, after a moment, shows the workspace's card.
  */
-function WorkspaceItem({ ws, slot }: { ws: Workspace; slot?: RowKey }) {
+function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nested?: boolean }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
@@ -125,7 +153,7 @@ function WorkspaceItem({ ws, slot }: { ws: Workspace; slot?: RowKey }) {
   return (
     <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
-        sub route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined} slot={slot}
+        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined} slot={slot}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
@@ -139,34 +167,47 @@ function WorkspaceItem({ ws, slot }: { ws: Workspace; slot?: RowKey }) {
   )
 }
 
+/** The workspaces whose chat list `useChatLists` has asked for. The store can't say: a `chat` push makes a one-chat list before any fetch. */
+const fetched = new Set<string>()
+
 /**
- * Chat lists for the workspace rows, which load only when a workspace opens. With them a row shows it is working before
- * you open it; chat pushes keep them current after that.
+ * Chat lists for the Lead's workspace and the workspace rows, which load only when a workspace opens. With them a chat row
+ * lists at launch and a workspace row shows it is working before you open it; chat pushes keep them current after that.
+ * A list is fetched once per workspace whatever the store holds, then merged with any chats pushed meanwhile.
  */
 function useChatLists(workspaceIds: string[]) {
   const key = workspaceIds.join()
   useEffect(() => {
     for (const id of workspaceIds) {
-      if (getState().chats[id]) continue
-      void call('chats.list', { workspaceId: id }).then((list) => { if (!getState().chats[id]) actions.chats.set(id, list) }).catch(() => undefined)
+      if (fetched.has(id)) continue
+      fetched.add(id)
+      void call('chats.list', { workspaceId: id })
+        .then((list) => actions.chats.set(id, mergeChatList(list, getState().chats[id])))
+        .catch(() => { fetched.delete(id) })
     }
   }, [key])
 }
 
 /**
- * A room in the sidebar. Expanded, it lists Team, the Lead and its live workspaces (D-104 hid Floor and Board). Pressing the row folds or unfolds it,
- * as in Conductor, and hovering it swaps the room's letter for a chevron and shows the menu button.
+ * A room in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it, then the workspaces
+ * no open chat owns (D-139; D-104 hid Floor and Board). Pressing the row folds or unfolds it, as in Conductor, and hovering it
+ * swaps the room's letter for a chevron and shows the menu button.
  */
 const NO_KEYS: string[] = []
 
 function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room: Room; current: boolean; expanded: boolean; numbered: boolean; hints: boolean; onToggle: () => void }) {
-  const live = useStore((s) => liveWorkspaces(s.workspaces, room.id))
+  const agents = useStore((s) => s.agents)
+  const workspaces = useStore((s) => s.workspaces)
+  const chats = useStore((s) => s.chats)
+  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats), [room, agents, workspaces, chats])
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
-  const order = useStore((s) => (numbered ? slotsFor(room, s.agents, s.workspaces).map(slotKey) : NO_KEYS))
-  const slotOf = (key: string): RowKey | undefined => { const i = order.indexOf(key); return i < 0 ? undefined : { n: i + 1, hint: hints } }
+  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats])
+  const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
-  useChatLists(expanded ? live.map((w) => w.id) : [])
+  const leadHome = leadHomeOf(room, agents, workspaces)
+  // A folded room in view still loads the Lead's chats, since ⌘1 to ⌘9 count them.
+  useChatLists(expanded ? [...(leadHome ? [leadHome] : []), ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : numbered && leadHome ? [leadHome] : [])
   return (
     <div className="nav-list">
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
@@ -184,13 +225,12 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
         </div>
         {menuOpen && <RoomMenu room={room} anchorRef={anchor} />}
       </div>
-      {expanded && (
-        <>
-          <NavItem sub route={{ name: 'team', roomId: room.id }} icon="team" label="Team" slot={slotOf('team')} />
-          <LeadItem roomId={room.id} slot={slotOf('lead')} />
-          {live.map((w) => <WorkspaceItem key={w.id} ws={w} slot={slotOf(`workspace:${w.id}`)} />)}
-        </>
-      )}
+      {expanded && rows.map((row) => {
+        const key = slotKey(row)
+        if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
+        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} chat={row.chat} slot={slotOf(row)} />
+        return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} />
+      })}
     </div>
   )
 }

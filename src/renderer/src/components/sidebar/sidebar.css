@@ -69,3 +69,6 @@
 .hc-status[data-accent='merged'] { --tone: var(--merged); --tint: var(--tint-merged); }
 /* The width itself is inline on the nav, over tokens.css; its resize handle is styled in components/resize.css. */
 .sidebar { position: relative; }
+/* A workspace under the chat that started it sits one level in, under the chat's title rather than its icon: the sub row's 30px
+   plus the 16px icon and 10px gap. Chat rows keep the sub row's padding. */
+.nav-item.nav-nested { padding-left: 56px; }
