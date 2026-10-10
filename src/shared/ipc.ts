@@ -32,6 +32,10 @@ export interface KernelApi {
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
   'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
+  /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
+  'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
+  /** The room icon as a data URL, or null for the letter. */
+  'rooms.icon': { req: { roomId: string }; res: string | null }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
   /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
@@ -198,6 +202,8 @@ export interface KernelApi {
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
+  /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
+  'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
   /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
