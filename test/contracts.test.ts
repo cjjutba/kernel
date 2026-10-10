@@ -49,6 +49,14 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
+  it('fixture mode answers the room icon channels, with Portfolio showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.Workspace)
+    expect(await h['rooms.icon']({ roomId: 'room-portfolio' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['rooms.icon']({ roomId: 'room-a' })).toBeNull()
+    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['rooms.setIcon']({ roomId: 'room-portfolio', icon: { kind: 'letter' } })).icon).toBeUndefined()
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -68,8 +76,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 126 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(126)
+  it('lists all 127 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(127)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
