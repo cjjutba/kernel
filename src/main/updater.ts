@@ -40,10 +40,11 @@ export class Updater {
   private timer?: NodeJS.Timeout
   private readonly file: string
 
-  constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number }) {
+  /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (D-136). */
+  constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string }) {
     this.file = join(o.dataDir, 'update.json')
     this.saved = readSaved(this.file)
-    this.state = { status: 'idle', current: o.current }
+    this.state = { status: 'idle', current: o.current, currentNotes: this.currentNotes() }
     const e = o.engine
     e.autoDownload = true
     // A downloaded update installs on the next quit even without Restart to update.
@@ -91,6 +92,18 @@ export class Updater {
   install() {
     if (this.state.status !== 'ready') throw new Error('No update is ready')
     this.o.engine.quitAndInstall()
+  }
+
+  /**
+   * What's new for the version that's running, when no update is ready (KERNEL-154). A release build carries its notes.
+   * A build without them falls back to update.json, which has them when Kernel updated itself to this version.
+   */
+  private currentNotes(): Note[] | undefined {
+    let raw = ''
+    try { if (this.o.notesFile) raw = readFileSync(this.o.notesFile, 'utf8') } catch { /* not in this build */ }
+    const notes = parseNotes(raw)
+    if (notes.length) return notes
+    return this.saved?.version === this.o.current && this.saved.notes.length ? this.saved.notes : undefined
   }
 
   private set(patch: Partial<AppUpdate>) {

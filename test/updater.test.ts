@@ -105,6 +105,34 @@ describe('Updater', () => {
     expect(new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine() }).get().installed).toBeUndefined()
   })
 
+  it('carries the running version\'s notes from the build through every check (KERNEL-154)', async () => {
+    const dataDir = await dir()
+    const notesFile = join(dataDir, '0.1.1.md')
+    await writeFile(notesFile, '### Fixed\n- Fixed a stale PR status.\n- Fixed the footer.')
+    const current = [{ title: 'Fixed', body: 'Fixed a stale PR status.\nFixed the footer.' }]
+    const engine = new FakeEngine()
+    const u = new Updater({ current: '0.1.1', dataDir, engine, notesFile })
+    expect(u.get()).toMatchObject({ status: 'idle', currentNotes: current })
+    expect((await u.check()).currentNotes).toEqual(current)
+    engine.next = (e) => e.emit('error', new Error('offline'))
+    expect((await u.check()).currentNotes).toEqual(current)
+    // A downloaded update brings its own notes and leaves the running version's alone.
+    engine.next = download
+    expect(await u.check()).toMatchObject({ status: 'ready', notes: parseNotes(notes), currentNotes: current })
+  })
+
+  it('falls back to the notes an update installed with, and only for that version', async () => {
+    const dataDir = await dir()
+    const engine = new FakeEngine()
+    engine.next = download
+    await new Updater({ current: '0.1.0', dataDir, engine }).check()
+    await settle()
+    const missing = join(dataDir, 'nope.md')
+    expect(new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine(), notesFile: missing }).get().currentNotes).toEqual(parseNotes(notes))
+    expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine(), notesFile: missing }).get().currentNotes).toBeUndefined()
+    expect(new Updater({ current: '0.1.0', dataDir: await dir(), engine: new FakeEngine() }).get().currentNotes).toBeUndefined()
+  })
+
   it('does not show What\'s new when the downloaded update never installed', async () => {
     const dataDir = await dir()
     const engine = new FakeEngine()

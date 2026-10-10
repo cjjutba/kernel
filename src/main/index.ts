@@ -78,9 +78,15 @@ app.whenReady().then(async () => {
   let started: Promise<void> = Promise.resolve()
   if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
   else {
-    // Only a packaged, signed app can update itself. Dev runs report no update.
+    // Only a packaged, signed app can update itself. Dev runs report no update. scripts/release.sh writes the version's
+    // notes into the build for What's new (D-136).
     const updater = app.isPackaged
-      ? new Updater({ current: app.getVersion(), dataDir: app.getPath('userData'), engine: electronUpdater.autoUpdater })
+      ? new Updater({
+          current: app.getVersion(),
+          dataDir: app.getPath('userData'),
+          engine: electronUpdater.autoUpdater,
+          notesFile: join(app.getAppPath(), 'out', 'release-notes', `${app.getVersion()}.md`)
+        })
       : undefined
     const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
     const kernel = new Kernel({

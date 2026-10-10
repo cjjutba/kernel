@@ -44,6 +44,10 @@ node scripts/release-notes.ts --app "$version" > "$tmp/app-notes.md"
 echo "release: building Kernel $version"
 rm -rf dist
 pnpm exec electron-vite build
+# The same notes ship inside the app, for What's new when no update is ready (D-136). The file is named after the
+# version, so a later local build never shows an older release's notes.
+rm -rf out/release-notes && mkdir -p out/release-notes
+cp "$tmp/app-notes.md" "out/release-notes/$version.md"
 # Other Apple credentials in the shell would win over the keychain profile in electron-builder's notarize step.
 env -u APPLE_ID -u APPLE_APP_SPECIFIC_PASSWORD -u APPLE_TEAM_ID -u APPLE_API_KEY -u APPLE_API_KEY_ID -u APPLE_API_ISSUER \
   APPLE_KEYCHAIN_PROFILE="$profile" CSC_IDENTITY_AUTO_DISCOVERY=true \

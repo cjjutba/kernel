@@ -27,7 +27,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | Rooms | All rooms | [png](../design/screens/Rooms.png) | [dc.html](../design/canvas/project/Rooms.dc.html) | KERNEL-20 | Team | rooms | `screens/rooms/Rooms.tsx` | done |
 | NewRoom | New room | [png](../design/screens/NewRoom.png) | [dc.html](../design/canvas/project/NewRoom.dc.html) | KERNEL-20 | Team | modal newRoom | `screens/rooms/NewRoom.tsx` | done |
 | History | History | [png](../design/screens/History.png) | [dc.html](../design/canvas/project/History.dc.html) | KERNEL-21 | Team | history | `screens/history/History.tsx` | done |
-| WhatsNew | What's new · update ready | [png](../design/screens/WhatsNew.png) | [dc.html](../design/canvas/project/WhatsNew.dc.html) | KERNEL-30 | Platform | modal whatsNew | `screens/update/WhatsNew.tsx` | done |
+| WhatsNew | What's new · update ready | [png](../design/screens/WhatsNew.png) | [dc.html](../design/canvas/project/WhatsNew.dc.html) | KERNEL-30, KERNEL-154 | Platform | modal whatsNew | `screens/update/WhatsNew.tsx` | done |
 | SidebarRoomsMenu | Your rooms menu | [png](../design/screens/SidebarRoomsMenu.png) | [dc.html](../design/canvas/project/SidebarRoomsMenu.dc.html) | KERNEL-20 | Team | home + menu rooms | `components/sidebar/RoomsMenu.tsx` | done |
 | SidebarRoomMenu | Room menu | [png](../design/screens/SidebarRoomMenu.png) | [dc.html](../design/canvas/project/SidebarRoomMenu.dc.html) | KERNEL-20 | Team | team + menu room:{id} | `components/sidebar/RoomMenu.tsx` | done |
 | AccountMenu | Account menu | [png](../design/screens/AccountMenu.png) | [dc.html](../design/canvas/project/AccountMenu.dc.html) | KERNEL-21 | Team | home + menu account | `components/sidebar/AccountMenu.tsx` | done |
