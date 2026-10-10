@@ -1,5 +1,5 @@
 ---
-type: improved
+type: fixed
 issue: KERNEL-176
 ---
-Rowan only asks you to approve a plan when the chat is in plan mode. With plan mode off, Rowan suggests who should do the work and asks you in the chat before handing it off.
+Fixed Rowan asking you to approve a plan in a chat that isn't in plan mode, so it now suggests the hand-off and asks you in the chat first.
