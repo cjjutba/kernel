@@ -5,8 +5,8 @@ import { stripRemote } from '../../settings/remote'
 export interface PrHeaderView {
   /** The `#42` link to GitHub. */
   link: boolean
-  /** The word beside the link: Draft, Checks failed, Changes requested, Closed. */
-  status?: { text: string; tone: 'muted' | 'del' | 'ink2' }
+  /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
+  state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
   /** The main button. `busy` shows a spinner and is disabled. */
   button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction }
   /** Create PR's caret menu (squared right edge on the button). */
@@ -16,6 +16,9 @@ export interface PrHeaderView {
   archive: boolean
 }
 
+/** The header band: grey while nothing needs doing, green when it can merge, red when something needs fixing, violet once merged. */
+export type PrTone = 'idle' | 'ready' | 'fail' | 'merged'
+
 export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen'
 
 /** Kernel saves a workspace's file count whenever it reads the changes. No files, or no count yet, means nothing to put in a PR. */
@@ -23,22 +26,26 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 
 /** `changed` is false when the workspace has nothing to put in a PR, which hides Create PR and its menu. */
 export function headerView(state: PrState, changed = true): PrHeaderView {
-  const base: PrHeaderView = { link: true, caret: false, merged: false, archive: false }
+  const base = { link: true, caret: false, merged: false, archive: false }
+  const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
+  const conflicts = { label: 'Merge conflicts', tone: 'fail', glyph: 'pr' } as const
+  const mergeable = { label: 'Ready to merge', tone: 'ready', glyph: 'pr' } as const
   switch (state) {
     case 'none':
-      if (!changed) return { ...base, link: false }
-      return { ...base, link: false, caret: true, button: { label: 'Create PR', kind: 'primary', action: 'create' } }
-    case 'creating': return { ...base, link: false, button: { label: 'Creating PR', kind: 'busy' } }
-    case 'checks': return { ...base, button: { label: 'Checks running', kind: 'busy' } }
-    case 'conflict': return { ...base, button: { label: 'Resolve conflicts', kind: 'strong', action: 'resolve' } }
-    case 'resolving': return { ...base, button: { label: 'Resolving', kind: 'busy' } }
-    case 'ready': case 'open': return { ...base, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
-    case 'merging': return { ...base, button: { label: 'Merging', kind: 'busy' } }
-    case 'merged': return { ...base, merged: true }
-    case 'draft': return { ...base, status: { text: 'Draft', tone: 'muted' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
-    case 'cifail': return { ...base, status: { text: 'Checks failed', tone: 'del' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
-    case 'changes': return { ...base, status: { text: 'Changes requested', tone: 'ink2' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
-    case 'closed': return { ...base, status: { text: 'Closed', tone: 'muted' }, button: { label: 'Reopen', kind: 'secondary', action: 'reopen' }, archive: true }
+      if (!changed) return { ...base, link: false, state: { label: 'No changes yet', tone: 'idle', glyph: 'branch' } }
+      return { ...base, link: false, state: noPr, caret: true, button: { label: 'Create PR', kind: 'primary', action: 'create' } }
+    case 'creating': return { ...base, link: false, state: noPr, button: { label: 'Creating PR', kind: 'busy' } }
+    case 'checks': return { ...base, state: { label: 'Open', tone: 'idle', glyph: 'pr' }, button: { label: 'Checks running', kind: 'busy' } }
+    case 'conflict': return { ...base, state: conflicts, button: { label: 'Resolve conflicts', kind: 'strong', action: 'resolve' } }
+    case 'resolving': return { ...base, state: conflicts, button: { label: 'Resolving', kind: 'busy' } }
+    case 'ready': return { ...base, state: mergeable, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
+    case 'open': return { ...base, state: { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
+    case 'merging': return { ...base, state: mergeable, button: { label: 'Merging', kind: 'busy' } }
+    case 'merged': return { ...base, state: { label: 'Merged', tone: 'merged', glyph: 'merged' }, merged: true }
+    case 'draft': return { ...base, state: { label: 'Draft', tone: 'idle', glyph: 'prDraft' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
+    case 'cifail': return { ...base, state: { label: 'Checks failed', tone: 'fail', glyph: 'pr' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
+    case 'changes': return { ...base, state: { label: 'Changes requested', tone: 'fail', glyph: 'pr' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
+    case 'closed': return { ...base, state: { label: 'Closed', tone: 'idle', glyph: 'prClosed' }, button: { label: 'Reopen', kind: 'secondary', action: 'reopen' }, archive: true }
   }
 }
 
