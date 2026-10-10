@@ -87,6 +87,21 @@ describe('worktrees', () => {
     expect(basename(next)).toBe('feat-taken-3')
   })
 
+  it('leaves no new branch behind when git cannot add the worktree (KERNEL-276)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-readonly-' + Date.now())
+    await createWorktree({ repo, root, branch: 'feat/first', baseRef: 'main' })
+    // git makes the branch, then fails to create the folder in a root it cannot write to.
+    await chmod(root, 0o555)
+    onTestFinished(() => chmod(root, 0o755))
+    await expect(createWorktree({ repo, root, branch: 'feat/second', baseRef: 'main' })).rejects.toThrow()
+    expect(await branchExists(repo, 'feat/second')).toBe(false)
+    // A branch that was already there stays when `-b` refuses it.
+    await chmod(root, 0o755)
+    await expect(createWorktree({ repo, root, branch: 'feat/first', baseRef: 'main' })).rejects.toThrow(/already exists/)
+    expect(await branchExists(repo, 'feat/first')).toBe(true)
+  })
+
   it('still refuses a folder that exists but is not a worktree', async () => {
     const repo = await tempRepo()
     const folder = await mkdtemp(join(tmpdir(), 'kernel-not-a-worktree-'))

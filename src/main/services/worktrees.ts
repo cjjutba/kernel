@@ -116,11 +116,21 @@ export async function freeWorktreePath(repo: string, root: string, branch: strin
   }
 }
 
-/** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
+/**
+ * Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path.
+ * `worktree add -b` makes the branch before it checks the folder, so a failed add deletes the branch it made, never one
+ * that was already there (KERNEL-276).
+ */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
   const path = await freeWorktreePath(o.repo, o.root, o.branch)
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  const existed = await branchExists(o.repo, o.branch)
+  try {
+    await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  } catch (e) {
+    if (!existed && await branchExists(o.repo, o.branch)) await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
+    throw e
+  }
   return path
 }
 
