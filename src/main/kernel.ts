@@ -361,10 +361,10 @@ export class Kernel {
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
     const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
     // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
-    // to notice either. Every room waits on 'launch' while the network probe and a sign-in read run in the background, so
-    // the window and the rest of start don't wait for them. Only the carried-on chats and sends do, for those seconds.
+    // to notice either. The chats that carry on wait while the network probe and a sign-in read run in the background, so
+    // the window, the rest of start, ordinary sends and other queues don't wait for them.
     if (this.sessions.wasWorking() || Object.keys(cutOff).length) {
-      this.sessions.holdAll('launch')
+      this.sessions.holdCarryOn()
       void (async () => {
         try {
           await this.network?.check()
@@ -372,7 +372,7 @@ export class Kernel {
           if (!signedIn && !this.stopped) this.signedOut()
         } finally {
           // A stopped Kernel's database is closed, and releasing would send what waited.
-          if (!this.stopped) this.sessions.releaseAll('launch')
+          if (!this.stopped) this.sessions.releaseCarryOn()
         }
       })()
     }

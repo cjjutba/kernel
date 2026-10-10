@@ -181,6 +181,8 @@ export class Sessions {
   private working = new Set<string>()
   /** Kernel is quitting: the journal is frozen and nothing new goes out (`shutdown`). */
   private closing = false
+  /** Kernel's launch checks are running (`holdCarryOn`). Chats in `cutOff` wait for them. Nothing else does. */
+  private launching = false
   /** Claude Code processes Kernel started that haven't exited, by pid, with what each was started as. Saved under `claudePids`. */
   private pids = new Map<number, Spawned>()
   /** Chats whose session died mid-turn. `post` leaves them alone until the user sends or restarts (KERNEL-124). */
@@ -280,6 +282,19 @@ export class Sessions {
   }
 
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
+
+  /**
+   * Kernel checks the network and the sign-in at launch before agents carry on (KERNEL-215). Until `releaseCarryOn`, chats
+   * a quit or a limit cut off wait, queue included. Ordinary sends and every other queue go out as usual.
+   */
+  holdCarryOn() { this.launching = true }
+
+  /** The launch checks are done. What waited carries on, unless a hold they found (offline, signed out) still stands. */
+  releaseCarryOn() {
+    if (!this.launching) return
+    this.launching = false
+    this.drainWaiting()
+  }
 
   /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
   hold(chatId: string, parts: ChatPart[], o: Sender = {}) {
@@ -548,7 +563,7 @@ export class Sessions {
   private drain(chatId: string) {
     const [next, ...rest] = this.queued(chatId)
     const chat = this.d.store.chat(chatId)
-    if (this.closing || !next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
     this.setQueue(chatId, rest)
     this.dispatch(chat, next.parts, next)
   }
@@ -596,7 +611,7 @@ export class Sessions {
    * agent to pick up where it left off. After a quit, `restore` already put that nudge at the end of a queue.
    */
   private carryOn() {
-    if (this.closing) return
+    if (this.closing || this.launching) return
     for (const [id, reason] of [...this.cutOff]) {
       const chat = this.d.store.chat(id)
       if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }

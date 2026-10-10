@@ -1120,6 +1120,30 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(notes(s.store)).toEqual([])
   })
 
+  it('holds only the chats that carry on during the launch check: other sends and queues go at once', async () => {
+    const s = await midTurn()
+    s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws2', name: 'invoice-export', path: '/tmp/ws2' })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2' })
+    s.store.saveChat({ ...s.chat, id: 'third', workspaceId: 'ws2' })
+    await s.sessions.shutdown(0)
+    // A message that waited for a free slot in another chat before the quit.
+    s.store.saveMeta('queues', { ...s.store.meta<Record<string, unknown>>('queues'), third: [{ id: 'q3', chatId: 'third', parts: [{ type: 'text', text: 'Export the CSV' }], ts: 1 }] })
+    const next = relaunch(s, { before: (sessions) => sessions.holdCarryOn() })
+    expect(next.sessions.heldFor()).toEqual([])
+    expect(next.sessions.isRunning('third')).toBe(true)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual(['Then add a test', RELAUNCH_NUDGE])
+    expect(await next.sessions.send('other', [{ type: 'text', text: 'Export it' }])).toEqual({ queued: false })
+    expect(next.sessions.isRunning('other')).toBe(true)
+    // A turn ending elsewhere drains queues, but not the chat that waits for the check.
+    next.started().find((c) => c.options.cwd === '/tmp/ws2')!.feed(result('r-other'))
+    await flush()
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    next.sessions.releaseCarryOn()
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(texts(s.store).at(-1)).toBe('Then add a test')
+  })
+
   it('leaves a closed chat and an archived workspace alone', async () => {
     const s = await midTurn()
     await s.sessions.shutdown(0)

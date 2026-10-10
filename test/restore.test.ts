@@ -198,7 +198,8 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     // The sign-in read is slow, as `claude auth status` can be. start() doesn't wait for it.
     let answer!: (signedIn: boolean) => void
     const { k: k2, before } = await relaunch(where, { signedIn: () => new Promise((r) => { answer = r }) })
-    expect(k2.sessions.heldFor()).toEqual(['launch'])
+    // Only the chats that carry on wait for it: no room is held, and nothing started.
+    expect(k2.sessions.heldFor()).toEqual([])
     expect(sdk.calls.length).toBe(before)
     // Signed out: the launch hold becomes a sign-in hold. Nothing started, the notes are there and both chats wait.
     answer(false)
