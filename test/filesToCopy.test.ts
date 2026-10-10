@@ -42,6 +42,25 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(await paths(repo, ['**/.env', '**/*', 'node_modules/**'])).toEqual(['.env', 'src/.env'])
   }, 60000)
 
+  it('reaches into a wholly ignored folder when a pattern names it, and only then', async () => {
+    const repo = await tempRepo({ '.gitignore': 'secrets/\n.vercel\ncerts/\n', 'README.md': '' })
+    await put(repo, {
+      'secrets/prod.env': 'p\n', 'secrets/dev.env': 'd\n', 'secrets/notes.txt': 'n\n', 'secrets/old/legacy.env': 'l\n',
+      '.vercel/project.json': '{}\n', 'certs/local.pem': 'c\n', 'certs/node_modules/dep.pem': 'no\n'
+    })
+    expect(await paths(repo, ['secrets/*.env'])).toEqual(['secrets/dev.env', 'secrets/prod.env'])
+    expect(await paths(repo, ['secrets/**/*.env', 'secrets/old/*.env'])).toEqual(['secrets/dev.env', 'secrets/old/legacy.env', 'secrets/prod.env'])
+    expect(await paths(repo, ['.vercel/*.json', 'certs/**/*.pem'])).toEqual(['.vercel/project.json', 'certs/local.pem'])
+    // A pattern that doesn't name the folder never walks it.
+    expect(await paths(repo, ['**/*.env', '*/*.json', '**/*.pem'])).toEqual([])
+  })
+
+  it('never expands node_modules or .git, even when a pattern names them', async () => {
+    const repo = await tempRepo({ '.gitignore': 'node_modules/\n', 'README.md': '' })
+    await put(repo, { 'node_modules/index.js': '', 'node_modules/pkg/main.js': '' })
+    expect(await paths(repo, ['node_modules/*.js', 'node_modules/**/*.js', '.git/*'])).toEqual([])
+  })
+
   it('skips node_modules and .git segments even when git lists them, plus symlinks and folders', async () => {
     // No node_modules line, so git lists the ignored files inside it one by one.
     const repo = await tempRepo({ '.gitignore': '*.local\nlinked\n', 'README.md': '' })
@@ -60,8 +79,9 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     await put(repo, { '.gitignore': '*.env\n', 'inside.env': 'i\n' })
     expect(await paths(repo, ['../*.env', `${parent}/*.env`, 'sub/../../*.env', '/*.env'])).toEqual([])
     expect(await paths(repo, ['*.env'])).toEqual(['inside.env'])
-    // Exact paths can't leave the folder either.
+    // Exact paths can't leave the folder either, and a leading slash reads as relative, as it always did.
     expect(await paths(repo, ['../secret.env'])).toEqual([])
+    expect(await paths(repo, ['/inside.env'])).toEqual(['inside.env'])
   })
 
   it(`stops at ${MAX_FILES_TO_COPY} files`, async () => {
@@ -78,6 +98,13 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(await paths(dir, ['.env*', '.env'])).toEqual(['.env'])
   })
 
+  it('gives a folder room inside a parent repo its exact paths only', async () => {
+    const parent = await tempRepo({ '.gitignore': '*.env\n', 'app/index.ts': '' })
+    await put(parent, { 'app/local.env': 'a\n' })
+    expect(await paths(join(parent, 'app'), ['*.env'])).toEqual([])
+    expect(await paths(join(parent, 'app'), ['local.env'])).toEqual(['local.env'])
+  })
+
   it('keeps exact paths as they were: any file there is copied and a missing one is skipped', async () => {
     const repo = await tempRepo({ '.gitignore': '.env.local\n', 'config/app.json': '{}\n' })
     await put(repo, { '.env.local': 'L\n', 'notes.txt': 'untracked, not ignored\n' })
@@ -85,5 +112,20 @@ describe('Files to copy patterns (KERNEL-245)', () => {
     expect(await copyLocalFiles(repo, wt, ['.env.local', 'missing.env', 'notes.txt', 'config/app.json', 'config'])).toEqual(['.env.local', 'config/app.json', 'notes.txt'])
     expect(await readFile(join(wt, 'notes.txt'), 'utf8')).toBe('untracked, not ignored\n')
     expect(await paths(repo, [])).toEqual([])
+    // Nothing under .git, so the preview always equals the copy.
+    expect(await paths(repo, ['.git/config', '.git/HEAD'])).toEqual([])
+  })
+
+  it('follows a symlink for an exact path, as before, and skips one a pattern matches', async () => {
+    const shared = await mkdtemp(join(tmpdir(), 'kernel-shared-'))
+    await put(shared, { '.env': 'SHARED=1\n' })
+    const repo = await tempRepo({ '.gitignore': '.env*\n', 'README.md': '' })
+    await symlink(join(shared, '.env'), join(repo, '.env'))
+    await symlink(join(shared, '.env'), join(repo, '.env.local'))
+    expect(await paths(repo, ['.env*'])).toEqual([])
+    expect(await resolveFilesToCopy(repo, ['.env', '.env*'])).toEqual([{ path: '.env', size: 9 }])
+    const wt = await mkdtemp(join(tmpdir(), 'kernel-wt-'))
+    await copyLocalFiles(repo, wt, ['.env'])
+    expect(await readFile(join(wt, '.env'), 'utf8')).toBe('SHARED=1\n')
   })
 })

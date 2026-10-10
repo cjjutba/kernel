@@ -230,6 +230,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'files.preview': async ({ roomId, patterns }) => {
       const entries = patterns ?? roomSettings(roomId).files.copy
       return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+        .sort((a, b) => a.path.localeCompare(b.path))
     },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],

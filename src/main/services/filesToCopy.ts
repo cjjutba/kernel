@@ -11,13 +11,21 @@ const GLOB = /[*?[\]{}]/
 export const isPattern = (entry: string) => GLOB.test(entry)
 
 const SKIPPED_SEGMENTS = new Set(['node_modules', '.git'])
+const skipped = (path: string) => path.split('/').some((s) => SKIPPED_SEGMENTS.has(s))
 const escapes = (p: string) => p === '..' || p.startsWith('../')
+const byPath = (a: string, b: string) => a.localeCompare(b)
+
+/** The segments before the first one with a glob character: `secrets` for `secrets/*.env`, empty for `**\/*.env`. */
+const literalPrefix = (pattern: string) => {
+  const segments = pattern.split('/')
+  return segments.slice(0, segments.findIndex(isPattern)).join('/')
+}
 
 /**
  * What Files to copy resolves to in `repo`, sorted by path and capped at MAX_FILES_TO_COPY (KERNEL-245).
- * Exact paths copy whatever file is there, as they always did. Patterns match the main checkout's ignored files,
- * listed by git, so a tracked file never matches and a wholly ignored folder like node_modules is never walked.
- * The room setup step, workspace create and restore, and `files.preview` all read this.
+ * Exact paths copy whatever file is there, following symlinks, as they always did. Patterns match the main checkout's
+ * ignored files, listed by git, so a tracked file never matches and a wholly ignored folder is only walked when a
+ * pattern names it. The room setup step, workspace create and restore, and `files.preview` all read this.
  */
 export async function resolveFilesToCopy(repo: string, entries: string[]): Promise<FileToCopy[]> {
   const wanted = entries.map((e) => e.trim()).filter(Boolean)
@@ -26,14 +34,14 @@ export async function resolveFilesToCopy(repo: string, entries: string[]): Promi
   for (const entry of wanted.filter((e) => !isPattern(e))) {
     // join() reads a leading slash as relative, which is how these entries always worked. Leaving the folder is not allowed.
     const path = relative(repo, join(repo, entry)).split(sep).join('/')
-    if (!path || escapes(path) || found.has(path)) continue
+    if (!path || escapes(path) || path.split('/').includes('.git') || found.has(path)) continue
     const s = await stat(join(repo, path)).catch(() => undefined)
     if (s?.isFile()) found.set(path, s.size)
   }
 
   const patterns = wanted.filter((e) => isPattern(e) && !isAbsolute(e) && !e.split(/[\\/]/).includes('..')).map((e) => posix.normalize(e).replace(/^\.\//, ''))
   if (patterns.length) {
-    for (const path of await ignoredFiles(repo)) {
+    for (const path of await candidates(repo, patterns)) {
       if (found.size >= MAX_FILES_TO_COPY) break
       if (found.has(path) || !patterns.some((p) => matchesGlob(path, p))) continue
       const s = await lstat(join(repo, path)).catch(() => undefined)
@@ -41,16 +49,28 @@ export async function resolveFilesToCopy(repo: string, entries: string[]): Promi
     }
   }
 
-  return [...found].map(([path, size]) => ({ path, size })).sort((a, b) => a.path.localeCompare(b.path)).slice(0, MAX_FILES_TO_COPY)
+  return [...found].map(([path, size]) => ({ path, size })).sort((a, b) => byPath(a.path, b.path)).slice(0, MAX_FILES_TO_COPY)
 }
 
 /**
- * Ignored, untracked files in the main checkout. `--directory` reports a wholly ignored folder as one `dir/` entry
- * without listing what is inside it, and those are dropped here with anything under node_modules or .git.
- * A folder that isn't a git repo has none, so its patterns match nothing.
+ * Ignored, untracked files in the main checkout, sorted by path. `--directory` reports a wholly ignored folder as one
+ * `dir/` entry without listing what is inside it. When a pattern's literal prefix is inside one, like `secrets/*.env`
+ * with `secrets/` ignored, git lists that prefix file by file. node_modules and .git are never expanded, even when named,
+ * and nothing under them is returned. Only a folder with its own `.git` has candidates, the test `inspectFolder` uses,
+ * so a folder room inside a parent repo doesn't match the parent's ignored files.
  */
-async function ignoredFiles(repo: string): Promise<string[]> {
-  const r = await exec('git', ['-C', repo, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'])
-  if (r.code !== 0) return []
-  return r.stdout.split('\0').filter((p) => p && !p.endsWith('/') && !p.split('/').some((s) => SKIPPED_SEGMENTS.has(s)))
+async function candidates(repo: string, patterns: string[]): Promise<string[]> {
+  if (!(await stat(join(repo, '.git')).then(() => true, () => false))) return []
+  const listed = await ignored(repo, ['--directory'])
+  const folders = listed.filter((p) => p.endsWith('/'))
+  const named = [...new Set(patterns.map(literalPrefix))].filter((prefix) => prefix && !skipped(prefix) && folders.some((d) => `${prefix}/`.startsWith(d)))
+  const files = listed.filter((p) => !p.endsWith('/'))
+  // A prefix inside another named prefix is already listed with it.
+  for (const prefix of named.filter((p) => !named.some((q) => q !== p && p.startsWith(`${q}/`)))) files.push(...await ignored(repo, ['--', prefix]))
+  return [...new Set(files)].filter((p) => !skipped(p)).sort(byPath)
+}
+
+async function ignored(repo: string, args: string[]): Promise<string[]> {
+  const r = await exec('git', ['-C', repo, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', ...args])
+  return r.code === 0 ? r.stdout.split('\0').filter(Boolean) : []
 }
