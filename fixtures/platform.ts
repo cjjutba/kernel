@@ -59,7 +59,8 @@ const kernelFiles: RoomSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
   workspace: {},
-  disabled: { skills: [], mcp: ['Figma'] }
+  disabled: { skills: [], mcp: ['Figma'] },
+  sources: {}
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
 const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }

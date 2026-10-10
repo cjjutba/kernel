@@ -492,7 +492,7 @@
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Files to copy",
+      "title": "Room \u00b7 Files to copy",
       "w": 1440,
       "x": 4560,
       "y": 20800
@@ -564,9 +564,45 @@
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Room \u00b7 Client A",
+      "title": "Room \u00b7 General",
       "w": 1440,
       "x": 12160,
+      "y": 20800
+    },
+    "SettingsRoomGit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Git",
+      "w": 1440,
+      "x": 13680,
+      "y": 20800
+    },
+    "SettingsRoomScripts.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Scripts",
+      "w": 1440,
+      "x": 15200,
+      "y": 20800
+    },
+    "SettingsRoomInstructions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Instructions",
+      "w": 1440,
+      "x": 16720,
+      "y": 20800
+    },
+    "SettingsRoomPermissions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room \u00b7 Permissions",
+      "w": 1440,
+      "x": 18240,
       "y": 20800
     },
     "SettingsScripts.dc.html": {
@@ -591,7 +627,7 @@
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Skills and MCP",
+      "title": "Room \u00b7 Skills and MCP",
       "w": 1440,
       "x": 12160,
       "y": 19500
@@ -600,7 +636,7 @@
       "h": 900,
       "is_interactive": true,
       "radius": 12,
-      "title": "Agents",
+      "title": "Room \u00b7 Agents",
       "w": 1440,
       "x": 9120,
       "y": 19500
@@ -1212,7 +1248,7 @@
     },
     "row16": {
       "kind": "title1",
-      "maxW": 8000,
+      "maxW": 19680,
       "text": "17 \u00b7 Settings \u00b7 workspaces, system and rooms",
       "w": 600,
       "x": 0,
@@ -1416,6 +1452,10 @@
     "SettingsExperimental.dc.html",
     "SettingsAbout.dc.html",
     "SettingsRoom.dc.html",
+    "SettingsRoomGit.dc.html",
+    "SettingsRoomScripts.dc.html",
+    "SettingsRoomInstructions.dc.html",
+    "SettingsRoomPermissions.dc.html",
     "HomeLight.dc.html",
     "WorkspaceLight.dc.html"
   ],
