@@ -42,6 +42,16 @@ describe('repo settings files', () => {
       { name: 'Figma', source: 'project', enabled: false }, { name: 'Linear', source: 'project', enabled: true }
     ])
   })
+
+  it("reads and writes the room's Linear team as a [linear] table", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    expect((await loadRepoSettings(repo)).linear).toBeUndefined()
+    expect((await saveRepoSettings(repo, { linear: { team: 'KERNEL' } }, true)).linear).toEqual({ team: 'KERNEL' })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('[linear]\nteam = "KERNEL"')
+    expect((await saveRepoSettings(repo, { linear: { team: 'OPS' } })).linear).toEqual({ team: 'OPS' })
+    expect((await saveRepoSettings(repo, { linear: { team: null } })).linear).toEqual({ team: 'KERNEL' })
+    expect((await saveRepoSettings(repo, { linear: { team: null } }, true)).linear).toBeUndefined()
+  })
 })
 
 describe('hooks installer without SessionStart', () => {

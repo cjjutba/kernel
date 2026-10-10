@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
   FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings,
-  Integration, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -53,6 +53,8 @@ export interface Fixture {
   /** Open PRs and Linear issues the new workspace modal lists. */
   openPrs?: PrSummary[]
   issues?: IssueSummary[]
+  /** What the Issues screen reads (KERNEL-159). Issues carry their detail, so the issue pane needs nothing else. */
+  linear?: { issues?: LinearIssueDetail[]; scope?: LinearScope }
   settings?: AppSettings
   /** By room id. */
   roomSettings?: Record<string, RoomSettings>
