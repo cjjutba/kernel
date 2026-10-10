@@ -12,7 +12,7 @@ const TIMEOUTS = [{ value: '120', label: '2 min' }, { value: '300', label: '5 mi
 /** What Kernel writes under "hooks" in Claude Code's user settings, for pasting by hand. The installer writes the same matchers. */
 export function hooksSnippet(status: HookStatus, approvalTimeoutSec: number): string {
   const hooks: Record<string, unknown[]> = {}
-  for (const e of status.events) hooks[e.name] = [kernelHookMatcher(e.name, status.port, approvalTimeoutSec)]
+  for (const e of status.events) hooks[e.name] = [kernelHookMatcher(e.name, status.port, approvalTimeoutSec, status.token ?? '')]
   return JSON.stringify({ hooks }, null, 2)
 }
 

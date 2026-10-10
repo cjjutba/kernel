@@ -57,15 +57,15 @@ describe('repo settings files', () => {
 describe('hooks installer without SessionStart', () => {
   const old = { SessionStart: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks', timeout: 10 }] }, { hooks: [{ type: 'command', command: './mine.sh' }] }] }
   it('does not write a SessionStart entry and removes the one an old install left', () => {
-    const next = withKernelHooks({ hooks: old }, 7420, 300)
+    const next = withKernelHooks({ hooks: old }, 7420, 300, 'ab'.repeat(32))
     expect(next.hooks!.SessionStart).toEqual([{ hooks: [{ type: 'command', command: './mine.sh' }] }])
-    expect(JSON.stringify(withKernelHooks({}, 7420, 300))).not.toContain('SessionStart')
+    expect(JSON.stringify(withKernelHooks({}, 7420, 300, 'ab'.repeat(32)))).not.toContain('SessionStart')
   })
 
   it('reinstall rewrites the file and uninstall leaves other hooks alone', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-hooks-')), 'settings.json')
     await writeFile(file, JSON.stringify({ hooks: { SessionStart: [{ hooks: [{ type: 'http', url: 'http://localhost:7420/hooks' }] }] } }))
-    await installHooks(file, 7420, 300)
+    await installHooks(file, 7420, 300, 'ab'.repeat(32))
     expect(JSON.parse(await readFile(file, 'utf8')).hooks.SessionStart).toBeUndefined()
     await uninstallHooks(file)
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({})
@@ -95,6 +95,10 @@ describe('rewriting the hooks on a settings change', () => {
     expect(await read()).not.toContain('"http"')
     expect(await read()).toContain('-m 320 ')
     expect((await h['hooks.status']()).installed).toBe(true)
+    // The hooks carry the token the hook server checks, from the data folder.
+    const { token } = await h['hooks.status']()
+    expect(token).toMatch(/^[0-9a-f]{64}$/)
+    expect(await read()).toContain(`X-Kernel-Token: ${token}`)
 
     // Current entries: a port change moves them.
     await h['hooks.restart']({ port })

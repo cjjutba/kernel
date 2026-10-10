@@ -1,12 +1,21 @@
 # Hooks contract
 
-Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has and saving a backup to `settings.json.kernel-backup`. Only the Install button writes them (CheckHooks, Settings > Hooks). A port or approval timeout change rewrites hooks that are already there and never adds them. Code: `src/main/services/hooksInstaller.ts`.
+Kernel listens on `http://127.0.0.1:7420/hooks` (port configurable). "Install hooks" merges these entries into `~/.claude/settings.json`, keeping any hooks the user already has. The first install or uninstall copies the file to `settings.json.kernel-backup`, and nothing overwrites that copy later. Both write a temp file and rename it over, so Claude Code never reads a half-written file. Only the Install button writes them (CheckHooks, Settings > Hooks). A port or approval timeout change rewrites hooks that are already there and never adds them. Code: `src/main/services/hooksInstaller.ts`.
 
 Each entry is a command hook that pipes the payload to the server with curl (D-050):
 
 ```
-/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7420/hooks || true
+/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true
 ```
+
+## Who can post
+
+`<token>` is 64 hex characters from `randomBytes(32)`, made once and kept in `hook-token` in the app data folder (mode 0600). The server checks every `POST /hooks` before it reads the body:
+
+- The Host must be `127.0.0.1:<port>` or `localhost:<port>`, and the `X-Kernel-Token` header must match the token. Either failing gets a 401. The token is compared in constant time.
+- The content type must be `application/json`, or the server answers 415. A web page's `no-cors` fetch can only send `text/plain`.
+
+`GET /health` needs no token. An entry with another token, or none, counts as not installed, so CheckHooks and Settings > Hooks offer Install, which rewrites it. curl's `-f` keeps a 401 quiet, the same way it handles a server that is down. See KERNEL-206.
 
 ## When Kernel isn't running
 
@@ -31,9 +40,9 @@ Payload shapes are validated with Zod in `src/shared/hookSchemas.ts`, loosely, s
 ```json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }],
-    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 320 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 330 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }]
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }],
+    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 320 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 330 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/usr/bin/curl -sf --connect-timeout 1 -m 8 -H 'Content-Type: application/json' -H 'X-Kernel-Token: <token>' --data-binary @- http://127.0.0.1:7420/hooks || true", "timeout": 10 }] }]
   }
 }
 ```

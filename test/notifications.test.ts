@@ -236,11 +236,11 @@ describe('rows that are over (KERNEL-155)', () => {
     const { store } = await setup()
     const approvals = new Approvals(store)
     const port = 17950 + Math.floor(Math.random() * 40)
-    const server = await startHookServer({ port, approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ roomId: 'r', workspaceId: 'w', agentId: 'kai' }) })
+    const server = await startHookServer({ port, token: 'ab'.repeat(32), approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ roomId: 'r', workspaceId: 'w', agentId: 'kai' }) })
     try {
       const started = Date.now()
       const held = fetch(`http://127.0.0.1:${port}/hooks`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': 'ab'.repeat(32) },
         body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: '/x', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm build' } })
       }).then((r) => r.json())
       while (!store.approvals({ pendingOnly: true }).length) await new Promise((r) => setTimeout(r, 10))
