@@ -1,6 +1,6 @@
 # Screens
 
-All 128 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
+All 127 canvas screens, the issue that builds each one, and its status. The PNG is the target; the `.dc.html` has exact values. Update Status when an issue lands (todo, done).
 
 Route is the `Route` (or `Modal`, menu, banner or `WorkspaceView` state) in `src/shared/types.ts` that shows the screen: `team` is `{ name: 'team', roomId }`, `modal newRoom` is `{ name: 'newRoom' }`, `+ menu pr` sets `ui.menu` to `'pr'`. Component is the file under `src/renderer/src/` that draws it. The lane that owns the row creates or replaces that file, and nobody else edits it. Files that exist today are placeholders or re-export the prototype in `screens/Pages.tsx`, `Floor.tsx`, `Workspace.tsx` or `Modals.tsx` (KERNEL-8). To see a screen, add its fixture to `fixtures/` and run `npm run shots -- <Screen>` then `npm run shots:compare -- <Screen>`.
 
@@ -35,6 +35,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | History | History | [png](../design/screens/History.png) | [dc.html](../design/canvas/project/History.dc.html) | KERNEL-21 | Team | history | `screens/history/History.tsx` | done |
 | WhatsNew | What's new · update ready | [png](../design/screens/WhatsNew.png) | [dc.html](../design/canvas/project/WhatsNew.dc.html) | KERNEL-30, KERNEL-154 | Platform | modal whatsNew | `screens/update/WhatsNew.tsx` | done |
 | SidebarRoomsMenu | Your rooms menu | [png](../design/screens/SidebarRoomsMenu.png) | [dc.html](../design/canvas/project/SidebarRoomsMenu.dc.html) | KERNEL-20 | Team | home + menu rooms | `components/sidebar/RoomsMenu.tsx` | done |
+| SidebarChatFolded | Your rooms, a chat folded | [png](../design/screens/SidebarChatFolded.png) | [dc.html](../design/canvas/project/SidebarChatFolded.dc.html) | KERNEL-207 | Team | home + chat folded | `components/sidebar/Sidebar.tsx` | drawn, not built |
 | SidebarRoomMenu | Room menu | [png](../design/screens/SidebarRoomMenu.png) | [dc.html](../design/canvas/project/SidebarRoomMenu.dc.html) | KERNEL-20 | Team | team + menu room:{id} | `components/sidebar/RoomMenu.tsx` | done (menu gains a Team item, KERNEL-165) |
 | AccountMenu | Account menu | [png](../design/screens/AccountMenu.png) | [dc.html](../design/canvas/project/AccountMenu.dc.html) | KERNEL-21 | Team | home + menu account | `components/sidebar/AccountMenu.tsx` | done |
 | QuickAsk | Ask Rowan from anywhere | [png](../design/screens/QuickAsk.png) | [dc.html](../design/canvas/project/QuickAsk.dc.html) | KERNEL-21, KERNEL-146 | Team | home + menu quickAsk | `components/footer/QuickAsk.tsx` | done |
@@ -74,7 +75,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | WorkspaceLoading | Opening a workspace | [png](../design/screens/WorkspaceLoading.png) | [dc.html](../design/canvas/project/WorkspaceLoading.dc.html) | KERNEL-10 | Workspace | workspace | `screens/workspace/Workspace.tsx` | done |
 | WorkspaceToolCalls | Tool calls expanded | [png](../design/screens/WorkspaceToolCalls.png) | [dc.html](../design/canvas/project/WorkspaceToolCalls.dc.html) | KERNEL-10 | Workspace | workspace, view toolsOpen | `screens/workspace/Transcript.tsx` | done |
 | WorkspaceCheckpoints | Checkpoints and revert | [png](../design/screens/WorkspaceCheckpoints.png) | [dc.html](../design/canvas/project/WorkspaceCheckpoints.dc.html) | KERNEL-13 | Workspace | workspace, view checkpoints | `screens/workspace/checkpoints/Checkpoints.tsx` | done |
-| WorkspaceFile | File preview | [png](../design/screens/WorkspaceFile.png) | [dc.html](../design/canvas/project/WorkspaceFile.dc.html) | KERNEL-10 | Workspace | workspace, view tab file:{path} | `screens/workspace/FileView.tsx` | done |
+| WorkspaceFile | File preview | [png](../design/screens/WorkspaceFile.png) | [dc.html](../design/canvas/project/WorkspaceFile.dc.html) | KERNEL-10 | Workspace | workspace, tabs file:{path} | `screens/workspace/FileView.tsx` | done |
 | WorkspaceNewChat | New chat tab · ⌘T | [png](../design/screens/WorkspaceNewChat.png) | [dc.html](../design/canvas/project/WorkspaceNewChat.dc.html) | KERNEL-12 | Workspace | workspace + menu newTab | `screens/workspace/ChatTabs.tsx` | done |
 | WorkspaceTabMenu | Tab menu and rename | [png](../design/screens/WorkspaceTabMenu.png) | [dc.html](../design/canvas/project/WorkspaceTabMenu.dc.html) | KERNEL-12 | Workspace | workspace + menu tab | `screens/workspace/ChatTabs.tsx` | done |
 | WorkspaceTerminal | Big terminal tab · ⌘⇧T | [png](../design/screens/WorkspaceTerminal.png) | [dc.html](../design/canvas/project/WorkspaceTerminal.dc.html) | KERNEL-12 | Workspace | workspace, terminal chat tab | `screens/workspace/terminal/Terminal.tsx` | done |
