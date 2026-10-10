@@ -125,6 +125,27 @@ describe('chat tabs', () => {
     back()
     expect(route()).toEqual({ name: 'home' })
   })
+  it('does not record the fallback chat when the open chat is closed', () => {
+    actions.ui.openTab('lead', 'c3')
+    go({ name: 'inbox' })
+    go(at('lead'))
+    actions.chats.upsert(chat('c3', 'lead', { closed: true }))
+    // Closing c3 opens its neighbour, as ConfirmCloseChats does. c1 was never visited in between, so Back goes to the Inbox.
+    actions.ui.openTab('lead', 'c2')
+    back()
+    expect(route()).toEqual({ name: 'inbox' })
+  })
+  it('remembers the chat, not an image or text tab, when you leave one', () => {
+    actions.ui.openTab('lead', 'c2')
+    actions.ui.openTab('lead', 'image:1')
+    actions.ui.openTab('lead', 'c3')
+    go({ name: 'inbox' })
+    back()
+    expect(tab()).toBe('c3')
+    back()
+    expect(tab()).toBe('c2')
+    expect(getState().ui.tabs.lead?.tab).toBe('c2')
+  })
   it('does not bring back a file tab that was closed', () => {
     actions.ui.openTab('lead', 'file:a.ts')
     actions.ui.openTab('lead', 'c2')
@@ -219,6 +240,15 @@ describe('leaveSettings', () => {
     actions.ui.leaveSettings()
     expect(route()).toEqual({ name: 'inbox' })
     expect(canForward()).toBe(true)
+  })
+  it('does not leave Settings behind Back when it falls back to where it was opened from', () => {
+    go(at('other'))
+    actions.ui.openSettings()
+    actions.workspaces.upsert(ws('other', 'r1', { status: 'archived' }))
+    actions.ui.leaveSettings()
+    expect(route()).toEqual(at('lead'))
+    back()
+    expect(route()).not.toEqual({ name: 'settings', page: 'general' })
   })
   it('still returns to where Settings was opened from when nothing was recorded', () => {
     go(at('lead'), { history: 'replace' })

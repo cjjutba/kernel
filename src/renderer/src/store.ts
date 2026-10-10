@@ -188,6 +188,12 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
   past = capped([...past, from])
   future = []
 }
+/** Where you are, as a place to come back to. Image and text tabs live in the screen and are gone once you leave, so they count as the chat you were last on. */
+function leaving(): Place {
+  const here = placeNow()
+  if (here.route.name !== 'workspace' || !here.tab || !/^(image|text):/.test(here.tab)) return here
+  return { route: here.route, tab: state.ui.tabs[here.route.workspaceId]?.lastChat }
+}
 /** The entry as it would open now: a tab closed since falls back through `tabOf`, which is why that is where it is compared. */
 function resolved(entry: Place): Place {
   if (entry.route.name !== 'workspace' || !entry.tab || hasTab(state, entry.route.workspaceId, entry.tab)) return entry
@@ -207,7 +213,7 @@ function arrive(entry: Place) {
 }
 /** Takes the newest reachable entry of `past` (back) or `future` (forward), and puts where you are now on the other list. */
 function step(dir: 'back' | 'forward'): boolean {
-  const now = placeNow()
+  const now = leaving()
   const taken = takeNewest(dir === 'back' ? past : future, now)
   // Nothing reachable, so everything in that list is dead or where you already are.
   if (!taken) { if (dir === 'back') past = []; else future = []; return false }
@@ -237,7 +243,7 @@ export const actions = {
   ui: {
     /** Navigate. Closes any modal and menu. */
     go: (route: Route, opts?: { history?: HistoryMode }) => {
-      const from = placeNow()
+      const from = leaving()
       setUi({ route, modal: null, menu: null })
       rememberRoom(route)
       moved(from, placeNow(), opts?.history)
@@ -257,7 +263,7 @@ export const actions = {
       // The Settings pages replace each other, so the newest entry is where Settings was opened from, unless it is dead or Settings was opened by a restart.
       const newest = past[past.length - 1]
       if (newest && newest.route.name !== 'settings' && reachable(newest, placeNow())) actions.ui.back()
-      else actions.ui.go(nearest((returnTo ?? { route: launch }).route, state))
+      else actions.ui.go(nearest((returnTo ?? { route: launch }).route, state), { history: 'replace' })
     },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
     closeModal: () => setUi({ modal: null }),
@@ -282,10 +288,13 @@ export const actions = {
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
-      const from = placeNow()
+      const from = leaving()
+      const shown = state.ui.tabs[workspaceId]?.tab
       selectTab(workspaceId, tab)
       // Only switching chats in the workspace on screen is a step. A file or diff is a detour from the chat, and another workspace's tab is not on screen.
-      moved(from, placeNow(), isChatTab(tab) ? 'push' : 'none')
+      // Nor is moving off a tab that was closed, as closing a chat does: `from` is then a fallback chat you never chose.
+      const closed = !!shown && !hasTab(state, workspaceId, shown)
+      moved(from, placeNow(), isChatTab(tab) && !closed ? 'push' : 'none')
     },
     /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
     setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
