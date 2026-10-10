@@ -4,7 +4,7 @@ argument-hint: KERNEL-<number>
 ---
 Work Linear issue $ARGUMENTS from start to finish, following CLAUDE.md.
 
-1. Fetch $ARGUMENTS with the Linear MCP. Move it to In Progress. Check out a branch named with its gitBranchName.
+1. Fetch $ARGUMENTS with the Linear MCP. Move it to In Progress. In a Kernel workspace, stay on the branch Kernel created. Otherwise check out a branch named `<type>/<key>-<a few words>`, with `fix` for the Bug label and `feat` otherwise, 60 characters at most.
 2. Read every screen PNG it lists in design/screens, and the matching design/canvas/project/<Screen>.dc.html where you need exact values.
 3. Make a plan and show it to me before editing. Respect the issue's Owns list and the lane rules.
 4. Implement. Add tests for engine behavior.

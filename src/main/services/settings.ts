@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
-  workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: 'feat/{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
+  workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
   models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
@@ -41,6 +41,8 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
     // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
     delete (s.models as { maxConcurrent?: number }).maxConcurrent
     s.models.effortByModel = effortMemory(s.models.effortByModel)
+    // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
+    if (s.workspace.branchPattern === 'feat/{slug}') s.workspace.branchPattern = defaults.workspace.branchPattern
     return s
   } catch { return defaults }
 }
