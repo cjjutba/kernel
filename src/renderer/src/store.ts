@@ -188,11 +188,15 @@ function moved(from: Place, to: Place, history: HistoryMode = 'push') {
   past = capped([...past, from])
   future = []
 }
+/** The place with the chat you were last on in place of a file, diff, image or text tab. */
+function onChat(place: Place): Place {
+  if (place.route.name !== 'workspace' || !place.tab || isChatTab(place.tab)) return place
+  return { route: place.route, tab: state.ui.tabs[place.route.workspaceId]?.lastChat }
+}
 /** Where you are, as a place to come back to. Image and text tabs live in the screen and are gone once you leave, so they count as the chat you were last on. */
 function leaving(): Place {
   const here = placeNow()
-  if (here.route.name !== 'workspace' || !here.tab || !/^(image|text):/.test(here.tab)) return here
-  return { route: here.route, tab: state.ui.tabs[here.route.workspaceId]?.lastChat }
+  return here.tab?.startsWith('image:') || here.tab?.startsWith('text:') ? onChat(here) : here
 }
 /** The entry as it would open now: a tab closed since falls back through `tabOf`, which is why that is where it is compared. */
 function resolved(entry: Place): Place {
@@ -223,8 +227,8 @@ function step(dir: 'back' | 'forward'): boolean {
   return true
 }
 /** Is there a place Back or Forward would reach. */
-export const canBack = () => takeNewest(past, placeNow()) !== undefined
-export const canForward = () => takeNewest(future, placeNow()) !== undefined
+export const canBack = () => takeNewest(past, leaving()) !== undefined
+export const canForward = () => takeNewest(future, leaving()) !== undefined
 /** Empties both lists. For tests, which share the module. */
 export function resetHistory() { past = []; future = [] }
 /** `tabs` without the workspaces `gone` picks out. Tabs with nothing to drop keep their identity. */
@@ -262,7 +266,7 @@ export const actions = {
     leaveSettings: () => {
       // The Settings pages replace each other, so the newest entry is where Settings was opened from, unless it is dead or Settings was opened by a restart.
       const newest = past[past.length - 1]
-      if (newest && newest.route.name !== 'settings' && reachable(newest, placeNow())) actions.ui.back()
+      if (newest && newest.route.name !== 'settings' && reachable(newest, leaving())) actions.ui.back()
       else actions.ui.go(nearest((returnTo ?? { route: launch }).route, state), { history: 'replace' })
     },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
@@ -288,7 +292,8 @@ export const actions = {
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
-      const from = leaving()
+      // A file or diff tab is not a step, so switching chats from one steps from the chat you opened it from. Leaving the workspace keeps the tab (`go`).
+      const from = onChat(leaving())
       const shown = state.ui.tabs[workspaceId]?.tab
       selectTab(workspaceId, tab)
       // Only switching chats in the workspace on screen is a step. A file or diff is a detour from the chat, and another workspace's tab is not on screen.
