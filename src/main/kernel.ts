@@ -152,8 +152,6 @@ export class Kernel {
   /** Runs `checkLimits` while any window is rejected. */
   private limitCheck?: NodeJS.Timeout
   private limitChecking?: Promise<void>
-  /** Set by stop(), so work that started before it, like the wait sweep, leaves the closed database alone. */
-  private stopped = false
   /** Waits being released, so a merge seen twice (push and poll) sends the brief once (KERNEL-259). */
   private waitReleases = new Map<string, Promise<void>>()
   /**
@@ -1794,14 +1792,15 @@ export class Kernel {
     const room = this.mustRoom(ws.roomId)
     const chat = this.store.chats(id).find((c) => c.kind !== 'terminal' && this.sessions.queued(c.id).length > 0) ?? this.prChat(id)
     const before = await this.head(ws.path)
-    // Onto origin's copy of the base, even when the workspace started from the local branch, which a merge on GitHub
-    // doesn't move. Only a fast-forward on a clean tree: anything else is the agent's to rebase.
-    const base = ws.baseRef.replace(/^origin\//, '')
+    // Onto the remote's copy of the base, even when the workspace started from the local branch, which a merge on
+    // GitHub doesn't move. Only a fast-forward on a clean tree: anything else is the agent's to rebase.
+    const remote = await this.remoteFor(room.path)
+    const base = stripRemote(ws.baseRef, remote)
     let forwarded = true
     if (!now && ws.mode === 'worktree') {
-      // A failed fetch leaves origin's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
-      const fetched = await exec('git', ['-C', ws.path, 'fetch', '--quiet', 'origin'], { timeoutMs: 30_000 }).then((r) => r.code === 0, () => false)
-      forwarded = fetched && await fastForward(ws.path, `origin/${base}`)
+      // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
+      const fetched = await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30_000 }).then((r) => r.code === 0, () => false)
+      forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
     }
     const after = await this.head(ws.path)
     // Archived, started or changed while git ran.
@@ -1810,7 +1809,7 @@ export class Kernel {
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
     if (now) this.note(id, `Started without waiting for ${label}.`)
     else {
-      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto origin/${base} before you build on it.` }], { from: 'kernel' })
+      if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
       this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
@@ -1836,16 +1835,18 @@ export class Kernel {
    * agent slot taken, waits for the next poll.
    */
   private async deliverRelease(id: string) {
+    const remote = await this.remoteOfWs(this.mustWs(id))
+    // Read after the await, and marked before the send, so the poll and a merge can't both send it.
     const ws = this.store.workspace(id)
     if (!ws?.waitsFor?.releasing || ws.status === 'archived' || this.releaseSent.has(id)) return
     const chat = this.prChat(id)
     if (!chat) return
-    const base = ws.baseRef.replace(/^origin\//, '')
-    const parts: ChatPart[] = [{ type: 'text', text: `${this.waitLabelOf(ws)} merged into ${base}. Fetch origin, rebase onto origin/${base}, re-run the tests, then carry on with your task.` }]
+    const base = stripRemote(ws.baseRef, remote)
+    const parts: ChatPart[] = [{ type: 'text', text: `${this.waitLabelOf(ws)} merged into ${base}. Fetch ${remote}, rebase onto ${remote}/${base}, re-run the tests, then carry on with your task.` }]
     const busy = this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 || !!this.store.room(ws.roomId)?.paused || this.sessions.heldFor().length > 0
-    if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
-    else if (!this.sessions.post(chat.id, parts)) return
     this.releaseSent.add(id)
+    if (busy) await this.sessions.send(chat.id, parts, { from: 'kernel' })
+    else if (!this.sessions.post(chat.id, parts)) this.releaseSent.delete(id)
   }
 
   /** A turn Kernel started ended, with nothing of Kernel's left in the queue: the teammate took the rebase message. */
