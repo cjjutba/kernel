@@ -321,6 +321,11 @@ export interface ScriptTrust {
   /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
   runScripts?: { name: string; command: string }[]
   copy: string[]
+  /**
+   * The repo's `[env] files` list. A file can set ZDOTDIR or BASH_ENV, which makes a shell run repo code, so the list waits
+   * for trust like a script (KERNEL-247). Left out when the repo sets none.
+   */
+  envFiles?: string[]
   /** Open workspaces held in `trust` until the room is trusted. */
   workspaceIds: string[]
 }
