@@ -38,6 +38,9 @@
 /* A plan in its chat (cards/plan.tsx) */
 .plan-inline { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 8px; }
 .plan-inline > .trow { gap: 8px; }
+/* The plan reads as part of plan mode: its icon and step numbers take the plan blue (KERNEL-274). */
+.plan-doc-icon { display: inline-flex; color: var(--plan); }
+.plan-inline .md-doc ol > li::marker { color: var(--plan); }
 .plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 11.5px; }
 .plan-file:hover { border-color: var(--line-4); color: var(--ink); }
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
