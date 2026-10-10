@@ -123,7 +123,7 @@ const callsIn = (ws: Workspace) => sdk.calls.filter((c) => c.options.cwd === ws.
 const result = (uuid: string) => ({ type: 'result', subtype: 'success', uuid, duration_ms: 1, session_id: 's' })
 const head = async (path: string) => (await run('git', ['-C', path, 'rev-parse', 'HEAD'])).trim()
 const pending = (k: Kernel) => (k.store.meta<{ pending: [string, { events: { kind: string; workspaceId: string; wait?: { gone?: string } }[] }][] }>('leadUpdates')?.pending ?? []).flatMap(([, p]) => p.events)
-/** The turn Kernel started in the workspace's chat has ended, with nothing queued behind it. */
+/** The turn Kernel started in the workspace's chat has ended. */
 const idle = (k: Kernel, ws: Workspace) => vi.waitFor(() => expect(k.sessions.isRunning(chatOf(k, ws).id)).toBe(false), SLOW)
 const released = (k: Kernel, ws: Workspace) => vi.waitFor(() => { expect(k.store.workspace(ws.id)?.waitsFor).toBeUndefined() }, SLOW)
 

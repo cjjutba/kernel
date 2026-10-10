@@ -31,6 +31,9 @@ async function setup(o: { other?: boolean } = {}) {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
+  // A merge or close starts an archive pass without awaiting it, so a check that a review stays must wait for the pass.
+  const passes = vi.spyOn(k as unknown as { archiveReviews: (...a: unknown[]) => Promise<void> }, 'archiveReviews')
+  const settled = () => Promise.all(passes.mock.results.map((r) => r.value))
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const room = await k.addRoom(repo)
@@ -49,9 +52,9 @@ async function setup(o: { other?: boolean } = {}) {
   onTestFinished(() => { bus.off('activity', onActivity) })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
   const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), SLOW)
-  // Kernel marks a review it will archive once its turn ends, before anything async, so this holds once refreshPr returns.
+  // A review Kernel will archive once its turn ends.
   const marked = () => k['reviewsToArchive'].has(review.id)
-  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, status }
+  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, settled, status }
 }
 
 describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
@@ -82,12 +85,13 @@ describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
   })
 
   it('archive a review workspace that was still working once its turn ends', async () => {
-    const { k, gh, author, review, archived, marked, status } = await setup()
+    const { k, gh, author, review, archived, marked, settled, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
     await k.refreshPr(author.id)
+    await settled()
     expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     k.sessions.isRunning = running
@@ -99,12 +103,13 @@ describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
 
 describe('review workspaces, edge cases (KERNEL-131)', () => {
   it('waits for a message queued in the review to go out and its turn to end', async () => {
-    const { k, gh, author, review, archived, marked, status } = await setup()
+    const { k, gh, author, review, archived, marked, settled, status } = await setup()
     const chat = k.store.chats(review.id)[0].id
     const queued = k.sessions.queued
     k.sessions.queued = (id) => (id === chat ? [{ id: 'q', chatId: chat, parts: [{ type: 'text', text: 'One more look' }], ts: 1 }] : queued.call(k.sessions, id))
     gh.pr = info('merged')
     await k.refreshPr(author.id)
+    await settled()
     expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     k.sessions.queued = queued
@@ -120,11 +125,12 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
   })
 
   it('archives at start a review that was still working when Kernel quit, and leaves one the user restored', async () => {
-    const { k, gh, author, review, marked, status } = await setup()
+    const { k, gh, author, review, marked, settled, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
     await k.refreshPr(author.id)
+    await settled()
     expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o

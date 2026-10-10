@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { watch } from 'node:fs'
-import { mkdtemp, mkdir, writeFile, readdir, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
@@ -9,17 +9,17 @@ import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, r
 const WATCH = { timeout: 10_000 }
 
 /**
- * Resolves once the watches started so far deliver events, and returns a stop for the probe. On macOS, libuv runs every
+ * Resolves once the watches started so far deliver events, and returns a stop that closes the probe and deletes its folder. On macOS, libuv runs every
  * directory watch in the process on one FSEvents stream and restarts it when a watch is added or closed, and events in
  * that gap are dropped. A probe watched after the others firing means the restarted stream covers theirs too. The probe
  * stays open until the test ends, since closing it restarts the stream again (KERNEL-187).
  */
-async function watchesLive(): Promise<() => void> {
+async function watchesLive(): Promise<() => Promise<void>> {
   const dir = await mkdtemp(join(tmpdir(), 'probe-'))
   let seen = false
   const probe = watch(dir, { persistent: false }, () => { seen = true })
   await vi.waitFor(async () => { await writeFile(join(dir, 'p'), String(Date.now())); expect(seen).toBe(true) }, { ...WATCH, interval: 100 })
-  return () => probe.close()
+  return async () => { probe.close(); await rm(dir, { recursive: true, force: true }) }
 }
 
 describe('agents', () => {
@@ -98,7 +98,7 @@ describe('agents', () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await mkdir(join(repo, '.claude'))
     let hits = 0
-    const stops = [watchAgents(repo, () => { hits++ }, 20)]
+    const stops: (() => void | Promise<void>)[] = [watchAgents(repo, () => { hits++ }, 20)]
     try {
       stops.push(await watchesLive())
       await mkdir(join(repo, '.claude', 'agents'))
@@ -108,7 +108,7 @@ describe('agents', () => {
       const afterDir = hits
       await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
       await vi.waitFor(() => expect(hits).toBeGreaterThan(afterDir), WATCH)
-    } finally { for (const stop of stops) stop() }
+    } finally { for (const stop of stops) await stop() }
   })
   it('saves an edit without touching nested frontmatter or quoted values', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
