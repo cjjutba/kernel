@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { _electron as electron } from 'playwright-core'
+import { _electron as electron, type Page } from 'playwright-core'
 import pngjs from 'pngjs'
 
 const { PNG } = pngjs
@@ -35,6 +35,16 @@ const allDesigns = () => readdirSync(designDir).filter((f) => f.endsWith('.png')
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
 const withFixture = () => allDesigns().filter((n) => fixtureNames().has(n))
 
+// Screens that need a click to reach the state in the shot, such as a chat row opened in place. That state is local to the
+// component, so a fixture can't set it.
+const interactions: Record<string, (page: Page) => Promise<void>> = {
+  WorkspaceRowsOpen: async (page) => {
+    for (const row of ['Thinking', 'Run unit tests']) await page.locator('.trow-btn', { hasText: row }).click()
+    await page.mouse.move(0, 0)
+    await page.waitForTimeout(300)
+  }
+}
+
 async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
@@ -54,6 +64,7 @@ async function capture(name: string): Promise<boolean> {
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
     // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
+    await interactions[name]?.(page)
     await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
     console.log(`shots/${name}${suffix}.png`)
     return true

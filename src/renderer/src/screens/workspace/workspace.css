@@ -105,6 +105,15 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .trow-btn { width: 100%; padding: 0; border: 0; background: transparent; text-align: left; cursor: default; }
 .trow-btn:not(:disabled) { cursor: pointer; }
+/* The chevron takes its room at rest, so a row never shifts when it appears. */
+.chev.step-chev { flex-shrink: 0; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }
+.trow-btn:hover .step-chev, .trow-btn:focus-visible .step-chev, .trow-btn[aria-expanded='true'] .step-chev { opacity: 1; }
+/* An open row lines up under its label, past the 15px icon and the 10px gap. */
+.step-body { display: flex; flex-direction: column; gap: 4px; margin-left: 25px; }
+.step-body[data-compact] { margin-left: 0; }
+.step-body .tool-out { margin: 0; }
+.step-text { font-size: 13px; line-height: 1.6; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.step-text .md { color: inherit; font-size: inherit; white-space: normal; }
 .tool-out { margin: 0 0 0 25px; max-height: 260px; overflow: auto; }
 .group-btn { align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; }
 .group-btn:hover { color: var(--ink-2); }
