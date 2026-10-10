@@ -280,7 +280,7 @@ export class Kernel {
     this.approvals.expireStale()
     this.notifications.attach()
     this.backfillLeadChats()
-    void this.nameStuckChats()
+    void this.nameStuckChats().catch(() => undefined)
     this.leadUpdates.attach()
     if (this.o.probeNetwork) {
       this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
@@ -1169,6 +1169,11 @@ export class Kernel {
   private clearedSession = new Map<string, string>()
   /** How many times /clear reset each chat's name, so an answer about the old conversation that arrives after one is dropped. */
   private nameResets = new Map<string, number>()
+  /**
+   * Naming requests in a row that brought back no name, by chat. Each one starts a Claude Code process, and one that fails
+   * once (a provider without the Haiku id, no bundled CLI) tends to keep failing, so the retries stop (`nameChat`).
+   */
+  private nameMisses = new Map<string, number>()
   private stopped = false
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
@@ -1181,8 +1186,9 @@ export class Kernel {
    * transcript a few seconds after the first prompt. The SDK sends no event for it, so Kernel looks on replies, at most every
    * few seconds, and at the end of each turn. At the end of a turn Kernel also asks Haiku for a name from the whole
    * conversation when the chat still has none, or when its count of finished turns reaches 1, 3, 10 or 30. A name the user
-   * typed, even while a request is in flight, is never changed. A request that fails leaves the name, and the next turn end
-   * tries again.
+   * typed, even while a request is in flight, is never changed. A request that fails leaves the name. A refresh is tried once
+   * more at the next turn end, then waits for the next point on the schedule. A chat with no name tries at each turn end and
+   * stops after 3 misses in a row, until /clear or the next start.
    */
   private async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
     if (!this.autoNamed(chat)) return
@@ -1196,6 +1202,7 @@ export class Kernel {
         const now = this.store.chat(chat.id)
         if (title && now && this.autoNamed(now) && this.unnamed(now)) {
           this.titleChecked.delete(chat.id)
+          this.nameMisses.delete(chat.id)
           this.saveChat({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
         }
       }
@@ -1203,17 +1210,29 @@ export class Kernel {
     if (!turnEnded || this.naming.has(chat.id) || resets !== (this.nameResets.get(chat.id) ?? 0)) return
     const before = this.store.chat(chat.id)
     if (!before || before.closed || !this.autoNamed(before)) return
+    const unnamed = this.unnamed(before)
+    const done = before.autoTitle?.turns ?? 0
+    // A named chat past the last point on the schedule is settled. A "New chat" that missed 3 times waits for /clear or a restart.
+    if (unnamed ? (this.nameMisses.get(chat.id) ?? 0) >= 3 : done >= RENAME_AT[RENAME_AT.length - 1]) return
     const items = this.store.items(chat.id)
     const turns = items.filter((i) => i.kind === 'result').length
-    const done = before.autoTitle?.turns ?? 0
-    if (!turns || !(this.unnamed(before) || RENAME_AT.some((at) => at > done && at <= turns))) return
+    if (!turns || !(unnamed || RENAME_AT.some((at) => at > done && at <= turns))) return
     this.naming.add(chat.id)
     try {
-      const title = await this.titleFor(titleText(items), { cwd: ws.path, current: this.unnamed(before) ? undefined : before.title }).catch(() => undefined)
+      const title = await this.titleFor(titleText(items), { cwd: ws.path, current: unnamed ? undefined : before.title }).catch(() => undefined)
       if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
       const now = this.store.chat(chat.id)
-      if (!title || !now || !this.autoNamed(now) || now.title !== before.title) return
-      this.saveChat({ ...now, title, autoTitle: { turns } })
+      if (!now || !this.autoNamed(now) || now.title !== before.title) return
+      if (title) {
+        this.nameMisses.delete(chat.id)
+        this.saveChat({ ...now, title, autoTitle: { turns } })
+        return
+      }
+      const misses = (this.nameMisses.get(chat.id) ?? 0) + 1
+      // A refresh of a chat that has a name gets one retry, then waits for the next point on the schedule.
+      if (unnamed || misses < 2) { this.nameMisses.set(chat.id, misses); return }
+      this.nameMisses.delete(chat.id)
+      this.saveChat({ ...now, autoTitle: { turns } })
     } finally {
       this.naming.delete(chat.id)
     }
@@ -1226,6 +1245,7 @@ export class Kernel {
     if (!now || !this.autoNamed(now)) return
     if (now.sessionId) this.clearedSession.set(chat.id, now.sessionId)
     this.nameResets.set(chat.id, (this.nameResets.get(chat.id) ?? 0) + 1)
+    this.nameMisses.delete(chat.id)
     this.titleChecked.delete(chat.id)
     this.saveChat({ ...now, title: NEW_CHAT, autoTitle: { turns: 0 } })
   }

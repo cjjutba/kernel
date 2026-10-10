@@ -236,7 +236,7 @@ describe('chat names (KERNEL-202)', () => {
     expect(s.asked).toHaveLength(3)
     expect(s.chat(c.id)).toMatchObject({ title: 'Second try', autoTitle: { turns: 3 } })
 
-    // A refresh that fails at 10 is tried again at 11, and not after that.
+    // A refresh that fails at 10 is tried again at 11, where it succeeds. 12 is off the schedule.
     s.answer = async () => { throw new Error('offline') }
     for (let n = 4; n <= 10; n++) await s.turn(c.id)
     expect(s.asked).toHaveLength(4)
@@ -245,6 +245,44 @@ describe('chat names (KERNEL-202)', () => {
     await s.turn(c.id)
     expect(s.asked).toHaveLength(5)
     expect(s.chat(c.id)).toMatchObject({ title: 'Refreshed', autoTitle: { turns: 11 } })
+    await s.k.stop()
+  }, 60_000)
+
+  it('retries a failing refresh once, then waits for the next point on the schedule', async () => {
+    const s = await setup()
+    const c = await leadChat(s)
+    await s.turn(c.id)
+    expect(s.chat(c.id)).toMatchObject({ title: 'Named by Kernel', autoTitle: { turns: 1 } })
+    s.answer = async () => { throw new Error('model not available') }
+    const at: number[] = []
+    const run = async (to: number) => {
+      for (let n = s.k.store.items(c.id).filter((i) => i.kind === 'result').length + 1; n <= to; n++) {
+        const before = s.asked.length
+        await s.turn(c.id)
+        if (s.asked.length > before) at.push(n)
+      }
+    }
+    await run(10)
+    expect(at).toEqual([3, 4, 10])
+    await run(40)
+    expect(at).toEqual([3, 4, 10, 11, 30, 31])
+    expect(s.chat(c.id)).toMatchObject({ title: 'Named by Kernel', autoTitle: { turns: 31 } })
+    await s.k.stop()
+  }, 60_000)
+
+  it('stops naming a "New chat" after 3 misses in a row, until /clear', async () => {
+    const s = await setup()
+    const c = await leadChat(s)
+    s.answer = async () => undefined
+    for (let n = 0; n < 6; n++) await s.turn(c.id)
+    expect(s.asked).toHaveLength(3)
+    expect(s.chat(c.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    await s.reset(c.id, 'clear')
+    s.k.store.saveChat({ ...s.chat(c.id), sessionId: 'session-2' })
+    s.answer = async () => 'After the clear'
+    await s.turn(c.id)
+    expect(s.asked).toHaveLength(4)
+    expect(s.chat(c.id)).toMatchObject({ title: 'After the clear', autoTitle: { turns: 1 } })
     await s.k.stop()
   }, 60_000)
 
@@ -306,6 +344,16 @@ describe('titleText', () => {
     expect(text).not.toMatch(/secret|rm -rf|a note|middle message 0 /)
   })
 
+  it('clips a long latest message instead of dropping it', () => {
+    const items: ChatItem[] = [user('u1', 'Fix the login bug'), { kind: 'text', id: 'a1', ts: 0, text: 'x'.repeat(20_000) }, user('u2', 'y'.repeat(20_000))]
+    const text = titleText(items)
+    expect(text.length).toBeLessThanOrEqual(8000)
+    expect(text).toMatch(/^User: Fix the login bug\n\nAssistant: x+\n\nUser: y+$/)
+    const many = titleText([user('u1', 'first'), ...Array.from({ length: 40 }, (_, i) => user(`m${i}`, 'z'.repeat(5000)))])
+    expect(many.length).toBeLessThanOrEqual(8000)
+    expect(many).toContain('\n\n...\n\n')
+  })
+
   it('shows files and issues by name', () => {
     const text = titleText([{ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text: 'Look at' }, { type: 'file', name: 'login.ts', text: 'the whole file' }, { type: 'issue', name: 'KERNEL-83', title: 'Login fails', source: 'linear' }] }])
     expect(text).toBe('User: Look at [file login.ts] [issue KERNEL-83: Login fails]')
@@ -319,6 +367,8 @@ describe('cleanTitle', () => {
     expect(cleanTitle('**Title:** Release checklist')).toBe('Release checklist')
     expect(cleanTitle('# Chat name: `Usage meters`')).toBe('Usage meters')
     expect(cleanTitle('Name: “Sidebar polish”!')).toBe('Sidebar polish')
+    expect(cleanTitle('Fix the parse_args flag')).toBe('Fix the parse_args flag')
+    expect(cleanTitle('__Snake_case cleanup__')).toBe('Snake_case cleanup')
   })
 
   it('caps at 60 characters on a word and refuses empty answers', () => {

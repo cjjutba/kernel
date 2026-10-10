@@ -30,11 +30,14 @@ export function titleText(items: ChatItem[], max = 8000): string {
   }
   const first = lines.findIndex((l) => l.startsWith('User: '))
   if (first < 0) return ''
-  const head = lines[first].slice(0, Math.floor(max / 4))
+  // The first message and each later line are clipped, so one long report or pasted log can't crowd out the rest.
+  const cap = Math.min(1500, Math.floor(max / 4))
+  const head = lines[first].slice(0, cap)
   const tail: string[] = []
-  let room = max - head.length
+  // Room for the "..." that marks the lines left out, and its separator.
+  let room = max - head.length - 5
   for (let n = lines.length - 1; n > first; n--) {
-    const line = lines[n]
+    const line = lines[n].slice(0, cap)
     if (line.length + 2 > room) break
     tail.unshift(line)
     room -= line.length + 2
@@ -45,8 +48,10 @@ export function titleText(items: ChatItem[], max = 8000): string {
 /** The model's answer as a tab name: its first line, without quotes, markdown, a "Title:" prefix or a closing period. */
 export function cleanTitle(raw: string): string | undefined {
   let t = raw.split('\n').map((l) => l.trim()).find(Boolean) ?? ''
-  t = t.replace(/^#+\s*/, '').replace(/[*_`]/g, '').replace(/^(chat\s+)?(title|name)\s*:\s*/i, '')
-  t = t.replace(/^["'“”‘’\s]+/, '').replace(/["'“”‘’.!?,;:\s]+$/, '')
+  // Markdown markers only: `parse_args` keeps its underscore.
+  t = t.replace(/^#+\s*/, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1').replace(/`([^`]*)`/g, '$1')
+  t = t.replace(/^(chat\s+)?(title|name)\s*:\s*/i, '')
+  t = t.replace(/^["'“”‘’*_`\s]+/, '').replace(/["'“”‘’*_`.!?,;:\s]+$/, '')
   if (t.length > 60) t = t.slice(0, 60).replace(/\s+\S*$/, '').trim() || t.slice(0, 60)
   if (!t || t.toLowerCase() === 'new chat') return undefined
   return t
