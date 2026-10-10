@@ -1,5 +1,5 @@
-import { mkdir, realpath, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { mkdir, realpath, rename, stat } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
 
@@ -207,6 +207,35 @@ export async function removeWorktree(repo: string, path: string, opts: { deleteB
   if (await folderGone(path)) await git(repo, 'worktree', 'prune')
   else await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+}
+
+/**
+ * `removeWorktree` without the wait: the folder moves to `<parent>/.trash/<name>-<time>`, which is instant on the same
+ * disk, and the caller deletes it later (KERNEL-284). Returns that path, or nothing when there was no folder to move or
+ * the move failed and `git worktree remove` deleted it here. Same guards: a gone folder only prunes, an unreadable one
+ * throws, and so does one that isn't this repo's worktree or is the repo itself. `slugify` never starts a worktree
+ * folder with a dot, so `.trash` can't be one.
+ */
+export async function detachWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean } = {}): Promise<string | undefined> {
+  let moved: string | undefined
+  if (await folderGone(path)) await git(repo, 'worktree', 'prune')
+  else {
+    // git may list a worktree by its real path (/private/var/... for /var/... on macOS). The first entry is the repo.
+    const real = await realpath(path)
+    if (!(await listWorktrees(repo)).slice(1).some((w) => w.path === path || w.path === real)) throw new Error(`${path} is not a worktree of ${repo}.`)
+    const trash = join(dirname(path), '.trash', `${basename(path)}-${Date.now()}`)
+    try {
+      await mkdir(dirname(trash), { recursive: true })
+      await rename(path, trash)
+      moved = trash
+    } catch {
+      await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
+    }
+    // The record points at a folder that is no longer there, so prune drops it.
+    if (moved) await git(repo, 'worktree', 'prune')
+  }
+  if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+  return moved
 }
 
 export interface WorktreeInfo { path: string; branch?: string; head: string }
