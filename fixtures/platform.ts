@@ -57,6 +57,7 @@ const accountUsage: RateLimit[] = [
 // KERNEL-26: the repo pages read the first room's .kernel files, so the fixture gives Client A the values the canvas shows.
 const kernelFiles: RoomSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
+  runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
   workspace: {},
   disabled: { skills: [], mcp: ['Figma'] },
