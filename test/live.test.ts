@@ -8,6 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
+import { askTitle } from '../src/main/services/titles'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -176,6 +177,23 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       await rm(home, { recursive: true, force: true })
       await rm(dataDir, { recursive: true, force: true })
     }
+  })
+})
+
+// KERNEL-202: one real Haiku request names a conversation. `-t "chat name"` runs it alone.
+describe.skipIf(!process.env.KERNEL_LIVE)('live chat name', () => {
+  it('gets a clean chat name back from Haiku', { timeout: 120_000 }, async () => {
+    const text = [
+      'User: The login button on the settings page does nothing when I click it. Can you find out why?',
+      'Assistant: The click handler is attached before the button renders, so it never fires. I moved it into the effect.',
+      'User: Now also add a test so it does not break again.'
+    ].join('\n\n')
+    const name = await askTitle(text, { cwd: repo || tmpdir() })
+    console.log(`[live] chat name: ${JSON.stringify(name)}`)
+    expect(name).toBeTypeOf('string')
+    expect(name!.length).toBeGreaterThan(0)
+    expect(name!.length).toBeLessThanOrEqual(60)
+    expect(name).not.toMatch(/^["'#*]|[."']$|\n/)
   })
 })
 
