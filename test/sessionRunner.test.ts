@@ -945,15 +945,19 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
   /** Kernel opening again on the same database: a new Sessions, what the last run left, and `restore`. */
   function relaunch(s: Setup, o: { clean?: boolean; agentLimit?: number; before?: (sessions: Sessions) => void; cutOff?: string[] | Record<string, 'limit' | 'quit'> } = {}) {
     const exits: { reason: string; midTurn: boolean; resumed: boolean }[] = []
+    let cutOff: Record<string, string> = {}
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
-    const sessions = new Sessions({
+    // As in Kernel: a sign-out a session reports holds every room until sign-in.
+    const sessions: Sessions = new Sessions({
       store: s.store, approvals: new Approvals(s.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
-      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, _chat, reason, midTurn, resumed) => { exits.push({ reason, midTurn, resumed }) }
+      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, _chat, reason, midTurn, resumed) => { exits.push({ reason, midTurn, resumed }) },
+      onFailure: (failure) => { if (failure === 'auth') sessions.holdAll('auth') },
+      onCutOff: (c) => { cutOff = c }
     })
     o.before?.(sessions)
     const calls = sdk.calls.length
     sessions.restore([], o.cutOff ?? {}, {}, { clean: o.clean })
-    return { sessions, exits, started: () => sdk.calls.slice(calls) }
+    return { sessions, exits, started: () => sdk.calls.slice(calls), cutOff: () => cutOff }
   }
 
   it('saves the chats with a running turn at every turn start and end', async () => {
@@ -1067,6 +1071,55 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(full.sessions.isRunning('chat')).toBe(true)
   })
 
+  it('puts a carry-on that failed on a sign-out back to wait, and carries it on again after sign-in', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s)
+    // The nudge goes out and meets a sign-out, which holds every room.
+    const call = next.started()[0]
+    call.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
+    call.feed(result('r2', 'error_during_execution'))
+    await flush()
+    expect(next.sessions.heldFor()).toEqual(['auth'])
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    // Signed in again: it carries on with a new nudge.
+    next.sessions.releaseAll('auth')
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(texts(s.store).filter((t) => t === RELAUNCH_NUDGE)).toHaveLength(2)
+  })
+
+  it('leaves a failed carry-on stopped when nothing holds the rooms, so it cannot loop', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s)
+    const call = next.started()[0]
+    // A connection error with the network check saying online: no hold comes, so nothing would lift one.
+    call.feed({ type: 'system', subtype: 'api_retry', attempt: 10, max_retries: 10, retry_delay_ms: 1, error: 'connection_error', error_status: null })
+    call.feed(result('r2', 'error_during_execution'))
+    await flush()
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({})
+  })
+
+  it('respects a Stop pressed just before the quit: the queue goes and the chat does not carry on', async () => {
+    const s = await midTurn()
+    // The Stop's interrupt is on its way when Cmd+Q comes.
+    const stop = s.sessions.interrupt('chat')
+    const quit = s.sessions.shutdown(5_000)
+    expect(s.call.interrupts).toBe(1)
+    s.call.feed(result('r1', 'error_during_execution'))
+    await stop
+    await quit
+    expect(s.store.meta('working')).toEqual([])
+    expect(s.store.meta('queues')).toEqual({})
+    const next = relaunch(s)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(notes(s.store)).toEqual([])
+  })
+
   it('leaves a closed chat and an archived workspace alone', async () => {
     const s = await midTurn()
     await s.sessions.shutdown(0)
@@ -1098,22 +1151,25 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     // The SDK listens for the abort error on a real session.
     proc.on('error', () => undefined)
     const pid = (proc as unknown as { pid: number }).pid
-    expect(s.store.meta('claudePids')).toEqual([{ pid, command: claude }])
+    expect(s.store.meta('claudePids')).toEqual([{ pid, command: claude, arg: '30' }])
     const exited = new Promise((r) => proc.once('exit', r))
     abort.abort()
     await exited
     expect(s.store.meta('claudePids')).toEqual([])
 
-    // What a crash leaves: a claude process from the last run, and a pid now used by another program.
+    // What a crash leaves: a claude process from the last run, and pids now used by other programs, one of them the
+    // same binary started another way (as `node other.js` would be next to `node cli.js`).
     const left = spawn(claude, ['30'], { stdio: 'ignore' })
     const other = spawn('/bin/sleep', ['30'], { stdio: 'ignore' })
+    const sameBinary = spawn(claude, ['31'], { stdio: 'ignore' })
     try {
-      s.store.saveMeta('claudePids', [{ pid: left.pid, command: claude }, { pid: other.pid, command: claude }])
+      s.store.saveMeta('claudePids', [{ pid: left.pid, command: claude, arg: '30' }, { pid: other.pid, command: claude, arg: '30' }, { pid: sameBinary.pid, command: claude, arg: '3' }])
       const gone = new Promise((r) => left.once('exit', (_code, sig) => r(sig)))
       expect(await s.sessions.endLeftovers()).toEqual([left.pid])
       expect(await gone).toBe('SIGTERM')
       expect(other.exitCode).toBeNull()
+      expect(sameBinary.exitCode).toBeNull()
       expect(s.store.meta('claudePids')).toEqual([])
-    } finally { left.kill('SIGKILL'); other.kill('SIGKILL') }
+    } finally { left.kill('SIGKILL'); other.kill('SIGKILL'); sameBinary.kill('SIGKILL') }
   })
 })
