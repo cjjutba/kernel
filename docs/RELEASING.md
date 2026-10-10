@@ -32,7 +32,7 @@ A release compiles the fragments into `site/content/releases/<version>.md` and m
 
 - **The website.** `site/content/changelog.ts` reads every release file at build time. A minor version is a titled entry; its patches show inside it as "New in x.y.z", oldest first. The newest version sets the hero pill and the Latest badge.
 - **The GitHub release.** `scripts/release.sh` publishes the notes as the release body, then adds GitHub's generated list of merged PRs under "Full list of changes".
-- **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read them from there.
+- **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read a new version's notes from there. The script also writes them into the build as `out/release-notes/<version>.md`, so the app can show its own version's notes (KERNEL-154).
 
 ## Cutting a release
 
@@ -72,7 +72,7 @@ Never move or delete a published tag or release. Installed copies, the update fe
 
 ## How updates reach users
 
-`src/main/updater.ts` checks at launch and every 4 hours. A new version downloads in the background, then the footer shows Update ready. The pill opens What's new with the release notes, Later, and Restart to update. After the update installs, What's new opens once on its own. Only packaged builds check; dev runs never do.
+`src/main/updater.ts` checks at launch and every 4 hours. A new version downloads in the background, then the footer shows Update ready. The pill opens What's new with the release notes, Later, and Restart to update. After the update installs, What's new opens once on its own. Opened from the sidebar, the account menu or the command palette with no update ready, What's new shows the running version's notes with Done. Only packaged builds check; dev runs never do, and they have no notes of their own.
 
 What's new shows the notes as the installed copy parses them, and it saves them before the restart. Kernel 0.1.0 joins a section's changes into one paragraph; later versions show each change on its own line. `test/fixtures/parseNotes-v0.1.0.ts` keeps 0.1.0's parser so a test proves the notes read cleanly there.
 
