@@ -34,6 +34,7 @@ import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from
 import { changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { copyLocalFiles, freePort, linkNodeModules, runScript, stopAllScripts, stopScript } from './services/scripts'
+import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
@@ -624,10 +625,9 @@ export class Kernel {
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
     })
     await step('copy', async () => {
-      const wanted = (await loadRepoSettings(room.path)).files.copy
-      const present: string[] = []
-      for (const f of wanted) if (await stat(join(room.path, f)).then(() => true, () => false)) present.push(f)
-      return { detail: present.length ? present.join(', ') : 'No local files to copy' }
+      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
+      if (!present.length) return { detail: 'No local files to copy' }
+      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
     })
     await step('hooks', async () => {
       const status = await this.hooksStatus()
@@ -2200,6 +2200,10 @@ export class Kernel {
         const next = await saveRepoSettings(path, patch, shared)
         this.roomRemotes.set(path, next.workspace.remote)
         return next
+      },
+      'files.preview': async ({ roomId, patterns }) => {
+        const { path } = this.mustRoom(roomId)
+        return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
       },
       'mcp.list': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined

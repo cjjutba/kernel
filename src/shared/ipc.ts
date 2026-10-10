@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
   PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -177,6 +177,8 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
+  'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
