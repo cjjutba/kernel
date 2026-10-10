@@ -196,7 +196,7 @@ describe('create_workspace when every agent slot is in use (KERNEL-272)', () => 
     delete (k.sessions as { send?: unknown }).send
     k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 1 } }
     const live = k.sessions['live'] as Map<string, unknown>
-    live.set('busy', { running: true })
+    live.set('busy', { running: true, abort: new AbortController(), query: {} })
     try {
       const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Back and forward', brief: 'Build KERNEL-200' })
       expect(said).toMatch(/^Created \S+ on \S+ for kai\. Every agent slot in Settings, Models is in use, so Kai hasn't started\. The brief goes out when a slot frees up\.$/)
