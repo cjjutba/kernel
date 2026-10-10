@@ -7,7 +7,7 @@ import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
 import { tabOf } from '../../nav'
-import { roomLetter } from '../rooms/roomInfo'
+import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
@@ -139,7 +139,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     <div className="panel ws-panel">
       <header className="header">
         <SidebarToggle />
-        <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
+        <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>

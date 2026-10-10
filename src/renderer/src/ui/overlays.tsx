@@ -7,6 +7,10 @@ export interface MenuEntry {
   id: string
   label: string
   icon?: IconName
+  /** Drawn in place of `icon`, such as a room's picture. */
+  leading?: ReactNode
+  /** Makes the item a radio of its menu: it is announced as checked or not, and a checked one shows a check mark (SettingsRoomIcon.png). */
+  checked?: boolean
   /** Shown on the right, for example "⌘N". */
   shortcut?: string
   /** A nested menu, opened on hover, click or ArrowRight. */
@@ -20,13 +24,15 @@ export interface MenuEntry {
 /** A divider between groups of items. */
 export const MENU_SEPARATOR = { id: '-' } as const
 
+const ITEM_ON = ':is([role=menuitem], [role=menuitemradio]):not(:disabled)'
+
 function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; onBack?: () => void; label?: string; initiallyOpen?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const openers = useRef<Record<string, HTMLButtonElement | null>>({})
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null)
-  useEffect(() => { ref.current?.querySelector<HTMLElement>('[role=menuitem]:not(:disabled)')?.focus({ preventScroll: true }) }, [])
+  useEffect(() => { (ref.current?.querySelector<HTMLElement>(`${ITEM_ON}[aria-checked=true]`) ?? ref.current?.querySelector<HTMLElement>(ITEM_ON))?.focus({ preventScroll: true }) }, [])
   const onKey = (e: KeyboardEvent) => {
-    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(':scope > .menu-row > [role=menuitem]:not(:disabled)') ?? [])]
+    const nodes = [...(ref.current?.querySelectorAll<HTMLElement>(':scope > .menu-row > :is([role=menuitem], [role=menuitemradio]):not(:disabled)') ?? [])]
     const i = nodes.indexOf(document.activeElement as HTMLElement)
     const handled = (go: () => void) => { e.preventDefault(); e.stopPropagation(); go() }
     if (e.key === 'ArrowDown') handled(() => nodes[(i + 1) % nodes.length]?.focus())
@@ -44,12 +50,13 @@ function MenuList({ items, onClose, onBack, label, initiallyOpen }: { items: (Me
         return (
           <div key={m.id} className="menu-row" onMouseEnter={() => sub && setOpen(m.id)} onMouseLeave={() => sub && setOpen(null)}>
             <button
-              ref={(el) => { openers.current[m.id] = el }} type="button" role="menuitem" className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
+              ref={(el) => { openers.current[m.id] = el }} type="button" role={m.checked === undefined ? 'menuitem' : 'menuitemradio'} aria-checked={m.checked} className="menu-item" data-danger={m.danger || undefined} disabled={m.disabled} aria-haspopup={sub ? 'menu' : undefined} aria-expanded={sub ? open === m.id : undefined}
               onClick={() => { if (sub) setOpen(m.id); else { m.onSelect?.(); onClose() } }}
               onKeyDown={(e) => { if (sub && e.key === 'ArrowRight') { e.preventDefault(); e.stopPropagation(); setOpen(m.id) } }}
             >
-              {m.icon && <Icon name={m.icon} />}
+              {m.leading ?? (m.icon && <Icon name={m.icon} />)}
               <span className="grow ellipsis">{m.label}</span>
+              {m.checked && <Icon name="check" size={14} stroke={1.5} />}
               {m.shortcut && <span className="menu-kbd">{m.shortcut}</span>}
               {sub ? <Icon name="right" size={12} /> : null}
             </button>

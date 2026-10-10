@@ -5,8 +5,9 @@ import { openRoom } from '../../lead'
 import { Button, Icon, Pill } from '../../ui'
 import { call } from '../../api'
 import { openNewRoom } from './draft'
-import { ago, initial, roomLetter, roomState, sourceOf, stateLabel } from './roomInfo'
+import { ago, initial, roomState, sourceOf, stateLabel } from './roomInfo'
 import './rooms.css'
+import { RoomIcon } from '../../components/RoomIcon'
 import { SidebarToggle } from '../../components/PanelToggles'
 
 type Tab = 'all' | 'active' | 'archived'
@@ -22,7 +23,7 @@ function RoomRow({ room }: { room: Room }) {
   return (
     <div className="rm-row" onClick={open}>
       <span className="rm-name">
-        <span className="rm-letter" aria-hidden="true">{roomLetter(room.name)}</span>
+        <RoomIcon room={room} className="rm-letter" />
         <span className="col" style={{ minWidth: 0 }}>
           <button type="button" className="rm-link" onClick={(e) => { e.stopPropagation(); open() }}>{room.name}</button>
           <span className="rm-desc ellipsis">{room.desc}</span>

@@ -14,6 +14,9 @@ export const ids = {
 
 const room = (id: string, name: string, path: string, repo?: string): Room => ({ id, name, path, repo, defaultBranch: 'main', paused: false, createdAt: at(9, 0) })
 
+/** A small pixel-art avatar PNG, mid gray on dark gray, for rooms whose picture a shot shows (KERNEL-253). */
+export const invaderIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAIAAAAn5KxJAAAAYUlEQVR42u3ZsQ3AIAxFQeaKqLI0DSWDsUIKo4ivk15p4atNe/p7RQ0UFBQ0BDrmKgkUFBQ0HVq1uOodUFBQ0BToX/OgoKCgKdDTgYKCgqZDqw6zoKCgoOlQP3egoKCgn9qfdyqiBNJgiwAAAABJRU5ErkJggg=='
+
 /** A 4 px checkerboard PNG standing in for Portfolio's GitHub avatar (KERNEL-241). */
 const portfolioIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAAAAACMmsGiAAAAE0lEQVR4nGO4YHDBgAGILzDAWQBQFAgB9S5K1wAAAABJRU5ErkJggg=='
 

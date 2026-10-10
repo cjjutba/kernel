@@ -1,6 +1,6 @@
 import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
-import { agent, at, ids, scene, team, withWorkspace } from './base'
+import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
@@ -15,7 +15,7 @@ const roomsScene = (f: Fixture): Partial<Fixture> => {
     { ...f.rooms[0], desc: 'Invoicing SaaS · MVP Sprint', kind: 'repo', path: '/Users/you/Projects/client-a', createdAt: ago(2 * MIN) },
     { ...f.rooms[1], desc: 'Discovery Sprint', kind: 'repo', createdAt: ago(14 * MIN) },
     { ...f.rooms[2], desc: 'Nights and weekends', kind: 'folder', repo: undefined, path: '/Users/you/Projects/own-app', createdAt: ago(HOUR) },
-    { ...f.rooms[3], desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
+    { ...f.rooms[3], icon: undefined, desc: 'Personal site refresh', kind: 'repo', createdAt: ago(2 * DAY) },
     { id: 'room-sandbox', name: 'Sandbox', desc: 'Trying out new agent roles', kind: 'scratch', repo: 'samrivera/starter-kit', path: '/Users/you/Projects/sandbox', defaultBranch: 'main', paused: false, archived: true, createdAt: ago(21 * DAY) }
   ]
   const crew = (...names: string[]): AgentDef[] => names.map((n) => team.find((a) => a.id === n)!)
@@ -406,6 +406,16 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
 
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
+  // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
+  HomeRoomIcon: scene((f) => {
+    const home = homeScene(f)
+    return {
+      ...home,
+      rooms: home.rooms!.map((r) => (r.id === ids.roomB ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomB}-1.png`, at: at(9, 0) } } : r)),
+      roomIcons: { [ids.roomB]: invaderIcon },
+      ui: { route: { name: 'home' } }
+    }
+  }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
