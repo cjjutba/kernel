@@ -663,18 +663,37 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     expect(kinds()).toEqual(['user', 'tool'])
   })
 
-  it('names a subagent that answers after its row is done, keeps an unknown model id as it is, and reads the old Task name', async () => {
+  it('names a subagent that answers after its row is done', async () => {
     const { call, store } = await setup()
-    call.feed({ type: 'assistant', uuid: 'a-ag3', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 'ag3', name: 'Task', input: { description: 'Check the logs', prompt: 'Go' } }] } })
+    call.feed(agent('ag3', { description: 'Check the logs' }))
     call.feed(result('ag3'))
-    call.feed(sub('ag3', 'claude-mystery-9', 1))
+    call.feed(sub('ag3', 'claude-haiku-4-5-20251001', 1))
     await flush()
-    expect(row(store, 'ag3')).toMatchObject({ label: 'Task · claude-mystery-9', detail: 'Check the logs', status: 'done' })
+    expect(row(store, 'ag3')).toMatchObject({ label: 'Agent · Haiku 4.5', detail: 'Check the logs', status: 'done', output: 'Found it' })
+  })
+
+  it('keeps an unknown model id as it is, and reads the old Task name', async () => {
+    const { call, store } = await setup()
+    call.feed({ type: 'assistant', uuid: 'a-t1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Task', input: { description: 'Check the logs', prompt: 'Go' } }] } })
+    call.feed(sub('t1', 'claude-mystery-9', 1))
+    await flush()
+    expect(row(store, 't1')).toMatchObject({ label: 'Task · claude-mystery-9', detail: 'Check the logs' })
+  })
+
+  it("names a fork from its first message, since a fork ignores the call's model", async () => {
+    const { call, store } = await setup()
+    call.feed(agent('f1', { description: 'Try the other approach', subagent_type: 'fork', model: 'haiku' }))
+    await flush()
+    expect(row(store, 'f1')).toMatchObject({ label: 'Agent' })
+    call.feed(sub('f1', 'claude-sonnet-5-5', 1))
+    await flush()
+    expect(row(store, 'f1')).toMatchObject({ label: 'Agent · Sonnet 5.5' })
   })
 
   it('leaves the row as Agent when no model is known', async () => {
     const { call, store } = await setup()
     call.feed(agent('ag4', { description: 'Stopped early' }))
+    call.feed(sub('ag4', '<synthetic>', 1))
     call.feed(result('ag4'))
     await flush()
     expect(row(store, 'ag4')).toMatchObject({ label: 'Agent', detail: 'Stopped early' })

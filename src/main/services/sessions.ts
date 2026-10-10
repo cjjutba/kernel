@@ -686,7 +686,8 @@ export class Sessions {
           else if (block.type === 'thinking' && block.thinking?.trim()) this.item(chat, { kind: 'thinking', id, ts: now, text: block.thinking })
           else if (block.type === 'tool_use') {
             const d = describeTool(block.name, block.input)
-            const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model ? String(block.input.model) : undefined
+            // A fork ignores `model` and runs on the parent's, so its first message names it instead.
+            const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model && block.input.subagent_type !== 'fork' ? String(block.input.model) : undefined
             if (model) live.agentModels.add(block.id)
             const label = model ? `${d.title} · ${modelName(model)}` : d.title
             const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running' }
@@ -897,7 +898,8 @@ export class Sessions {
    */
   private subagentModel(chat: Chat, live: Live, toolUseId: string, model: string | undefined) {
     const row = live.toolItems.get(toolUseId)
-    if (!row || !model || !SUBAGENT_TOOLS.has(row.name) || live.agentModels.has(toolUseId)) return
+    // "<synthetic>" marks the CLI's own messages, which no model wrote.
+    if (!row || !model || model.startsWith('<') || !SUBAGENT_TOOLS.has(row.name) || live.agentModels.has(toolUseId)) return
     live.agentModels.add(toolUseId)
     const named = { ...row, label: `${row.label} · ${modelName(model)}` }
     live.toolItems.set(toolUseId, named)
