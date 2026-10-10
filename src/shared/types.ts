@@ -91,6 +91,11 @@ export interface Room {
   archived?: boolean
   /** Bash rules the user chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
+  /**
+   * The room's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's room-icons.
+   * No icon means the letter. The image itself comes from `rooms.icon`, so room pushes stay small (KERNEL-241).
+   */
+  icon?: { kind: 'github' | 'image'; file: string; at: number }
   createdAt: number
 }
 

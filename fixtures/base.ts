@@ -14,6 +14,9 @@ export const ids = {
 
 const room = (id: string, name: string, path: string, repo?: string): Room => ({ id, name, path, repo, defaultBranch: 'main', paused: false, createdAt: at(9, 0) })
 
+/** A 4 px checkerboard PNG standing in for Portfolio's GitHub avatar (KERNEL-241). */
+const portfolioIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAAAAACMmsGiAAAAE0lEQVR4nGO4YHDBgAGILzDAWQBQFAgB9S5K1wAAAABJRU5ErkJggg=='
+
 export const agent = (id: string, name: string, role: string, model: string, lead = false): AgentDef => ({
   id, name, role, description: `${role} for this room.`, model, lead, prompt: '', file: `.claude/agents/${id}.md`
 })
@@ -98,8 +101,9 @@ export const base: Fixture = {
     room(ids.roomA, 'Client A', '/Users/you/code/client-a', 'samrivera/client-a'),
     room(ids.roomB, 'Client B', '/Users/you/code/client-b', 'samrivera/client-b'),
     room(ids.roomOwn, 'Own app', '/Users/you/code/own-app', 'samrivera/own-app'),
-    room(ids.roomPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio')
+    { ...room(ids.roomPortfolio, 'Portfolio', '/Users/you/code/portfolio', 'samrivera/portfolio'), icon: { kind: 'github', file: `${ids.roomPortfolio}-1.png`, at: at(9, 0) } }
   ],
+  roomIcons: { [ids.roomPortfolio]: portfolioIcon },
   agents: { [ids.roomA]: team, [ids.roomB]: team, [ids.roomOwn]: team, [ids.roomPortfolio]: team },
   status: {
     [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }

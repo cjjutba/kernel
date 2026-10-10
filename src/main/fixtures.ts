@@ -62,6 +62,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.add': async ({ path, name }) => f.rooms.find((r) => r.path === path) ?? { id: 'fixture-room', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
     'rooms.create': async ({ name, desc, source, from }) => ({ id: 'fixture-room', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
     'rooms.update': async ({ roomId, patch }) => ({ ...room(roomId), ...patch }),
+    'rooms.setIcon': async ({ roomId, icon }) => {
+      const { icon: _old, ...r } = room(roomId)
+      return icon.kind === 'letter' ? r : { ...r, icon: { kind: icon.kind, file: `${roomId}-fixture.png`, at: Date.now() } }
+    },
+    'rooms.icon': async ({ roomId }) => (room(roomId).icon ? f.roomIcons?.[roomId] ?? null : null),
     'rooms.remove': async () => ok,
     'rooms.setPaused': async ({ roomId, paused }) => ({ ...room(roomId), paused }),
     'rooms.brief': async ({ roomId, agentId }) => {
