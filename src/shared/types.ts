@@ -842,7 +842,7 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'permissions'
+  | 'models' | 'permissions' | 'env'
   | 'git' | 'scripts' | 'prs'
   | 'hooks' | 'integrations' | 'experimental' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
@@ -972,6 +972,8 @@ export type Modal =
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
+  /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
+  | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
