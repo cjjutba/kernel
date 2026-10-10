@@ -100,15 +100,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const send = async (picked?: ChatPart[]) => {
     const parts = picked ?? d.message()
     if (!parts.length || blocked) return
-    if (plan && !picked && parts.some((p) => p.type === 'image')) {
-      actions.ui.toast({ title: 'Plan changes are text only', sub: 'Describe the change in words, or send the image after you approve the plan.' })
-      return
-    }
     const id = chat.id
     const kept = d.snapshot()
     d.reset()
     try {
-      if (plan && !picked) await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts) } })
+      if (plan && !picked) {
+        // Images go as files the agent reads, since a denial carries text only (D-134).
+        const images = parts.flatMap((p) => p.type === 'image' && p.dataUrl ? [{ name: p.name, dataUrl: p.dataUrl }] : [])
+        await call('approvals.decide', { id: plan.id, decision: { behavior: 'deny', message: noteFromParts(parts), ...(images.length ? { images } : {}) } })
+      }
       else await call('chats.send', { chatId: chat.id, parts })
     }
     catch (e) {

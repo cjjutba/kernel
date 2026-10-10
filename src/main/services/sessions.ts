@@ -12,7 +12,7 @@ import { describeTool, matchesRule, needsUser, type Approvals } from './approval
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
-import { savePlan } from './plans'
+import { IMAGE_DATA_URL, savePlan } from './plans'
 import type { AppSettings } from './settings'
 
 /**
@@ -912,7 +912,7 @@ export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
     else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
     else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
     else if (p.type === 'image' && p.dataUrl) {
-      const m = /^data:(image\/[a-z+]+);base64,(.*)$/.exec(p.dataUrl)
+      const m = IMAGE_DATA_URL.exec(p.dataUrl)
       if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } })
     }
   }
