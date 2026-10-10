@@ -2304,10 +2304,11 @@ export class Kernel {
     }
   }
 
-  private note(workspaceId: string, text: string) {
+  /** `pr` is the PR state the note is about, which draws that state's icon before the text. */
+  private note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') {
     const chat = this.prChat(workspaceId)
     if (!chat) return
-    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text }
+    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}) }
     this.store.saveItem(chat.id, item)
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
@@ -2405,7 +2406,7 @@ export class Kernel {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
       const text = prNote(next, info, this.mergedWith.get(id), remote)
-      if (text) this.note(id, text)
+      if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
     return next

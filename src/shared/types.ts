@@ -389,7 +389,8 @@ export type ChatItem =
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
   /** End of a turn. `files` is the "Changed" chip row under the reply. */
   | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
-  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string } }
+  /** `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none. */
+  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail' }
   | { kind: 'interrupted'; id: string; ts: number }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
@@ -780,8 +781,10 @@ export interface ClaudeAccount {
 // ---------- system
 
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'teams' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'teams' | 'git' | 'gh' | 'hooks'
   ok: boolean
+  /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
+  blocking: boolean
   title: string
   detail: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
