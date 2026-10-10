@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, loadWorkspace, useStore } from '../../store'
-import { leadOf } from '../../lead'
+import { actions, loadWorkspace, useStore } from '../../store'
+import { leadOf, openLeadChat } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
@@ -124,8 +124,9 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     } catch { actions.chats.upsert(chat) }
     // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
     focusComposerWhenOpen(chat.id)
-    go({ name: 'workspace', workspaceId: chat.workspaceId })
-    actions.ui.setWorkspaceView({ tab: chat.id })
+    close()
+    // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).
+    await openLeadChat(room, chat.id)
   }
 
   /** Enter creates and Shift+Enter breaks the line, as in the chat composer. Cmd+Enter is the keyboard shortcut below. */
