@@ -1,4 +1,4 @@
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, realpath, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
@@ -23,10 +23,22 @@ export function taskBranch(pattern: string, title: string, task?: string): strin
   return branchName(p, { slug: slugify(title), task })
 }
 
-/** Local and remote branches, newest first, for the From popover and the target branch menu. `origin/HEAD` is left out. */
-export async function listBranches(repo: string): Promise<string[]> {
-  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', 'refs/remotes')
-  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== 'origin' && !l.endsWith('/HEAD'))
+/** `origin/main` -> `main` for the room's remote. Any other ref comes back as it is. */
+export const stripRemote = (ref: string, remote = 'origin') => (ref.startsWith(`${remote}/`) ? ref.slice(remote.length + 1) : ref)
+
+/**
+ * A base ref from Settings names the remote `origin`, since that was the only one (`origin/main`). With another remote
+ * set, it means that remote's branch (KERNEL-190).
+ */
+export const onRemote = (ref: string, remote = 'origin') => (remote !== 'origin' && ref.startsWith('origin/') ? `${remote}/${ref.slice('origin/'.length)}` : ref)
+
+/**
+ * Local branches and the room remote's, newest first, for the From popover and the target branch menu. `<remote>/HEAD`
+ * is left out.
+ */
+export async function listBranches(repo: string, remote = 'origin'): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', `refs/remotes/${remote}`)
+  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== remote && !l.endsWith('/HEAD'))
   return [...new Set(names)]
 }
 
@@ -39,11 +51,11 @@ export async function currentBranch(repo: string): Promise<string> {
   return (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 }
 
-/** origin/HEAD when it is set, else main, then master (on origin or locally), else the current branch. */
-export async function defaultBranch(repo: string): Promise<string> {
-  const r = await exec('git', ['-C', repo, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
-  if (r.code === 0) return r.stdout.trim().replace(/^origin\//, '')
-  for (const b of ['main', 'master']) if (await refExists(repo, `origin/${b}`) || await branchExists(repo, b)) return b
+/** `<remote>/HEAD` when it is set, else main, then master (on the remote or locally), else the current branch. */
+export async function defaultBranch(repo: string, remote = 'origin'): Promise<string> {
+  const r = await exec('git', ['-C', repo, 'symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`])
+  if (r.code === 0) return stripRemote(r.stdout.trim(), remote)
+  for (const b of ['main', 'master']) if (await refExists(repo, `${remote}/${b}`) || await branchExists(repo, b)) return b
   return currentBranch(repo)
 }
 
@@ -52,22 +64,23 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
 }
 
 /**
- * The ref a workspace starts from: `wanted` when it exists, else the same branch without `origin/` locally,
- * else the default branch, `origin/<default>` when the remote has it. A folder with no remote and only
- * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, an `origin/` ref fetches first.
+ * The ref a workspace starts from: `wanted` when it exists, else the same branch without `<remote>/` locally,
+ * else the default branch, `<remote>/<default>` when the remote has it. A folder with no remote and only
+ * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, a `<remote>/` ref fetches first.
  * `strict` is for a base the user picked (a PR or a branch): it throws rather than start somewhere else.
  */
-export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean } = {}): Promise<string> {
-  if (o.fetch && wanted.startsWith('origin/')) await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
-  const name = wanted.replace(/^origin\//, '')
+export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean; remote?: string } = {}): Promise<string> {
+  const remote = o.remote ?? 'origin'
+  if (o.fetch && wanted.startsWith(`${remote}/`)) await exec('git', ['-C', repo, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
+  const name = stripRemote(wanted, remote)
   for (const ref of new Set([wanted, name])) if (await refExists(repo, ref)) return ref
-  if (o.strict) throw new Error(`${name} is not on origin or in this repo, so there is nothing to start from.`)
-  const d = await defaultBranch(repo)
-  return await refExists(repo, `origin/${d}`) ? `origin/${d}` : d
+  if (o.strict) throw new Error(`${name} is not on ${remote} or in this repo, so there is nothing to start from.`)
+  const d = await defaultBranch(repo, remote)
+  return await refExists(repo, `${remote}/${d}`) ? `${remote}/${d}` : d
 }
 
-export async function remoteRepo(repo: string): Promise<string | undefined> {
-  const r = await exec('git', ['-C', repo, 'remote', 'get-url', 'origin'])
+export async function remoteRepo(repo: string, remote = 'origin'): Promise<string | undefined> {
+  const r = await exec('git', ['-C', repo, 'remote', 'get-url', remote])
   if (r.code !== 0) return undefined
   const m = /github\.com[:/]([^/]+\/[^/.]+)(\.git)?$/.exec(r.stdout.trim())
   return m?.[1]
@@ -86,24 +99,42 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
 
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
 
+/**
+ * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
+ * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
+ * otherwise get the same folder (KERNEL-267).
+ */
+export async function freeWorktreePath(repo: string, root: string, branch: string): Promise<string> {
+  const max = 80
+  const stem = branch.replace(/\//g, '-')
+  const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
+  // git may list a worktree by its real path (/private/var/... for /var/... on macOS).
+  const real = await realpath(root)
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? slugify(stem, max) : `${slugify(stem, max - `-${i}`.length)}-${i}`
+    if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
+  }
+}
+
 /** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
-  const path = join(o.root, slugify(o.branch.replace(/\//g, '-'), 80))
+  const path = await freeWorktreePath(o.repo, o.root, o.branch)
   await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
   return path
 }
 
 /**
- * Recreates a worktree for a branch that already exists, at `path`. Falls back to origin/<branch> when the
+ * Recreates a worktree for a branch that already exists, at `path`. Falls back to <remote>/<branch> when the
  * local branch was deleted on archive. Throws a plain message when the branch is gone everywhere.
  */
-export async function restoreWorktree(o: { repo: string; path: string; branch: string }): Promise<void> {
+export async function restoreWorktree(o: { repo: string; path: string; branch: string; remote?: string }): Promise<void> {
+  const remote = o.remote ?? 'origin'
   await mkdir(dirname(o.path), { recursive: true })
   if (await branchExists(o.repo, o.branch)) { await git(o.repo, 'worktree', 'add', o.path, o.branch); return }
-  const remote = await exec('git', ['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${o.branch}`])
-  if (remote.code !== 0) throw new Error(`The branch ${o.branch} no longer exists, so there is nothing to restore.`)
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `origin/${o.branch}`)
+  const copy = await exec('git', ['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${o.branch}`])
+  if (copy.code !== 0) throw new Error(`The branch ${o.branch} no longer exists, so there is nothing to restore.`)
+  await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `${remote}/${o.branch}`)
 }
 
 /**

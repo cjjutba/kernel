@@ -97,7 +97,8 @@ for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('Confir
 su=rd('Setup.dc.html')
 for n,k in [('SetupClaudeMissing','missing'),('SetupClaudeOld','old'),('SetupTeamsOff','teams'),('SetupGhSignedOut','gh'),('SetupPortBusy','port'),('RoomSetup','room')]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
-for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','team'),('SettingsPermissions','permissions'),('SettingsSkills','skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','room-a')]:
+# KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
+for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','r-agents'),('SettingsPermissions','permissions'),('SettingsSkills','r-skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','r-files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','r-general'),('SettingsRoomGit','r-git'),('SettingsRoomScripts','r-scripts'),('SettingsRoomInstructions','r-instructions'),('SettingsRoomPermissions','r-permissions')]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
