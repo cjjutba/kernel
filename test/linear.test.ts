@@ -7,7 +7,7 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { saveLinearToken } from '../src/main/services/integrations'
-import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN } from '../src/main/services/linear'
+import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
 import type { ActivityEvent, AgentDef, Chat, ChatPart } from '../src/shared/types'
 
 interface Call { query: string; variables: Record<string, unknown>; auth: string }
@@ -52,7 +52,7 @@ const detail = {
   ] }
 }
 
-const OPEN = { state: { type: { nin: ['completed', 'canceled'] } } }
+const OPEN = { state: { type: { in: ['triage', 'backlog', 'unstarted', 'started'] } } }
 
 describe('the Issues screen filter', () => {
   it('lists open issues with nothing set', () => {
@@ -84,6 +84,19 @@ describe('Linear queries', () => {
     expect(l.calls[0].auth).toBe('lin_key')
     expect(l.calls[0].query).toMatch(/issues\(first: 100, filter: \$filter, orderBy: updatedAt\)/)
     expect(l.calls[0].variables.filter).toEqual(issueFilter({ mine: true }))
+  })
+
+  it('searches open issues only, with or without a query', async () => {
+    const l = linear(() => ({ issues: { nodes: [] } }))
+    await searchIssues('k', '', l.fetch)
+    await searchIssues('k', 'KERNEL-83', l.fetch)
+    expect(l.calls[0].variables.filter).toEqual(OPEN)
+    expect(l.calls[1].variables.filter).toEqual({ and: [OPEN, { or: [{ title: { containsIgnoreCase: 'KERNEL-83' } }, { number: { eq: 83 } }] }] })
+  })
+
+  it('reads an issue marked as a duplicate with its state type', async () => {
+    const l = linear(() => ({ issue: { ...detail, state: { id: 'st-dup', name: 'Duplicate', type: 'duplicate', position: 4 } } }))
+    expect((await getIssue('k', 'KERNEL-83', l.fetch)).state).toEqual({ id: 'st-dup', name: 'Duplicate', type: 'duplicate', position: 4 })
   })
 
   it('reads one issue by identifier with its description and comments, oldest first', async () => {
@@ -151,8 +164,8 @@ describe('moving an issue to In Progress', () => {
     }
   })
 
-  it('leaves an issue alone once it is in progress, done or canceled', async () => {
-    for (const type of ['started', 'completed', 'canceled']) {
+  it('leaves an issue alone once it is in progress, done, canceled or a duplicate', async () => {
+    for (const type of ['started', 'completed', 'canceled', 'duplicate']) {
       const l = team(type)
       expect(await moveToStarted('k', 'KERNEL-83', l.fetch)).toBeUndefined()
       expect(l.calls).toHaveLength(1)
