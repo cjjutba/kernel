@@ -55,6 +55,27 @@ export class Store {
   notifications(): Notification[] { return this.all('select data from notifications order by created_at desc limit 500') }
   notification(id: string): Notification | undefined { return this.one('select data from notifications where id = ?', id) }
   saveNotification(n: Notification) { this.db.prepare('insert or replace into notifications (id, room_id, data, created_at) values (?, ?, ?, ?)').run(n.id, n.roomId ?? null, JSON.stringify(n), n.createdAt); return n }
+  /** Approval rows that still ask for an answer, however old. `notifications()` stops at 500. */
+  openApprovalNotifications(): Notification[] {
+    return this.all(`select data from notifications where json_extract(data, '$.approvalId') is not null and json_extract(data, '$.needsYou') = 1`)
+  }
+  /** Deletes a workspace's rows and returns their ids. */
+  deleteWorkspaceNotifications(workspaceId: string): string[] {
+    return this.ids(`delete from notifications where json_extract(data, '$.workspaceId') = ? returning id`, workspaceId)
+  }
+  /** Deletes the rows of workspaces that are archived or no longer exist, and returns their ids (D-137). */
+  deleteOrphanNotifications(): string[] {
+    return this.ids(`delete from notifications where json_extract(data, '$.workspaceId') is not null and not exists (
+      select 1 from workspaces w where w.id = json_extract(notifications.data, '$.workspaceId') and json_extract(w.data, '$.status') != 'archived') returning id`)
+  }
+  /**
+   * Deletes rows created before `before` that no longer need you, and returns their ids (D-137). A row that needs you
+   * stays however old, and so does a row whose approval is still pending.
+   */
+  deleteSettledNotifications(before: number): string[] {
+    return this.ids(`delete from notifications where created_at < ? and coalesce(json_extract(data, '$.needsYou'), 0) = 0 and not exists (
+      select 1 from approvals a where a.id = json_extract(notifications.data, '$.approvalId') and a.status = 'pending') returning id`, before)
+  }
 
   // workspaces
   workspaces(roomId?: string): Workspace[] {
@@ -78,11 +99,12 @@ export class Store {
   clearItems(chatId: string) { this.db.prepare('delete from chat_items where chat_id = ?').run(chatId) }
 
   // approvals
-  approvals(filter: { roomId?: string; pendingOnly?: boolean } = {}): Approval[] {
+  approvals(filter: { roomId?: string; workspaceId?: string; pendingOnly?: boolean } = {}): Approval[] {
     const where: string[] = []
     const args: unknown[] = []
     if (filter.roomId) { where.push('room_id = ?'); args.push(filter.roomId) }
     if (filter.pendingOnly) where.push("status = 'pending'")
+    if (filter.workspaceId) { where.push("json_extract(data, '$.workspaceId') = ?"); args.push(filter.workspaceId) }
     return this.all(`select data from approvals ${where.length ? 'where ' + where.join(' and ') : ''} order by created_at desc`, ...args)
   }
   saveApproval(a: Approval) { this.db.prepare('insert or replace into approvals (id, room_id, status, data, created_at) values (?, ?, ?, ?, ?)').run(a.id, a.roomId ?? null, a.status, JSON.stringify(a), a.createdAt); return a }
@@ -114,6 +136,7 @@ export class Store {
   saveMeta<T>(key: string, value: T) { this.db.prepare('insert or replace into meta (key, data) values (?, ?)').run(key, JSON.stringify(value)); return value }
 
   private all<T>(sql: string, ...args: unknown[]): T[] { return (this.db.prepare(sql).all(...args) as { data: string }[]).map((r) => JSON.parse(r.data)) }
+  private ids(sql: string, ...args: unknown[]): string[] { return (this.db.prepare(sql).all(...args) as { id: string }[]).map((r) => r.id) }
   private one<T>(sql: string, ...args: unknown[]): T | undefined { const r = this.db.prepare(sql).get(...args) as { data: string } | undefined; return r ? JSON.parse(r.data) : undefined }
 }
 

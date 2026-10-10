@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest'
+import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Approval, Chat, Notification, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
-import { Notifications, approvalNotificationId, inQuietHours, replyExcerpt } from '../src/main/services/notifications'
+import { KEEP_SETTLED_MS, Notifications, approvalNotificationId, inQuietHours, replyExcerpt } from '../src/main/services/notifications'
+import { Approvals } from '../src/main/services/approvals'
+import { startHookServer } from '../src/main/services/hookServer'
+import type { PushEvent } from '../src/shared/ipc'
+import { Kernel } from '../src/main/kernel'
 
 const open: Notifications[] = []
 afterEach(() => { open.forEach((n) => n.detach()); open.length = 0 })
@@ -50,9 +54,13 @@ describe('notifications service', () => {
     bus.push({ type: 'approval', approval: approval() })
     bus.push({ type: 'approval', approval: approval({ status: 'denied' }) })
     expect(n.list()[0]).toMatchObject({ needsYou: false, read: true, resolved: 'You denied this.' })
-    bus.push({ type: 'approval', approval: approval({ id: 'a2', status: 'pending' }) })
-    bus.push({ type: 'approval', approval: approval({ id: 'a2', status: 'expired' }) })
+    bus.push({ type: 'approval', approval: approval({ id: 'a2', source: 'hook', status: 'pending' }) })
+    bus.push({ type: 'approval', approval: approval({ id: 'a2', source: 'hook', status: 'expired' }) })
     expect(n.list().find((x) => x.approvalId === 'a2')?.resolved).toMatch(/timed out/)
+    // An agent's own request has no terminal to fall back to.
+    bus.push({ type: 'approval', approval: approval({ id: 'a3', status: 'pending' }) })
+    bus.push({ type: 'approval', approval: approval({ id: 'a3', status: 'expired' }) })
+    expect(n.list().find((x) => x.approvalId === 'a3')?.resolved).toBe('This request ended before you answered.')
   })
 
   it('does not show a banner while the app has focus, in quiet hours, or when the setting is off', async () => {
@@ -177,5 +185,144 @@ describe('finished and idle rows (KERNEL-71)', () => {
   it('cuts the reply excerpt at its first paragraph and about 300 characters', () => {
     expect(replyExcerpt('One line.\n\nSecond paragraph.')).toBe('One line.')
     expect(replyExcerpt('a '.repeat(400)).length).toBeLessThanOrEqual(300)
+  })
+})
+
+describe('rows that are over (KERNEL-155)', () => {
+  const NOW = new Date(2026, 0, 1, 12, 0).getTime()
+  const DAY = 24 * 60 * 60_000
+  const row = (id: string, extra: Partial<Notification> = {}): Notification => ({ id, kind: 'finished', roomId: 'r', workspaceId: 'w', title: id, sub: '', needsYou: false, read: true, createdAt: NOW, ...extra })
+  const removedIds = () => {
+    const ids: string[] = []
+    const on = (e: PushEvent) => { if (e.type === 'notification.removed') ids.push(...e.ids) }
+    bus.on('push', on)
+    open.push({ detach: () => bus.off('push', on) } as unknown as Notifications)
+    return ids
+  }
+  const restart = (store: Store) => {
+    const again = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, now: () => NOW })
+    open.push(again)
+    return again
+  }
+
+  it('ends approvals left from an earlier run at start, and settles their rows as read', async () => {
+    const { store, n } = await setup()
+    for (const a of [approval({ id: 'sdk', workspaceId: 'w' }), approval({ id: 'hook', source: 'hook', workspaceId: 'w' })]) bus.push({ type: 'approval', approval: store.saveApproval(a) })
+    expect(n.list().filter((x) => x.needsYou)).toHaveLength(2)
+    n.detach()
+
+    // The next run: the same database, no waiters.
+    const expired = new Approvals(store).expireStale()
+    expect(expired.map((a) => [a.id, a.status]).sort()).toEqual([['hook', 'expired'], ['sdk', 'expired']])
+    const again = restart(store)
+    again.attach()
+    expect(store.approvals({ pendingOnly: true })).toEqual([])
+    const rows = again.list()
+    expect(rows.find((x) => x.approvalId === 'sdk')).toMatchObject({ needsYou: false, read: true, resolved: 'This request ended before you answered.' })
+    expect(rows.find((x) => x.approvalId === 'hook')).toMatchObject({ needsYou: false, read: true, resolved: expect.stringMatching(/terminal/) })
+  })
+
+  it('leaves an approval that arrived in this run, with its waiter, pending at start', async () => {
+    const { store } = await setup()
+    const approvals = new Approvals(store)
+    // A hook can land between the hook server starting and the expiry.
+    const live = approvals.request({ kind: 'tool', source: 'hook', roomId: 'r', workspaceId: 'w', title: 'Run pnpm build' })
+    expect(approvals.expireStale()).toEqual([])
+    expect(approvals.isPending(live.approval.id)).toBe(true)
+    expect(store.approvals({ pendingOnly: true }).map((a) => a.id)).toEqual([live.approval.id])
+  })
+
+  it("ends an archived workspace's approval that has a waiter, so a held hook gets the empty answer at once", async () => {
+    const { store } = await setup()
+    const approvals = new Approvals(store)
+    const port = 17950 + Math.floor(Math.random() * 40)
+    const server = await startHookServer({ port, approvals, approvalTimeoutMs: 60_000, isManaged: () => false, resolve: () => ({ roomId: 'r', workspaceId: 'w', agentId: 'kai' }) })
+    try {
+      const started = Date.now()
+      const held = fetch(`http://127.0.0.1:${port}/hooks`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: '/x', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm build' } })
+      }).then((r) => r.json())
+      while (!store.approvals({ pendingOnly: true }).length) await new Promise((r) => setTimeout(r, 10))
+      const sdk = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'w', title: 'Run pnpm test' })
+      const elsewhere = approvals.request({ kind: 'tool', source: 'sdk', roomId: 'r', workspaceId: 'other', title: 'Run pnpm lint' })
+
+      expect(approvals.expireWorkspace('w').map((a) => a.status)).toEqual(['expired', 'expired'])
+      expect(await held).toEqual({})
+      expect(Date.now() - started).toBeLessThan(5000)
+      expect(await sdk.decision).toBeNull()
+      expect(approvals.isPending(elsewhere.approval.id)).toBe(true)
+      expect(store.approvals({ pendingOnly: true }).map((a) => a.id)).toEqual([elsewhere.approval.id])
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()))
+    }
+  })
+
+  it("deletes an archived workspace's rows and tells open windows", async () => {
+    const { store, n } = await setup()
+    const ids = removedIds()
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    store.saveNotification(row('n-other', { workspaceId: 'w-other' }))
+    const mine = n.list().filter((x) => x.workspaceId === 'w').map((x) => x.id)
+    expect(mine).toHaveLength(1)
+    expect(n.forgetWorkspace('w')).toEqual(mine)
+    expect(ids).toEqual(mine)
+    expect(n.list().map((x) => x.id)).toEqual(['n-other'])
+  })
+
+  it('adds no PR row for a workspace that is already archived', async () => {
+    const { store, n } = await setup()
+    store.saveWorkspace({ ...store.workspace('w')!, status: 'archived' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(n.list()).toEqual([])
+  })
+
+  it("at start, deletes rows of archived and deleted workspaces and rows settled more than a week ago, never one that needs you", async () => {
+    const { store, n } = await setup()
+    n.detach()
+    store.saveWorkspace({ ...store.workspace('w')!, id: 'w-archived', status: 'archived' })
+    const old = NOW - KEEP_SETTLED_MS - DAY
+    for (const r of [
+      row('archived', { workspaceId: 'w-archived', needsYou: true, kind: 'merge' }),
+      row('gone', { workspaceId: 'w-gone' }),
+      row('old-settled', { createdAt: old }),
+      row('old-room-only', { workspaceId: undefined, createdAt: old }),
+      row('old-needs-you', { createdAt: old, needsYou: true, read: false, kind: 'check' }),
+      row('recent-settled', { createdAt: NOW - DAY }),
+      row('recent-room-only', { workspaceId: undefined, createdAt: NOW - 2 * DAY })
+    ]) store.saveNotification(r)
+    // A row the inbox already marked done whose approval is still waiting stays: the approval decides.
+    store.saveApproval(approval({ id: 'still-waiting', workspaceId: 'w', createdAt: old }))
+    store.saveNotification(row(approvalNotificationId('still-waiting'), { approvalId: 'still-waiting', kind: 'approval', createdAt: old }))
+
+    const ids = removedIds()
+    const again = restart(store)
+    again.attach()
+    expect(ids.sort()).toEqual(['archived', 'gone', 'old-room-only', 'old-settled'])
+    expect(again.list().map((x) => x.id).sort()).toEqual([approvalNotificationId('still-waiting'), 'old-needs-you', 'recent-room-only', 'recent-settled'])
+    // Run again a week later: only what still needs you, or waits on an approval, survives.
+    const later = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, now: () => NOW + KEEP_SETTLED_MS + 3 * DAY })
+    later.prune()
+    expect(later.list().map((x) => x.id).sort()).toEqual([approvalNotificationId('still-waiting'), 'old-needs-you'])
+  })
+})
+
+describe('Kernel start (KERNEL-155)', () => {
+  it('expires an approval the last run left pending, and settles its row as read', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    // The last run: Rowan's plan waits for an answer, with its row in Needs you. Then the app quits.
+    const before = new Store(join(dataDir, 'kernel.db'))
+    const plan = approval({ id: 'plan', kind: 'plan', toolName: undefined, title: 'Plan for the Ulat release' })
+    before.saveApproval(plan)
+    before.saveNotification({ id: approvalNotificationId('plan'), kind: 'approval', roomId: 'r', agentId: 'noor', approvalId: 'plan', title: 'Plan ready: the Ulat release', sub: 'Plan review', needsYou: true, read: false, createdAt: plan.createdAt })
+    before.db.close()
+
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop())
+    expect(k.store.approvals().find((a) => a.id === 'plan')?.status).toBe('expired')
+    expect(k.store.notification(approvalNotificationId('plan'))).toMatchObject({ needsYou: false, read: true, resolved: 'This request ended before you answered.' })
   })
 })
