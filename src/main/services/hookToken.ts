@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const TOKEN = /^[0-9a-f]{64}$/
@@ -16,16 +16,33 @@ export function hookToken(dataDir: string): string {
   const hit = cache.get(dataDir)
   if (hit) return hit
   const file = hookTokenFile(dataDir)
-  let token = read(file)
-  if (!token) {
-    mkdirSync(dataDir, { recursive: true })
-    token = randomBytes(32).toString('hex')
-    writeFileSync(file, token + '\n', { mode: 0o600 })
-  }
+  const token = read(file) ?? create(dataDir, file)
   // A file restored from a backup or copied by hand may have lost its mode.
   if ((statSync(file).mode & 0o077) !== 0) chmodSync(file, 0o600)
   cache.set(dataDir, token)
   return token
+}
+
+/**
+ * Writes the token to a temp file and links it into place, so a reader never sees a half-written file. When two Kernels start
+ * together, the first link wins and the other reads its token.
+ */
+function create(dataDir: string, file: string): string {
+  mkdirSync(dataDir, { recursive: true })
+  const token = randomBytes(32).toString('hex')
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+  writeFileSync(tmp, token + '\n', { mode: 0o600, flag: 'wx' })
+  try {
+    linkSync(tmp, file)
+    return token
+  } catch (e: any) {
+    if (e.code !== 'EEXIST') throw e
+    const theirs = read(file)
+    if (theirs) return theirs
+    // A damaged file: replace it.
+    renameSync(tmp, file)
+    return token
+  } finally { rmSync(tmp, { force: true }) }
 }
 
 function read(file: string): string | null {

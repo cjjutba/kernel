@@ -71,6 +71,14 @@ describe('hookToken', () => {
     expect(hookToken(dir)).toBe('ef'.repeat(32))
     expect(statSync(hookTokenFile(dir)).mode & 0o777).toBe(0o600)
   })
+  it('replaces a damaged token file and leaves no temp file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'kernel-token-'))
+    writeFileSync(hookTokenFile(dir), '')
+    const t = hookToken(dir)
+    expect(t).toMatch(/^[0-9a-f]{64}$/)
+    expect(readFileSync(hookTokenFile(dir), 'utf8').trim()).toBe(t)
+    expect(readdirSync(dir)).toEqual(['hook-token'])
+  })
 })
 
 describe('pull request state', () => {
