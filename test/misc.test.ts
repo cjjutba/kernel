@@ -136,7 +136,11 @@ describe('preflight checks', () => {
     const checks = await preflight({ 'gh auth status --hostname github.com --json hosts': offline })
     expect(blockers(checks)).toEqual([])
     expect(warnings(checks)).toEqual(['gh'])
-    expect(byId(checks, 'gh').title).toBe("Can't reach GitHub")
+    expect(byId(checks, 'gh')).toMatchObject({ title: "Can't reach GitHub", fix: { command: 'gh auth status' } })
+    // gh timing out or failing outright reads the same way, not as signed out.
+    for (const answer of [fail(1), { code: 0, stdout: '{"hosts":{"github.com":[{"state":"timeout","active":true,"login":"samrivera"}]}}', stderr: '' }]) {
+      expect(byId(await preflight({ 'gh auth status --hostname github.com --json hosts': answer }), 'gh').title).toBe("Can't reach GitHub")
+    }
   })
   it('only warns when gh is signed out, its token is revoked, or gh is missing', async () => {
     const revoked = gh({ state: 'error', error: 'non-200 OK status code: 401 Unauthorized body: "Bad credentials"', login: '' })
@@ -155,12 +159,20 @@ describe('preflight checks', () => {
       ? fail(1, 'unknown flag: --json')
       : { code: 0, stdout: '', stderr: 'github.com\n  ✓ Logged in to github.com as samrivera (oauth_token)\n' }
     expect(await ghUser(run)).toBe('samrivera')
+    const signedOut = async (_cmd: string, args: string[]) => args.includes('--json') ? fail(1, 'unknown flag: --json') : fail(1, 'You are not logged into any GitHub hosts.')
+    expect(await ghUser(signedOut)).toBeNull()
   })
   it('gives ghUser a login only when GitHub confirmed it', async () => {
     expect(parseGhAuth('{"hosts":{"github.com":[{"state":"success","active":true,"login":"sam"}]}}')).toEqual({ state: 'ok', login: 'sam' })
     expect(parseGhAuth('{"hosts":{"github.com":[{"state":"timeout","active":true,"login":"sam"}]}}')).toEqual({ state: 'offline', login: 'sam' })
     expect(parseGhAuth('not json')).toBeNull()
     expect(await ghUser(async () => gh({ state: 'timeout', login: 'sam' }))).toBeNull()
+  })
+  it('only warns when agent teams are off', async () => {
+    const run = async (cmd: string, args: string[]) => healthy[[cmd, ...args].join(' ')] ?? missing
+    const checks = await runPreflight({ hookPort: 7420, hookServerUp: true, agentTeams: false, run, claude: BIN })
+    expect(blockers(checks)).toEqual([])
+    expect(warnings(checks)).toEqual(['teams'])
   })
   it('blocks when signed out of Claude', async () => {
     const checks = await preflight({ [`${BIN} auth status`]: ok(JSON.stringify({ loggedIn: false })) })
@@ -188,11 +200,15 @@ describe('preflight checks', () => {
     expect(CLAUDE_INSTALL).toBe('curl -fsSL https://claude.ai/install.sh | bash')
     expect(byId(checks, 'auth').ok).toBe(true)
   })
-  it('blocks when Kernel\'s own claude is missing, without a second failure for sign-in', async () => {
-    for (const checks of [await preflight({}, { claude: null }), await preflight({ [`${BIN} --version`]: fail() })]) {
+  it('blocks when Kernel\'s own claude is missing or won\'t start, without a second failure for sign-in', async () => {
+    const gone = [await preflight({}, { claude: null }), await preflight({ [`${BIN} --version`]: missing })]
+    const broken = await preflight({ [`${BIN} --version`]: fail() })
+    for (const checks of [...gone, broken]) {
       expect(blockers(checks)).toEqual(['claude'])
       expect(checks.some((c) => c.id === 'auth')).toBe(false)
     }
+    expect(gone.map((c) => byId(c, 'claude').title)).toEqual(['Claude Code is missing from Kernel', 'Claude Code is missing from Kernel'])
+    expect(byId(broken, 'claude')).toMatchObject({ title: 'Claude Code did not start', fix: { command: `"${BIN}" --version` } })
   })
 })
 

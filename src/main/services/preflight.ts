@@ -79,9 +79,11 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
   const bin = o.claude === undefined ? sessionClaude() : o.claude
-  const v = bin ? await run(bin, ['--version'], { timeoutMs: 15000 }) : null
+  // A first run of a freshly installed binary can be slow while macOS scans it, hence the long timeout.
+  const v = bin ? await run(bin, ['--version'], { timeoutMs: 60000 }) : null
   const version = v?.code === 0 ? parseClaudeVersion(v.stdout) : null
-  if (!version) checks.push({ id: 'claude', ok: false, blocking: true, title: 'Claude Code is missing from Kernel', detail: 'Kernel could not start its own copy of Claude Code. Reinstall Kernel, then check again.' })
+  if (!v || v.code === 127) checks.push({ id: 'claude', ok: false, blocking: true, title: 'Claude Code is missing from Kernel', detail: 'Kernel could not find its own copy of Claude Code. Reinstall Kernel, then check again.' })
+  else if (!version) checks.push({ id: 'claude', ok: false, blocking: true, title: 'Claude Code did not start', detail: 'Kernel\'s own copy of Claude Code did not start. Run it in Terminal to see why, then check again.', fix: { command: `"${bin}" --version` } })
   else if (compareVersions(version, MIN_CLAUDE) < 0) checks.push({ id: 'claude', ok: false, blocking: false, title: 'Claude Code is too old', detail: `Found v${version}. Agent teams need v2.1.32 and Channels need v${MIN_CLAUDE} or later. Update Kernel to get a newer one.`, meta: `v${version}` })
   else {
     // Agents use Kernel's copy. The one on PATH is only for the fixes below, like signing in from Terminal.
@@ -135,7 +137,7 @@ async function ghCheck(run: typeof exec): Promise<PreflightCheck> {
   if (auth.state === 'signed-out') return { id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } }
   const gh = await run('gh', ['--version'], { timeoutMs: 10000 })
   const meta = /gh version (\d+\.\d+(?:\.\d+)?)/.exec(gh.stdout)?.[1]
-  if (auth.state === 'offline') return { id: 'gh', ok: false, blocking: false, title: 'Can\'t reach GitHub', detail: 'gh is signed in, but GitHub didn\'t answer. Pull requests need it, so check again once you\'re online.', meta: meta && `gh ${meta}` }
+  if (auth.state === 'offline') return { id: 'gh', ok: false, blocking: false, title: 'Can\'t reach GitHub', detail: 'gh is signed in, but GitHub didn\'t answer. Pull requests need it, so check again once you\'re online.', fix: { command: 'gh auth status' }, meta: meta && `gh ${meta}` }
   // ConnectRepo reads the login back out of "Signed in as <login>".
   return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: auth.login ? `Signed in as ${auth.login}` : 'Signed in', meta: meta && `gh ${meta}` }
 }
