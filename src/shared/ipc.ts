@@ -217,7 +217,7 @@ export type PushEvent =
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
-  /** Inbox rows main deleted: an archived workspace's rows, or settled rows past their week (D-136). */
+  /** Inbox rows main deleted: an archived workspace's rows, or settled rows past their week (D-137). */
   | { type: 'notification.removed'; ids: string[] }
   | { type: 'usage'; limits: RateLimit[] }
   | { type: 'pr'; workspaceId: string; state: PrState }

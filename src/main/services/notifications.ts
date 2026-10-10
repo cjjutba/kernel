@@ -25,7 +25,7 @@ type Deps = {
 export interface TurnDone { ok: boolean; interrupted: boolean; lead: boolean; queued: boolean; by: TurnBy }
 
 const IDLE_AFTER_MS = 10 * 60_000
-/** How long a row that no longer needs you stays in the inbox (D-136). */
+/** How long a row that no longer needs you stays in the inbox (D-137). */
 export const KEEP_SETTLED_MS = 7 * 24 * 60 * 60_000
 const PRUNE_EVERY_MS = 24 * 60 * 60_000
 
@@ -53,7 +53,7 @@ const outcome = (a: Approval): string => {
     case 'allowed': return 'You approved this.'
     case 'denied': return 'You denied this.'
     case 'answered': return a.answer ? `You answered: ${a.answer}` : 'You answered this.'
-    // Only a hook approval has a terminal to fall back to. An agent's own request just ends (D-136).
+    // Only a hook approval has a terminal to fall back to. An agent's own request just ends (D-137).
     case 'expired': return a.source === 'sdk' ? 'This request ended before you answered.' : 'This request timed out before you answered. Claude Code asks in its own terminal instead.'
     default: return ''
   }
@@ -96,14 +96,14 @@ export class Notifications {
 
   /**
    * At start and once a day: deletes the rows of archived and deleted workspaces, and rows created more than a week ago
-   * that no longer need you (D-136). A row that needs you stays however old.
+   * that no longer need you (D-137). A row that needs you stays however old.
    */
   prune(): string[] {
     const now = this.d.now?.() ?? Date.now()
     return this.removed([...this.d.store.deleteOrphanNotifications(), ...this.d.store.deleteSettledNotifications(now - KEEP_SETTLED_MS)])
   }
 
-  /** An archived workspace's rows go at once (D-136). History still has the workspace. */
+  /** An archived workspace's rows go at once (D-137). History still has the workspace. */
   forgetWorkspace(workspaceId: string): string[] {
     this.cancelIdle(workspaceId)
     return this.removed(this.d.store.deleteWorkspaceNotifications(workspaceId))
@@ -201,7 +201,7 @@ export class Notifications {
 
   private onPr(workspaceId: string, state: PrState) {
     const ws = this.d.store.workspace(workspaceId)
-    // A PR refresh that lands after the archive would add a row the archive already cleared (D-136).
+    // A PR refresh that lands after the archive would add a row the archive already cleared (D-137).
     if (!ws || ws.status === 'archived') return
     const room = this.d.store.room(ws.roomId)
     const num = ws.prNumber ? `#${ws.prNumber}` : 'PR'

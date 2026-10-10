@@ -47,14 +47,14 @@ export class Approvals {
 
   /**
    * At start: every approval saved as pending belongs to an earlier run, whose waiter is gone, so nobody can answer it
-   * (D-136). Each one is marked expired. Call before `Notifications.attach()`, which then settles their rows.
+   * (D-137). Each one is marked expired. Call before `Notifications.attach()`, which then settles their rows.
    */
   expireStale(): Approval[] {
     return (this.store?.approvals({ pendingOnly: true }) ?? []).filter((a) => !this.pending.has(a.id)).map((a) => this.expire(a))
   }
 
   /**
-   * An archived workspace's pending approvals end (D-136). One with a waiter resolves null, so its session or hook falls
+   * An archived workspace's pending approvals end (D-137). One with a waiter resolves null, so its session or hook falls
    * back instead of waiting on a workspace that is gone.
    */
   expireWorkspace(workspaceId: string): Approval[] {

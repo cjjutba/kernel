@@ -63,13 +63,13 @@ export class Store {
   deleteWorkspaceNotifications(workspaceId: string): string[] {
     return this.ids(`delete from notifications where json_extract(data, '$.workspaceId') = ? returning id`, workspaceId)
   }
-  /** Deletes the rows of workspaces that are archived or no longer exist, and returns their ids (D-136). */
+  /** Deletes the rows of workspaces that are archived or no longer exist, and returns their ids (D-137). */
   deleteOrphanNotifications(): string[] {
     return this.ids(`delete from notifications where json_extract(data, '$.workspaceId') is not null and not exists (
       select 1 from workspaces w where w.id = json_extract(notifications.data, '$.workspaceId') and json_extract(w.data, '$.status') != 'archived') returning id`)
   }
   /**
-   * Deletes rows created before `before` that no longer need you, and returns their ids (D-136). A row that needs you
+   * Deletes rows created before `before` that no longer need you, and returns their ids (D-137). A row that needs you
    * stays however old, and so does a row whose approval is still pending.
    */
   deleteSettledNotifications(before: number): string[] {

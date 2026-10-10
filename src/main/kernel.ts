@@ -263,7 +263,7 @@ export class Kernel {
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
     // No waiter outlives a restart, so nothing can answer an approval from the last run. It ends before the inbox
-    // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-136).
+    // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-137).
     this.approvals.expireStale()
     this.notifications.attach()
     this.backfillLeadChats()
@@ -979,7 +979,7 @@ export class Kernel {
     this.updateWs(id, { status: 'archived', archivedAt: Date.now() }, { archived: true })
     // Only once it is archived: an archive that fails keeps the brief for Run again.
     this.sessions.dropHeld(id)
-    // Nothing in an archived workspace can still be answered or merged from the inbox (D-136).
+    // Nothing in an archived workspace can still be answered or merged from the inbox (D-137).
     this.approvals.expireWorkspace(id)
     this.notifications.forgetWorkspace(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
