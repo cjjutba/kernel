@@ -735,6 +735,8 @@ export interface HookStatus {
   /** All hook entries are present in ~/.claude/settings.json. */
   installed: boolean
   events: { name: string; installed: boolean; lastSeen?: number }[]
+  /** The secret the hook command sends, so the Settings > Hooks snippet matches what Install writes (KERNEL-206). */
+  token?: string
 }
 
 /** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
