@@ -61,6 +61,15 @@ export class Approvals {
     return (this.store?.approvals({ workspaceId, pendingOnly: true }) ?? []).map((a) => this.finish(a.id, null, 'expired') ?? this.expire(a))
   }
 
+  /**
+   * Kernel is quitting: every approval still waiting ends as expired, while the database is still open, and its waiter
+   * resolves null, so a hook falls back to Claude Code's own prompt. An abort that arrives after the database closes,
+   * as a dropped hook connection's does, then finds nothing pending (KERNEL-215).
+   */
+  expirePending(): Approval[] {
+    return [...this.pending.keys()].flatMap((id) => this.finish(id, null, 'expired') ?? [])
+  }
+
   private expire(a: Approval): Approval {
     const next: Approval = { ...a, status: 'expired' }
     this.store?.saveApproval(next)

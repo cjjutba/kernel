@@ -613,8 +613,13 @@ export class Kernel {
     // The next start tells a quit from a crash by this. It goes before the hook server closes, the one step left that can
     // wait, so a quit capped by KERNEL-214 still counts as a quit. Nothing after it changes what carries on.
     this.store.saveMeta('cleanExit', true)
+    // Nobody can answer an approval once Kernel quits, and the next start would expire it anyway (D-137). It ends now,
+    // while the database is open: a dropped hook connection aborts its approval a tick after close() returns, which
+    // would reach a closed database. An outside session's hook gets its fallback answer before the connections end.
+    this.approvals.expirePending()
+    await new Promise((r) => setImmediate(r))
     // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
-    // waits for it. Kernel can't answer it once it quits, so its connection ends first.
+    // waits for it, so whatever is still open ends first.
     await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
     this.store.db.close()
   }

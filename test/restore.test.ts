@@ -210,7 +210,7 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     const outside = fetch(`http://127.0.0.1:${port}/hooks`, {
       method: 'POST', headers: { 'content-type': 'application/json', 'x-kernel-token': hookToken(where.dataDir) },
       body: JSON.stringify({ session_id: 'outside', transcript_path: '/t', cwd: repo, hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'pnpm db:reset' } })
-    }).catch(() => undefined)
+    }).then((r) => r.json(), () => 'dropped')
     await vi.waitFor(() => expect(k.store.approvals({ pendingOnly: true }).some((a) => a.source === 'hook')).toBe(true), { timeout: 10_000 })
     sdk.deaf = true
     try {
@@ -223,8 +223,10 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(took).toBeGreaterThanOrEqual(QUIT_BUDGET_MS)
       expect(took).toBeLessThan(4000)
     } finally { sdk.deaf = false }
-    await outside
+    // It got the fallback answer, so Claude Code asks in its own window, and the approval ended while the database was open.
+    expect(await outside).toEqual({})
     const store = new Store(join(where.dataDir, 'kernel.db'))
+    expect(store.approvals({}).filter((a) => a.source === 'hook').map((a) => a.status)).toEqual(['expired'])
     expect(store.meta('cleanExit')).toBe(true)
     expect(store.meta('working')).toContain(kai.id)
     store.db.close()
