@@ -67,7 +67,21 @@ describe('IPC contract', () => {
     expect((await h['settings.get']()).experimental.floor3d).toBe(false)
     const room = await k.addRoom(repo)
     expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
+    expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })
     await k.stop()
+  })
+
+  it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
+    const h = fixtureHandlers(fixtures.Workspace)
+    const roomId = fixtures.Workspace.rooms[0].id
+    expect((await h['settings.room']({ roomId })).sources).toEqual({})
+    const rs = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: '# Mine' }, workspace: { remote: 'upstream' } } })
+    expect(rs.pr).toEqual({ createInstructions: '# Mine' })
+    expect(rs.sources).toEqual({ 'pr.createInstructions': 'local', 'workspace.remote': 'local' })
+    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } }, shared: true })).sources['workspace.remote']).toBe('override')
+    const after = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: null } } })
+    expect(after.pr).toEqual({})
+    expect(after.sources).toEqual({ 'workspace.remote': 'override' })
   })
 })
 

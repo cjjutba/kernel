@@ -27,9 +27,9 @@ export const LEAD_RULE = [
  * reports its verdict with submit_review, and leaves GitHub's approve and request-changes alone, since the PR is the
  * user's own and GitHub won't let its author do either.
  */
-export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string } }): string {
+export function reviewRule(r: { author: string; task: string; workspaceId: string; branch: string; resetTo?: string; base: string; pr?: { number: number; url?: string } }, remote = 'origin'): string {
   const to = r.resetTo ?? r.branch
-  const pickUp = to.startsWith('origin/') ? `git fetch origin ${r.branch} && git reset --hard ${to}` : `git reset --hard ${to}`
+  const pickUp = to.startsWith(`${remote}/`) ? `git fetch ${remote} ${r.branch} && git reset --hard ${to}` : `git reset --hard ${to}`
   return [
     `You are reviewing ${r.author}'s work on "${r.task}" (workspace ${r.workspaceId}) for the Lead.`,
     `Your worktree started at ${r.author}'s branch ${r.branch}. Before each review, run \`${pickUp}\` to pick up ${r.author}'s latest commits, then read the change with \`git diff ${r.base}...HEAD\`.`,
