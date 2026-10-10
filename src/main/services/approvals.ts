@@ -12,10 +12,14 @@ type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
  */
 export class Approvals {
   private pending = new Map<string, Pending>()
+  /** Kernel is quitting (`expirePending`): nothing new waits, and nothing is saved, since the database is about to close. */
+  private closed = false
   constructor(private store?: Store) {}
 
   request(a: Omit<Approval, 'id' | 'status' | 'createdAt'>, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): { approval: Approval; decision: Promise<Decision | null> } {
     const approval: Approval = { ...a, id: randomUUID(), status: 'pending', createdAt: Date.now() }
+    // A hook request that lands while Kernel quits gets the fallback answer at once, so Claude Code asks in its own window.
+    if (this.closed) return { approval: { ...approval, status: 'expired' }, decision: Promise.resolve(null) }
     this.store?.saveApproval(approval)
     bus.push({ type: 'approval', approval })
     bus.activity({ kind: 'approval.requested', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, text: a.title, object: a.toolName })
@@ -64,9 +68,11 @@ export class Approvals {
   /**
    * Kernel is quitting: every approval still waiting ends as expired, while the database is still open, and its waiter
    * resolves null, so a hook falls back to Claude Code's own prompt. An abort that arrives after the database closes,
-   * as a dropped hook connection's does, then finds nothing pending (KERNEL-215).
+   * as a dropped hook connection's does, then finds nothing pending. Requests after this answer null at once without
+   * saving anything (KERNEL-215).
    */
   expirePending(): Approval[] {
+    this.closed = true
     return [...this.pending.keys()].flatMap((id) => this.finish(id, null, 'expired') ?? [])
   }
 
