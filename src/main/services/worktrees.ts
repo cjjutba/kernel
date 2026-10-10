@@ -1,4 +1,4 @@
-import { mkdir, stat } from 'node:fs/promises'
+import { mkdir, realpath, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
@@ -86,10 +86,27 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
 
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
 
+/**
+ * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
+ * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
+ * otherwise get the same folder (KERNEL-267).
+ */
+export async function freeWorktreePath(repo: string, root: string, branch: string): Promise<string> {
+  const max = 80
+  const stem = branch.replace(/\//g, '-')
+  const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
+  // git may list a worktree by its real path (/private/var/... for /var/... on macOS).
+  const real = await realpath(root)
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? slugify(stem, max) : `${slugify(stem, max - `-${i}`.length)}-${i}`
+    if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
+  }
+}
+
 /** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
-  const path = join(o.root, slugify(o.branch.replace(/\//g, '-'), 80))
+  const path = await freeWorktreePath(o.repo, o.root, o.branch)
   await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
   return path
 }

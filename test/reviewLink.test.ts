@@ -79,6 +79,18 @@ describe('the review link (KERNEL-130)', () => {
     expect((await git(again.path, 'rev-parse', 'HEAD')).trim()).toBe(tip)
   })
 
+  it('starts reviews of work on a branch name over 80 characters, each in its own folder (KERNEL-267)', async () => {
+    const { k, room, lead } = await setup()
+    const branch = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts-the-brief-in-an-empty-lead'
+    const author = await k.createWorkspace(room.id, { prompt: 'Fix the tab', agentId: 'kai', title: 'Fix the tab', branch, leadChatId: lead.id })
+    const first = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    const second = await k.createWorkspace(room.id, { prompt: 'Review it again', agentId: 'theo', title: 'Review PR #173', leadChatId: lead.id, reviewOf: author.id })
+    expect([first.branch, second.branch]).toEqual([`${branch}-review`, `${branch}-review-2`])
+    expect(new Set([author.path, first.path, second.path]).size).toBe(3)
+    for (const ws of [first, second]) expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(ws.branch)
+    expect((await git(author.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(branch)
+  })
+
   it('saves a verdict on the reviewed work with the commit it reviewed, replaces it on a resubmit, and tells the Lead', async () => {
     const { k, review, author, tip } = await setup()
     expect(await k.submitReview(review.id, { verdict: 'approved', summary: 'Looks right.' })).toContain('you approved')

@@ -1,5 +1,5 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
@@ -55,6 +55,36 @@ describe('worktrees', () => {
     expect(paths).not.toContain(basename(dropped))
     expect(await branchExists(repo, 'feat/kept')).toBe(true)
     expect(await branchExists(repo, 'feat/dropped')).toBe(false)
+  })
+
+  it('gives branches that share their first 80 characters their own folders (KERNEL-267)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-long-' + Date.now())
+    const long = 'cjjutbaofficial/kernel-242-create-in-the-new-chat-modal-puts-the-brief-in-an-empty-lead'
+    const first = await createWorktree({ repo, root, branch: long, baseRef: 'main' })
+    const review = await createWorktree({ repo, root, branch: `${long}-review`, baseRef: 'main' })
+    const again = await createWorktree({ repo, root, branch: `${long}-review-2`, baseRef: 'main' })
+    expect(new Set([first, review, again]).size).toBe(3)
+    for (const p of [first, review, again]) expect(basename(p).length).toBeLessThanOrEqual(80)
+    expect(basename(review)).toMatch(/-2$/)
+    expect(basename(again)).toMatch(/-3$/)
+    const listed = await listWorktrees(repo)
+    expect([long, `${long}-review`, `${long}-review-2`].every((b) => listed.some((w) => w.branch === b))).toBe(true)
+  })
+
+  it('never reuses a folder that is already on disk, or one git still has a record for (KERNEL-267)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-taken-' + Date.now())
+    await mkdir(join(root, 'feat-taken'), { recursive: true })
+    await writeFile(join(root, 'feat-taken', 'notes.md'), 'mine\n')
+    const path = await createWorktree({ repo, root, branch: 'feat/taken', baseRef: 'main' })
+    expect(basename(path)).toBe('feat-taken-2')
+    expect(await readFile(join(root, 'feat-taken', 'notes.md'), 'utf8')).toBe('mine\n')
+    // The folder is gone but git hasn't pruned its record, so `worktree add` would refuse that path.
+    await rm(path, { recursive: true, force: true })
+    await git(repo, 'branch', '-m', 'feat/taken', 'feat/old')
+    const next = await createWorktree({ repo, root, branch: 'feat/taken', baseRef: 'main' })
+    expect(basename(next)).toBe('feat-taken-3')
   })
 
   it('still refuses a folder that exists but is not a worktree', async () => {
