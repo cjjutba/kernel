@@ -23,11 +23,11 @@ pnpm exec playwright install --with-deps chromium   # once
 pnpm test:e2e          # e2e, axe, render comparison, JS budget
 ```
 
-`pnpm test:e2e` builds the site into `.next-e2e` against a stub GitHub API that reports 1,234 stars and serves it on port 3100. Locally it reuses a server that is already running on that port.
+`pnpm test:e2e` builds the site twice against a stub GitHub API that reports 1,234 stars. `.next-e2e` on port 3100 has the site's own content, and every test but the render comparison uses it. `.next-e2e-render` on port 3101 reads `tests/fixtures/render` instead: the 0.1.0 release and the plans that `design/site/renders` shows. The render comparison uses it, so a new release or a change of plans doesn't fail it. Locally it reuses servers that are already running on those ports.
 
 The design rules are tests (`tests/unit/rules.test.ts`): no hex colors in components or pages, no arbitrary Tailwind values, and no em or en dashes. Colors, sizes and effects are tokens and named utilities in `app/globals.css`.
 
-To compare against the design while you work, run the site on port 3000 and use:
+To compare against the design while you work, run the site on port 3000 with the content the renders show, `CHANGELOG_FIXTURE=tests/fixtures/render pnpm dev`, and use:
 
 ```bash
 node scripts/compare.mjs landing "hero=#top"   # reference left, site right, in test-results/compare/
@@ -40,10 +40,11 @@ node scripts/check-render.mjs changelog        # full page against design/site/r
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | In production | The public origin, for canonical URLs, Open Graph, the sitemap and robots.txt. Defaults to `http://localhost:3000`. |
 | `GITHUB_TOKEN` | No | Sent to the GitHub API for the star count, so builds aren't rate limited. A fine grained token with no permissions is enough. |
+| `CHANGELOG_FIXTURE` | No | Tests only. A folder to read the changelog and the hero pill's version from instead of `content/`, with `releases/` and `upNext.json`. |
 
 ## Add a changelog entry
 
-Each release is a file in `content/releases/<version>.md`, compiled from the repo's release-note fragments by `pnpm release:notes` at the repo root (`../.changes/README.md`, `../docs/RELEASING.md`). Don't write one from scratch; edit the compiled file in the release PR.
+Each release is a file in `content/releases/<version>.md`, compiled from the repo's release-note fragments by `pnpm release:notes` at the repo root (`../.changes/README.md`, `../docs/RELEASING.md`). Don't write one from scratch; edit the compiled file in the release PR. Leave `tests/fixtures/render` alone: it is the content the design renders show, not the live changelog.
 
 ```md
 ---

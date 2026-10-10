@@ -1,3 +1,5 @@
+import { latestRelease } from '@/content/changelog'
+import { latestVersionLabel } from '@/lib/format'
 import { DOWNLOAD_URL } from '@/lib/links'
 import { expect, isMobile, test } from './fixtures'
 
@@ -54,7 +56,7 @@ test('release notes, the hero pill and the nav go to /changelog', async ({ page 
       '/changelog'
     )
   }
-  await page.getByRole('link', { name: /Kernel 0\.1 is here/ }).click()
+  await page.getByRole('link', { name: `Kernel ${latestVersionLabel(latestRelease.version)} is here` }).click()
   await expect(page).toHaveURL('/changelog')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText("What's new in Kernel")
 })
