@@ -690,7 +690,7 @@ export class Sessions {
             const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model && block.input.subagent_type !== 'fork' ? String(block.input.model) : undefined
             if (model) live.agentModels.add(block.id)
             const label = model ? `${d.title} · ${modelName(model)}` : d.title
-            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running' }
+            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running', input: clipInput(block.input) }
             live.toolItems.set(block.id, item)
             this.item(chat, item)
           }
@@ -708,7 +708,8 @@ export class Sessions {
           if (item && !block.is_error && live.blocked === 'PreToolUse') this.unblock(chat, ws, live)
           if (!item) continue
           const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
-          const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, 4000), ts: item.ts } as ChatItem & { kind: 'tool' }
+          const cut = output.length > TOOL_TEXT_MAX
+          const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, TOOL_TEXT_MAX), outputCut: cut || undefined, ts: item.ts } as ChatItem & { kind: 'tool' }
           live.toolItems.set(block.tool_use_id, done)
           this.item(chat, done)
         }
@@ -956,6 +957,19 @@ const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
 function modelName(model: string): string {
   const m = model.toLowerCase()
   return MODELS.find(({ id }) => m === id || m === id.split('-')[1] || id.includes(`-${m}-`))?.label ?? model
+}
+
+/** How much of a tool's output, and of each string in its input, a chat row keeps, so a big Write or log can't bloat chat_items. */
+const TOOL_TEXT_MAX = 20_000
+
+/** The tool's input for its row, with every string longer than TOOL_TEXT_MAX clipped, nested ones too. */
+function clipInput(input: unknown): Record<string, unknown> | undefined {
+  const clip = (v: unknown): unknown =>
+    typeof v === 'string' ? v.slice(0, TOOL_TEXT_MAX)
+      : Array.isArray(v) ? v.map(clip)
+        : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clip(x)]))
+          : v
+  return input && typeof input === 'object' && !Array.isArray(input) ? clip(input) as Record<string, unknown> : undefined
 }
 
 function toolDetail(name: string, input: any): string {
