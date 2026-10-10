@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, session, shell, type IpcMainInvokeEvent } from 'electron'
+import { writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -22,12 +23,15 @@ let win: BrowserWindow | null = null
 
 // The fuses turn ELECTRON_RUN_AS_NODE off in the packaged app, so scripts/release.sh checks the native modules through
 // this argument instead: load both the way the app does, print ok and quit, before any window, lock or database.
+// node-pty loads its addon with the imports above, so a broken one fails before this runs; better-sqlite3 loads its
+// addon on the first Database.
 const smokeTest = process.argv.includes('--kernel-smoke-test')
 if (smokeTest) {
   try {
     new Database(':memory:').close()
     if (typeof pty.spawn !== 'function') throw new Error('node-pty has no spawn')
-    process.stdout.write('ok\n')
+    // Synchronous, so the line is out before app.exit ends the process.
+    writeSync(1, 'ok\n')
     app.exit(0)
   } catch (err) {
     console.error('[kernel] smoke test failed', err)
@@ -96,7 +100,7 @@ function createWindow() {
   if (!headless) win.once('ready-to-show', () => win?.show())
   // The window only ever shows the app. A dropped HTML file, a link or a redirect would otherwise load in it, and
   // a foreign page in this window gets the bridge.
-  const stay = (e: { preventDefault(): void }, url: string) => { if (!isAppUrl(url, appUrl)) e.preventDefault() }
+  const stay = (e: { url: string; preventDefault(): void }) => { if (!isAppUrl(e.url, appUrl)) e.preventDefault() }
   win.webContents.on('will-navigate', stay)
   win.webContents.on('will-redirect', stay)
   win.webContents.setWindowOpenHandler(({ url }) => { if (isSafeExternal(url)) void shell.openExternal(url); return { action: 'deny' } })

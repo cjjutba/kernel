@@ -8,7 +8,9 @@ describe('isAppUrl', () => {
   it.each([
     ['the packaged page', packaged, packaged, true],
     ['the packaged page with a hash route', `${packaged}#/dev/ui/buttons`, packaged, true],
-    ['the dev server', 'http://localhost:5173/', dev, true],
+    ['a bundle in a folder with a % and a space', 'file:///Users/you/100%25%20done/Kernel.app/index.html', 'file:///Users/you/100% done/Kernel.app/index.html', true],
+    ['a bundle in a folder named in another script', 'file:///Users/you/%C3%A9t%C3%A9/index.html', 'file:///Users/you/été/index.html', true],
+    ['the dev server','http://localhost:5173/', dev, true],
     ['the dev server with a query', 'http://localhost:5173/?t=1', dev, true],
     ['a dropped HTML file', 'file:///Users/you/Downloads/page.html', packaged, false],
     ['another file in the bundle', 'file:///Applications/Kernel.app/Contents/Resources/app.asar/out/renderer/other.html', packaged, false],

@@ -66,10 +66,10 @@ xcrun stapler validate "$app"
 # so the run gets a time limit instead of hanging the release.
 smoke() {
   local out
-  out=$(KERNEL_HEADLESS=1 perl -e 'alarm 60; exec @ARGV' "$app/Contents/MacOS/Kernel" "$@" --kernel-smoke-test 2>/dev/null) || return 1
+  out=$(KERNEL_HEADLESS=1 perl -e 'alarm 60; exec @ARGV' "$app/Contents/MacOS/Kernel" "$@" --kernel-smoke-test 2>"$tmp/smoke.log") || return 1
   grep -qx ok <<<"$out"
 }
-smoke || fail "the packaged app can't load better-sqlite3 or node-pty. Run pnpm install and release again."
+smoke || { cat "$tmp/smoke.log" >&2; fail "the packaged app can't load better-sqlite3 or node-pty. Run pnpm install and release again."; }
 # The RunAsNode fuse is off (KERNEL-208). If it were on, this would run the -e script and print node instead of ok.
 ELECTRON_RUN_AS_NODE=1 smoke -e 'console.log("node")' || fail "the packaged app still runs as Node with ELECTRON_RUN_AS_NODE. Check electronFuses in electron-builder.yml."
 

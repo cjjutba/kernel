@@ -1,13 +1,21 @@
 import { isAbsolute, resolve, sep } from 'node:path'
 
-/** A URL without its query or hash, or null when it doesn't parse. File URLs have no origin, so compare the parts. */
+/**
+ * A URL without its query or hash, or null when it doesn't parse. File URLs have no origin, so compare the parts. A file
+ * path is compared decoded: loadFile leaves a % in a folder name as it is, while pathToFileURL escapes it.
+ */
 function base(url: string): string | null {
   try {
     const u = new URL(url)
-    return `${u.protocol}//${u.host}${u.pathname}`
+    return `${u.protocol}//${u.host}${u.protocol === 'file:' ? decoded(u.pathname) : u.pathname}`
   } catch {
     return null
   }
+}
+
+/** Decodes each run of %XX escapes as UTF-8 and leaves a bare % alone, where decodeURIComponent would throw. */
+function decoded(path: string): string {
+  return path.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => Buffer.from(run.replace(/%/g, ''), 'hex').toString('utf8'))
 }
 
 /**
