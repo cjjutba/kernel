@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, type ReactNode } from 'react'
+import { Suspense, createElement, lazy, useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import type { DevUiPage, Modal, Route } from '@shared/types'
 import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
@@ -48,12 +48,28 @@ import { NewWorkspace } from './screens/workspace/NewWorkspace'
 import { Workspace } from './screens/workspace/Workspace'
 import { DevUi } from './ui/DevUi'
 
+/**
+ * React.lazy, plus a warm path. Route changes here are synchronous (the store is a useSyncExternalStore), and a lazy component
+ * suspends on its first render even when its chunk is already in memory, which flashes the fallback. Once `warm()` has run, a
+ * screen that mounts afterwards renders straight away. One that mounted cold keeps its lazy wrapper, so it never remounts.
+ */
+function lazyScreen<P extends object>(load: () => Promise<ComponentType<P>>) {
+  let loaded: ComponentType<P> | undefined
+  const fetch = () => load().then((c) => (loaded = c))
+  const Lazy = lazy(() => fetch().then((component) => ({ default: component })))
+  const Screen = (props: P) => {
+    const [Ready] = useState(() => loaded)
+    return Ready ? createElement(Ready, props) : createElement(Lazy as ComponentType<P>, props)
+  }
+  return { Screen, warm: () => void fetch() }
+}
 // Settings, and the hidden Floor and Board (D-104), load on first visit so they stay out of the main chunk.
 const Board = lazy(() => import('./screens/board/Board').then((m) => ({ default: m.Board })))
 const Floor = lazy(() => import('./screens/floor/Floor').then((m) => ({ default: m.Floor })))
-const loadSettings = () => import('./screens/settings/Settings')
-const Settings = lazy(() => loadSettings().then((m) => ({ default: m.Settings })))
-const SettingsNav = lazy(() => loadSettings().then((m) => ({ default: m.SettingsNav })))
+const settings = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.Settings))
+const settingsNav = lazyScreen(() => import('./screens/settings/Settings').then((m) => m.SettingsNav))
+const Settings = settings.Screen
+const SettingsNav = settingsNav.Screen
 
 /** Routes drawn full window, without the sidebar, like Welcome.png, Setup*.png and Settings*.png. */
 const fullWindow = (r: Route) => r.name === 'onboarding' || r.name === 'settings' || r.name === 'devUi'
@@ -145,7 +161,7 @@ export function App() {
   // Settings is one ⌘, away, so fetch it once the app is idle. Without that, the first ⌘, swaps the window for the loading shell until the chunk lands.
   useEffect(() => {
     if (!booted) return
-    const id = requestIdleCallback(() => void loadSettings())
+    const id = requestIdleCallback(() => { settings.warm(); settingsNav.warm() })
     return () => cancelIdleCallback(id)
   }, [booted])
   useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
