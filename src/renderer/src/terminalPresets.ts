@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings, TerminalPreset } from '@shared/types'
+import { SKIP_FLAG, type AppSettings, type TerminalPreset } from '@shared/types'
 import { call } from './api'
 import { useStore } from './store'
 
@@ -27,9 +27,11 @@ export const selectedPreset = (list: TerminalPreset[], t: AppSettings['terminal'
 
 /**
  * The tab ran without `--dangerously-skip-permissions` although its preset has it: Only in worktrees took it out on a
- * current-branch workspace. Main stores the command that ran, so the tab compares it with the preset's (KERNEL-248).
+ * current-branch workspace. Main stores the command that ran and strips every form of the flag, so the flag was dropped when the
+ * preset skips permissions and the stored command no longer has it. Comparing with the preset's command would be wrong after the
+ * preset is edited while its tab is open (KERNEL-248).
  */
 export const skipWasDropped = (terminal: { preset: string; command: string | null } | undefined, list: TerminalPreset[] | null): boolean => {
   const preset = terminal && list?.find((p) => p.id === terminal.preset)
-  return !!preset && preset.skipsPermissions && terminal.command !== preset.command
+  return !!preset && preset.skipsPermissions && !(terminal.command ?? '').includes(SKIP_FLAG)
 }

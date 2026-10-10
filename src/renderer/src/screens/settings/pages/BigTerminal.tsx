@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
-import type { AppSettings, TerminalPreset } from '@shared/types'
+import { KNOWN_CLIS, type AppSettings, type TerminalPreset } from '@shared/types'
 import { getState } from '../../../store'
 import { selectedPreset, useTerminalPresets } from '../../../terminalPresets'
 import { Button, Icon, Modal, Toggle, useBusy } from '../../../ui'
@@ -43,7 +43,7 @@ export function BigTerminal({ s }: { s: AppSettings }) {
         </Section>
         <Section
           title="New tab preset"
-          action={<Button onClick={() => setEditing('new')}>Add custom command</Button>}
+          action={<Button disabled={!presets} onClick={() => setEditing('new')}>Add custom command</Button>}
           note="A new tab runs the selected preset. The + menu in the tab strip lists every preset."
         >
           {presets
@@ -74,12 +74,12 @@ function PresetList({ presets, selected, onPick, onEdit, onRemove }: { presets: 
         return (
           <div key={p.id} className="set-row set-preset">
             <button
-              ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-label={p.name} tabIndex={on ? 0 : -1}
+              ref={(el) => { radios.current[i] = el }} type="button" role="radio" className="set-radio" aria-checked={on} aria-label={p.name} tabIndex={on ? 0 : -1} aria-describedby={`preset-desc-${p.id}`}
               onClick={() => onPick(p.id)} onKeyDown={(e) => onKey(e, i)}
             >{on && <Icon name="check" size={10} stroke={2.2} />}</button>
             <div className="set-text" onClick={() => onPick(p.id)}>
               <span className="set-label">{p.name}</span>
-              <span className="set-desc">{describe(p)}</span>
+              <span id={`preset-desc-${p.id}`} className="set-desc">{describe(p)}</span>
             </div>
             {p.command && <span className="set-preset-cmd" title={p.command}>{p.command}</span>}
             {!p.builtin && (
@@ -103,9 +103,12 @@ function PresetForm({ s, presets, custom, onClose }: { s: AppSettings; presets: 
   const [failed, setFailed] = useState<string | null>(null)
   const [busy, run] = useBusy<'save'>()
   const trimmed = name.trim()
+  // The list has the custom commands, and the settings are checked too. A CLI's name counts whether or not it is installed, or installing it later would list two rows with one name.
+  const same = (n: string) => n.toLowerCase() === trimmed.toLowerCase()
   const problem = !trimmed
     ? 'Give the command a name.'
-    : presets.some((p) => p.id !== custom?.id && p.name.toLowerCase() === trimmed.toLowerCase()) ? `A preset named ${trimmed} is already in the list.` : undefined
+    : KNOWN_CLIS.some((c) => same(c.name)) ? `${trimmed} is the name of a CLI Kernel lists when it is installed. Pick another name.`
+    : [...presets, ...s.terminal.custom].some((p) => p.id !== custom?.id && same(p.name)) ? `A preset named ${trimmed} is already in the list.` : undefined
   const noCommand = !command.trim()
   const submit = (e: FormEvent) => {
     e.preventDefault()
