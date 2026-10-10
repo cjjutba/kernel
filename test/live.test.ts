@@ -9,6 +9,8 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { askTitle } from '../src/main/services/titles'
+import { Store } from '../src/main/db'
+import { QUIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -195,6 +197,78 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live chat name', () => {
     expect(name!.length).toBeLessThanOrEqual(60)
     expect(name).not.toMatch(/^["'#*]|[."']$|\n/)
   })
+})
+
+// KERNEL-215: a turn a quit cut off carries on when Kernel opens again, in the same conversation. Once through the
+// interrupt a quit sends first, once through the abort that follows when a turn doesn't stop in time. `-t "live relaunch"`.
+describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
+  for (const [how, budgetMs] of [['an interrupt', 15_000], ['an abort', 0]] as const) {
+    it(`resumes a session cut off by ${how}`, { timeout: 600_000 }, async () => {
+      expect(existsSync(join(repo, '.claude/agents')), 'KERNEL_LIVE_REPO needs a .claude/agents folder').toBe(true)
+      const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
+      const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
+      const where = { dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') }
+      await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
+        hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+        workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
+        models: { engineers: 'claude-sonnet-5-5', effort: 'low' },
+        permissions: { mode: 'bypassInWorktrees', alwaysAsk: [], neverAllow: [] }
+      }))
+      const evidence: Record<string, unknown> = { repo, how }
+      let k = new Kernel(where)
+      await k.start()
+      let wsId: string | undefined
+      try {
+        const h = k.handlers()
+        const room = await h['rooms.add']({ path: repo })
+        const agents = await h['agents.list']({ roomId: room.id })
+        const agent = agents.find((a) => a.id === 'implementer') ?? agents.find((a) => !a.lead) ?? agents[0]
+        const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Remember the word kumquat for later. Run exactly `sleep 20` with the Bash tool, then say done. Run nothing else.' })
+        wsId = ws.id
+        const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
+        await waitFor('sleep 20 running', () => k.store.items(chat.id).find((i) => i.kind === 'tool' && i.detail === 'sleep 20' && i.status === 'running'))
+        const session = k.store.chat(chat.id)?.sessionId
+        const t0 = Date.now()
+        await k.stop({ budgetMs })
+        evidence.stopMs = Date.now() - t0
+        evidence.sessionBefore = session
+        // The interrupt ends the turn well inside its budget. The abort leaves no claude process of that run alive.
+        if (budgetMs) expect(Date.now() - t0).toBeLessThan(budgetMs)
+        await new Promise((r) => setTimeout(r, 1500))
+        const saved = new Store(join(dataDir, 'kernel.db'))
+        const pids = saved.meta<{ pid: number }[]>('claudePids') ?? []
+        saved.db.close()
+        const alive = pids.filter(({ pid }) => { try { process.kill(pid, 0); return true } catch { return false } })
+        evidence.leftover = { pids, alive }
+        expect(alive).toEqual([])
+
+        k = new Kernel(where)
+        await k.start()
+        const items = () => k.store.items(chat.id)
+        expect(items().filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toContain(QUIT_NOTE)
+        expect(items().find((i) => i.kind === 'tool' && i.detail === 'sleep 20')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
+        const nudge = items().findIndex((i) => i.kind === 'user' && (i.parts[0] as { text?: string }).text === RELAUNCH_NUDGE)
+        expect(nudge).toBeGreaterThan(-1)
+        const after = () => items().slice(nudge)
+        await waitFor('the nudge turn', () => after().some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
+        evidence.nudgeTurn = after().map((i) => ({ kind: i.kind, ...(i.kind === 'text' ? { text: i.text.slice(0, 200) } : {}), ...(i.kind === 'result' ? { ok: i.ok, error: i.error } : {}), ...(i.kind === 'note' ? { text: i.text } : {}) }))
+        expect(after().filter((i) => i.kind === 'result').every((i) => i.kind === 'result' && i.ok)).toBe(true)
+        expect(after().some((i) => i.kind === 'note' && /Session stopped/.test(i.text))).toBe(false)
+        evidence.sessionAfter = k.store.chat(chat.id)?.sessionId
+        // Same conversation: it still knows what it was told before the quit.
+        await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Which word did I ask you to remember? Reply with just that word.' }] })
+        await waitFor('the word', () => items().slice(nudge).some((i) => i.kind === 'text' && /kumquat/i.test(i.text)) && !k.sessions.isRunning(chat.id))
+      } finally {
+        const out = join(process.env.KERNEL_LIVE_OUT ? join(process.env.KERNEL_LIVE_OUT, '..') : tmpdir(), `kernel-live-relaunch-${budgetMs ? 'interrupt' : 'abort'}.json`)
+        await writeFile(out, JSON.stringify(evidence, null, 2))
+        console.log(`[live] evidence: ${out}`)
+        if (wsId) await k.archiveWorkspace(wsId, true).catch((e) => console.log('[live] archive failed', e))
+        await k.stop({ budgetMs: 0 })
+        await rm(home, { recursive: true, force: true })
+        await rm(dataDir, { recursive: true, force: true })
+      }
+    })
+  }
 })
 
 async function waitFor<T>(what: string, check: () => T | undefined | false, timeoutMs = 180_000): Promise<T> {
