@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
@@ -311,6 +312,16 @@ export class ScriptTrustStore {
     })
     return this.writing
   }
+}
+
+/**
+ * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
+ */
+export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
 
 /**
