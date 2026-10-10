@@ -2,10 +2,11 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSetupStep, Route, ScriptKind, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceView
+  RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
+import { nearest, roomHome, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -94,7 +95,7 @@ let state: State = {
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
   quickAsk: {},
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
 
@@ -145,6 +146,39 @@ function rememberRoom(route: Route) {
 function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
+const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }
+/** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file or diff tab joins the open ones. */
+function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
+  const t = { ...emptyTabs, ...tabs, tab }
+  if (tab.startsWith('file:')) { const path = tab.slice(5); return t.files.includes(path) ? t : { ...t, files: [...t.files, path] } }
+  if (tab.startsWith('diff:')) { const path = tab.slice(5); return t.diffs.includes(path) ? t : { ...t, diffs: [...t.diffs, path] } }
+  if (tab.startsWith('image:') || tab.startsWith('text:')) return t
+  return { ...t, lastChat: tab }
+}
+/** Where the app is now. */
+const placeNow = (): Place => {
+  const { route } = state.ui
+  return route.name === 'workspace' ? { route, tab: tabOf(state, route.workspaceId) } : { route }
+}
+/** Where Settings was opened from, the last Settings page, and where the app opened. Module level like `folded`: none of it outlasts a restart. */
+let returnTo: Place | undefined
+let lastSettings: { page: SettingsPage; roomId?: string } | undefined
+let launch: Route = { name: 'home' }
+/** Every move ends here, whether it changed the route (`go`) or the tab (`openTab`). The place-keeping lines of the issues after it go here too. */
+function moved(from: Place, to: Place) {
+  if (to.route.name === 'settings') {
+    if (from.route.name !== 'settings') returnTo = from
+    lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}) }
+  }
+}
+/** `tabs` without the workspaces `gone` picks out. Tabs with nothing to drop keep their identity. */
+function dropTabs(tabs: UiState['tabs'], gone: (workspaceId: string) => boolean): UiState['tabs'] {
+  const ids = Object.keys(tabs).filter(gone)
+  if (!ids.length) return tabs
+  const out = { ...tabs }
+  for (const id of ids) delete out[id]
+  return out
+}
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
 
@@ -152,7 +186,20 @@ let toastSeq = 0
 export const actions = {
   ui: {
     /** Navigate. Closes any modal and menu. */
-    go: (route: Route) => { setUi({ route, modal: null, menu: null }); rememberRoom(route) },
+    go: (route: Route) => {
+      const from = placeNow()
+      setUi({ route, modal: null, menu: null })
+      rememberRoom(route)
+      moved(from, placeNow())
+    },
+    /** ⌘, : the Settings page you were on last, or General when that page's room is gone. */
+    openSettings: () => {
+      const last = lastSettings
+      const route: Route = last && stillThere({ name: 'settings', ...last }, state) ? { name: 'settings', ...last } : { name: 'settings', page: 'general' }
+      actions.ui.go(route)
+    },
+    /** Back to app: where Settings was opened from, or the nearest place that is still there. */
+    leaveSettings: () => actions.ui.go(nearest((returnTo ?? { route: launch }).route, state)),
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
     closeModal: () => setUi({ modal: null }),
     /** Opens the menu, or closes it when it is already open. */
@@ -174,6 +221,14 @@ export const actions = {
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
+    openTab: (workspaceId: string, tab: string) => {
+      const from = placeNow()
+      setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } }))
+      moved(from, placeNow())
+    },
+    /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
+    setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
     setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
@@ -185,7 +240,10 @@ export const actions = {
   rooms: {
     set: (rooms: Room[]) => setState({ rooms }),
     upsert: (room: Room) => setState((s) => ({ rooms: upsert(s.rooms, room) })),
-    remove: (roomId: string) => setState((s) => ({ rooms: s.rooms.filter((r) => r.id !== roomId), workspaces: s.workspaces.filter((w) => w.roomId !== roomId) })),
+    remove: (roomId: string) => setState((s) => ({
+      rooms: s.rooms.filter((r) => r.id !== roomId), workspaces: s.workspaces.filter((w) => w.roomId !== roomId),
+      ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
+    })),
     setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
     setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
@@ -198,8 +256,8 @@ export const actions = {
     }))
   },
   workspaces: {
-    set: (list: Workspace[]) => setState({ workspaces: list }),
-    upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws) })),
+    set: (list: Workspace[]) => setState((s) => ({ workspaces: list, ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => !list.some((w) => w.id === id && w.status !== 'archived')) } })),
+    upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws), ui: ws.status === 'archived' ? { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => id === ws.id) } : s.ui })),
     appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: [...(s.scripts[workspaceId] ?? []), line].slice(-400) } })),
     scriptExited: (workspaceId: string, kind: ScriptKind, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...(s.scriptExit[workspaceId] ?? {}), [kind]: code } } })),
     setCheckpoints: (workspaceId: string, list: Checkpoint[]) => setState((s) => ({ checkpoints: { ...s.checkpoints, [workspaceId]: list } })),
@@ -335,7 +393,7 @@ export async function boot() {
   // A fresh install always starts at Welcome, whose Get started runs the checks.
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
   else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' })
-  else go(homeRoute(settings, rooms, workspaces))
+  else { launch = homeRoute(settings); go(launch) }
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
@@ -348,20 +406,16 @@ export async function boot() {
  * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
  * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
  */
-function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]): Route {
+function homeRoute(settings: AppSettings): Route {
   const { homeView } = settings.general
-  const last = rooms.find((r) => r.id === lastRoom() && !r.hidden && !r.archived)
   if (homeView === 'inbox') return { name: 'inbox' }
-  if (homeView === 'lastRoom' && last) {
-    const lead = workspaces.find((w) => w.roomId === last.id && w.name === 'lead' && w.mode === 'current' && w.status !== 'archived')
-    return lead ? { name: 'workspace', workspaceId: lead.id } : { name: 'team', roomId: last.id }
-  }
-  return { name: 'home' }
+  const last = homeView === 'lastRoom' ? state.rooms.find((r) => r.id === lastRoom()) : undefined
+  return last ? nearest(roomHome(last.id, state), state) : { name: 'home' }
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
 function applyFixture({ quickAsk, ...ui }: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } }, quickAsk: quickAsk ?? s.quickAsk }))
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)

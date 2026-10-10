@@ -74,7 +74,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         const c = await call('chats.create', { workspaceId: ws.id, kind: 'chat' })
         await loadWorkspace(ws.id)
         focusComposerWhenOpen(c.id)
-        actions.ui.setWorkspaceView({ tab: c.id })
+        actions.ui.openTab(ws.id, c.id)
       })
       case 'compact': return chat && run(id, 'Could not compact', () => call('chats.compact', { chatId: chat.id }))
       case 'switchModel': return commandComposer('model')

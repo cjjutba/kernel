@@ -20,7 +20,7 @@ function newChat(workspaceId: string, kind?: 'terminal') {
     actions.chats.upsert(chat)
     go({ name: 'workspace', workspaceId })
     if (chat.kind !== 'terminal') focusComposerWhenOpen(chat.id)
-    actions.ui.setWorkspaceView({ tab: chat.id })
+    actions.ui.openTab(workspaceId, chat.id)
   }).catch(fail('Could not open the tab'))
 }
 

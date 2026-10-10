@@ -244,6 +244,16 @@ const askedFromTable = (f: Fixture, leadGone: boolean): Partial<Fixture> => {
   }
 }
 
+/** The Lead's workspace with three chats, on the first, and invoice-table as the second workspace (KERNEL-199). The test walks through Settings and back. */
+const navMemory = (f: Fixture): Partial<Fixture> => {
+  const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(10, minute) })
+  return {
+    ...homeScene(f),
+    chats: [...f.chats, chat('chat-lead-two', 'Second chat', 20), chat('chat-lead-three', 'Third chat', 21)],
+    ui: { route: { name: 'workspace', workspaceId: ids.lead } }
+  }
+}
+
 /**
  * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
  * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Rooms fill in the rest of the sidebar.
@@ -270,7 +280,7 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
       { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'chat-lead-tools' } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
   }
 }
 
@@ -387,6 +397,8 @@ export const teamFixtures: Record<string, Fixture> = {
   QuickAskOpenChat: scene((f) => askedFromTable(f, false)),
   // No PNG: the same, but the Lead's workspace is gone, so `lead.open` fails and Open chat must leave the tab alone.
   QuickAskLeadGone: scene((f) => askedFromTable(f, true)),
+  // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
+  NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
   Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
