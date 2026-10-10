@@ -51,7 +51,8 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 type RowKey = { n: number; hint: boolean }
 
 function NavItem({ route, icon, label, right, sub, nested, describedBy, slot }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; describedBy?: string; slot?: RowKey }) {
-  const current = useStore((s) => same(s.ui.route, route))
+  // Issues opens on an issue too, so any issue is the Issues row's page.
+  const current = useStore((s) => same(s.ui.route, route) || (route.name === 'issues' && s.ui.route.name === 'issues'))
   return (
     <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => go(route)}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
@@ -301,6 +302,7 @@ export function Sidebar() {
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
         <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
+        <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
       <div className="sb-rule" role="separator" />
