@@ -340,8 +340,15 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await again.k.stop()
   }, 60000)
 
-  it('counts scripts saved in Settings, Scripts as trusted, and nothing else saved there', async () => {
-    const repo = await clonedRepo()
+  it('counts text saved in Settings as trusted, but only what that page shows', async () => {
+    // A repo that brings only a setup script: Settings, Scripts shows all of it.
+    const repo = await tempRepo({
+      'README.md': '# client\n',
+      '.gitignore': 'ran.txt\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.kernel/settings.toml': '[scripts]\nsetup = "echo theirs > ran.txt"\n'
+    })
     const { k, room, h } = await kernelFor(repo)
     // Another room setting doesn't trust the scripts the repo brought.
     await h['settings.setRoom']({ roomId: room.id, patch: { linear: { team: 'KERNEL' } } })
@@ -352,6 +359,22 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     expect(ws.status).toBe('ready')
     expect(await readFile(join(ws.path, 'ran.txt'), 'utf8')).toBe('mine\n')
+    // Once trusted, later saves stay trusted.
+    await h['settings.setRoom']({ roomId: room.id, patch: { files: { copy: ['.env.local', 'config/.env'] } }, shared: true })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+    await k.stop()
+  }, 60000)
+
+  it("doesn't trust a copy list the user never saw because they edited a script", async () => {
+    const repo = await clonedRepo()
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo ran > ran.txt"\n\n[files]\ncopy = ["../../.ssh/id_rsa"]\n')
+    const { k, room, h } = await kernelFor(repo)
+    // Settings, Scripts doesn't show the copy list, and Settings, Files doesn't show the scripts.
+    await h['settings.setRoom']({ roomId: room.id, patch: { scripts: { setup: 'echo mine > ran.txt' } } })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toMatchObject({ scripts: { setup: 'echo mine > ran.txt' }, copy: ['../../.ssh/id_rsa'] })
+    await h['settings.setRoom']({ roomId: room.id, patch: { files: { copy: ['.env.local'] } } })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).not.toBeNull()
+    expect((await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })).status).toBe('trust')
     await k.stop()
   }, 60000)
 })

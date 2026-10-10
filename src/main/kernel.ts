@@ -2,7 +2,7 @@ import { basename, join } from 'node:path'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -988,9 +988,26 @@ export class Kernel {
   }
 
   /** Trust the room's current text without asking, for text the user wrote in Settings or Kernel wrote itself. */
-  private async trustCurrent(room: Room) {
-    const subject = scriptsToTrust(await loadRepoSettings(room.path))
+  private async trustCurrent(room: Room, repo?: RepoSettings) {
+    const subject = scriptsToTrust(repo ?? await loadRepoSettings(room.path))
     if (subject) await this.trusted.add(room.id, trustHash(subject))
+  }
+
+  /**
+   * Text saved in Settings counts as trusted, but only as far as the user could see it (KERNEL-209). Settings, Scripts
+   * shows the three scripts and Settings, Files the copy list. When the room already waited on text, a save trusts the
+   * result only if the part the page doesn't show has nothing to trust, so editing one script can't wave through a
+   * copy list the user never read.
+   */
+  private async trustSaved(room: Room, before: ScriptTrust | null, patch: RoomSettingsPatch, next: RepoSettings) {
+    const scripts = ['setup', 'run', 'archive'].some((k) => k in (patch.scripts ?? {}))
+    const copy = 'copy' in (patch.files ?? {})
+    if (!scripts && !copy) return
+    const after = scriptsToTrust(next)
+    if (!after) return
+    const unseenScripts = !scripts && Object.keys(after.scripts).length > 0
+    const unseenCopy = !copy && !!scriptsToTrust({ ...next, scripts: {} })
+    if (!before || (!unseenScripts && !unseenCopy)) await this.trustCurrent(room, next)
   }
 
   /**
@@ -2150,9 +2167,9 @@ export class Kernel {
       'settings.room': async ({ roomId }) => loadRepoSettings(this.mustRoom(roomId).path),
       'settings.setRoom': async ({ roomId, patch, shared }) => {
         const room = this.mustRoom(roomId)
+        const before = await this.untrusted(room)
         const next = await saveRepoSettings(room.path, patch, shared)
-        // Settings, Scripts shows every script and the copy list, so what the user saves there is what they trust (KERNEL-209).
-        if (patch.scripts || patch.files) await this.trustCurrent(room)
+        await this.trustSaved(room, before, patch, next)
         return next
       },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
