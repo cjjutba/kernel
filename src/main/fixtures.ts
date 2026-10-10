@@ -8,6 +8,7 @@ import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
+import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
@@ -136,10 +137,13 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { chatId: c.id, workspaceId: ws.id }
     },
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
-    'chats.create': async ({ workspaceId, kind }) => {
+    'chats.create': async ({ workspaceId, kind, preset }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)
       if (!first) throw new Error(`Unknown workspace ${workspaceId}`)
-      return { ...first, id: `fixture-chat-${Date.now()}`, kind: kind ?? 'chat', title: kind === 'terminal' ? 'Terminal (claude)' : 'New chat', sessionId: undefined, plan: false }
+      const base = { ...first, id: `fixture-chat-${Date.now()}`, sessionId: undefined, plan: false, terminal: undefined, autoTitle: undefined }
+      if (kind !== 'terminal') return { ...base, kind: 'chat', title: 'New chat' }
+      const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
+      return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
     'chats.send': async () => ({ queued: false }),
@@ -212,6 +216,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'account.get': async () => account,
     'account.signIn': async () => account,
     'account.signOut': async () => ({ signedIn: false }),
+    'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),

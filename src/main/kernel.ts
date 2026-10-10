@@ -25,6 +25,7 @@ import type { ReviewState } from './services/leadUpdates'
 import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
+import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
@@ -1755,16 +1756,23 @@ export class Kernel {
     this.ptys.start(id, {
       cwd: ws.path,
       env: sessionEnv(this.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
-      command: plain ? undefined : 'claude',
+      command: (plain ? null : terminalCommand(chat!)) ?? undefined,
       ...size
     })
   }
 
   /** A chat opened with a placeholder name ("New chat", the Lead's "Lead") is auto-named. A workspace's title or a fork's is not (KERNEL-202). */
-  newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal' }): Chat {
+  newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
     const kind = o.kind ?? 'chat'
     const auto = kind === 'chat' && (title === NEW_CHAT || title === LEAD_CHAT)
-    return this.store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(auto ? { autoTitle: { turns: 0 } } : {}), createdAt: Date.now() })
+    return this.store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), createdAt: Date.now() })
+  }
+
+  /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
+  private async terminalFor(ws: Workspace, preset?: string) {
+    const t = this.settings.terminal
+    if (!t.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
+    return resolvePreset(await terminalPresets(t), t, ws.mode, preset)
   }
 
   private modelFor(agent: AgentDef): ModelId {
@@ -2786,13 +2794,15 @@ export class Kernel {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind }) => {
+      'chats.create': async ({ workspaceId, kind, preset }) => {
+        const ws = this.mustWs(workspaceId)
+        const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
-        const { roomId } = this.mustWs(workspaceId)
-        if (!this.agentCache.has(roomId)) await this.agents(roomId)
+        if (!this.agentCache.has(ws.roomId)) await this.agents(ws.roomId)
         const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
-        return this.newChat(workspaceId, kind === 'terminal' ? 'Terminal (claude)' : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind })
+        return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind, terminal: term?.terminal })
       },
+      'terminal.presets': async () => terminalPresets(this.settings.terminal),
       'chats.items': async ({ chatId }) => this.store.items(chatId),
       'checkpoints.list': async ({ workspaceId }) => listCheckpoints(this.mustWs(workspaceId)),
       'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId),

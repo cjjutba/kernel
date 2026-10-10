@@ -76,6 +76,17 @@ describe('IPC contract', () => {
     expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
   })
 
+  it('fixture mode answers terminal.presets and opens a terminal tab with a preset (KERNEL-248)', async () => {
+    const codex = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+    expect((await fixtureHandlers(fixtures.Workspace)['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell'])
+    const h = fixtureHandlers({ ...fixtures.Workspace, terminalClis: [codex] })
+    await h['settings.set']({ patch: { terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } } })
+    expect((await h['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell', 'codex', 'logs'])
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect(await h['chats.create']({ workspaceId, kind: 'terminal', preset: 'codex' })).toMatchObject({ kind: 'terminal', title: 'Terminal (codex)', terminal: { preset: 'codex', command: 'codex' } })
+    expect((await h['chats.create']({ workspaceId })).terminal).toBeUndefined()
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
