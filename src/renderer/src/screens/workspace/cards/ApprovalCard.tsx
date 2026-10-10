@@ -132,7 +132,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 
   return (
     <section aria-label={title} className="card tcard">
-      <h3>{title}{many && <span className="step">{step + 1} of {qs.length}</span>}</h3>
+      <h3>{title}{many && <span className="step" aria-hidden="true">{step + 1} of {qs.length}</span>}</h3>
       <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
       <div ref={group} role="group" aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
         {q.options.map((o, i) => {

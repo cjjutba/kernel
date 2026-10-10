@@ -393,7 +393,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceQuestionAnswers: scene((f) => {
     const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
       userMsg('qa1', 'Build T-15b from the approved plan.', true),
-      ...folded('qa', 6, 0)
+      ...folded('qa', 6, 0),
+      { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
     ], {
       approvals: [{
         ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),

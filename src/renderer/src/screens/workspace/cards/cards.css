@@ -20,7 +20,7 @@
 .opt .n { color: var(--muted); font-size: 12px; }
 .tcard h3 .step { margin-left: auto; color: var(--muted); font-size: 12.5px; font-weight: 400; }
 .qrows { display: flex; flex-direction: column; gap: 6px; }
-.qrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
+.qrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--ink); font-size: 13px; line-height: normal; text-align: left; }
 .qrow[data-desc='true'] { align-items: flex-start; padding: 10px 12px; }
 .qrow:hover { background: var(--surface-3); }
 .qrow:disabled { opacity: 0.55; cursor: default; }
