@@ -2,7 +2,7 @@ import { appendFile, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, resolve } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
@@ -100,12 +100,6 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
   return out
 }
-
-/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
-export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
-
-/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
-export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 /** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
 function runScriptsOf(table: unknown): Map<string, string> {

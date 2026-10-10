@@ -311,6 +311,12 @@ export type ScriptKind = 'setup' | 'run' | 'archive'
 /** Each workspace gets this many ports, `$KERNEL_PORT` to `$KERNEL_PORT + 9` (KERNEL-244). */
 export const PORT_BLOCK = 10
 
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
+
 export interface ScriptLine {
   kind: ScriptKind
   /** Which run script printed the line (`run` is the default one). Setup and archive lines have none. */

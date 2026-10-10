@@ -1,19 +1,16 @@
 import { useState, type FormEvent } from 'react'
-import { PORT_BLOCK, type RoomSettings } from '@shared/types'
+import { isRunName, PORT_BLOCK, RUN_SCRIPT_NAME, type RoomSettings } from '@shared/types'
 import { Button, Modal, SegmentedControl, useBusy } from '../../../ui'
 import { isOverride, Row, Section, sourceLine } from '../kit'
 import { patchRoomSettings } from '../useSettings'
-
-/** The engine's rule for a run script's name (RUN_SCRIPT_NAME in services/settings.ts). `run` is the default script, in any case. */
-const NAME = /^[a-z0-9][\w-]{0,31}$/i
 
 type Script = RoomSettings['runScripts'][number]
 
 /** What is wrong with a name, or undefined. `others` are the names the room already has. */
 export function nameProblem(name: string, others: string[]): string | undefined {
   if (!name) return 'Give the script a name.'
-  if (name.toLowerCase() === 'run') return 'run is the default script. Edit it in the list.'
-  if (!NAME.test(name)) return 'Use letters, digits, - and _, up to 32 characters, starting with a letter or digit.'
+  if (isRunName(name)) return 'run is the default script. Edit it in the list.'
+  if (!RUN_SCRIPT_NAME.test(name)) return 'Use letters, digits, - and _, up to 32 characters, starting with a letter or digit.'
   if (others.includes(name)) return `A script named ${name} is already in this room.`
   return undefined
 }
