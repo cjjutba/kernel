@@ -1,22 +1,32 @@
-import { describe, expect, it, vi } from 'vitest'
-import type { AgentDef, Decision, Workspace } from '@shared/types'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { AgentDef, Chat, Decision, Workspace } from '@shared/types'
+import { Kernel } from '../src/main/kernel'
+import { tempRepo } from './helpers'
 import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
-import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { kernelTools, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
-/** The Lead's tools with a user who answers every card with `answer`. */
-function leadTools(answer: Decision | null) {
+/** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
+function leadTools(answer: Decision | null, plan = { on: true }) {
   const planApproved = vi.fn()
   const handedOff = vi.fn()
+  const askUser = vi.fn(async () => answer)
   const ws = { id: 'ws-1', branch: 'kernel/symlink-node-modules', agentId: 'noor' } as Workspace
   const deps: KernelToolDeps = {
     roomId: 'room', lead: undefined, agents: async () => [{ id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef], workspaces: () => [],
-    createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser: async () => answer, hireAgent: async () => '',
+    createWorkspace: async () => ws, messageWorkspace: async () => ({ ok: true, sent: true, note: 'Sent.' }), askUser, hireAgent: async () => '',
     archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false,
-    planApproved, handedOff
+    planMode: () => plan.on, planApproved, handedOff
   }
   const byName = Object.fromEntries(kernelTools(deps).map((t) => [t.name, t]))
-  const call = async (name: string, args: object) => ((await byName[name].handler(args as never, {})).content[0] as { text: string }).text
-  return { call, planApproved, handedOff }
+  const run = async (name: string, args: object) => {
+    const r = await byName[name].handler(args as never, {})
+    return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
+  }
+  const call = async (name: string, args: object) => (await run(name, args)).text
+  return { call, run, askUser, planApproved, handedOff }
 }
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
@@ -36,6 +46,79 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
     const t = leadTools(null)
     expect(await t.call('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for noor.')
     expect(t.handedOff).toHaveBeenCalledOnce()
+  })
+})
+
+describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () => {
+  const plan = { title: 'KERNEL-53', steps: ['Symlink node_modules · Noor'] }
+
+  it('refuses with plan mode off and creates no approval', async () => {
+    const t = leadTools({ behavior: 'allow' }, { on: false })
+    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: true, text: PLAN_MODE_OFF })
+    expect(t.askUser).not.toHaveBeenCalled()
+    expect(t.planApproved).not.toHaveBeenCalled()
+  })
+
+  it('asks with plan mode on', async () => {
+    const t = leadTools({ behavior: 'allow' }, { on: true })
+    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
+    expect(t.askUser).toHaveBeenCalledWith(expect.objectContaining({ kind: 'plan', title: 'KERNEL-53', steps: plan.steps }))
+  })
+
+  it('reads plan mode on each call, so turning it on mid-session lets the next call ask', async () => {
+    const mode = { on: false }
+    const t = leadTools({ behavior: 'allow' }, mode)
+    expect((await t.run('request_plan_approval', plan)).isError).toBe(true)
+    mode.on = true
+    expect(await t.run('request_plan_approval', plan)).toEqual({ isError: false, text: `approved. ${HANDOFF_NOW}` })
+    expect(t.askUser).toHaveBeenCalledOnce()
+  })
+
+  it('refuses when the chat gives no plan mode', async () => {
+    const askUser = vi.fn(async () => null)
+    const tool = kernelTools({ askUser } as unknown as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
+    expect((await tool.handler(plan as never, {})).isError).toBe(true)
+    expect(askUser).not.toHaveBeenCalled()
+  })
+
+  it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
+    const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    onTestFinished(() => k.stop())
+    await k.start()
+    const room = await k.addRoom(repo)
+    const chat = await k.leadChat(room.id)
+    const lead = (await k.agents(room.id)).find((a) => a.lead)!
+    const deps = (k as unknown as { leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps }).leadToolDeps(room.id, lead, chat)
+    const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
+    const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
+
+    await k.sessions.configure(chat.id, { plan: false })
+    const off = await tool.handler(plan as never, {})
+    expect(off).toMatchObject({ isError: true, content: [{ text: PLAN_MODE_OFF }] })
+    expect(plans()).toEqual([])
+
+    await k.sessions.configure(chat.id, { plan: true })
+    const asked = tool.handler(plan as never, {})
+    for (let i = 0; i < 100 && !plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+    expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
+    k.approvals.decide(plans()[0].id, { behavior: 'allow' })
+    expect(((await asked).content[0] as { text: string }).text).toBe(`approved. ${HANDOFF_NOW}`)
+  })
+
+  it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
+    expect(LEAD_RULE).toContain('Ask for plan approval only while the chat is in plan mode')
+    expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
+    expect(LEAD_RULE).toContain('With plan mode off there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling mcp__kernel__create_workspace.')
+    expect(PLAN_MODE_OFF).toContain('ask the user before calling create_workspace')
+    // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
+    const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
+    expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
+    const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
+    expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
   })
 })
 

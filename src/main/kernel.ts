@@ -1296,6 +1296,8 @@ export class Kernel {
       workspaces: () => this.store.workspaces(roomId),
       chatId: chat.id,
       chatTitle: (id) => this.store.chat(id)?.title,
+      // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
+      planMode: () => !!this.store.chat(chat.id)?.plan,
       createWorkspace: async ({ issue, ...o }) => {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))

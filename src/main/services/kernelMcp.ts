@@ -34,12 +34,17 @@ export interface KernelToolDeps {
   /** Whether archiving would lose uncommitted work: 'dirty', 'unknown' when git can't tell, or false. */
   unsaved: (workspaceId: string) => Promise<'dirty' | 'unknown' | false>
 
+  /** Whether the Lead chat is in plan mode now. Read on each call, since the toggle can change mid-session. Left out, it counts as off (KERNEL-176). */
+  planMode?: () => boolean
   /** The user approved a plan, and a workspace was created. Together they hold the Lead to the hand-off (KERNEL-67). */
   planApproved?: () => void
   handedOff?: () => void
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
+
+/** request_plan_approval's refusal in a chat that isn't in plan mode (KERNEL-176). */
+export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace. If their message already says to go ahead, hand it off now.'
 
 /**
  * The agent `asked` names: its exact id, else the one whose id or name matches ignoring case. A miss or a name two
@@ -66,7 +71,7 @@ export function kernelMcpServer(d: KernelToolDeps) {
   return createSdkMcpServer({
     name: 'kernel',
     version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. Plan first, in plan mode or with request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn, and follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
+    instructions: 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with ExitPlanMode or request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
     // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
     // so the hand-off doesn't depend on it.
     alwaysLoad: true,
@@ -100,10 +105,12 @@ export function kernelTools(d: KernelToolDeps) {
       const list = d.workspaces().filter((w) => w.status !== 'archived')
       return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${owner(w)}`).join('\n') || 'No open workspaces.')
     }),
-    tool('request_plan_approval', 'Show a plan to the user and wait for approval. Returns "approved" with what to do next, or the requested changes.', {
+    tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),
       steps: z.array(z.string()).min(1).describe('One line per task, ideally "<task> · <agent name>"')
     }, async ({ title, steps }) => {
+      // The chat's plan toggle decides, so a plan never shows with Copy and Approve in a chat that isn't planning (KERNEL-176).
+      if (!d.planMode?.()) return { ...text(PLAN_MODE_OFF), isError: true }
       bus.activity({ kind: 'approval.requested', roomId: d.roomId, agentId: d.lead?.id, text: 'asked you to review', object: title })
       const decision = await d.askUser({ kind: 'plan', title, detail: steps.map((s, i) => `${i + 1}. ${s}`).join('\n'), steps })
       if (!decision) return text('No answer yet. Wait and ask again later.')
