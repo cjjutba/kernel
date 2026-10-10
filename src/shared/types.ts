@@ -862,6 +862,11 @@ export interface RoomSettings {
   /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
   pr?: Partial<PrInstructions>
   /**
+   * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
+   * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
+   */
+  preview: { urls: { name: string; url: string }[] }
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
