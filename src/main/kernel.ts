@@ -17,7 +17,8 @@ import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
 import { reviewMcpServer, type ReviewInput } from './services/reviewMcp'
-import { reviewRule } from './services/handoff'
+import { teammateMcpServer, type TeammateToolDeps } from './services/teammateMcp'
+import { reviewRule, TEAMMATE_RULE } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
@@ -25,7 +26,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from '.
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
@@ -201,8 +202,10 @@ export class Kernel {
       settings: () => this.settings,
       agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
       mcpFor: (ws, agent, chat) => (agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
-        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) } : undefined),
-      rulesFor: (ws) => (ws.reviewOf ? this.reviewRuleFor(ws) : undefined),
+        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
+        : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
+      // The Lead's rule is LEAD_RULE, which agentPrompt adds itself.
+      rulesFor: (ws, agent) => (agent?.lead ? undefined : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
       roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
       allowInRoom: (roomId, rule) => {
         const room = this.store.room(roomId)
@@ -1604,7 +1607,12 @@ export class Kernel {
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
-        if (ws.status !== 'failed') return ws
+        if (ws.status !== 'failed') {
+          // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
+          const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+          const queued = brief && this.sessions.queueReason(brief.id)
+          return queued ? { ...ws, queued } : ws
+        }
         const code = this.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
@@ -1672,10 +1680,8 @@ export class Kernel {
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
       : why === 'setup' && waiting?.status === 'ready' && waiting.waitsFor?.held ? `${name} waits for ${this.waitLabelOf(waiting)} to merge, so this goes out after the brief. To start ${name} now, call wait_for_merge with an empty list.`
       : why === 'setup' ? (this.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
-      : why === 'paused' ? 'The room is paused, so the message goes out when the user resumes it.'
-      : why === 'offline' ? 'Kernel is offline or signed out, so the message goes out once it is back.'
-      : why === 'capacity' ? 'Every agent slot in Settings, Models is in use, so the message goes out when one frees up.'
-      : 'The message waits in the queue.'
+      // The same words as create_workspace's brief (KERNEL-272).
+      : queuedNote(why, { name }) ?? 'The message waits in the queue.'
     return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }
   }
 
@@ -1941,10 +1947,10 @@ export class Kernel {
   }
 
   /**
-   * The Lead's wait_for_merge: `on` replaces what the workspace waits for, with targets that merged already left out.
+   * The Lead's wait_for_merge, and a teammate's own (KERNEL-262, `told: false`): `on` replaces what the workspace waits for, with targets that merged already left out.
    * A teammate that started waits with its brief out (`held: false`). An empty list ends the wait, and a held brief goes now.
    */
-  async setWait(id: string, on: string[]): Promise<Workspace> {
+  async setWait(id: string, on: string[], o: { told?: boolean; why?: string } = {}): Promise<Workspace> {
     const ws = this.mustWs(id)
     if (ws.status === 'archived') throw new Error(`${ws.name} is archived.`)
     const all = this.store.workspaces(ws.roomId)
@@ -1957,9 +1963,20 @@ export class Kernel {
     const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
     const label = this.waitLabelOf(next)
     if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`)
-    // The Lead set it, and reads what happened in the tool's result.
-    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, told: true })
+    // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
+    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
+  }
+
+  /** What a teammate's wait_for_merge reads and calls (KERNEL-262). */
+  private teammateToolDeps(id: string): TeammateToolDeps {
+    return {
+      workspace: () => this.mustWs(id),
+      workspaces: () => this.store.workspaces(this.mustWs(id).roomId),
+      isLead: (w) => this.isLeadWorkspace(w),
+      nameOf: (w) => this.nameOf(w),
+      setWait: (on, why) => this.setWait(id, on, { told: false, why })
+    }
   }
 
   // ---------- reviews (KERNEL-130)

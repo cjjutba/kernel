@@ -110,6 +110,22 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       expect(tools().find((t) => t.detail.includes('echo kernel-live-ok'))?.status).toBe('done')
       evidence.approvals = approvals().map((a: Approval) => ({ title: a.title, status: a.status, source: a.source }))
 
+      // KERNEL-236: three questions in one AskUserQuestion call land on one approval, and the model gets each answer
+      await h['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Call the AskUserQuestion tool exactly once, with three questions in that one call: which fruit, which number, and which color. Give each two options. Then reply with each question and my answer to it, one per line, word for word.' }] })
+      const question = await waitFor('question approval', () => approvals().find((a) => a.status === 'pending' && a.toolName === 'AskUserQuestion'))
+      evidence.question = { title: question.title, questions: question.questions }
+      expect(question.questions).toHaveLength(3)
+      expect(question.title).toBe(question.questions![0].question)
+      const picks = ['kiwi-71', 'plum-42', 'fig-13']
+      const answers = Object.fromEntries(question.questions!.map((q, i) => [q.question, picks[i]]))
+      const beforeAsk = results()
+      k.approvals.decide(question.id, { behavior: 'answer', text: picks.join(' · '), answers })
+      await waitFor('answers turn', () => results() > beforeAsk)
+      const reply = items().filter((i): i is ChatItem & { kind: 'text' } => i.kind === 'text').at(-1)?.text ?? ''
+      evidence.answersReply = reply
+      for (const p of picks) expect(reply).toContain(p)
+      expect(tools().find((t) => t.name === 'AskUserQuestion')?.status).toBe('done')
+
       // AC3: a follow-up sent while a turn runs is queued and answered
       await h['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `sleep 8` with the Bash tool, then say done.' }] })
       await waitFor('sleep 8 running', () => tools().find((t) => t.detail === 'sleep 8'))

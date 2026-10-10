@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { isNotImplemented } from '../src/shared/ipc'
 import { Kernel, UNBUILT } from '../src/main/kernel'
 import { fixtures } from '../fixtures'
-import { fixtureHandlers } from '../src/main/fixtures'
+import { fixtureHandlers, fixturePush } from '../src/main/fixtures'
 import { actions, apply, getState } from '../src/renderer/src/store'
 import { tempRepo } from './helpers'
 
@@ -98,6 +98,33 @@ describe('IPC contract', () => {
     expect(await h['scripts.stop']({ workspaceId, kind: 'run' })).toEqual({ ok: true })
   })
 
+  it('fixture mode answers with the URL one workspace\'s run script printed, and preview URLs round trip (KERNEL-246)', async () => {
+    const f = structuredClone(fixtures.Workspace)
+    const found = fixturePush(f).filter((e) => e.type === 'script.url')
+    expect(found).toEqual([{ type: 'script.url', workspaceId: expect.any(String), name: 'run', url: 'http://localhost:4312' }])
+    // Right after the line that printed it, as the engine pushes it.
+    const push = fixturePush(f)
+    const at = push.findIndex((e) => e.type === 'script.url')
+    expect(push[at - 1]).toMatchObject({ type: 'script.output', workspaceId: found[0].workspaceId, line: 'Next.js ready on http://localhost:4312' })
+    // An exit clears it.
+    const ws = found[0].workspaceId
+    expect(fixturePush({ ...f, push: [...f.push, { type: 'script.exit', workspaceId: ws, kind: 'run', code: 0 }] }).filter((e) => e.type === 'script.url').map((e) => e.type === 'script.url' && e.url))
+      .toEqual(['http://localhost:4312', null])
+    const h = fixtureHandlers(f)
+    const roomId = f.rooms[0].id
+    expect((await h['settings.room']({ roomId })).preview).toEqual({ urls: [] })
+    const urls = [{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API', url: 'http://localhost:$((KERNEL_PORT + 1))' }]
+    const rs = await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    expect(rs.preview.urls).toEqual(urls)
+    expect(rs.sources['preview.urls']).toBe('local')
+    expect((await h['settings.setRoom']({ roomId, patch: { preview: { urls: null } } })).preview.urls).toEqual([])
+    // An empty list, or all blank rows, removes the key as in the engine.
+    await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    const blank = await h['settings.setRoom']({ roomId, patch: { preview: { urls: [{ name: '', url: ' ' }] } } })
+    expect(blank.preview.urls).toEqual([])
+    expect(blank.sources['preview.urls']).toBeUndefined()
+  })
+
   it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
     const h = fixtureHandlers(fixtures.Workspace)
     const roomId = fixtures.Workspace.rooms[0].id
@@ -117,8 +144,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 138 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(138)
+  it('lists all 142 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(142)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)

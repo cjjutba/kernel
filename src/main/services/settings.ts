@@ -13,7 +13,7 @@ export type RepoSettings = RoomSettings
 export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   hookPort: 7420,
   worktreeRoot: join(home, 'kernel', 'worktrees'),
-  general: { homeView: 'home', openAtLogin: false, menuBar: true, sendWith: 'enter' },
+  general: { openTo: 'lastPlace', openAtLogin: false, menuBar: true, sendWith: 'enter' },
   floor: { style: 'isometric', nameTags: true, animate: true },
   appearance: { theme: 'dark', fontSize: 'default', density: 'comfortable', pointerCursors: false, reduceMotion: false },
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
@@ -37,7 +37,15 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
   const defaults = DEFAULT_SETTINGS(home)
   try {
-    const s = deepMerge(defaults, JSON.parse(await readFile(file, 'utf8')))
+    const saved = JSON.parse(await readFile(file, 'utf8'))
+    const s = deepMerge(defaults, saved)
+    // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
+    // The check reads the file, since the merge above always fills openTo. Dropping homeView makes this run once.
+    const old = (s.general as { homeView?: string }).homeView
+    if (old !== undefined) {
+      if (saved?.general?.openTo === undefined) s.general.openTo = old === 'inbox' ? 'inbox' : 'lastPlace'
+      delete (s.general as { homeView?: string }).homeView
+    }
     // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
     delete (s.models as { maxConcurrent?: number }).maxConcurrent
     s.models.effortByModel = effortMemory(s.models.effortByModel)
@@ -83,7 +91,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
@@ -107,6 +115,19 @@ function runScriptsOf(table: unknown): Map<string, string> {
   return out
 }
 
+/** A `[[preview.urls]]` list with the entries that have a name and an address. A blank name is kept, a blank address isn't (KERNEL-246). */
+export function previewUrlsOf(v: unknown): RoomSettings['preview']['urls'] {
+  if (!Array.isArray(v)) return []
+  return v.filter((e) => typeof e?.name === 'string' && typeof e?.url === 'string' && e.url.trim()).map((e) => ({ name: e.name, url: e.url }))
+}
+
+/** A patch value as the file stores it. A preview list with no entry left is unset, like `null` (KERNEL-246). */
+function stored(g: Group, v: unknown): unknown {
+  if (g !== 'preview' || !Array.isArray(v)) return v
+  const urls = previewUrlsOf(v)
+  return urls.length ? urls : null
+}
+
 /** One settings file's values by app-side name, with the same whitelist for both files. */
 function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
@@ -116,7 +137,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
-    pr: picked(doc.pr, PR_KEYS, isString)
+    pr: picked(doc.pr, PR_KEYS, isString),
+    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)]))
   }
 }
 
@@ -141,7 +163,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
@@ -150,6 +172,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
     disabled: { skills: disabled.skills ?? [], mcp: disabled.mcp ?? [] },
     ...(linear.team ? { linear: { team: linear.team } } : {}),
     ...(Object.keys(pr).length ? { pr } : {}),
+    preview: { urls: preview.urls ?? [] },
     sources
   }
 }
@@ -158,6 +181,8 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).
+ * `preview.urls` replaces the whole `[[preview.urls]]` list. A list with no entry that has an address removes the key, like
+ * `null`, so the shared file's URLs show again (KERNEL-246).
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
@@ -169,7 +194,7 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
-  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), v)
+  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), stored(g, v))
   for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
     if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
     // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).
