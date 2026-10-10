@@ -1,9 +1,9 @@
 import { describe, expect, it, onTestFinished } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, reviewBranch, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
+import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, reviewBranch, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 describe('naming', () => {
@@ -153,6 +153,65 @@ describe('worktrees', () => {
     // stat fails with EACCES, not ENOENT, so the files may still be there and git's record must stay.
     await expect(removeWorktree(repo, path, { force: true })).rejects.toThrow(/EACCES/)
     expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
+  })
+
+  it('detaches a worktree by moving it into .trash, then prunes it and deletes its branch (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/detach', baseRef: 'main' })
+    await writeFile(join(path, 'draft.ts'), 'export {}\n')
+    const moved = await detachWorktree(repo, path, { force: true, deleteBranch: 'feat/detach' })
+    expect(moved).toMatch(new RegExp(`^${join(root, '.trash', 'feat-detach-')}\\d+$`))
+    expect(await readFile(join(moved!, 'draft.ts'), 'utf8')).toBe('export {}\n')
+    await expect(stat(path)).rejects.toThrow(/ENOENT/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-detach')
+    expect(await branchExists(repo, 'feat/detach')).toBe(false)
+    // A gone folder has nothing to move: it only prunes, and the branch follows what was asked (KERNEL-109).
+    const gone = await createWorktree({ repo, root, branch: 'feat/gone', baseRef: 'main' })
+    await rm(gone, { recursive: true, force: true })
+    expect(await detachWorktree(repo, gone, { force: true })).toBeUndefined()
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-gone')
+    expect(await branchExists(repo, 'feat/gone')).toBe(true)
+  })
+
+  it('detach refuses a folder that is not a worktree, the repo itself, and one it cannot read (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const folder = await mkdtemp(join(tmpdir(), 'kernel-not-a-worktree-'))
+    await writeFile(join(folder, 'notes.md'), 'mine\n')
+    await expect(detachWorktree(repo, folder, { force: true })).rejects.toThrow(/not a worktree/)
+    expect(await readFile(join(folder, 'notes.md'), 'utf8')).toBe('mine\n')
+    await expect(detachWorktree(repo, repo, { force: true })).rejects.toThrow(/not a worktree/)
+    expect(await readFile(join(repo, 'README.md'), 'utf8')).toBe('# demo\n')
+
+    const root = join(repo, '..', 'wt-detach-locked-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/locked', baseRef: 'main' })
+    await chmod(root, 0o000)
+    onTestFinished(() => chmod(root, 0o755))
+    await expect(detachWorktree(repo, path, { force: true })).rejects.toThrow(/EACCES/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain(basename(path))
+  })
+
+  it('detach refuses a locked worktree, since prune would keep its record (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-lock-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/held', baseRef: 'main' })
+    await git(repo, 'worktree', 'lock', path)
+    await expect(detachWorktree(repo, path, { force: true, deleteBranch: 'feat/held' })).rejects.toThrow(/locked/)
+    expect((await stat(path)).isDirectory()).toBe(true)
+    expect(await branchExists(repo, 'feat/held')).toBe(true)
+  })
+
+  it('detach falls back to git worktree remove when the folder cannot move (KERNEL-284)', async () => {
+    const repo = await tempRepo()
+    const root = join(repo, '..', 'wt-detach-fallback-' + Date.now())
+    const path = await createWorktree({ repo, root, branch: 'feat/fallback', baseRef: 'main' })
+    // A file where the .trash folder would go stops the move.
+    await writeFile(join(root, '.trash'), '')
+    const saved: string[] = []
+    expect(await detachWorktree(repo, path, { force: true, moving: (p) => saved.push(p) })).toBeUndefined()
+    expect(saved).toHaveLength(1)
+    await expect(stat(path)).rejects.toThrow(/ENOENT/)
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('feat-fallback')
   })
 
   it('hides pre-existing changes for current-branch workspaces', async () => {

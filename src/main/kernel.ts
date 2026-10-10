@@ -1,5 +1,5 @@
-import { basename, join } from 'node:path'
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
 import type { WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
@@ -31,7 +31,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, unins
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, removeWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { resolveFilesToCopy } from './services/filesToCopy'
@@ -117,6 +117,12 @@ export class Kernel {
   private reviewsToArchive = new Set<string>()
   /** Archives under way, so a second call for the same workspace waits for the first. */
   private archiving = new Map<string, Promise<void>>()
+  /**
+   * Worktree folders archive moved aside and hasn't deleted yet (KERNEL-284). Saved under the meta key `trash`, so a
+   * delete cut short by a quit, or one that failed, runs again at the next start. `emptying` is the queue, one at a time.
+   */
+  private trash = new Set<string>()
+  private emptying: Promise<void> = Promise.resolve()
   /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
   private roomRemotes = new Map<string, string | undefined>()
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
@@ -318,6 +324,7 @@ export class Kernel {
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
     void this.sweepWaits().catch(() => undefined)
+    for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
   }
@@ -1142,9 +1149,11 @@ export class Kernel {
     const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
-    if (ws.mode === 'worktree' && !o.keepWorktree) await removeWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined })
+    // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).
+    const moved = ws.mode === 'worktree' && !o.keepWorktree ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     // Archiving a waiter ends its wait (KERNEL-259).
     const archived = this.updateWs(id, { status: 'archived', archivedAt: Date.now(), waitsFor: undefined }, { archived: true })
+    if (moved) this.throwAway(moved)
     this.releaseSent.delete(id)
     // Work archived without merging never will, so whoever waits for it is stuck. A closed PR already said so.
     if (archived.prState !== 'merged' && archived.prState !== 'closed') for (const w of this.waitersOn(id)) this.breakWait(w, archived, 'archived')
@@ -1155,6 +1164,30 @@ export class Kernel {
     this.notifications.forgetWorkspace(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
     void this.overlaps.check(ws.roomId).catch(() => undefined)
+  }
+
+  /**
+   * Queues a moved-aside worktree folder for deletion. `rm` unlinks a symlinked `node_modules` and leaves what it points
+   * to alone. A path leaves the saved list only once it is deleted; a failure stays for the next start, silently. Only a
+   * folder inside a `.trash` folder is deleted, whatever the saved list says.
+   */
+  private throwAway(path: string) {
+    this.keepTrash(path)
+    this.emptying = this.emptying.then(async () => {
+      if (this.stopped) return
+      if (basename(dirname(path)) === '.trash') try { await rm(path, { recursive: true, force: true }) } catch { return }
+      // A quit closes the database, and the path is still saved for the next start.
+      if (this.stopped) return
+      this.trash.delete(path)
+      this.saveTrash()
+    }).catch(() => undefined)
+  }
+  private keepTrash(path: string) { if (!this.trash.has(path)) { this.trash.add(path); this.saveTrash() } }
+  private saveTrash() { this.store.saveMeta('trash', [...this.trash]) }
+
+  /** Resolves once every queued folder delete has run, including ones queued while it waits. */
+  async trashEmptied(): Promise<void> {
+    for (let p = this.emptying; ; p = this.emptying) { await p; if (p === this.emptying) return }
   }
 
   /** Brings an archived workspace back: recreates the worktree from its branch and reopens its chats, which Kernel kept. */
