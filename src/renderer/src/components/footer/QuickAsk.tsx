@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
-import { actions, getState, useStore } from '../../store'
-import { isLeadWorkspace, openLead } from '../../lead'
+import { actions, useStore } from '../../store'
+import { openLead, openLeadChat } from '../../lead'
 import { Avatar, Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
@@ -37,14 +37,9 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const openChat = async () => {
     if (!room) return
     onClose()
-    await openLead(room.id)
-    if (!asked) return
-    // After a question, land on the chat it went to rather than the tab last selected. The tab is set after `openLead`
-    // navigates: the workspace screen clears the tab when the workspace changes, so setting it first would be wiped.
-    // `openLead` swallows its errors, so check the Lead's workspace is on screen before pointing a tab at its chat.
-    const { route } = getState().ui
-    const shown = route.name === 'workspace' ? getState().workspaces.find((w) => w.id === route.workspaceId) : undefined
-    if (shown && isLeadWorkspace(shown, room.id, lead?.id)) actions.ui.setWorkspaceView({ tab: asked.chatId })
+    // After a question, land on the chat it went to rather than the tab last selected.
+    if (asked) await openLeadChat(room.id, asked.chatId)
+    else await openLead(room.id)
   }
   const ask = () => {
     if (!room || !text.trim()) return

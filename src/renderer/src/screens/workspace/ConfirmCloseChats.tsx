@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { call } from '../../api'
+import { tabOf } from '../../nav'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
@@ -40,7 +41,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const close = () => run('close', async () => {
     setError(null)
     try {
-      await closeChats(workspaceId, chatIds, getState().ui.workspace.tab, (tab) => actions.ui.setWorkspaceView({ tab }))
+      await closeChats(workspaceId, chatIds, tabOf(getState(), workspaceId), (tab) => actions.ui.openTab(workspaceId, tab))
       actions.ui.closeModal()
     } catch (e) { setError(clean(e)) }
   })
