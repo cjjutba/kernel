@@ -109,11 +109,16 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(((await asked).content[0] as { text: string }).text).toBe(`approved. ${HANDOFF_NOW}`)
   })
 
-  it('tells the Lead, in the rule and the tool, to ask for approval only in plan mode', () => {
+  it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
     expect(LEAD_RULE).toContain('Ask for plan approval only while the chat is in plan mode')
     expect(LEAD_RULE).not.toContain('in plan mode or through request_plan_approval')
+    expect(LEAD_RULE).toContain('With plan mode off there is no plan to approve. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling mcp__kernel__create_workspace.')
+    expect(PLAN_MODE_OFF).toContain('ask the user before calling create_workspace')
+    // "Don't ask" holds only after an approved plan, so it can't be read against asking first with plan mode off.
+    const dontAsk = LEAD_RULE.split('\n').filter((l) => /don't ask/i.test(l))
+    expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
-    expect(tool.description).toContain('Only while the chat is in plan mode')
+    expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
   })
 })
 
