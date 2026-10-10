@@ -318,6 +318,8 @@ export interface ScriptTrust {
   /** What `rooms.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
   hash: string
   scripts: { setup?: string; run?: string; archive?: string }
+  /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
+  runScripts?: { name: string; command: string }[]
   copy: string[]
   /** Open workspaces held in `trust` until the room is trusted. */
   workspaceIds: string[]
