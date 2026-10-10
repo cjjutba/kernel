@@ -6,6 +6,7 @@ dist
 shots
 site/.next
 site/.next-e2e
+site/.next-e2e-render
 site/next-env.d.ts
 site/test-results
 site/playwright-report

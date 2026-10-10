@@ -36,10 +36,13 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-e2e/types/**/*.ts",
-    ".next-e2e/dev/types/**/*.ts"
+    ".next-e2e/dev/types/**/*.ts",
+    ".next-e2e-render/types/**/*.ts",
+    ".next-e2e-render/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    ".next-e2e"
+    ".next-e2e",
+    ".next-e2e-render"
   ]
 }
