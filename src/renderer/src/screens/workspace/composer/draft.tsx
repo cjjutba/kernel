@@ -3,20 +3,26 @@ import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
 import { attachFiles, clipboardImages, pastedText } from './attach'
 import { ComposerChip } from './Chip'
-import { getState, subscribe } from '../../../store'
-import { liveChatIds, loadDraft, pruneDrafts, saveDraft } from './draftStore'
+import { chatsLoaded, getState, isFixture, subscribe } from '../../../store'
+import { loadDraft, persistDrafts, pruneDrafts, saveDraft } from './draftStore'
 
 const text = (t: string): ChatPart => ({ type: 'text', text: t })
 
-// A draft lasts as long as its chat. Checking the live chat list on every change of it covers a closed tab, an archived
-// workspace (from the sidebar or the Lead's archive_workspace) and a removed room, wherever the app is looking.
+// A draft lasts as long as its chat. Checking the chat list on every change of it covers an archived workspace (from the sidebar or the
+// Lead's archive_workspace), a removed room and a chat that is gone, wherever the app is looking. Drafts come back from disk at launch
+// for workspaces whose chats have not loaded yet, so nothing is pruned before the app has booted, and a draft is only dropped for a
+// missing chat once its workspace's chat list has loaded (see `pruneDrafts`).
 let seen: { chats: unknown; workspaces: unknown } | null = null
 subscribe(() => {
   const s = getState()
-  if (seen && seen.chats === s.chats && seen.workspaces === s.workspaces) return
+  if (!s.system.booted || (seen && seen.chats === s.chats && seen.workspaces === s.workspaces)) return
   seen = { chats: s.chats, workspaces: s.workspaces }
-  pruneDrafts(liveChatIds(s))
+  persistDrafts(!isFixture())
+  pruneDrafts(s, chatsLoaded)
 })
+
+/** The workspace a chat belongs to, or empty when no workspace lists it, which keeps its draft in memory only. */
+const workspaceOf = (chatId: string) => Object.entries(getState().chats).find(([, list]) => list.some((c) => c.id === chatId))?.[0] ?? ''
 
 /** The message to send: leading blank text dropped, trailing space trimmed. Empty when there is nothing to send. */
 export function messageOf(parts: ChatPart[]): ChatPart[] {
@@ -185,7 +191,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
       slots.push({ id, el: s, part })
     }
     const parts = readParts(el, chips.current)
-    if (shown.current) saveDraft(shown.current, parts)
+    if (shown.current) saveDraft(shown.current, parts, workspaceOf(shown.current))
     const caret = caretIn(el, chips.current) ?? (toEnd ? atEnd(parts) : null)
     setView((v) => ({ ...v, ...caret, parts, slots }))
   }
@@ -431,7 +437,7 @@ export function useDraft(init?: { parts?: ChatPart[]; draft?: string }, key?: st
      */
     reset: (next: ChatPart[] = [], forKey?: string) => {
       const gone = elsewhere(forKey)
-      if (gone !== undefined) saveDraft(gone, next)
+      if (gone !== undefined) saveDraft(gone, next, workspaceOf(gone))
       else write(next, false)
     },
     /** The parts in the box, or the stored draft of `forKey` when the box has moved on to another chat or is gone. */

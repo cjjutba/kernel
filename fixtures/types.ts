@@ -58,9 +58,9 @@ export interface Fixture {
   settings?: AppSettings
   /**
    * By room id. `sources` is optional: a fixture without it reads as every value coming from the app default. So is
-   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set.
+   * `runScripts`: without it the room has `run` alone, when `scripts.run` is set. And `preview`, which reads as no URLs.
    */
-  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts'>>>
+  roomSettings?: Record<string, Omit<RoomSettings, 'sources' | 'runScripts' | 'preview'> & Partial<Pick<RoomSettings, 'sources' | 'runScripts' | 'preview'>>>
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
@@ -71,6 +71,9 @@ export interface Fixture {
   gitStatus?: Record<string, WorkspaceGitStatus>
   update?: AppUpdate
   ui: ForcedUi
-  /** Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). */
+  /**
+   * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
+   * script that prints a local URL here gets its `script.url` too, as in the engine (KERNEL-246).
+   */
   push: PushEvent[]
 }

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { reviewTools } from '../src/main/services/reviewMcp'
-import { reviewRule } from '../src/main/services/handoff'
+import { reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
@@ -52,12 +52,13 @@ describe('the review link (KERNEL-130)', () => {
     const { k, review, author, agent, deps } = await setup()
     const chat = k.store.chats(review.id)[0]
     expect(deps.mcpFor(review, agent('theo'), chat)).toHaveProperty('kernel')
-    expect(deps.mcpFor(author, agent('kai'), chat)).toBeUndefined()
+    // The author has its own kernel server, with wait_for_merge (KERNEL-262), and the teammate rule.
+    expect(deps.mcpFor(author, agent('kai'), chat)).toHaveProperty('kernel')
     const rule = deps.rulesFor(review, agent('theo'))!
     expect(rule).toContain(`You are reviewing Kai's work on "Remove the Try section" (workspace ${author.id})`)
     expect(rule).toContain(`git reset --hard ${author.branch}`)
     expect(rule).toContain('mcp__kernel__submit_review')
-    expect(deps.rulesFor(author, agent('kai'))).toBeUndefined()
+    expect(deps.rulesFor(author, agent('kai'))).toBe(TEAMMATE_RULE)
   })
 
   it("resets to the PR's commit on GitHub once the work has a PR, the commit verdicts are checked against (KERNEL-136)", async () => {
