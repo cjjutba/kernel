@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,8 +21,9 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
   const k = new Kernel({ dataDir, home })
   await k.start()
   k.sessions.send = async () => ({ queued: false })
-  // GitHub answers at once, or waits until the test lets it go, the way gh does when it is slow.
-  const gh = { pr: null as PrInfo | null, slow: false, release: () => {}, mergeRelease: () => {} }
+  // GitHub answers at once, or waits until the test lets it go, the way gh does when it is slow. `release` is set while a
+  // read waits, so a test can wait for the read to reach GitHub before it acts.
+  const gh = { pr: null as PrInfo | null, slow: false, release: undefined as (() => void) | undefined, mergeRelease: () => {} }
   const wait = (set: (r: () => void) => void) => new Promise<void>((r) => set(r))
   k.github = {
     info: async (_cwd, _ref, workspaceId) => {
@@ -37,7 +38,8 @@ async function setup(o: { files?: Record<string, string>; settings?: object } = 
   return { k, room, gh }
 }
 
-const tick = () => new Promise((r) => setTimeout(r, 20))
+/** Kernel runs git before it reaches GitHub or saves a state, which takes a while when the whole suite runs at once (KERNEL-187). */
+const SLOW = { timeout: 10_000 }
 const branches = async (repo: string, name: string) => (await run('git', ['-C', repo, 'branch', '--list', name])).trim()
 
 describe('workspace saves read the store, not a stale copy', () => {
@@ -46,9 +48,9 @@ describe('workspace saves read the store, not a stale copy', () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table' })
     gh.pr = prInfo('ready'); gh.slow = true
     const refresh = k.refreshPr(ws.id)
-    await tick()
+    await vi.waitFor(() => expect(gh.release).toBeDefined(), SLOW)
     await k.archiveWorkspace(ws.id)
-    gh.release()
+    gh.release!()
     await refresh
     expect(k.store.workspace(ws.id)).toMatchObject({ status: 'archived', prState: 'none' })
     expect(k.store.workspace(ws.id)?.archivedAt).toBeTypeOf('number')
@@ -62,11 +64,11 @@ describe('workspace saves read the store, not a stale copy', () => {
     await k.refreshPr(ws.id)
     gh.slow = true
     const refresh = k.refreshPr(ws.id)
-    await tick()
+    await vi.waitFor(() => expect(gh.release).toBeDefined(), SLOW)
+    // mergePr reads the branch the work is on before it marks the PR merging.
     const merge = k.mergePr(ws.id)
-    await tick()
-    expect(k.store.workspace(ws.id)?.prState).toBe('merging')
-    gh.release()
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merging'), SLOW)
+    gh.release!()
     await refresh
     expect(k.store.workspace(ws.id)?.prState).toBe('merging')
     gh.slow = false
@@ -78,12 +80,14 @@ describe('workspace saves read the store, not a stale copy', () => {
   it('stays archived when setup finishes after the archive', async () => {
     const { k, room } = await setup({ files: { '.kernel/settings.toml': '[scripts]\nsetup = "sleep 5"\n' } })
     const creating = k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Slow setup' })
-    let id: string | undefined
-    for (let i = 0; i < 100 && !id; i++) { await tick(); id = k.store.workspaces(room.id).find((w) => w.status === 'setup')?.id }
-    expect(id).toBeDefined()
-    await k.archiveWorkspace(id!)
+    const id = await vi.waitFor(() => {
+      const ws = k.store.workspaces(room.id).find((w) => w.status === 'setup')
+      expect(ws).toBeDefined()
+      return ws!.id
+    }, SLOW)
+    await k.archiveWorkspace(id)
     await creating
-    expect(k.store.workspace(id!)?.status).toBe('archived')
+    expect(k.store.workspace(id)?.status).toBe('archived')
     await k.stop()
   })
 

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AppUpdate } from '../src/shared/types'
 import { bus } from '../src/main/bus'
 import { parseNotes, Updater, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
@@ -22,7 +22,8 @@ const notes = '### Checkpoints\nEvery turn saves the worktree.\n\n### Pause room
 const info: UpdateInfo = { version: '0.2.0', releaseNotes: notes }
 const download = (e: FakeEngine) => { e.emit('update-available', info); e.emit('download-progress', { percent: 41.6 }); e.emit('update-downloaded', info) }
 const dir = () => mkdtemp(join(tmpdir(), 'kernel-update-'))
-const settle = () => new Promise((r) => setTimeout(r, 20))
+/** Updater writes update.json without waiting, so wait for the file to say `what`. A busy machine takes a while (KERNEL-187). */
+const saved = (dataDir: string, what: object) => vi.waitFor(async () => expect(JSON.parse(await readFile(join(dataDir, 'update.json'), 'utf8'))).toMatchObject(what), { timeout: 10_000 })
 
 describe('parseNotes', () => {
   it('reads markdown headings as titles and the text under them as the body', () => {
@@ -94,14 +95,13 @@ describe('Updater', () => {
     const before = new Updater({ current: '0.1.0', dataDir, engine })
     await before.check()
     expect(before.get().installed).toBeUndefined()
-    await settle()
-    expect(JSON.parse(await readFile(join(dataDir, 'update.json'), 'utf8'))).toMatchObject({ version: '0.2.0', shown: false })
+    await saved(dataDir, { version: '0.2.0', shown: false })
 
     // Kernel restarts on 0.2.0.
     const after = new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine() })
     expect(after.get()).toMatchObject({ installed: true, version: '0.2.0', notes: parseNotes(notes) })
     expect(after.get().installed).toBeUndefined()
-    await settle()
+    await saved(dataDir, { shown: true })
     expect(new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine() }).get().installed).toBeUndefined()
   })
 
@@ -126,7 +126,7 @@ describe('Updater', () => {
     const engine = new FakeEngine()
     engine.next = download
     await new Updater({ current: '0.1.0', dataDir, engine }).check()
-    await settle()
+    await saved(dataDir, { version: '0.2.0' })
     const missing = join(dataDir, 'nope.md')
     expect(new Updater({ current: '0.2.0', dataDir, engine: new FakeEngine(), notesFile: missing }).get().currentNotes).toEqual(parseNotes(notes))
     expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine(), notesFile: missing }).get().currentNotes).toBeUndefined()
@@ -138,7 +138,7 @@ describe('Updater', () => {
     const engine = new FakeEngine()
     engine.next = download
     await new Updater({ current: '0.1.0', dataDir, engine }).check()
-    await settle()
+    await saved(dataDir, { version: '0.2.0' })
     expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine() }).get().installed).toBeUndefined()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -35,13 +35,33 @@ const SLOW = { timeout: 10_000 }
 const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.\n${extra}---\nYou are ${id}.`
 const prInfo = (state: PrState, number: number): PrInfo => ({ workspaceId: '', number, url: `https://github.com/x/y/pull/${number}`, title: `PR ${number}`, state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
+/**
+ * A repo with `files` and a bare origin it has fetched, built once per set of files. Each test copies it, which takes
+ * one file copy instead of the eight git calls that build it, and git is most of this file's time (KERNEL-187).
+ */
+const templates = new Map<string, Promise<{ repo: string; origin: string }>>()
+function template(files: Record<string, string>) {
+  const key = JSON.stringify(files)
+  if (!templates.has(key)) templates.set(key, (async () => {
+    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+    const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
+    await run('git', ['clone', '-q', '--bare', repo, origin])
+    await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
+    await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+    return { repo, origin }
+  })())
+  return templates.get(key)!
+}
+
 /** A room on a repo with a bare origin, a fake GitHub, and Kernels that can quit and start again on the same data. */
 async function setup(files: Record<string, string> = {}) {
-  const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/noor.md': AGENT('noor'), '.kernel/settings.toml': '[scripts]\nrun = "touch ran.txt"\n', ...files })
+  const t = await template(files)
+  const repo = await mkdtemp(join(tmpdir(), 'kernel-'))
   const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
-  await run('git', ['clone', '-q', '--bare', repo, origin])
-  await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
-  await run('git', ['-C', repo, 'fetch', '-q', 'origin'])
+  await Promise.all([cp(t.repo, repo, { recursive: true }), cp(t.origin, origin, { recursive: true })])
+  // The copy's origin is its own. The URL is the only absolute path git keeps in the repo.
+  const config = join(repo, '.git', 'config')
+  await writeFile(config, (await readFile(config, 'utf8')).replace(t.origin, origin))
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
@@ -77,16 +97,17 @@ async function setup(files: Record<string, string> = {}) {
   return { k, room, lead, repo, origin, gh, again, target, mergeOnGitHub, setPr }
 }
 
-/** Another clone pushes a commit to origin's main, as a merged PR does. */
+/**
+ * A commit adding `file` lands on origin's main, as a merged PR does. One fast-import writes it straight into the bare
+ * repo, on top of main, where a clone, commit and push took six git calls.
+ */
 async function land(origin: string, file: string) {
-  const dir = await mkdtemp(join(tmpdir(), 'kernel-clone-'))
-  await run('git', ['clone', '-q', origin, dir])
-  await run('git', ['-C', dir, 'config', 'user.email', 't@t.dev'])
-  await run('git', ['-C', dir, 'config', 'user.name', 'Test'])
-  await writeFile(join(dir, file), `${file}\n`)
-  await run('git', ['-C', dir, 'add', '-A'])
-  await run('git', ['-C', dir, 'commit', '-q', '-m', file])
-  await run('git', ['-C', dir, 'push', '-q', 'origin', 'HEAD:main'])
+  const body = `${file}\n`
+  const stream = [
+    'commit refs/heads/main', `committer Test <t@t.dev> ${Math.floor(Date.now() / 1000)} +0000`, `data ${Buffer.byteLength(file)}`, file,
+    'from refs/heads/main^0', `M 100644 inline ${file}`, `data ${Buffer.byteLength(body)}`, body
+  ].join('\n')
+  await run('git', ['-C', origin, 'fast-import', '--quiet'], { input: stream })
 }
 
 const chatOf = (k: Kernel, ws: Workspace) => k.store.chats(ws.id).find((c) => c.kind !== 'terminal')!

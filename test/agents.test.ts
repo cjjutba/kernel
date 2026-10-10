@@ -1,13 +1,25 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { watch } from 'node:fs'
 import { mkdtemp, mkdir, writeFile, readdir, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { agentFromFile, createAgent, draftAgent, loadAgents, parseFrontmatter, renderAgentFile, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from '../src/main/services/agents'
 
 // fs.watch timing varies under load, so wait for the callback instead of sleeping a fixed time.
-async function until(ok: () => boolean, ms = 3000): Promise<void> {
-  const end = Date.now() + ms
-  while (!ok() && Date.now() < end) await new Promise((r) => setTimeout(r, 25))
+const WATCH = { timeout: 10_000 }
+
+/**
+ * Resolves once the watches started so far deliver events, and returns a stop for the probe. On macOS, libuv runs every
+ * directory watch in the process on one FSEvents stream and restarts it when a watch is added or closed, and events in
+ * that gap are dropped. A probe watched after the others firing means the restarted stream covers theirs too. The probe
+ * stays open until the test ends, since closing it restarts the stream again (KERNEL-187).
+ */
+async function watchesLive(): Promise<() => void> {
+  const dir = await mkdtemp(join(tmpdir(), 'probe-'))
+  let seen = false
+  const probe = watch(dir, { persistent: false }, () => { seen = true })
+  await vi.waitFor(async () => { await writeFile(join(dir, 'p'), String(Date.now())); expect(seen).toBe(true) }, { ...WATCH, interval: 100 })
+  return () => probe.close()
 }
 
 describe('agents', () => {
@@ -86,18 +98,17 @@ describe('agents', () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
     await mkdir(join(repo, '.claude'))
     let hits = 0
-    const stop = watchAgents(repo, () => { hits++ }, 20)
+    const stops = [watchAgents(repo, () => { hits++ }, 20)]
     try {
-      // macOS FSEvents can drop changes made in the first moments after a watch starts.
-      await new Promise((r) => setTimeout(r, 100))
+      stops.push(await watchesLive())
       await mkdir(join(repo, '.claude', 'agents'))
-      await until(() => hits > 0)
+      await vi.waitFor(() => expect(hits).toBeGreaterThan(0), WATCH)
+      // The folder's own watch started just now, in the restart that may drop the next change.
+      stops.push(await watchesLive())
       const afterDir = hits
-      expect(afterDir).toBeGreaterThan(0)
       await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
-      await until(() => hits > afterDir)
-      expect(hits).toBeGreaterThan(afterDir)
-    } finally { stop() }
+      await vi.waitFor(() => expect(hits).toBeGreaterThan(afterDir), WATCH)
+    } finally { for (const stop of stops) stop() }
   })
   it('saves an edit without touching nested frontmatter or quoted values', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
