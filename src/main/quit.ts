@@ -10,11 +10,17 @@ export type QuitReason = 'user' | 'update' | 'shutdown' | 'bootFailed'
 export const STOP_CAP_MS = 5000
 
 /**
- * Whether a quit asks first. Only a quit the user started asks, and only while an agent is working. A Mac that is
- * shutting down won't wait on a dialog, and a failed boot has no agents to lose.
+ * How long a `shutdown` waits for its `before-quit`. Another app can cancel a logout before macOS reaches Kernel, and
+ * then no quit comes. Past this, the next quit is the user's again and asks.
  */
-export function quitStep(working: number, reason: QuitReason, confirmed: boolean): 'ask' | 'quit' {
-  if (confirmed || working === 0) return 'quit'
+export const SHUTDOWN_GRACE_MS = 10_000
+
+/**
+ * Whether a quit asks first. Only a quit the user started asks, and only while an agent is working. A Mac that is
+ * shutting down won't wait on a dialog, and a failed boot has no agents to lose. A quiet run (headless) never asks.
+ */
+export function quitStep(working: number, reason: QuitReason, quiet: boolean): 'ask' | 'quit' {
+  if (quiet || working === 0) return 'quit'
   return reason === 'user' || reason === 'update' ? 'ask' : 'quit'
 }
 
@@ -52,6 +58,8 @@ export class QuitGuard {
   private pending = false
   /** Kernel has stopped, so the next `before-quit` goes through. */
   private done = false
+  /** Puts `reason` back to `user` when no quit follows a `shutdown`. */
+  private shutdownTimer?: NodeJS.Timeout
 
   constructor(private d: {
     /** Agents with a turn running. */
@@ -63,15 +71,25 @@ export class QuitGuard {
     /** Fixture and headless runs never ask. */
     quiet?: boolean
     capMs?: number
+    shutdownGraceMs?: number
   }) {}
 
-  /** powerMonitor's `shutdown`: the Mac is shutting down, restarting or logging out. */
-  shutdown() { this.reason = 'shutdown' }
+  /**
+   * powerMonitor's `shutdown`: the Mac is shutting down, restarting or logging out. A logout another app cancels
+   * sends no quit, and Kernel keeps running, so without the timer every later Cmd+Q would quit without asking.
+   */
+  shutdown() {
+    this.reason = 'shutdown'
+    clearTimeout(this.shutdownTimer)
+    this.shutdownTimer = setTimeout(() => { if (this.reason === 'shutdown') this.reason = 'user' }, this.d.shutdownGraceMs ?? SHUTDOWN_GRACE_MS)
+    this.shutdownTimer.unref?.()
+  }
 
   bootFailed() { this.reason = 'bootFailed' }
 
   /** `before-quit`. */
   beforeQuit(e: { preventDefault(): void }) {
+    clearTimeout(this.shutdownTimer)
     if (this.done) return
     e.preventDefault()
     void this.settle(this.reason).then((go) => { if (go) this.d.quit() })
@@ -85,6 +103,7 @@ export class QuitGuard {
     this.pending = true
     try {
       const working = this.d.working()
+      // A quit the user already confirmed doesn't get here: `done` lets its `before-quit` through.
       if (quitStep(working, reason, !!this.d.quiet) === 'ask' && !(await this.d.ask(quitDialog(working, reason)))) return false
       await capped(Promise.resolve().then(() => this.d.stop()), this.d.capMs ?? STOP_CAP_MS)
       this.done = true

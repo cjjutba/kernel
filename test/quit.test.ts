@@ -1,10 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { QuitGuard, quitDialog, quitStep, type QuitDialog, type QuitReason } from '../src/main/quit'
+import { QuitGuard, quitDialog, quitStep, SHUTDOWN_GRACE_MS, type QuitDialog, type QuitReason } from '../src/main/quit'
 import type { Chat } from '../src/shared/types'
 import type { PushEvent } from '../src/shared/ipc'
 
@@ -22,7 +22,7 @@ describe('quitStep', () => {
     }
   })
 
-  it('never asks again once the quit is confirmed', () => {
+  it('never asks in a quiet run', () => {
     for (const reason of reasons) for (const working of [0, 1, 3]) expect(quitStep(working, reason, true)).toBe('quit')
   })
 })
@@ -42,7 +42,7 @@ describe('quitDialog', () => {
 })
 
 /** A guard with recorded calls. `answer` is what the dialog returns; `stop` defaults to one that ends at once. */
-function guard(o: { working?: number; answer?: boolean | Promise<boolean>; stop?: () => Promise<void>; quiet?: boolean; capMs?: number } = {}) {
+function guard(o: { working?: number; answer?: boolean | Promise<boolean>; stop?: () => Promise<void>; quiet?: boolean; capMs?: number; shutdownGraceMs?: number } = {}) {
   const calls = { asked: [] as QuitDialog[], stops: 0, quits: 0 }
   const g = new QuitGuard({
     working: () => o.working ?? 0,
@@ -50,7 +50,8 @@ function guard(o: { working?: number; answer?: boolean | Promise<boolean>; stop?
     stop: async () => { calls.stops++; await o.stop?.() },
     quit: () => { calls.quits++ },
     quiet: o.quiet,
-    capMs: o.capMs
+    capMs: o.capMs,
+    shutdownGraceMs: o.shutdownGraceMs
   })
   const event = () => { const e = { prevented: false, preventDefault() { e.prevented = true } }; return e }
   return { g, calls, event }
@@ -92,6 +93,32 @@ describe('QuitGuard', () => {
       await settle()
       expect(calls, mark).toMatchObject({ asked: [], stops: 1, quits: 1 })
     }
+  })
+
+  describe('a logout another app cancels', () => {
+    afterEach(() => { vi.useRealTimers() })
+
+    it('asks again on the next Cmd+Q once no quit followed the shutdown', async () => {
+      vi.useFakeTimers()
+      const { g, calls, event } = guard({ working: 2, answer: false })
+      g.shutdown()
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS)
+      g.beforeQuit(event())
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls.asked.map((d) => d.message)).toEqual(['2 agents are working'])
+      expect(calls).toMatchObject({ stops: 0, quits: 0 })
+    })
+
+    it('stays a shutdown when its quit comes in time, and clears the timer', async () => {
+      vi.useFakeTimers()
+      const { g, calls, event } = guard({ working: 2 })
+      g.shutdown()
+      await vi.advanceTimersByTimeAsync(SHUTDOWN_GRACE_MS - 1)
+      g.beforeQuit(event())
+      await vi.advanceTimersByTimeAsync(0)
+      expect(calls).toMatchObject({ asked: [], stops: 1, quits: 1 })
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   it('never asks in a headless run', async () => {
@@ -192,6 +219,17 @@ describe('Kernel on quit', () => {
     answer = true
     expect(await h['update.install'](undefined)).toEqual({ ok: true })
     expect(installs).toBe(1)
+    await k.stop()
+  })
+
+  it('refuses Restart to update with no update ready, before asking or stopping', async () => {
+    let asked = 0
+    const updater = { get: () => ({ status: 'downloading', current: '1.0.0' }) as const, check: async () => ({ status: 'downloading', current: '1.0.0' }) as const, install: () => { throw new Error('No update is ready') } }
+    const k = await kernel({ updater, confirmQuit: async () => { asked++; return true } })
+    await expect(k.handlers()['update.install'](undefined)).rejects.toThrow('No update is ready')
+    expect(asked).toBe(0)
+    // Kernel didn't stop, so its database still answers.
+    expect(k.store.chat('none')).toBeUndefined()
     await k.stop()
   })
 
