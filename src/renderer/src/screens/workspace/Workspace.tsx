@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangedFile, Workspace as WorkspaceModel } from '@shared/types'
+import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
@@ -18,6 +18,7 @@ import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
 import { onRefreshChanges } from './changesBus'
+import { githubIssueUrl, isGithubKey } from './issueKey'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
@@ -161,7 +162,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
         <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.branch}</span>
-        <IssueKey ws={ws} />
+        <IssueKey ws={ws} room={room} />
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
         {!panels && <PrHeader ws={ws} />}
@@ -211,14 +212,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   )
 }
 
-/** The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, a GitHub issue opens its page. */
-function IssueKey({ ws }: { ws: WorkspaceModel }) {
+/** The issue a workspace started on, after the branch (WorkspaceIssue.png). A Linear key opens the Issues screen on it, a GitHub issue opens its page. A GitHub key with no page to open is plain text. */
+function IssueKey({ ws, room }: { ws: WorkspaceModel; room?: Room }) {
   const source = ws.source
   if (source?.kind !== 'issue') return null
-  const github = source.id.startsWith('#')
-  const open = () => {
-    if (!github) actions.ui.go({ name: 'issues', issueId: source.id })
-    else if (source.url) void call('system.openExternal', { url: source.url })
-  }
-  return <button type="button" className="ws-issue" aria-label={`Open ${github ? 'issue' : 'Linear issue'} ${source.id}`} title={source.title} onClick={open}>{source.id}</button>
+  if (!isGithubKey(source.id)) return <button type="button" className="ws-issue" aria-label={`Open Linear issue ${source.id}`} title={source.title} onClick={() => actions.ui.go({ name: 'issues', issueId: source.id })}>{source.id}</button>
+  const url = githubIssueUrl(source, room)
+  if (!url) return <span className="ws-issue" title={source.title}>{source.id}</span>
+  return <button type="button" className="ws-issue" aria-label={`Open issue ${source.id}`} title={source.title} onClick={() => void call('system.openExternal', { url })}>{source.id}</button>
 }
