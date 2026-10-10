@@ -113,7 +113,7 @@ describe('Settings remembers where you were', () => {
     actions.ui.openTab('lead', 'c3')
     actions.ui.openSettings()
     actions.ui.go({ name: 'settings', page: 'models' })
-    actions.ui.go({ name: 'settings', page: 'agents' })
+    actions.ui.go({ name: 'settings', page: 'permissions' })
     actions.ui.leaveSettings()
     expect(route()).toEqual(at('lead'))
     expect(tabOf(getState(), 'lead')).toBe('c3')

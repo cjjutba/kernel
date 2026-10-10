@@ -9,18 +9,55 @@ export function slugify(text: string, max = 48): string {
   return (s.slice(0, max).replace(/-+$/, '') || 'workspace')
 }
 
-/** Fill a branch pattern like "feat/{slug}" or "feat/{task}-{slug}". */
-export function branchName(pattern: string, vars: { slug: string; task?: string }): string {
-  return pattern.replace('{slug}', vars.slug).replace('{task}', vars.task ? vars.task.toLowerCase() : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, '')
+/** Words a branch name can do without (KERNEL-275). */
+const FILLER = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'when', 'that', 'its'])
+
+/**
+ * A few words of a title for a branch: "A review can't start when the reviewed branch name is long" ->
+ * "review-cant-start-reviewed-branch". Filler words go unless nothing else is left. Whole words up to `max` characters,
+ * and a single longer word is cut.
+ */
+export function shortSlug(text: string, max = 35): string {
+  const all = slugify(text.replace(/['’]/g, ''), Infinity).split('-')
+  const kept = all.filter((w) => !FILLER.has(w))
+  const words = kept.length ? kept : all
+  let out = words[0].slice(0, max)
+  for (const w of words.slice(1)) { if (out.length + 1 + w.length > max) break; out += `-${w}` }
+  return out.replace(/-+$/, '') || 'workspace'
+}
+
+/** An issue key for a branch: "KERNEL-267" -> "kernel-267", "#41" -> "41". */
+export const taskToken = (task: string) => task.toLowerCase().replace(/[^a-z0-9-]/g, '')
+
+/** Cuts a branch name to `max` characters at its last `-` or `/`, with no trailing `-`, `/` or `.`. */
+export function capBranch(name: string, max = 60): string {
+  if (name.length <= max) return name
+  const head = name.slice(0, max + 1)
+  const at = Math.max(head.lastIndexOf('-'), head.lastIndexOf('/'))
+  return (at > 0 ? head.slice(0, at) : name.slice(0, max)).replace(/[-/.]+$/, '')
+}
+
+/** `fix` for an issue with a label named Bug, in any case, else `feat`. */
+export const branchType = (labels: string[] = []): 'fix' | 'feat' => labels.some((l) => l.toLowerCase() === 'bug') ? 'fix' : 'feat'
+
+/** A review's branch: `review/<key>` for an issue's work, else `review/<a few words of its title>`. */
+export function reviewBranch(title: string, task?: string): string {
+  const key = task ? taskToken(task) : ''
+  return capBranch(`review/${key || shortSlug(title)}`)
+}
+
+/** Fill a branch pattern like "{type}/{task}-{slug}" or "feat/{slug}", cut to 60 characters. */
+export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat' }): string {
+  return capBranch(pattern.replace('{type}', vars.type ?? 'feat').replace('{slug}', vars.slug).replace('{task}', vars.task ? taskToken(vars.task) : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, ''))
 }
 
 /**
  * The branch for a task. With a task id (a Linear issue) the id leads the slug, `feat/{task}-{slug}`,
  * even when the configured pattern only has `{slug}`.
  */
-export function taskBranch(pattern: string, title: string, task?: string): string {
+export function taskBranch(pattern: string, title: string, task?: string, type?: 'fix' | 'feat'): string {
   const p = task && !pattern.includes('{task}') ? pattern.replace('{slug}', '{task}-{slug}') : pattern
-  return branchName(p, { slug: slugify(title), task })
+  return branchName(p, { slug: shortSlug(title), task, type })
 }
 
 /** `origin/main` -> `main` for the room's remote. Any other ref comes back as it is. */
@@ -77,6 +114,17 @@ export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: 
   if (o.strict) throw new Error(`${name} is not on ${remote} or in this repo, so there is nothing to start from.`)
   const d = await defaultBranch(repo, remote)
   return await refExists(repo, `${remote}/${d}`) ? `${remote}/${d}` : d
+}
+
+/**
+ * Moves the branch checked out at `path` forward to `ref`, only when that needs no merge commit and no tracked file has
+ * uncommitted changes. Untracked files don't count: the fast-forward stops on its own if one is in the way. False when
+ * it didn't move, and the agent is told to rebase instead (KERNEL-259).
+ */
+export async function fastForward(path: string, ref: string): Promise<boolean> {
+  const status = await exec('git', ['-C', path, 'status', '--porcelain', '--untracked-files=no'])
+  if (status.code !== 0 || status.stdout.trim()) return false
+  return (await exec('git', ['-C', path, 'merge', '--ff-only', '--quiet', ref])).code === 0
 }
 
 export async function remoteRepo(repo: string, remote = 'origin'): Promise<string | undefined> {
