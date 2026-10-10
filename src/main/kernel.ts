@@ -26,7 +26,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, queuedNote, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
@@ -914,7 +914,7 @@ export class Kernel {
 
   // ---------- workspaces
 
-  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; labels?: string[]; waitFor?: string[] }): Promise<Workspace> {
+  async createWorkspace(roomId: string, o: { prompt: string; parts?: ChatPart[]; source?: WorkspaceSource; agentId?: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; model?: ModelId; effort?: Effort; plan?: boolean; taskFor?: (ws: Workspace) => string | undefined; leadChatId?: string; reviewOf?: string; linkReviewOf?: string; labels?: string[]; waitFor?: string[] }): Promise<Workspace> {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
@@ -956,8 +956,10 @@ export class Kernel {
         if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
       }
 
-      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105).
-      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewed ? { reviewOf: reviewed.id } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105). A review
+      // the Lead started with base_ref keeps the Lead's base and branch, and is only linked (KERNEL-299).
+      const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })
@@ -1784,8 +1786,9 @@ export class Kernel {
         const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
-        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: o.reviewOf ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
-        if (!o.reviewOf) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
+        const review = o.reviewOf ?? o.linkReviewOf
+        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
         // Rowan named no wait, but Linear says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
@@ -1963,6 +1966,26 @@ export class Kernel {
       if (!r?.reviewOf || r.status === 'archived') { this.unmarkReviews(id); continue }
       await this.archiveReviews(r.reviewOf, id).catch(() => undefined)
     }
+    // Reviews the Lead started with base_ref instead of review_of are linked now (KERNEL-299). Those whose work already
+    // merged or closed get no PR event, so they are archived here. Each is linked once, so a kept one is noted once. A quit
+    // right after start closes the database under it.
+    for (const r of await this.linkReviews().catch(() => [])) await this.archiveReviews(r.reviewOf!, r.id).catch(() => undefined)
+  }
+
+  /** Links each open reviewer workspace with no `reviewOf` to the workspace whose branch its base names (KERNEL-299). */
+  private async linkReviews() {
+    const linked: Workspace[] = []
+    for (const room of this.store.rooms()) {
+      const agents = await this.agents(room.id).catch(() => [])
+      const all = this.store.workspaces(room.id)
+      for (const w of all) {
+        if (w.status === 'archived' || w.reviewOf) continue
+        const of = reviewedByBase(agents.find((a) => a.id === w.agentId), w.baseRef, all, { self: w.id, done: true })
+        if (!of || of.reviewOf) continue
+        linked.push(this.saveWs({ ...w, reviewOf: of.id }))
+      }
+    }
+    return linked
   }
 
   // ---------- waits (KERNEL-259)

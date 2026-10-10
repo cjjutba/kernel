@@ -20,7 +20,7 @@ export interface KernelToolDeps {
    * `setupFailed` says how setup failed, when it did ("exit code 1"), and `queued` what the brief waits for when it didn't
    * go out (KERNEL-272), so the result can tell the Lead the teammate hasn't started.
    */
-  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
+  createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
@@ -85,6 +85,19 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
   return list
     ? `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.`
     : `Not created: this team has no teammates yet. Propose one with hire_agent.`
+}
+
+/**
+ * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
+ * of review_of (KERNEL-299). Only for a Reviewer, so a task branched off another task is never archived with it. The base
+ * may carry `origin/`. A workspace on the main checkout has no branch of its own to review. An open workspace wins;
+ * `done` also takes an archived one whose PR merged or closed, for the start sweep.
+ */
+export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | undefined, workspaces: Workspace[], o: { self?: string; done?: boolean } = {}): Workspace | undefined {
+  if (!agent || agent.lead || !/\breview/i.test(agent.role) || !baseRef) return undefined
+  const branch = baseRef.trim().replace(/^origin\//, '')
+  const on = workspaces.filter((w) => w.id !== o.self && w.mode !== 'current' && w.branch === branch).sort((a, b) => b.createdAt - a.createdAt)
+  return on.find((w) => w.status !== 'archived') ?? (o.done ? on.find((w) => w.prState === 'merged' || w.prState === 'closed') : undefined)
 }
 
 /**
@@ -183,13 +196,16 @@ export function kernelTools(d: KernelToolDeps) {
       issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
       wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged')
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of, wait_for }) => {
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
       if (typeof pick === 'string') return { ...text(pick), isError: true }
       if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
       const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
+      // A reviewer started on another workspace's branch is a review of it, with the same checks. It keeps base_ref and
+      // branch, since a long reviewed branch can't take review_of yet (KERNEL-299, KERNEL-265).
+      const review_of = askedReview ?? reviewedByBase(pick, base_ref, d.workspaces())?.id
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
       // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
       if (!review_of) {
@@ -225,7 +241,7 @@ export function kernelTools(d: KernelToolDeps) {
         if (why) return { ...text(`Not created: ${why}`), isError: true }
         targets = waitTargets(all, wait_for).filter((t) => !isMerged(t))
       }
-      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(review_of ? { reviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
+      const ws = await d.createWorkspace({ prompt: brief, agentId: pick.id, mode, baseRef: base_ref, title, branch, ...(issue ? { issue } : {}), ...(askedReview ? { reviewOf: askedReview } : review_of ? { linkReviewOf: review_of } : {}), ...(wait_for?.length ? { waitFor: targets.map((t) => t.id) } : {}) })
       bus.activity({ kind: 'workspace.created', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead?.id, text: `assigned ${title} to`, object: pick.id, data: { assignee: pick.id } })
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
