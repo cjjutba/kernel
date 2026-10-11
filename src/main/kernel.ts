@@ -143,9 +143,9 @@ export class Kernel {
   /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
   titleFor: typeof askTitle = askTitle
   /** Reads `claude auth status`. Tests swap it for a stub. */
-  accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = readAccount
+  accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = () => readAccount(this.providers.binary('claude').path, this.providers.claudeEnv())
   /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
-  signedInReader: () => Promise<boolean> = claudeSignedIn
+  signedInReader: () => Promise<boolean> = () => claudeSignedIn(this.providers.binary('claude').path, this.providers.claudeEnv())
   /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
   github: GitHub = gh
 

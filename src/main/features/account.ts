@@ -1,4 +1,4 @@
-import type { ClaudeAccount, RateLimit } from '@shared/types'
+import type { ClaudeAccount, Provider, RateLimit } from '@shared/types'
 import { nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
@@ -18,6 +18,9 @@ const LIMIT_NAME: Record<RateLimit['type'], string> = {
   five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
 }
 
+/** The reason a signed-out Codex holds its chats by. Claude's is 'auth', as it always was. */
+const CODEX_AUTH = 'codex-auth'
+
 /** The Claude account, the connection, and the usage limits that pause the rooms (KERNEL-325). */
 export class Account extends Feature {
   network?: NetworkMonitor
@@ -34,6 +37,8 @@ export class Account extends Feature {
   private limitCheck?: NodeJS.Timeout
   private limitChecking?: Promise<void>
   private authTimer?: NodeJS.Timeout
+  /** While Codex is signed out, the check every 10 seconds that lifts the hold once it is signed in again (KERNEL-406). */
+  private codexAuthTimer?: NodeJS.Timeout
 
   start() {
     if (this.o.probeNetwork) {
@@ -45,6 +50,7 @@ export class Account extends Feature {
   stop() {
     this.network?.stop()
     clearInterval(this.authTimer)
+    clearInterval(this.codexAuthTimer)
     for (const t of this.limitTimers.values()) clearTimeout(t.timer)
     this.limitTimers.clear()
     clearInterval(this.limitCheck)
@@ -61,15 +67,34 @@ export class Account extends Feature {
   }
 
   /**
-   * A session reported an auth failure: Claude Code is signed out. Everything waits until the CLI is signed in again,
-   * by Sign in here or by `claude /login` in a terminal, which a check every 10 seconds picks up.
+   * A session reported an auth failure: its provider is signed out. That provider's chats wait until it is signed in again,
+   * by Sign in here or in a terminal (`claude /login`, `codex login`), which a check every 10 seconds picks up. The other
+   * provider's chats go on (KERNEL-406).
    */
-  signedOut() {
-    this.sessions.holdAll('auth')
+  signedOut(provider: Provider = 'claude') {
+    if (provider === 'codex') return this.codexSignedOut()
+    this.sessions.holdAll('auth', { provider: 'claude' })
     bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
     if (this.authTimer) return
     this.authTimer = setInterval(() => void this.readAccount().catch(() => undefined), 10_000)
     this.authTimer.unref?.()
+  }
+
+  /** Codex signed out: its chats wait, and Settings, Providers and the account menu say so. */
+  private codexSignedOut() {
+    this.sessions.holdAll(CODEX_AUTH, { provider: 'codex' })
+    void this.k.providers.pushAccounts()
+    if (this.codexAuthTimer) return
+    this.codexAuthTimer = setInterval(() => void this.readCodex().catch(() => undefined), 10_000)
+    this.codexAuthTimer.unref?.()
+  }
+
+  /** A signed-in Codex lifts its hold. */
+  private async readCodex() {
+    if (!(await this.k.providers.signedIn('codex'))) return
+    clearInterval(this.codexAuthTimer); this.codexAuthTimer = undefined
+    this.sessions.releaseAll(CODEX_AUTH)
+    void this.k.providers.pushAccounts()
   }
 
   /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
@@ -87,9 +112,9 @@ export class Account extends Feature {
     return account
   }
 
-  /** Runs Claude Code's own login (it opens the browser), then reads the account back. */
+  /** Runs Claude Code's own login with Kernel's own copy (it opens the browser), then reads the account back (KERNEL-277). */
   private async signIn() {
-    await exec('claude', ['auth', 'login'], { timeoutMs: 5 * 60_000 })
+    await exec(this.k.providers.binary('claude').path ?? 'claude', ['auth', 'login'], { timeoutMs: 5 * 60_000 })
     const account = await this.readAccount()
     bus.push({ type: 'account', account })
     if (!account.signedIn) throw new Error('Sign in did not finish. Open a terminal and run claude /login.')
@@ -107,8 +132,15 @@ export class Account extends Feature {
     const now = Date.now()
     this.store.saveMeta('limits', limits)
     const rooms = this.store.rooms().filter((r) => !r.archived)
-    if (blockingLimit(limits.filter((l) => limitProvider(l) === 'claude'), now)) { for (const r of rooms) if (!r.paused) this.k.rooms.pauseRoom(r.id, 'limit') }
-    else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.k.rooms.resumeRoom(r.id, 'limit')
+    // A provider is stopped when its active account has a 5-hour or weekly rejection. A room pauses only when every provider
+    // its agents run on is stopped, so Codex agents keep working through a Claude limit (KERNEL-406).
+    const stopped = (p: Provider) => !!blockingLimit(limits.filter((l) => limitProvider(l) === p && l.accountId === this.k.providers.active(p)), now)
+    for (const r of rooms) {
+      const uses = this.k.providers.usedIn(r.id)
+      const pause = uses.length > 0 && uses.every(stopped)
+      if (pause && !r.paused) this.k.rooms.pauseRoom(r.id, 'limit')
+      else if (!pause && r.paused && r.pausedBy === 'limit') this.k.rooms.resumeRoom(r.id, 'limit')
+    }
     const holding = this.holdsTeammates()
     for (const l of limits) {
       const at = l.resetsAt ? l.resetsAt * 1000 : undefined
@@ -123,7 +155,7 @@ export class Account extends Feature {
       this.limitTimers.set(key, { at, timer, rejected })
     }
     for (const type of this.notifyReset) {
-      if (limits.some((l) => l.type === type && limitProvider(l) === 'claude' && l.status === 'rejected')) continue
+      if (limits.some((l) => l.type === type && limitProvider(l) === 'claude' && l.accountId === this.k.providers.active('claude') && l.status === 'rejected')) continue
       this.notifyReset.delete(type)
       this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
     }
@@ -144,7 +176,7 @@ export class Account extends Feature {
    */
   private warnWeekly(limits: RateLimit[], now: number) {
     // Claude's weekly window. Codex reports one too, under the same type (KERNEL-406).
-    const weekly = limits.find((l) => l.type === 'seven_day' && limitProvider(l) === 'claude')
+    const weekly = limits.find((l) => l.type === 'seven_day' && limitProvider(l) === 'claude' && l.accountId === this.k.providers.active('claude'))
     if (!this.settings?.usage?.warnBeforeWeekly || !weekly?.resetsAt || weekly.resetsAt * 1000 <= now || (weekly.utilization ?? 0) < WEEKLY_WARN) return
     const warned = this.store.meta<number[]>('weeklyWarned') ?? []
     if (warned.some((at) => Math.abs(at - weekly.resetsAt!) <= 60)) return
@@ -178,9 +210,10 @@ export class Account extends Feature {
   handlers() {
     return {
       'account.get': async () => this.readAccount(),
-      'account.signOut': async () => signOut(),
+      'account.signOut': async () => signOut(this.k.providers.binary('claude').path),
       'usage.notifyOnReset': async ({ type }) => {
-        if (!this.limitTimers.get(type)?.rejected) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
+        // Claude's window on the account in use, the one the banner offering this shows.
+        if (!this.limitTimers.get(limitKey({ type, provider: 'claude', accountId: this.k.providers.active('claude') }))?.rejected) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
         this.notifyReset.add(type)
         return { ok: true }
       },

@@ -7,7 +7,8 @@
 //   { "complete": "completed" | "failed" | "interrupted", "error": {...} }   the turn's end
 //   { "wait": "interrupt" }                 waits for turn/interrupt, then ends the turn as interrupted
 // Input that isn't a script ends the turn at once with a short reply.
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 const log = (entry) => { if (process.env.FAKE_CODEX_LOG) appendFileSync(process.env.FAKE_CODEX_LOG, JSON.stringify(entry) + '\n') }
@@ -15,6 +16,8 @@ const send = (msg) => process.stdout.write(JSON.stringify(msg) + '\n')
 let next = 1000
 const pending = new Map()
 const request = (method, params) => new Promise((resolve) => { const id = next++; pending.set(id, resolve); send({ id, method, params }) })
+log({ started: process.env.CODEX_HOME ?? null, cwd: process.cwd() })
+const home = process.env.CODEX_HOME
 let threads = 0
 let turns = 0
 let interrupted
@@ -58,7 +61,16 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (method === 'turn/interrupt') { send({ id, result: {} }); interrupted?.(); interrupted = undefined; return }
   if (method === 'account/rateLimits/read') return send({ id, result: { rateLimits: { limitId: 'codex', primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1791734191 }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 1792320991 }, rateLimitReachedType: null } } })
-  if (method === 'account/read') return send({ id, result: { account: { type: 'chatgpt', email: 'cj@example.com', planType: 'plus' }, requiresOpenaiAuth: true } })
+  // Signed in when the home has an auth.json, as Codex reads it. Without CODEX_HOME the fake counts as signed in.
+  if (method === 'account/read') return send({ id, result: { account: !home || existsSync(join(home, 'auth.json')) ? { type: 'chatgpt', email: process.env.FAKE_CODEX_EMAIL ?? 'cj@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true } })
+  // The browser step happens at once: the fake writes the account's auth.json and says the login finished.
+  if (method === 'account/login/start') {
+    send({ id, result: { type: 'chatgpt', loginId: 'login-1', authUrl: 'https://auth.openai.com/oauth/authorize?fake=1' } })
+    if (process.env.FAKE_CODEX_LOGIN !== 'wait') setTimeout(() => { if (home) writeFileSync(join(home, 'auth.json'), '{}'); send({ method: 'account/login/completed', params: { loginId: 'login-1', success: true, error: null } }) }, 20)
+    return
+  }
+  if (method === 'account/login/cancel') { send({ id, result: {} }); return send({ method: 'account/login/completed', params: { loginId: 'login-1', success: false, error: 'canceled' } }) }
+  if (method === 'account/logout') { if (home) rmSync(join(home, 'auth.json'), { force: true }); return send({ id, result: {} }) }
   if (method === 'thread/compact/start') return send({ id, result: {} })
   send({ id, result: {} })
 })

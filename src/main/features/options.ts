@@ -31,6 +31,8 @@ export interface KernelOptions {
   reveal?: (path: string) => void
   /** Opens a file in the Mac's default app, for a shared PDF's Open in Preview. Rejects with the reason when it can't. Left out, it does nothing. */
   openFile?: (path: string) => Promise<void>
+  /** Opens a web page in the browser, for a provider's sign-in (KERNEL-406). Left out, the sign-in page's link shows in Settings. */
+  openExternal?: (url: string) => Promise<void>
   /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
   cipher?: Cipher
   /**

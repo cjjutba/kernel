@@ -50,8 +50,10 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
       if (!teammate) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
     },
-    onFailure: (failure) => {
-      if (failure === 'auth') k.account.signedOut()
+    accountFor: (provider) => k.providers.active(provider),
+    claudeEnv: () => k.providers.claudeEnv(),
+    onFailure: (failure, _ws, provider) => {
+      if (failure === 'auth') k.account.signedOut(provider)
       else if (failure === 'network') void k.account.network?.lost()
     },
     // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).

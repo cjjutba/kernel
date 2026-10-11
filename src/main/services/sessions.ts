@@ -2,7 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import type { Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -51,6 +51,8 @@ interface Live {
   carrying?: boolean
   /** This turn hit a sign-out or a dropped connection. */
   failed?: 'auth' | 'network'
+  /** The account the process runs on, which its usage windows belong to. Undefined is the CLI's own login (KERNEL-406). */
+  account?: string
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
   sent?: ChatPart[]
   sentItem?: ChatItem & { kind: 'user' }
@@ -100,6 +102,10 @@ export interface SessionDeps {
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
+  /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
+  accountFor?: (provider: Provider) => string | undefined
+  /** What a Claude chat's process adds to its environment for the active account, such as its token (KERNEL-406). */
+  claudeEnv?: () => Record<string, string>
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -119,7 +125,7 @@ export interface SessionDeps {
    */
   onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean, resumed: boolean) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
-  onFailure?: (failure: Failure, ws: Workspace) => void
+  onFailure?: (failure: Failure, ws: Workspace, provider: Provider) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
@@ -168,8 +174,13 @@ export class Sessions {
   private mcpChecked = new Set<string>()
   /** Rooms the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
-  /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
-  private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
+  /**
+   * Holds on every room at once: offline, or a provider signed out. Each reason holds one provider's chats, or every chat
+   * when it names none, with the same rules as a pause, while it stands (KERNEL-406). `gates` are what a held provider's
+   * tool calls wait on.
+   */
+  private holds = new Map<string, Provider | undefined>()
+  private gates = new Map<Provider, { open: Promise<void>; release: () => void }>()
   /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
@@ -262,28 +273,55 @@ export class Sessions {
     this.d.onExit?.(ws, chat, clean ? QUIT_REASON : CRASH_REASON, true, true)
   }
 
-  /** Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. */
-  holdAll(reason: string) {
-    if (this.global) { this.global.reasons.add(reason); return }
-    let release!: () => void
-    const open = new Promise<void>((resolve) => { release = resolve })
-    this.global = { open, release, reasons: new Set([reason]) }
+  /**
+   * Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. With `provider`, only that
+   * provider's chats wait, as when it is signed out (KERNEL-406).
+   */
+  holdAll(reason: string, o: { provider?: Provider } = {}) {
+    if (this.holds.has(reason)) return
+    this.holds.set(reason, o.provider)
+    for (const p of PROVIDER_IDS) {
+      if (this.gates.has(p) || !this.holding(p)) continue
+      let release!: () => void
+      const open = new Promise<void>((resolve) => { release = resolve })
+      this.gates.set(p, { open, release })
+    }
     this.pushReasons()
   }
 
-  /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
+  /** Drop one reason for the hold. A provider nothing holds any more goes on, and what queued for it meanwhile is sent. */
   releaseAll(reason: string) {
-    const g = this.global
-    if (!g?.reasons.delete(reason) || g.reasons.size) return
-    this.global = undefined
-    g.release()
+    if (!this.holds.delete(reason)) return
+    const freed = PROVIDER_IDS.filter((p) => this.gates.has(p) && !this.holding(p))
+    if (!freed.length) return
+    for (const p of freed) { this.gates.get(p)!.release(); this.gates.delete(p) }
     // A cut-off chat's queue goes through `carryOn`, which restarts those a limit stopped two at a time.
-    for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running && !this.cutOff.has(chatId)) this.drain(chatId)
+    for (const chatId of [...this.queues.keys()]) {
+      const chat = this.d.store.chat(chatId)
+      if (chat && freed.includes(chatProvider(chat)) && !this.live.get(chatId)?.running && !this.cutOff.has(chatId)) this.drain(chatId)
+    }
     this.carryOn()
     this.pushReasons()
   }
 
-  heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
+  /** The reasons holding `provider`'s chats, or every reason when it names none. */
+  heldFor(provider?: Provider): string[] { return [...this.holds].filter(([, p]) => !provider || !p || p === provider).map(([r]) => r) }
+
+  /** Something holds this provider's chats: offline, or the provider signed out. */
+  private holding(provider: Provider): boolean { return [...this.holds.values()].some((p) => !p || p === provider) }
+
+  /**
+   * The provider's account changed (KERNEL-406). A process runs on the account it started with, so an idle one ends now and
+   * a busy one when its turn ends. The next message resumes the conversation on the account that is active then.
+   */
+  restartProvider(provider: Provider) {
+    for (const [id, live] of [...this.live]) {
+      const chat = this.d.store.chat(id)
+      if (!chat || chatProvider(chat) !== provider) continue
+      if (live.running || live.tasks.size) this.stale.add(id)
+      else this.end(id, live)
+    }
+  }
 
   /**
    * Kernel checks the network and the sign-in at launch before agents carry on (KERNEL-215). Until `releaseCarryOn`, chats
@@ -375,7 +413,7 @@ export class Sessions {
   }
 
   private pausedChat(chat: Chat) {
-    if (this.global || this.waiting.has(chat.id)) return true
+    if (this.holding(chatProvider(chat)) || this.waiting.has(chat.id)) return true
     const ws = this.d.store.workspace(chat.workspaceId)
     return !!ws && this.paused.has(ws.roomId)
   }
@@ -473,7 +511,7 @@ export class Sessions {
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
-    if (this.global) return 'offline'
+    if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.nearLimitHolds(chat.id)) return 'limit'
     if (this.atCapacity(chat.id)) return 'capacity'
@@ -686,16 +724,20 @@ export class Sessions {
     }
   }
 
-  /** A known usage limit stops this chat: one on the whole account, or on the chat's model. Only its own provider's count (KERNEL-406). */
+  /**
+   * A known usage limit stops this chat: one on the whole account, or on the chat's model. Only the windows of its provider,
+   * on the account that provider runs on now, count (KERNEL-406).
+   */
   private limitHolds(chat: Chat) {
     const limits = this.limitsFor(chat)
     return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
   }
 
-  /** The usage windows that count for a chat: its own provider's (KERNEL-406). */
+  /** The usage windows that count for a chat: its own provider's, on the account in use (KERNEL-406). */
   private limitsFor(chat: Chat) {
     const provider = chatProvider(chat)
-    return [...this.limits.values()].filter((l) => limitProvider(l) === provider)
+    const account = this.d.accountFor?.(provider)
+    return [...this.limits.values()].filter((l) => limitProvider(l) === provider && l.accountId === account)
   }
 
   /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
@@ -978,7 +1020,7 @@ export class Sessions {
   private start(chat: Chat, ws: Workspace): Live {
     const agent = this.d.agentFor(ws)
     const root = this.d.store.room(ws.roomId)?.path
-    const live = { running: false, interrupted: false, tasks: new Set<string>() } as Live
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), account: this.d.accountFor?.(chatProvider(chat)) } as Live
     const host = this.hostFor(chat.id, ws, agent, live)
     const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
@@ -987,7 +1029,7 @@ export class Sessions {
       // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
       live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
     } else {
-      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, root })
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root })
     }
     this.live.set(chat.id, live)
     live.runner.start()
@@ -1002,7 +1044,7 @@ export class Sessions {
       settings: () => this.d.settings(),
       roomAllow: () => this.d.roomAllow(ws.roomId),
       allowInRoom: (rule) => this.d.allowInRoom(ws.roomId, rule),
-      held: () => this.paused.get(ws.roomId)?.open ?? this.global?.open,
+      held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
       spawn: (command, args, o, proc) => this.spawn(command, args, o, proc),
       managed: (sessionId) => { this.managedIds.add(sessionId) },
       item: (item) => this.item(this.mustChat(chatId), item),
@@ -1033,9 +1075,10 @@ export class Sessions {
       clearRetry: () => this.clearRetry(chatId, live),
       reached: () => this.d.onReached?.(),
       replied: () => this.d.onReply?.(ws, this.mustChat(chatId)),
-      failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws) },
+      failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId))) },
       limited: (o = {}) => { if (o.always || live.running) live.limited = true },
-      mergeLimits: (patches) => this.mergeLimits(patches),
+      // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
+      mergeLimits: (patches) => this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))),
       reset: (trigger) => {
         this.d.store.clearItems(chatId)
         if (trigger === 'clear') live.cleared = true
@@ -1150,7 +1193,7 @@ export class Sessions {
     if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
     // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
     // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
-    if (!ok && !stopped && live.carrying && live.failed && this.global) this.setCutOff(chatId, 'quit')
+    if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')
     live.carrying = false
     live.failed = undefined
     live.interrupted = false
@@ -1365,6 +1408,9 @@ export function freshNudge(brief?: string): string {
 
 /** How long a quit waits for interrupted turns to end before it stops their processes. */
 export const QUIT_BUDGET_MS = 3000
+
+/** Every provider, for the holds that name one. */
+const PROVIDER_IDS: Provider[] = ['claude', 'codex']
 
 /** Meta keys Sessions saves itself: the working journal, every queue not held for setup, and the pids of live processes. */
 const WORKING = 'working'
