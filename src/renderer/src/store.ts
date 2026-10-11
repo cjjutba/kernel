@@ -617,11 +617,15 @@ async function start() {
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
   // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
-  // Only a blocking failure takes the screen (KERNEL-27, KERNEL-213), and only if nothing has moved you since the route above.
+  // Only a blocking failure takes the screen (KERNEL-27, KERNEL-213), and only if nothing has moved you since the route above and no modal is open,
+  // because `go` closes modals. Otherwise a toast says so and nothing you are doing is interrupted.
   const shown = state.ui.route
   void call('preflight.run', undefined).then((checks) => {
     actions.system.setPreflight(checks)
-    if (rooms.length && state.ui.route === shown && checks.some((c) => !c.ok && c.blocking)) go({ name: 'onboarding', step: 'checks' }, replace)
+    const blocking = checks.find((c) => !c.ok && c.blocking)
+    if (!rooms.length || !blocking) return
+    if (state.ui.route === shown && !state.ui.modal) go({ name: 'onboarding', step: 'checks' }, replace)
+    else actions.ui.toast({ title: blocking.title, sub: 'Kernel will show the checks the next time it starts.' })
   }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.
