@@ -127,8 +127,11 @@ const key = (workspaceId: string, kind: Kind, name?: string) => JSON.stringify([
 /** A run script is named, `run` when none is given. Setup and archive aren't. */
 const nameOf = (kind: Kind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
 
-/** Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. */
-export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; port: number; root: string }): Promise<number | null> {
+/**
+ * Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. `env` is the whole
+ * environment, from `Kernel.envFor` (KERNEL-247).
+ */
+export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; env: Record<string, string> }): Promise<number | null> {
   const name = nameOf(o.kind, o.name)
   const k = key(o.workspaceId, o.kind, name)
   stopScript(o.workspaceId, o.kind, name)
@@ -138,7 +141,7 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
   return new Promise((resolve) => {
     const child = spawn(loginShell(), ['-lc', o.script], {
       cwd: o.cwd,
-      env: { ...process.env, KERNEL_PORT: String(o.port), PORT: String(o.port), KERNEL_WORKSPACE: o.cwd, KERNEL_ROOT_PATH: o.root, FORCE_COLOR: '0' },
+      env: o.env,
       detached: true
     })
     running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })

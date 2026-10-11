@@ -13,7 +13,7 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
     { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' }
   ] },
   { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }
+    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
   ] },
   { title: 'Workspaces', items: [
     { page: 'git', label: 'Git and worktrees', icon: 'branch' }, { page: 'scripts', label: 'Scripts', icon: 'term' },
@@ -21,7 +21,8 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
   ] },
   { title: 'System', items: [
     { page: 'hooks', label: 'Hooks', icon: 'plug' }, { page: 'integrations', label: 'Integrations', icon: 'link' },
-    { page: 'experimental', label: 'Experimental', icon: 'flask' }, { page: 'about', label: 'About', icon: 'info' }
+    { page: 'experimental', label: 'Experimental', icon: 'flask' }, { page: 'bigterm', label: 'Big terminal', icon: 'bigterm' },
+    { page: 'about', label: 'About', icon: 'info' }
   ] }
 ]
 
@@ -34,12 +35,12 @@ let lastRoomId: string | undefined
 
 /**
  * The left column of Settings: back to the app, search, the app pages, and each room with its own pages under it.
- * Search filters the list by name. The nav scrolls, and the open page scrolls into view.
+ * Search filters the list by name. The top stays put; the list under it scrolls, and the open page scrolls into view there.
  */
 export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection }) {
   const [q, setQ] = useState('')
   const [folded, setFolded] = useState<string | null>(null)
-  const nav = useRef<HTMLElement>(null)
+  const list = useRef<HTMLDivElement>(null)
   if (page === 'room' && roomId) lastRoomId = roomId
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const match = (label: string) => !q.trim() || label.toLowerCase().includes(q.trim().toLowerCase())
@@ -59,11 +60,12 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [q])
-  // A room's pages run past the bottom of the window, so a room page brings the end of its room into view, then the open page.
+  // A room's pages run past the bottom of the window, so a room page brings the end of its room and the next room's row into view, then the open page.
   useEffect(() => {
     if (page !== 'room') return
-    nav.current?.querySelector('[data-room-end]')?.scrollIntoView({ block: 'nearest' })
-    nav.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
+    const end = list.current?.querySelector('[data-room-end]')
+    ;(end?.parentElement?.nextElementSibling?.firstElementChild ?? end)?.scrollIntoView({ block: 'nearest' })
+    list.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' })
   }, [page, roomId, section])
   useEffect(() => setFolded(null), [page, roomId])
   const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => match(i.label)) })).filter((g) => g.items.length)
@@ -74,7 +76,7 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
   const shownRooms = rooms.map((r) => ({ room: r, pages: match(r.name) ? ROOM_PAGES : ROOM_PAGES.filter((p) => match(p.label)) })).filter((r) => r.pages.length)
   const here = (id: string, s: RoomSettingsSection) => page === 'room' && roomId === id && (section ?? 'general') === s
   return (
-    <nav ref={nav} aria-label="Settings" className="set-nav">
+    <nav aria-label="Settings" className="set-nav">
       <div className="drag" style={{ height: 42, flexShrink: 0 }} />
       <button type="button" className="set-back" onClick={() => actions.ui.leaveSettings()}><Icon name="left" size={14} />Back to app</button>
       <div className="set-search">
@@ -82,39 +84,41 @@ export function SettingsNav({ page, roomId, section }: { page: SettingsPage; roo
         <Icon name="search" size={14} />
         <input id="set-q" type="text" autoComplete="off" placeholder="Search settings" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
-      {groups.map((g) => (
-        <div key={g.title}>
-          <p className="set-group">{g.title}</p>
-          {g.items.map((i) => (
-            <button key={i.page} type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
-              <Icon name={i.icon} size={15} />{i.label}
-            </button>
-          ))}
-        </div>
-      ))}
-      {shownRooms.length > 0 && (
-        <div>
-          <p className="set-group">Rooms</p>
-          {shownRooms.map(({ room: r, pages }) => {
-            const expanded = searching ? true : open === r.id && folded !== r.id
-            return (
-              <div key={r.id}>
-                <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
-                  // Another room opens on its General page. Its own row folds and unfolds its pages.
-                  if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
-                  else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
-                }}>
-                  <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
-                </button>
-                {expanded && pages.map((p, n) => (
-                  <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
-                ))}
-              </div>
-            )
-          })}
-        </div>
-      )}
-      {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
+      <div ref={list} className="set-list">
+        {groups.map((g) => (
+          <div key={g.title}>
+            <p className="set-group">{g.title}</p>
+            {g.items.map((i) => (
+              <button key={i.page} type="button" className="nav-item set-item" aria-current={page === i.page ? 'page' : undefined} onClick={() => go({ name: 'settings', page: i.page })}>
+                <Icon name={i.icon} size={15} />{i.label}
+              </button>
+            ))}
+          </div>
+        ))}
+        {shownRooms.length > 0 && (
+          <div>
+            <p className="set-group">Rooms</p>
+            {shownRooms.map(({ room: r, pages }) => {
+              const expanded = searching ? true : open === r.id && folded !== r.id
+              return (
+                <div key={r.id}>
+                  <button type="button" className="nav-item set-item set-room" aria-expanded={expanded} onClick={() => {
+                    // Another room opens on its General page. Its own row folds and unfolds its pages.
+                    if (open === r.id && page === 'room' && roomId === r.id) setFolded(expanded ? r.id : null)
+                    else { setFolded(null); go({ name: 'settings', page: 'room', roomId: r.id }) }
+                  }}>
+                    <RoomIcon room={r} className="set-letter" /><span className="grow">{r.name}</span><Icon name={expanded ? 'chevron' : 'right'} size={10} stroke={1.9} />
+                  </button>
+                  {expanded && pages.map((p, n) => (
+                    <button key={p.section} data-room-end={n === pages.length - 1 && open === r.id ? '' : undefined} type="button" className="nav-item set-item set-sub" aria-current={here(r.id, p.section) ? 'page' : undefined} onClick={() => go({ name: 'settings', page: 'room', roomId: r.id, section: p.section })}>{p.label}</button>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {!groups.length && !shownRooms.length && <p className="set-group">No settings match</p>}
+      </div>
     </nav>
   )
 }

@@ -1,12 +1,14 @@
+import { isRunName } from '@shared/types'
 import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS, isRunName, previewUrlsOf } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
+import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
@@ -49,7 +51,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
     // Like the engine, `run` comes first, from `[scripts] run`.
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
-    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, sources: rs.sources ?? {} }
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
   }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
@@ -135,10 +137,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { chatId: c.id, workspaceId: ws.id }
     },
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
-    'chats.create': async ({ workspaceId, kind }) => {
+    'chats.create': async ({ workspaceId, kind, preset }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)
       if (!first) throw new Error(`Unknown workspace ${workspaceId}`)
-      return { ...first, id: `fixture-chat-${Date.now()}`, kind: kind ?? 'chat', title: kind === 'terminal' ? 'Terminal (claude)' : 'New chat', sessionId: undefined, plan: false }
+      const base = { ...first, id: `fixture-chat-${Date.now()}`, sessionId: undefined, plan: false, terminal: undefined, autoTitle: undefined }
+      if (kind !== 'terminal') return { ...base, kind: 'chat', title: 'New chat' }
+      if (!settings.terminal.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
+      const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
+      return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
     'chats.send': async () => ({ queued: false }),
@@ -211,6 +217,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'account.get': async () => account,
     'account.signIn': async () => account,
     'account.signOut': async () => ({ signedIn: false }),
+    'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
@@ -264,6 +271,25 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
         .sort((a, b) => a.path.localeCompare(b.path))
     },
+    'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
+      .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
+    'shared.read': async ({ sharedId, version }) => {
+      const file = f.shared?.find((x) => x.id === sharedId)
+      const v = file?.versions.find((x) => x.n === version)
+      if (!file || !v) throw new Error('That shared file or version is gone.')
+      const data = f.sharedData?.[sharedId]?.[version]
+      return { kind: file.kind, mime: v.mime, ...(data?.text !== undefined ? { text: data.text } : {}), ...(data?.dataUrl ? { dataUrl: data.dataUrl } : {}) }
+    },
+    'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
+    'shared.reveal': async () => ok,
+    // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
+    'env.get': async ({ roomId }) => {
+      const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
+      return { names: [...(scope?.names ?? [])].sort(), files: roomId ? scope?.files ?? roomSettings(roomId).env.files.map((path) => ({ path, missing: false })) : [] }
+    },
+    'env.set': async () => ok,
+    'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),

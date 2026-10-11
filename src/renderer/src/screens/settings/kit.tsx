@@ -24,11 +24,13 @@ export function Page({ title, intro, action, children }: { title: string; intro?
   )
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+/** `action` sits at the right of the heading (Add run script). `note` is the line under the card. */
+export function Section({ title, action, note, children }: { title: string; action?: ReactNode; note?: ReactNode; children: ReactNode }) {
   return (
     <section className="set-section">
-      <h2>{title}</h2>
+      {action ? <div className="set-section-head"><h2>{title}</h2>{action}</div> : <h2>{title}</h2>}
       <div className="set-card">{children}</div>
+      {note && <p className="set-note">{note}</p>}
     </section>
   )
 }

@@ -22,6 +22,7 @@ To redraw the PNGs after editing an artboard, run `node design/redesign/render.m
 | `ProposedSetup` | Setup tab empty state | `Panels.tsx` (bottom panel) |
 | `ProposedTerminal` | Terminal tab | `Panels.tsx` (bottom panel) |
 | `TeamUpdate` | Team update cards in Rowan's chat | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| `TeamUpdateShared` | Team update with a shared file card under the teammate's row (KERNEL-301) | `screens/workspace/cards/TeamUpdateCard.tsx` |
 | `AskRowan` | Ask Rowan popover, empty | `components/footer/QuickAsk.tsx` |
 | `NewChat` | New chat empty state | `screens/workspace/Transcript.tsx` |
 | `Composer` | Composer states side by side | `screens/workspace/composer/` |

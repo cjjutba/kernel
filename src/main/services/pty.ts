@@ -29,7 +29,8 @@ export class Ptys {
   start(id: string, o: PtyOptions) {
     if (this.procs.has(id)) return
     const env = { ...o.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' }
-    const proc = pty.spawn(loginShell(env), ['-l'], { name: 'xterm-256color', cwd: o.cwd, env, cols: o.cols ?? 100, rows: o.rows ?? 30 })
+    // The Mac's SHELL picks the binary, so a SHELL from a room's variables or env files can't (KERNEL-247).
+    const proc = pty.spawn(loginShell(process.env), ['-l'], { name: 'xterm-256color', cwd: o.cwd, env, cols: o.cols ?? 100, rows: o.rows ?? 30 })
     this.procs.set(id, proc)
     proc.onData((data) => bus.push({ type: 'terminal.data', chatId: id, data }))
     proc.onExit(({ exitCode }) => {

@@ -20,6 +20,7 @@
 /* segmented control */
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--input-bg); }
 .segmented button { height: 24px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12.5px; }
+.segmented button:has(.spin) { display: inline-flex; align-items: center; gap: 6px; }
 .segmented button[aria-checked='true'] { background: var(--surface-3); color: var(--ink); font-weight: 500; }
 
 /* menu */
@@ -35,6 +36,7 @@
 .menu-item[aria-checked='true'] { background: var(--hover); }
 .menu-item[aria-checked='true'] > svg:last-child { color: var(--ink); }
 .menu-kbd { font: 11.5px var(--mono); color: var(--muted); }
+.menu-head { padding: 6px 8px 4px; font-size: 12px; color: var(--muted); }
 .menu-sep { height: 1px; margin: 5px 2px; background: var(--line-3); }
 .popover { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 220px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-3); background: var(--surface-2); }
 .popover[data-side='top'] { top: auto; bottom: calc(100% + 6px); }

@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -101,7 +101,8 @@ export interface KernelApi {
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal' }; res: Chat }
+  /** `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
@@ -126,6 +127,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
+  'terminal.presets': { req: void; res: TerminalPreset[] }
 
   // checkpoints (KERNEL-13)
   'checkpoints.list': { req: { workspaceId: string }; res: Checkpoint[] }
@@ -187,6 +190,12 @@ export interface KernelApi {
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
+  // main through `env.reveal`.
+  'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
+  /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
+  'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
+  'env.reveal': { req: { roomId?: string; name: string }; res: string }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
@@ -205,6 +214,16 @@ export interface KernelApi {
   'app.openTerminal': { req: { cwd: string; command?: string }; res: Ok }
   /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */
   'app.checkOnline': { req: void; res: { online: boolean } }
+
+  // shared files (KERNEL-302)
+  /** Files agents shared, newest first: a room's (the Lead's panel) or one workspace's. */
+  'shared.list': { req: { roomId?: string; workspaceId?: string; limit?: number }; res: SharedFile[] }
+  /** One version's contents: Markdown and HTML as text, images and PDFs as a data URL. */
+  'shared.read': { req: { sharedId: string; version: number }; res: { kind: SharedKind; mime: string; text?: string; dataUrl?: string } }
+  /** The version's thumbnail as a data URL, or null when none was captured. */
+  'shared.thumb': { req: { sharedId: string; version: number }; res: string | null }
+  /** Show in Finder: the source file while it still matches that version, else Kernel's copy. */
+  'shared.reveal': { req: { sharedId: string; version: number }; res: Ok }
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
@@ -263,6 +282,8 @@ export type PushEvent =
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */
   | { type: 'retry'; chatId: string; retry: { attempt: number; of: number; nextAt: number } | null }
+  /** A file was shared, or got a new version (KERNEL-302). */
+  | { type: 'shared'; file: SharedFile }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
 export const NOT_IMPLEMENTED = 'Not built yet'

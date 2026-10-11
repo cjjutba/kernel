@@ -40,6 +40,7 @@ import { ConfirmRetire } from './screens/team/ConfirmRetire'
 import { NewAgent } from './screens/team/NewAgent'
 import { Team } from './screens/team/Team'
 import { WhatsNew } from './screens/update/WhatsNew'
+import { EnvVarForm } from './screens/settings/pages/EnvVarForm'
 import { openSlot } from './components/sidebar/slots'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
@@ -108,6 +109,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'checkHooks': return <CheckHooks />
     case 'newAgent': return <NewAgent roomId={modal.roomId} step={modal.step} prefill={modal.prefill} />
     case 'whatsNew': return <WhatsNew update={modal.update} />
+    case 'envVar': return <EnvVarForm roomId={modal.roomId} editName={modal.editName} />
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />

@@ -49,6 +49,20 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
+  it('fixture mode answers the shared file channels from the fixture, empty without one (KERNEL-302)', async () => {
+    const empty = fixtureHandlers(fixtures.Workspace)
+    expect(await empty['shared.list']({})).toEqual([])
+    expect(await empty['shared.thumb']({ sharedId: 'x', version: 1 })).toBeNull()
+    const v = { n: 1, at: 1, file: 'a.html', mime: 'text/html', bytes: 4, sha256: 'x' }
+    const file = (id: string, workspaceId: string, updatedAt: number) => ({ id, roomId: 'room-a', workspaceId, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html' as const, versions: [v], createdAt: 1, updatedAt })
+    const h = fixtureHandlers({ ...fixtures.Workspace, shared: [file('a', 'w1', 1), file('b', 'w2', 2)], sharedData: { a: { 1: { text: '<p>', thumb: 'data:image/png;base64,AA' } } } })
+    expect((await h['shared.list']({ roomId: 'room-a' })).map((f) => f.id)).toEqual(['b', 'a'])
+    expect((await h['shared.list']({ workspaceId: 'w1' })).map((f) => f.id)).toEqual(['a'])
+    expect(await h['shared.read']({ sharedId: 'a', version: 1 })).toEqual({ kind: 'html', mime: 'text/html', text: '<p>' })
+    expect(await h['shared.thumb']({ sharedId: 'a', version: 1 })).toBe('data:image/png;base64,AA')
+    await expect(h['shared.read']({ sharedId: 'a', version: 2 })).rejects.toThrow()
+  })
+
   it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
     const h = fixtureHandlers(fixtures.SettingsRoomIcon)
     expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
@@ -66,6 +80,27 @@ describe('IPC contract', () => {
     const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
     expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
     expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  })
+
+  it('fixture mode answers env names and files only, with no value to reveal (KERNEL-247)', async () => {
+    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], rooms: { 'room-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
+    expect(await h['env.get']({})).toEqual({ names: ['A', 'B'], files: [] })
+    expect(await h['env.get']({ roomId: 'room-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
+    await expect(h['env.reveal']({ roomId: 'room-a', name: 'TOKEN' })).rejects.toThrow('no values')
+    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
+  })
+
+  it('fixture mode answers terminal.presets and opens a terminal tab with a preset (KERNEL-248)', async () => {
+    const codex = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+    expect((await fixtureHandlers(fixtures.Workspace)['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell'])
+    const h = fixtureHandlers({ ...fixtures.Workspace, terminalClis: [codex] })
+    await h['settings.set']({ patch: { terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } } })
+    expect((await h['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell', 'codex', 'logs'])
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect(await h['chats.create']({ workspaceId, kind: 'terminal', preset: 'codex' })).toMatchObject({ kind: 'terminal', title: 'Terminal (codex)', terminal: { preset: 'codex', command: 'codex' } })
+    expect((await h['chats.create']({ workspaceId })).terminal).toBeUndefined()
+    await h['settings.set']({ patch: { terminal: { enabled: false } } })
+    await expect(h['chats.create']({ workspaceId, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
   })
 
   it('serves app and room settings', async () => {
@@ -147,8 +182,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 142 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(142)
+  it('lists all 154 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(154)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)

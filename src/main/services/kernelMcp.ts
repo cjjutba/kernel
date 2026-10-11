@@ -1,7 +1,8 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, Decision, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { bus } from '../bus'
+import { kernelServer } from './kernelServer'
 import { renderAgentFile } from './agents'
 import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
@@ -87,6 +88,9 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
     : `Not created: this team has no teammates yet. Propose one with hire_agent.`
 }
 
+/** What the Lead's server tells the model, next to the tools. */
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with ExitPlanMode or request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.'
+
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
  * of review_of (KERNEL-299). Only for a Reviewer, so a task branched off another task is never archived with it. The base
@@ -105,15 +109,7 @@ export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | un
  * Rowan proposes a plan, waits for the user to approve it, then creates one workspace per task.
  */
 export function kernelMcpServer(d: KernelToolDeps) {
-  return createSdkMcpServer({
-    name: 'kernel',
-    version: '0.1.0',
-    instructions: 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with ExitPlanMode or request_plan_approval. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.',
-    // Asks the CLI to load these with the prompt. A resumed session still deferred them in the first live run (KERNEL-67),
-    // so the hand-off doesn't depend on it.
-    alwaysLoad: true,
-    tools: kernelTools(d)
-  })
+  return kernelServer(kernelTools(d), LEAD_INSTRUCTIONS)
 }
 
 /** The Lead's tools, apart from the server so tests can call them. */

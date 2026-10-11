@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import type { AppSettings, DeepPartial, PrInstructions, RoomSettings, RoomSettingsPatch, ScriptTrust } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust } from '@shared/types'
 import { effortMemory } from '@shared/effort'
+import { terminalSettingsOf } from './terminalPresets'
 
 // The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
@@ -32,7 +34,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
     addressReviewInstructions: '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
-  experimental: { bigTerminal: true, bigTerminalWorktreeOnly: true, walking: true, floor3d: false, voice: false }
+  terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
+  experimental: { walking: true, floor3d: false, voice: false }
 })
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
@@ -52,6 +55,13 @@ export async function loadAppSettings(file: string, home: string): Promise<AppSe
     s.models.effortByModel = effortMemory(s.models.effortByModel)
     // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
     if (s.workspace.branchPattern === 'feat/{slug}') s.workspace.branchPattern = defaults.workspace.branchPattern
+    // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
+    const exp = s.experimental as { bigTerminal?: unknown; bigTerminalWorktreeOnly?: unknown }
+    if (typeof exp.bigTerminal === 'boolean' && saved?.terminal?.enabled === undefined) s.terminal.enabled = exp.bigTerminal
+    if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && saved?.terminal?.onlyInWorktrees === undefined) s.terminal.onlyInWorktrees = exp.bigTerminalWorktreeOnly
+    delete exp.bigTerminal
+    delete exp.bigTerminalWorktreeOnly
+    s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
     return s
   } catch { return defaults }
 }
@@ -68,6 +78,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
+  next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   return next
 }
 
@@ -77,6 +88,10 @@ const repoFile = (repo: string, name: string) => join(repo, '.kernel', name)
 
 async function readToml(file: string): Promise<Record<string, any>> {
   try { return parseToml(await readFile(file, 'utf8')) as Record<string, any> } catch { return {} }
+}
+
+function readTomlSync(file: string): Record<string, any> {
+  try { return parseToml(readFileSync(file, 'utf8')) as Record<string, any> } catch { return {} }
 }
 
 /** The room's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
@@ -95,7 +110,7 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env'] as const
 type Group = (typeof GROUPS)[number]
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
@@ -104,12 +119,6 @@ function picked(table: Record<string, any> | undefined, keys: readonly string[],
   for (const k of keys) if (table?.[snake(k)] !== undefined && ok(table[snake(k)])) out[k] = table[snake(k)]
   return out
 }
-
-/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
-export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
-
-/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
-export const isRunName = (name: string) => name.toLowerCase() === 'run'
 
 /** The `[run_scripts]` table's scripts in file order. A bad name, `run` in any case or a value that isn't a command is left out. */
 function runScriptsOf(table: unknown): Map<string, string> {
@@ -144,7 +153,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
     pr: picked(doc.pr, PR_KEYS, isString),
-    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)]))
+    preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
+    env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)]))
   }
 }
 
@@ -153,8 +163,15 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
  * An array is one value, so a `files.copy` both files set is the personal one's and counts as `override`.
  */
 export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
-  const sharedDoc = await readToml(repoFile(repo, 'settings.toml'))
-  const localDoc = await readToml(repoFile(repo, 'settings.local.toml'))
+  return repoSettingsOf(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
+}
+
+/** The same, read synchronously, for a session that starts synchronously and needs the room's env files (KERNEL-247). */
+export function loadRepoSettingsSync(repo: string): RepoSettings {
+  return repoSettingsOf(readTomlSync(repoFile(repo, 'settings.toml')), readTomlSync(repoFile(repo, 'settings.local.toml')))
+}
+
+function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string, any>): RepoSettings {
   const shared = roomValues(sharedDoc)
   const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
@@ -169,7 +186,7 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env } = merged
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
@@ -179,16 +196,17 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
     ...(linear.team ? { linear: { team: linear.team } } : {}),
     ...(Object.keys(pr).length ? { pr } : {}),
     preview: { urls: preview.urls ?? [] },
+    env: { files: env.files ?? [] },
     sources
   }
 }
 
-/** The text a room runs or copies on its own: the three scripts and the files.copy list, as the room reads them. */
-export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy'>
+/** The text a room runs or copies on its own: the scripts, the files.copy list and the env files list, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles'>
 
 /**
- * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script and the
- * files.copy list the room runs, where the value comes from the repo's text. That is `settings.toml`, and a personal
+ * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the
+ * files.copy list and the env files list (KERNEL-247) the room uses, where the value comes from the repo's text. That is `settings.toml`, and a personal
  * file the repo committed. A value from the user's own personal file (`localIsOwn`: git doesn't track it) is their
  * text, like a Settings save, and needs no trusting. Neither does Kernel's default copy list. A value the other file
  * hides never runs, so it isn't in here. Undefined when there is nothing to trust.
@@ -204,8 +222,10 @@ export function scriptsToTrust(repo: RepoSettings, o: { localIsOwn?: boolean } =
   const copy = fromRepo('files.copy') && !isDefault ? repo.files.copy : []
   // Named run scripts from `[run_scripts]` (KERNEL-244). `run` is `scripts.run`, already above.
   const runScripts = (repo.runScripts ?? []).filter((r) => r.name !== 'run' && fromRepo(`runScripts.${r.name}`))
-  if (!Object.keys(scripts).length && !runScripts.length && !copy.length) return undefined
-  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy }
+  // An env file can set ZDOTDIR or BASH_ENV, which makes every shell Kernel starts run repo code (KERNEL-247).
+  const envFiles = fromRepo('env.files') ? repo.env.files : []
+  if (!Object.keys(scripts).length && !runScripts.length && !copy.length && !envFiles.length) return undefined
+  return { scripts, ...(runScripts.length ? { runScripts } : {}), copy, ...(envFiles.length ? { envFiles } : {}) }
 }
 
 /**
@@ -263,7 +283,9 @@ export async function localSettingsOwn(repo: string): Promise<boolean> {
 /** sha256 of the subject, in a fixed order, so the same text always gives the same hash. */
 export function trustHash(s: TrustSubject): string {
   const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
-  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs])).digest('hex')
+  // Tagged and only when set, so a room without repo env files keeps the hash the user already trusted (KERNEL-247).
+  const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env])).digest('hex')
 }
 
 /** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */
@@ -311,6 +333,16 @@ export class ScriptTrustStore {
     })
     return this.writing
   }
+}
+
+/**
+ * The room's switched-off skills and MCP servers, merged as `loadRepoSettings` merges them. Read as a session starts, which
+ * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
+ */
+export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
+  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
+  return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
 
 /**
