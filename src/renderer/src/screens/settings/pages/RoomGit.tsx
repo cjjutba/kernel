@@ -7,6 +7,8 @@ import { patchRoomSettings } from '../useSettings'
 
 const USE_DEFAULT = ''
 const withCurrent = (list: string[], current: string) => [...new Set([current, ...list])].map((v) => ({ value: v, label: v }))
+const ON_OFF = [{ value: USE_DEFAULT, label: 'Use default' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]
+const onOff = (v: boolean | undefined) => (v === undefined ? USE_DEFAULT : v ? 'on' : 'off')
 const MODE: Record<AppSettings['workspace']['mode'], string> = { worktree: 'New worktree', current: 'Current branch' }
 
 /** Settings > a room > Git (SettingsRoomGit.png): the room's overrides of the app's Git defaults. A field the room leaves alone shows the app's value. */
@@ -18,10 +20,10 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   }, [roomId])
   if (!room || !roomId) return <NoRoom />
   const app = s.workspace
-  const set = (patch: Partial<Record<keyof RoomSettings['workspace'], string | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
+  const set = (patch: Partial<Record<keyof RoomSettings['workspace'], string | boolean | null>>) => void patchRoomSettings(roomId, { workspace: patch as never })
   const reset = (key: 'mode' | 'baseRef' | 'remote') => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
   // The source line when the room's file says where the value is from, else what the app default is.
-  const note = (key: 'mode' | 'baseRef' | 'remote', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
+  const note = (key: 'mode' | 'baseRef' | 'remote' | 'deleteBranchOnArchive' | 'archiveOnMerge', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
   const base = rs?.workspace.baseRef ?? app.baseRef
   const remote = rs?.workspace.remote ?? app.remote
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
@@ -36,6 +38,14 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
         </Row>
         <Row label="Remote origin" {...note('remote', app.remote)} onReset={reset('remote')}>
           <Select label="Remote origin" value={remote} options={withCurrent(remotes.length ? remotes : ['origin'], remote)} onChange={(e) => set({ remote: e.target.value })} />
+        </Row>
+      </Section>
+      <Section title="Cleanup">
+        <Row label="Delete branch on archive" {...note('deleteBranchOnArchive', app.deleteBranchOnArchive ? 'On' : 'Off')}>
+          <SegmentedControl label="Delete branch on archive" value={onOff(rs?.workspace.deleteBranchOnArchive)} onChange={(v) => set({ deleteBranchOnArchive: v ? v === 'on' : null })} options={ON_OFF} />
+        </Row>
+        <Row label="Archive on merge" {...note('archiveOnMerge', app.archiveOnMerge ? 'On' : 'Off')}>
+          <SegmentedControl label="Archive on merge" value={onOff(rs?.workspace.archiveOnMerge)} onChange={(v) => set({ archiveOnMerge: v ? v === 'on' : null })} options={ON_OFF} />
         </Row>
       </Section>
     </RoomPage>

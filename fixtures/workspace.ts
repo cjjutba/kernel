@@ -921,6 +921,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     running: [], chats: (c) => c.filter((x) => x.id !== 'chat-table-copy').map((x) => (x.id === 'chat-table' ? { ...x, closed: true } : x)),
     threads: (t) => t.map((x) => (x.id === GROUPED.table ? { ...x, closedAt: at(10, 50) } : x))
   })),
+  // A room whose last chat was closed (KERNEL-365): the Lead's workspace opens on New chat with Rowan and the sidebar has no chat row (KERNEL-366).
+  // The three workspaces the closed chat handed off stay as unowned rows.
+  LeadNoChats: scene((f) => {
+    const g = grouped(f, { running: [], chats: (c) => c.map((x) => ({ ...x, closed: true })), threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
+    // Nothing is open, so no tab is stored and the closed chats keep no transcript.
+    return { ...g, items: {}, ui: { ...g.ui!, tabs: {} } }
+  }),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),

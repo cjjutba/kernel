@@ -31,6 +31,7 @@ const noCanvas = [
   'QuickAskLeadGone',
   'NavMemory',
   'SidebarLeadChats',
+  'LeadNoChats', // the Lead's workspace with no chat: New chat with Rowan in place of a chat, no chat row in the sidebar, no chat tab (KERNEL-366)
   'WhatsNewCurrent', // What's new with no update ready, showing the running version's notes (KERNEL-154)
   'UpdateReadyLight', // the update card in the light theme (KERNEL-164)
   'HistoryConfirmDelete', // the Delete confirm in History for every archived row, with two branches that hold unpushed commits (KERNEL-333)
