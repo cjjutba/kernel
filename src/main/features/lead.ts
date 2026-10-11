@@ -341,9 +341,14 @@ export class Lead extends Feature {
       const pushed = (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
         || (upstream.code === 0 && upstream.stdout.trim() !== ws.baseRef)
       if (pushed) return
-      const to = await freeBranch(room.path, wanted)
-      if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return
-      await renameBranch(ws.path, to)
+      // Two chats with Rowan named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
+      const to = await this.k.workspaces.withBranchLock(room.id, async () => {
+        const free = await freeBranch(room.path, wanted)
+        if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
+        await renameBranch(ws.path, free)
+        return free
+      })
+      if (!to) return
       this.updateWs(id, { branch: to, name: slugify(title) })
     })
     this.renaming.set(id, next)

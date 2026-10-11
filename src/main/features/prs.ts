@@ -319,8 +319,11 @@ export class Prs extends Feature {
     if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
-    const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
-    await git(ws.path, 'checkout', '-b', branch, ws.baseRef)
+    const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
+      const free = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
+      await git(ws.path, 'checkout', '-b', free, ws.baseRef)
+      return free
+    })
     const next = this.updateWs(id, { branch, prState: 'none', prNumber: undefined, prUrl: undefined, prTitle: undefined })
     bus.push({ type: 'pr', workspaceId: id, state: 'none' })
     this.note(id, `Continuing on ${branch} from ${stripRemote(ws.baseRef, remote)}. The chat stays.`)

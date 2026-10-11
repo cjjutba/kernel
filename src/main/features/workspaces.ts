@@ -33,7 +33,7 @@ export interface CutWorkspace {
 export class Workspaces extends Feature {
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
   readonly reservedPorts = new Set<number>()
-  /** Per room, the last branch pick and worktree add, so two creates at once never pick the same free branch (KERNEL-231). */
+  /** Per room, the last branch pick and the step that makes the branch, so two at once never pick the same free name (KERNEL-231). */
   private branchLocks = new Map<string, Promise<unknown>>()
 
   /** A workspace for the room's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
@@ -304,17 +304,21 @@ export class Workspaces extends Feature {
   }
 
   /**
-   * A worktree on a new branch: `wanted`, or the first free name after it. The pick and the add run one at a time per room,
-   * since a branch is free until `worktree add` makes it, and a second create at once would pick it too (KERNEL-231).
+   * Runs `pick`, which picks a free branch with `freeBranch` and makes it, one at a time per room. A branch is free until git
+   * makes it, so a second pick at once would choose the same name (KERNEL-231). New workspaces, forks, restores and Continue use it.
    */
-  private async newBranchWorktree(room: Room, wanted: string, baseRef: string): Promise<{ branch: string; path: string }> {
-    const before = this.branchLocks.get(room.id) ?? Promise.resolve()
-    const run = before.catch(() => undefined).then(async () => {
+  async withBranchLock<T>(roomId: string, pick: () => Promise<T>): Promise<T> {
+    const run = (this.branchLocks.get(roomId) ?? Promise.resolve()).catch(() => undefined).then(pick)
+    this.branchLocks.set(roomId, run)
+    try { return await run } finally { if (this.branchLocks.get(roomId) === run) this.branchLocks.delete(roomId) }
+  }
+
+  /** A worktree on a new branch: `wanted`, or the first free name after it, in the room's worktree folder. */
+  private newBranchWorktree(room: Room, wanted: string, baseRef: string): Promise<{ branch: string; path: string }> {
+    return this.withBranchLock(room.id, async () => {
       const branch = await freeBranch(room.path, wanted)
       return { branch, path: await createWorktree({ repo: room.path, root: roomWorktreeRoot(this.settings.worktreeRoot, room), branch, baseRef }) }
     })
-    this.branchLocks.set(room.id, run)
-    try { return await run } finally { if (this.branchLocks.get(room.id) === run) this.branchLocks.delete(room.id) }
   }
 
   /** The first port of every open workspace's block. */

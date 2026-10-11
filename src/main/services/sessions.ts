@@ -134,7 +134,7 @@ export interface SessionDeps {
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
-  /** Claude's API answered: a message with no error, or a turn that ended well. The network works, whatever DNS says (KERNEL-231). */
+  /** Claude's API answered: a message with no `error`, or a `success` result without `is_error`. The network works, whatever DNS says (KERNEL-231). */
   onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
@@ -1207,7 +1207,8 @@ export class Sessions {
         if (failure === 'auth' || failure === 'network') live.failed = failure
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
-        if (!failure) this.d.onReached?.()
+        // Only a clean answer counts. `unknown` and `server_error` are what Claude Code sends when its retries run out.
+        if (!msg.error) this.d.onReached?.()
         this.d.onReply?.(ws, chat)
         // Subagent chatter stays inside the tool row. Only the model it runs on reaches the row's label.
         if (msg.parent_tool_use_id) { this.subagentModel(chat, live, msg.parent_tool_use_id, msg.message.model); return }
@@ -1250,7 +1251,8 @@ export class Sessions {
       }
       case 'result': {
         const ok = msg.subtype === 'success'
-        if (ok) this.d.onReached?.()
+        // A turn that ended on an API error is `success` with `is_error`, so it never says the API was reached.
+        if (ok && !msg.is_error) this.d.onReached?.()
         if (msg.subtype !== 'success' && live.resume && msg.errors?.includes(`${SESSION_GONE}${live.resume}`) && this.renew(chat, ws, live)) return
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
         if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })

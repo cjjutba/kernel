@@ -183,8 +183,11 @@ export class Archive extends Feature {
       const kept = await branchState(room.path, ws.branch) === 'exists' || (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
       const base = !kept && isLeadChatWorkspace(ws) ? await leadBase(room.path, remote) : undefined
       if (base) {
-        const branch = await freeBranch(room.path, ws.branch)
-        await createWorktree({ repo: room.path, root: dirname(path), branch, baseRef: base, path })
+        const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
+          const free = await freeBranch(room.path, ws.branch)
+          await createWorktree({ repo: room.path, root: dirname(path), branch: free, baseRef: base, path })
+          return free
+        })
         moved = { branch, baseRef: base }
       } else await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)

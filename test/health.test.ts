@@ -245,6 +245,24 @@ describe('sessions under failure', () => {
     expect(reached).toBe(2)
   })
 
+  it.each(['unknown', 'server_error'])('never says the API was reached on a message with error %s, as when retries run out (KERNEL-231)', async (error) => {
+    let reached = 0
+    const { sessions, chat } = await runner({ onReached: () => reached++ })
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, error, message: { content: [{ type: 'text', text: 'API Error: Connection error.' }] }, session_id: 's' })
+    await flush()
+    expect(reached).toBe(0)
+  })
+
+  it('never says the API was reached on a turn that ended on an API error, success with is_error (KERNEL-231)', async () => {
+    let reached = 0
+    const { sessions, chat } = await runner({ onReached: () => reached++ })
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    sdk.calls[sdk.calls.length - 1].feed({ ...result(), is_error: true, result: 'API Error: Connection error.' })
+    await flush()
+    expect(reached).toBe(0)
+  })
+
   it('saves the context use Claude Code reports after each turn', async () => {
     const { sessions, chat, store } = await runner()
     sdk.context = 91.6
