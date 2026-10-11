@@ -109,6 +109,24 @@ describe('resolveTeam', () => {
     expect(warningsOf(r.agents)).toEqual({ 'kernel-lead': ['reserved-id:kernel-lead.md'], kai: ['duplicate-id:b.md'] })
   })
 
+  // KERNEL-451: a broken file shows on Team with its error and does nothing else.
+  it("keeps a file Kernel can't read on the team with its error, never as the Lead, the reviewer or a teammate", async () => {
+    const broken = (name: string, head: string) => agentFromFile(`/repo/.claude/agents/${name}.md`, `---\n${head}\n---\nBody`)
+    const r = await team([broken('ada', 'name: ada\ndescription: "Plans.\nlead: true'), broken('rex', 'name: rex\ndescription: "Reviews.\nrole: Reviewer'), KAI], { reviewer: 'rex' })
+    expect(roles(r.agents)).toEqual([['kernel-lead', 'Rowan', 'lead', 'builtin'], ['ada', 'Ada', 'helper'], ['kai', 'Kai', 'member'], ['rex', 'Rex', 'helper'], ['kernel-reviewer', 'Theo', 'reviewer', 'builtin']])
+    const kinds = Object.fromEntries(r.agents.map((a) => [a.id, a.warnings?.map((w) => w.kind) ?? []]))
+    expect(kinds).toEqual({ 'kernel-lead': [], ada: ['unreadable-file'], kai: [], rex: ['unreadable-file'], 'kernel-reviewer': ['setting-missing'] })
+    // A file that reads keeps the name, even when the broken one comes first by file name.
+    const twin = await team([broken('kai', 'name: kai\ndescription: "Frontend'), file('kai2', 'name: kai\ndescription: Frontend engineer.\ntools: Read, Edit, Bash')])
+    expect(twin.agents.find((a) => a.id === 'kai')).toMatchObject({ file: '/repo/.claude/agents/kai2.md', member: true, warnings: [{ kind: 'duplicate-id', detail: 'kai.md' }] })
+  })
+
+  it('makes a helper of an agent whose disallowedTools takes away Bash or every editing tool', async () => {
+    const r = await team([file('scout', 'name: scout\ndescription: x\ndisallowedTools: Bash'), file('pen', 'name: pen\ndescription: x\ndisallowedTools: [Edit, Write]'), NOOR], undefined, { starters: false })
+    expect(roles(r.agents)).toEqual([['noor', 'Noor', 'member'], ['pen', 'Pen', 'helper'], ['scout', 'Scout', 'helper']])
+    expect(warningsOf(r.agents)).toEqual({ pen: ['cant-open-pr'], scout: ['cant-open-pr'] })
+  })
+
   it('reads tool lines in every form, and an agent with only MCP tools is a helper', async () => {
     const r = await team([
       file('flow', 'name: flow\ndescription: x\ntools: [Read, MultiEdit, Bash]'),

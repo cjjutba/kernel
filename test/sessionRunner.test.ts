@@ -534,6 +534,14 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
   })
 
+  it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
+    expect(options.disallowedTools).toEqual(['WebFetch', 'mcp__github', 'mcp__linear__save_issue'])
+    const gate = gateOf(options)!
+    expect(await use(gate, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
+    for (const tool of ['Edit', 'Write', 'mcp__linear__get_issue', 'mcp__kernel__submit_review']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
   it('restricts nothing for an agent with no tools line', async () => {
     const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined } })
     expect(options).not.toHaveProperty('disallowedTools')
