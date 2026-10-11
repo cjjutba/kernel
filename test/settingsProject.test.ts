@@ -10,7 +10,8 @@ import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoS
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
-import { bashVerdict, type SessionDeps } from '../src/main/services/sessions'
+import { bashVerdict } from '../src/main/services/bashGuard'
+import type { SessionDeps } from '../src/main/services/sessions'
 import { tempRepo } from './helpers'
 
 describe('repo settings files', () => {

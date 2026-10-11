@@ -10,7 +10,8 @@ import { CLAUDE_INSTALL, compareVersions, nextFreePort, parseClaudeVersion, pars
 import type { ExecResult } from '../src/main/services/exec'
 import type { PreflightCheck } from '@shared/types'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
-import { matchesRule, describeTool, Approvals } from '../src/main/services/approvals'
+import { describeTool, Approvals } from '../src/main/services/approvals'
+import { matchesRule } from '../src/main/services/bashGuard'
 import { InputQueue, toUserMessage } from '../src/main/services/sessions'
 import { Store } from '../src/main/db'
 

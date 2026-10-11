@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
+import { bashVerdict, pushesTo, usesNetwork } from '../src/main/services/bashGuard'
+import { Sessions } from '../src/main/services/sessions'
 import { applySettingsPatch, DEFAULT_SETTINGS, loadAppSettings, saveAppSettings } from '../src/main/services/settings'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
