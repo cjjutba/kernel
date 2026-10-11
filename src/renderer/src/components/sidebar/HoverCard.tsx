@@ -5,7 +5,7 @@ import { Icon } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
-import { chatFoot, chatSince, chatWaits, waitLine } from './chatCard'
+import { chatFoot, chatLine, chatSince, chatWaits } from './chatCard'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
 const OPEN_MS = 450
@@ -108,11 +108,11 @@ function lineOf(e: ActivityEvent, who: string | undefined): string {
   return `${actor} ${e.text}${e.object ? ` ${e.object}` : ''}`
 }
 
-function Card({ eyebrow, status, title, line, wrap, meta, when }: { eyebrow: ReactNode; status: ReactNode; title: string; line: string; /** Lets the line run to a second row, for a question that doesn't fit on one. */ wrap?: boolean; meta?: ReactNode; when?: string }) {
+function Card({ eyebrow, status, title, line, wrap, meta, when }: { eyebrow: ReactNode; status: ReactNode; title: string; line: string; /** Lets the title and the line run to more rows, for a long chat name or a question that doesn't fit on one. */ wrap?: boolean; meta?: ReactNode; when?: string }) {
   return (
     <>
       <div className="hc-head"><span className="grow ellipsis">{eyebrow}</span>{status}</div>
-      <div className="hc-title ellipsis">{title}</div>
+      <div className={`hc-title ${wrap ? 'hc-wrap-title' : 'ellipsis'}`}>{title}</div>
       <div className={`hc-line ${wrap ? 'hc-wrap' : 'ellipsis'}`}>{line}</div>
       <div className="hc-foot">{meta}{when && <span className="hc-when">{when}</span>}</div>
     </>
@@ -181,11 +181,12 @@ export function LeadCard({ roomId, at, id }: { roomId: string; at: DOMRect; id: 
  */
 export function ChatCard({ roomId, thread, tabs, owned, at, id }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
-  const lead = useStore((s) => leadOf(s.agents, roomId)?.name)
+  const agents = useStore((s) => s.agents[roomId])
+  const lead = agents?.find((a) => a.lead)?.name
   const approvals = useStore((s) => s.approvals)
   const working = useStore((s) => tabs.filter((c) => s.running[c.id]).length)
   // The newest line in any tab. Tabs that haven't loaded their transcript add nothing.
-  const lastItem = useStore((s) => tabs.reduce((t, c) => Math.max(t, ...(s.items[c.id] ?? []).map((i) => i.ts)), 0))
+  const lastItem = useStore((s) => tabs.reduce((t, c) => (s.items[c.id] ?? []).reduce((m, i) => Math.max(m, i.ts), t), 0))
   const waits = useMemo(() => chatWaits({ tabs, owned, approvals }), [tabs, owned, approvals])
   const g = chatGlyph({ waiting: waits.map((w) => w.approval), running: working > 0 })
   const needing = new Set(waits.map((w) => w.key)).size
@@ -197,7 +198,7 @@ export function ChatCard({ roomId, thread, tabs, owned, at, id }: { roomId: stri
         // A chat with nothing running or waiting shows no pill, since the row shows only the chat icon then.
         status={waits.length || working ? <Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={g.icon === 'spin' ? undefined : g.icon} label={g.label} /> : null}
         title={thread.title}
-        line={waits.length ? waitLine(waits[0], lead ?? 'The Lead') : 'Nothing is waiting on you.'} wrap
+        line={chatLine(waits, agents)} wrap
         meta={<span className="grow ellipsis">{chatFoot(tabs.length, needing, working)}</span>}
         when={agoShort(when).replace(' ago', '')}
       />

@@ -1,15 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { chatFoot, chatSince, chatWaits, waitLine } from '../src/renderer/src/components/sidebar/chatCard'
-import type { Approval, Chat, Workspace } from '../src/shared/types'
+import { chatFoot, chatLine, chatSince, chatWaits, waitLine } from '../src/renderer/src/components/sidebar/chatCard'
+import type { AgentDef, Approval, Chat, Workspace } from '../src/shared/types'
 
 const tab = (id: string, title: string): Chat => ({ id, workspaceId: 'lead', title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace =>
   ({ id, roomId: 'r1', name: id, branch: id, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 0, status: 'ready', prState: 'none', createdAt: 1, ...over }) as Workspace
 const ask = (id: string, over: Partial<Approval>): Approval => ({ id, kind: 'question', source: 'sdk', title: '', status: 'pending', createdAt: 100, ...over })
+const agent = (id: string, name: string, lead = false): AgentDef => ({ id, name, role: lead ? 'Lead' : 'Dev', description: '', model: 'opus', lead, prompt: '', file: `.claude/agents/${id}.md` })
+const agents = [agent('rowan', 'Rowan', true), agent('noor', 'Noor')]
 const tabs = [tab('c1', 'Client portal login'), tab('c2', 'Fix the login redirect')]
-const owned = [ws('invoice-table', { title: 'Invoice table' })]
+const owned = [ws('invoice-table', { title: 'Invoice table', agentId: 'noor' })]
 
 describe('chat hover card (KERNEL-339)', () => {
+  it('names the agent who is waiting, not the Lead, through the lookup the card uses', () => {
+    // The approval of a workspace's agent may carry no agent of its own, so the workspace's agent is used.
+    const bare = ask('b', { kind: 'tool', toolName: 'Bash', workspaceId: 'invoice-table' })
+    expect(chatLine(chatWaits({ tabs, owned, approvals: [bare] }), agents)).toBe('Invoice table: Noor wants to run a command')
+    expect(chatLine(chatWaits({ tabs, owned, approvals: [{ ...bare, agentId: 'rowan' }] }), agents)).toBe('Invoice table: Rowan wants to run a command')
+    // A permission in one of the Lead's own tabs is the Lead's.
+    expect(chatLine(chatWaits({ tabs, owned, approvals: [ask('t', { kind: 'tool', toolName: 'Bash', chatId: 'c1', agentId: 'rowan' })] }), agents)).toBe('Client portal login: Rowan wants to run a command')
+    // An agent the room doesn't list, or no agents loaded yet, reads as the Lead.
+    expect(chatLine(chatWaits({ tabs, owned, approvals: [{ ...bare, agentId: 'gone' }] }), agents)).toBe('Invoice table: Rowan wants to run a command')
+    expect(chatLine(chatWaits({ tabs, owned, approvals: [bare] }), undefined)).toBe('Invoice table: The Lead wants to run a command')
+    expect(chatLine([], agents)).toBe('Nothing is waiting on you.')
+  })
+
   it('names the tab that asks and what it asks', () => {
     const waits = chatWaits({ tabs, owned, approvals: [ask('a1', { chatId: 'c2', title: 'Should we keep Google sign in?' })] })
     expect(waitLine(waits[0], 'Rowan')).toBe('Fix the login redirect asks whether to keep Google sign in.')

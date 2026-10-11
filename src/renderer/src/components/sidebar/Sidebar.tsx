@@ -133,7 +133,7 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
       {owned.length > 0 && (
-        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
+        <button className="chat-chev" data-card-off aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
           <Icon name="right" size={14} />
         </button>
       )}
