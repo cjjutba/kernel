@@ -379,7 +379,7 @@ def g_patch(t, js):
 # "latest main", the Create PR button is gone, and the right panel opens on a PRs tab under the ready band from LeadPrs.
 LEAD_BADGE='latest main'
 L_OPEN='<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h6v6M12 4l-7 7"></path></svg>'
-L_PRS=[('Kai','T-15b','#43','Download PDF in the row actions',96,12),('Noor','T-09','#41','Org invites',212,34)]
+L_PRS=[('Kai','T-15b','#43','Download PDF in the row actions',96,12),('Kai','T-09','#41','Org invites',212,34)]
 def lead_pr(name,key,n,title,add,dele):
     return ('<li style="padding: 5px 14px 7px; border-top: 1px solid #1a1b1e">'
       '<div style="display: flex; align-items: center; gap: 8px; height: 24px"><span style="font-size: 13px; font-weight: 500; color: #f7f8f8">%s</span>'
