@@ -31,6 +31,12 @@ function openShared(workspaceId: string, sharedId: string) {
   actions.ui.openShared(workspaceId, sharedId)
 }
 
+/** The room has no Lead workspace yet: open it (the engine makes it), then the file's tab, now that it is on screen. */
+async function openSharedInLead(roomId: string, sharedId: string) {
+  const ws = await openLead(roomId)
+  if (ws) actions.ui.openShared(ws.id, sharedId)
+}
+
 /** CommandPalette.png: search and run anything, from the keyboard (⌘K). */
 export function CommandPalette() {
   const route = useStore((s) => s.ui.route)
@@ -48,7 +54,7 @@ export function CommandPalette() {
 
   const { items, more } = useMemo(() => buildItems({
     route, rooms, workspaces, approvals, agents, terminal, shared: Object.values(shared),
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared }
+    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }) }
   }), [route, rooms, workspaces, approvals, agents, terminal, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)

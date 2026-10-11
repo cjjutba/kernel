@@ -1,5 +1,6 @@
 import type { AgentDef, Approval, Room, Route, SettingsPage, SharedFile, Workspace } from '@shared/types'
 
+import { isLeadWorkspace } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
 import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
@@ -86,6 +87,10 @@ export interface PaletteInput {
     openRoom: (roomId: string) => void
     /** Opens a shared file's tab in a workspace and shows that workspace. */
     openShared: (workspaceId: string, sharedId: string) => void
+    /** Opens the room's Lead workspace, which the engine creates when there is none, then the file's tab in it. */
+    openSharedInLead: (roomId: string, sharedId: string) => void
+    /** A toast with only a title. */
+    toast: (title: string) => void
   }
 }
 
@@ -147,22 +152,30 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     item('room-new', 'Rooms', '+', 'New room', act.newRoom, { also: 'add connect repo' })
   ]
 
-  // The sharing workspace if it is still open, else the workspace on screen, else the room's Lead workspace (KERNEL-307).
-  const sharedTarget = (f: SharedFile): Workspace | undefined => {
+  // Where a shared file opens is worked out when it is picked, so a file is always listed: the sharing workspace if it is still open, else the
+  // workspace on screen, else the room's Lead (made on first use), else the room's first open workspace (KERNEL-307).
+  const openSharedFile = (f: SharedFile) => {
     const open = (w?: Workspace) => (w && w.status !== 'archived' ? w : undefined)
+    const target = open(workspaces.find((w) => w.id === f.workspaceId)) ?? open(current)
+    if (target) return act.openShared(target.id, f.id)
     const leadId = i.agents[f.roomId]?.find((a) => a.lead)?.id
-    return open(workspaces.find((w) => w.id === f.workspaceId)) ?? open(current) ?? open(workspaces.find((w) => w.roomId === f.roomId && (w.agentId === leadId || w.name === 'lead')))
+    if (leadId) {
+      const leadWs = workspaces.find((w) => isLeadWorkspace(w, f.roomId, leadId))
+      return leadWs ? act.openShared(leadWs.id, f.id) : act.openSharedInLead(f.roomId, f.id)
+    }
+    const any = workspaces.find((w) => w.roomId === f.roomId && w.status !== 'archived')
+    if (any) return act.openShared(any.id, f.id)
+    act.toast(`Open a workspace in ${rooms.find((r) => r.id === f.roomId)?.name ?? 'this room'} to view this file`)
   }
   const sharedItems = i.shared
     .slice()
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .flatMap((f) => {
-      const target = sharedTarget(f)
-      if (!target || !f.versions.length) return []
+      if (!f.versions.length) return []
       const latest = latestOf(f)
       const by = nameOf(f.roomId, f.agentId) ?? f.agentId
       const kind = kindLabel(f.kind, latest.mime)
-      const it = item(`shared-${f.id}`, 'Shared', '◇', f.title, () => act.openShared(target.id, f.id), { also: `${kind} ${f.kind} ${f.source} ${by}`, meta: `${kind} · v${latest.n} · ${by} · ${sinceShort(f.updatedAt)}` })
+      const it = item(`shared-${f.id}`, 'Shared', '◇', f.title, () => openSharedFile(f), { also: `${kind} ${f.kind} ${f.source} ${by}`, meta: `${kind} · v${latest.n} · ${by} · ${sinceShort(f.updatedAt)}` })
       return [{ roomId: f.roomId, it }]
     })
   // With nothing typed: the five newest in the room in view. Typing searches the rest as well.

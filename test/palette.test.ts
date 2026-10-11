@@ -5,7 +5,7 @@ import type { AgentDef, Room, SharedFile, Workspace } from '../src/shared/types'
 
 const room = (id: string, name: string): Room => ({ id, name, path: `/p/${id}`, defaultBranch: 'main', paused: false, createdAt: 0 })
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined }
+const act = { go: () => undefined, newWorkspace: () => undefined, newRoom: () => undefined, whatsNew: () => undefined, approve: () => undefined, newChat: () => undefined, openLead: () => undefined, openRoom: () => undefined, openShared: () => undefined, openSharedInLead: () => undefined, toast: () => undefined }
 const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 
 describe('command palette', () => {
@@ -88,7 +88,7 @@ describe('command palette, shared files', () => {
     id, roomId: 'a', workspaceId: 'w1', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: `File ${id}`, kind: 'html',
     versions: [{ n: 1, at: 1, file: 'v1', mime: 'text/html', bytes: 10, sha256: id }], createdAt: 1, updatedAt: 1, ...over
   })
-  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'rowan' }), ws('wb', { roomId: 'b', agentId: 'rowan' })]
+  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'rowan', mode: 'current' }), ws('wb', { roomId: 'b', agentId: 'rowan' })]
   const base = { rooms, workspaces, approvals: [], agents, act }
   const shared = (list: SharedFile[], route: Parameters<typeof buildItems>[0]['route'] = { name: 'workspace', workspaceId: 'w1' }, extra: Partial<Parameters<typeof buildItems>[0]> = {}) => buildItems({ ...base, shared: list, route, ...extra })
   const ids = (list: { id: string }[]) => list.map((x) => x.id)
@@ -151,9 +151,27 @@ describe('command palette, shared files', () => {
     // Not on a workspace: the Lead's.
     open(file('s'), { name: 'home' }, archived)
     expect(opened).toEqual(['w1:s', 'w2:s', 'lead:s'])
-    // No workspace to open it in: nothing to run, so it is not listed.
-    const none = buildItems({ ...base, workspaces: [], shared: [file('s')], route: { name: 'home' } })
-    expect([...none.items, ...none.more].some((i) => i.section === 'Shared')).toBe(false)
+  })
+
+  it('lists a file even when nothing is open for it, and works out where to open it when it is picked', () => {
+    const calls: string[] = []
+    const act2 = { ...act, openShared: (w: string, s: string) => { calls.push(`open ${w}:${s}`) }, openSharedInLead: (r: string, s: string) => { calls.push(`lead ${r}:${s}`) }, toast: (t: string) => { calls.push(`toast ${t}`) } }
+    const pick = (f: SharedFile, o: Partial<Parameters<typeof buildItems>[0]>) => {
+      const b = buildItems({ ...base, shared: [f], route: { name: 'home' }, act: act2, ...o })
+      const hit = visibleItems(b.items, b.more, f.title)[0].list.find((i) => i.section === 'Shared')
+      expect(hit?.label).toBe(f.title)
+      hit?.run()
+    }
+    // The sharer is archived, nothing is on screen and the room has no Lead workspace yet: the Lead opens, then the file in it.
+    const archived = ws('w1', { roomId: 'a', status: 'archived' })
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived] })
+    // The Lead workspace exists: no round trip to the engine.
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { roomId: 'a', agentId: 'rowan', mode: 'current' })] })
+    // A room with no Lead agent opens in its first workspace that is still open.
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('w3', { roomId: 'a' })], agents: { a: [noor] } })
+    // No Lead agent and no workspace that is open: say what to do.
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived], agents: { a: [noor] } })
+    expect(calls).toEqual(['lead a:s', 'open lead:s', 'open w3:s', 'toast Open a workspace in Client A to view this file'])
   })
 })
 
