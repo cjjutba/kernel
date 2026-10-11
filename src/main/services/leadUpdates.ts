@@ -42,6 +42,8 @@ export interface LeadUpdateDeps {
   reviewState?: (ws: Workspace) => ReviewState | undefined
   /** The team's reviewer, the first agent with a review role that isn't the Lead. */
   reviewer?: (roomId: string) => AgentDef | undefined
+  /** Whether a PR that passed checks goes to the reviewer unasked (`pr.autoReview`, KERNEL-115). On when unset. */
+  autoReview?: () => boolean
   /** How long to wait for more events before sending. Five seconds; tests shorten it. */
   delayMs?: number
 }
@@ -556,7 +558,7 @@ export class LeadUpdates {
         if (source.owner) {
           // Work from a closed tab of this chat is this chat's own, so its last merge reads like any other.
           const decided = decide({ ws, name, events: block.events, fromChat: source.from?.tab ? undefined : source.from?.title }, {
-            review, reviewer, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id)
+            review, reviewer, autoReview: this.d.autoReview?.() ?? true, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id)
           })
           block.wake = decided.wake
           block.todo = decided.todo
@@ -618,8 +620,11 @@ export class LeadUpdates {
 /** The line over routed work, the same words the card draws (KERNEL-337). */
 export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you closed.` : `From "${f.title}", a Lead chat that is now closed.`)
 
-/** What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer, and whether this merge was the last. */
-export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
+/**
+ * What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer, whether a PR that passed checks
+ * goes to it unasked (on when unset), and whether this merge was the last.
+ */
+export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
 
 /** The To do line for a PR that passed checks and was approved. The review's own line says the same, so it shows once. */
 const readyToMerge = (pr: string, by: string[]) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. Tell the user it is ready to merge.`
@@ -691,7 +696,11 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (review?.blockers || review?.inProgress) break
         if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in ${review.open.name}'s review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
+        // With auto review off, only a review the user asked for is followed up: nobody looked at this PR, so it is the user's to merge (KERNEL-115).
+        if (c.autoReview === false && !review?.open && !review?.stale) { wake(`${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.`); break }
         if (review?.open) { wake(review.stale ? anotherReview(pr, review.open.name, review.open.workspaceId) : `${upper(pr)} needs a review. Ask ${review.open.name} to review it with message_agent (workspace ${review.open.workspaceId}).`); break }
+        // A review of an earlier commit with nobody left to review again: a merge that needs an approval waits (KERNEL-115).
+        if (review?.stale && !c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts, but its last review was of an earlier commit and no reviewer is on this team now. Tell the user the review is out of date.`); break }
         if (!c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
         wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: call create_workspace with agent "${c.reviewer.id}" and review_of "${ws.id}".`)
         break
