@@ -1,6 +1,7 @@
 import type { ChatPart } from './chats'
 import type { NewAgentPrefill, NewRoomPrefill } from './rooms'
 import type { RoomSettingsSection, SettingsPage, Theme } from './settings'
+import type { Provider } from './chats'
 import type { AppUpdate } from './system'
 import type { WorkspaceSource } from './workspaces'
 
@@ -21,7 +22,8 @@ export type Route =
   /** Linear issues. `issueId` is the identifier of the open issue. */
   | { name: 'issues'; issueId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
-  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection }
+  /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
