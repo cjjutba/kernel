@@ -22,8 +22,10 @@ describe('formatDate', () => {
 })
 
 describe('latestVersionLabel', () => {
-  it('drops the patch number', () => {
+  it('drops the .0 of a minor and keeps a patch number', () => {
     expect(latestVersionLabel('0.1.0')).toBe('0.1')
+    expect(latestVersionLabel('0.2.1')).toBe('0.2.1')
+    expect(latestVersionLabel('0.2.10')).toBe('0.2.10')
   })
 })
 

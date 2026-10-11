@@ -24,17 +24,13 @@ export const Release = z.object({
   sections: z.array(Section).min(1)
 })
 
-/** A minor release on the changelog page, with its patch releases (oldest first) shown as "New in x.y.z". */
-export const ChangelogEntry = Release.extend({ patches: z.array(Release) })
-
 export const UpNext = z.object({ title: z.string(), intro: z.string(), items: z.array(ChangeItem) })
 
-export const Changelog = z.object({ releases: z.array(ChangelogEntry).min(1), upNext: UpNext })
+export const Changelog = z.object({ releases: z.array(Release).min(1), upNext: UpNext })
 
 export type ChangeItem = z.infer<typeof ChangeItem>
 export type Section = z.infer<typeof Section>
 export type Release = z.infer<typeof Release>
-export type ChangelogEntry = z.infer<typeof ChangelogEntry>
 export type UpNext = z.infer<typeof UpNext>
 
 // Release files: site/content/releases/<version>.md. Frontmatter, then "## Section" headings with "- item" bullets.
@@ -139,7 +135,7 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** True for x.y.z with z above 0. A patch shows inside its x.y.0 entry on the changelog. */
+/** True for x.y.z with z above 0. A patch is titled "Kernel x.y.z" and needs no intro. */
 export function isPatch(version: string): boolean {
   return Number(version.split('.')[2]) > 0
 }

@@ -28,7 +28,7 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
    - `gh release view v<version> --repo cjjutba/kernel --json body,assets`: the body starts with the notes and ends with "Full list of changes", and the DMG, zip, blockmaps and `latest-mac.yml` are attached.
    - `curl -sL https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`: `version: <version>` and the notes under `releaseNotes`.
    - `curl -sIL https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg`: the redirect points at the `v<version>` asset.
-   - `curl -s https://kernel.cjjutba.dev/changelog`: the page shows `<version>`. A patch shows as "New in <version>" inside its minor's entry. If Vercel is still deploying, say so and stop; don't poll.
+   - `curl -s https://kernel.cjjutba.dev/changelog`: the page shows `<version>` as its own entry at the top, with the Latest badge. If Vercel is still deploying, say so and stop; don't poll.
 
 7. **Update my installed copy.** Walk me through it: open the installed previous version, go to Settings, About and click Check for updates. When the footer shows Update ready, click it: What's new lists the new notes. Click Restart to update. After the restart, What's new opens once, titled "What's new in Kernel <x.y>", with the same notes. Ask me to confirm what I saw.
 
