@@ -128,14 +128,16 @@ export function migrate(db: Database.Database, file: string, now = Date.now(), l
   return { from, to: latest, backup }
 }
 
-/**
- * VACUUM INTO writes a consistent copy, WAL included, synchronously. It refuses a target that exists, so that goes first.
- * The new copy always stays, with the newest other one, even when a restored older file gives it the lowest version.
- */
-function backUp(db: Database.Database, file: string, from: number): string {
-  const target = `${file}.bak-v${from}`
+/** VACUUM INTO writes a consistent copy, WAL included, synchronously. It refuses a target that exists, so that goes first. */
+export function copyDatabase(db: Database.Database, target: string) {
   rmSync(target, { force: true })
   db.prepare('vacuum into ?').run(target)
+}
+
+/** The new copy always stays, with the newest other one, even when a restored older file gives it the lowest version. */
+function backUp(db: Database.Database, file: string, from: number): string {
+  const target = `${file}.bak-v${from}`
+  copyDatabase(db, target)
   const name = basename(file)
   const copies = readdirSync(dirname(file))
     .flatMap((n) => (n !== basename(target) && n.startsWith(`${name}.bak-v`) && /^\d+$/.test(n.slice(name.length + 6)) ? [{ n, v: Number(n.slice(name.length + 6)) }] : []))
