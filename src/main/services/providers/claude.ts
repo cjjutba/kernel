@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
@@ -15,22 +13,14 @@ import { IMAGE_DATA_URL } from '../plans'
 import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from '../bashGuard'
 import { defined, type LimitPatch } from './limits'
 import type { Proc, Runner, RunnerHost } from './types'
+import { claudeExecutable, packagedClaude } from './binary'
+
+export { packagedClaude }
 
 // Claude Code through the Agent SDK (KERNEL-406). Moved here from Sessions as it was, behind the Runner seam.
 
 /** What a tool row still marked running says once Kernel opens again, and what a tool a quit stopped says. */
 export const TOOL_STOPPED = 'Stopped when Kernel quit'
-
-/**
- * The SDK's `claude` binary in a packaged app. The SDK finds it with require.resolve, which points inside app.asar,
- * and a binary there can't be spawned. electron-builder unpacks it to app.asar.unpacked (electron-builder.yml).
- * Outside a packaged app this is undefined and the SDK finds its own.
- */
-export function packagedClaude(resources = (process as { resourcesPath?: string }).resourcesPath): string | undefined {
-  if (!resources) return undefined
-  const path = join(resources, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
-  return existsSync(path) ? path : undefined
-}
 
 /** An async queue the SDK reads user turns from. Pushing a message sends it into the running session. */
 export class InputQueue<T> implements AsyncIterable<T> {
@@ -116,7 +106,7 @@ export class ClaudeRunner implements Runner {
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: this.abort,
       env: sessionEnv(o.env, {}, { agentTeams: host.settings().models?.agentTeams }),
-      pathToClaudeCodeExecutable: packagedClaude(),
+      pathToClaudeCodeExecutable: claudeExecutable(host.settings().providers?.claude),
       spawnClaudeCodeProcess: (s) => host.spawn(s.command, s.args, { cwd: s.cwd, env: s.env, signal: s.signal }, this.proc) as unknown as SpawnedProcess
     }
     this.query = query({ prompt: this.input, options })
