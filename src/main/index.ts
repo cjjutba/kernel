@@ -173,8 +173,8 @@ async function rendererGone(w: BrowserWindow, d: RenderProcessGoneDetails) {
 
 const load = (w: BrowserWindow) => { if (rendererUrl) void w.loadURL(rendererUrl); else void w.loadFile(join(here, '../renderer/index.html')) }
 
-/** Traffic lights over the sidebar's 42px top strip, or centered in the screen header row (y 9 to 53) while the sidebar is hidden. */
-const LIGHTS = { sidebar: { x: 13, y: 15 }, header: { x: 20, y: 25 } }
+/** Traffic lights centered on the screen header row (y 9 to 53), in the same place whether the sidebar is open or hidden (KERNEL-431). */
+const LIGHTS = { x: 20, y: 25 }
 
 function createWindow() {
   win = new BrowserWindow({
@@ -183,9 +183,9 @@ function createWindow() {
     // Small enough to tile half of a laptop screen. Below 1024 and 900 the right panel and sidebar fold (D-080).
     minWidth: 720,
     minHeight: 520,
-    backgroundColor: '#08090a',
+    backgroundColor: '#070707',
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: LIGHTS.sidebar,
+    trafficLightPosition: LIGHTS,
     show: false,
     // A hidden page counts as in the background, and Chromium would slow its timers and frames.
     webPreferences: { preload: join(here, '../preload/index.mjs'), sandbox: false, contextIsolation: true, backgroundThrottling: !headless }
@@ -381,7 +381,6 @@ app.whenReady().then(async () => {
   const previews: PreviewHandlers = preview?.handlers() ?? previewFixture(fixture!)
   for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
   handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
-  handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
   // The file view, plan rows, approval cards and Settings open in the default editor, through Open in's checks (KERNEL-427).
   handle('system.openInEditor' satisfies Channel, async (_e, { path }: KernelApi['system.openInEditor']['req']) => {
     await started
