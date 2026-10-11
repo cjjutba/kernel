@@ -8,7 +8,7 @@ import { attempt } from '../MessageActions'
 import { PlanBar } from '../cards/plan'
 import { noteFromParts, waitingPlan } from '../cards/steps'
 import { baseName, dirName, mentionAt, runsOnEnter, slashAt, slashMenu } from './autocomplete'
-import { onAddToComposer, onComposerCommand, takeComposerFocus } from './bus'
+import { onAddToComposer, onComposerCommand, onComposerFocusAsked, takeComposerFocus } from './bus'
 import { DraftInput, useDraft } from './draft'
 import { ContextRing } from './ContextRing'
 import { HunkCard } from './HunkCard'
@@ -87,12 +87,15 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   useEffect(() => { if (prefill && prefill.n > appliedPrefill) { appliedPrefill = prefill.n; d.setText(prefill.text) } }, [prefill])
   useEffect(() => onAddToComposer((part) => d.insert(part)), [])
 
-  // A chat that was just created takes the caret. The frame lets a closing dialog hand focus back to its trigger first.
+  // A chat that was just created, or opened from the sidebar, takes the caret. The frame lets a closing dialog hand focus back to its trigger first.
   useEffect(() => {
-    if (blocked || !takeComposerFocus(chat.id)) return
+    if (blocked || !takeComposerFocus(chat)) return
     const f = requestAnimationFrame(() => d.focus())
     return () => cancelAnimationFrame(f)
   }, [chat.id])
+  // A sidebar row for the chat already on screen changes nothing, so the box takes the caret as it is asked.
+  // Subscribed on every render, so the listener sees the current chat.
+  useEffect(() => onComposerFocusAsked(() => { if (!blocked && takeComposerFocus(chat)) d.focus() }))
 
   /** `run` is Enter or a click: a / row that needs nothing more is sent at once. Tab only completes it. */
   const pickRow = (i: number, run: boolean) => {
