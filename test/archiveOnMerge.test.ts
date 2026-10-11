@@ -249,10 +249,11 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
   })
 
   it('uses the app value when the room\'s is not true or false', async () => {
-    const { k, repo, author } = await setup({ origin: true, deleteBranch: true, roomDelete: 'yes' })
+    // Off in the app, so a truthy string read as the room's value would delete the branch.
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: false, roomDelete: 'yes' })
     await pushWork(author)
     await k.archive.archiveWorkspace(author.id)
-    expect(await hasBranch(repo, author)).toBe(false)
+    expect(await hasBranch(repo, author)).toBe(true)
   })
 
   it('lets the caller\'s choice win over the room and the app', async () => {
