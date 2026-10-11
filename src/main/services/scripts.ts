@@ -5,6 +5,7 @@ import { createServer } from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import { bus } from '../bus'
 import { exec, git } from './exec'
+import { Batcher } from './batch'
 import { resolveCopySources, within } from './filesToCopy'
 import type { Readable } from 'node:stream'
 import { PORT_BLOCK, type ScriptLine } from '@shared/types'
@@ -164,10 +165,28 @@ export function replayScripts(workspaceId: string) {
 }
 
 /**
- * Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. `env` is the whole
- * environment, from `Kernel.envFor` (KERNEL-247).
+ * Each script's lines from the last 50 ms, pushed as one `script.output`, so `pnpm install` doesn't send the window a
+ * message per line (KERNEL-216). Keyed by `key`.
  */
-export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; env: Record<string, string> }): Promise<number | null> {
+const output = new Batcher<{ line: string; stream: 'stdout' | 'stderr' }>((k, lines) => {
+  const [workspaceId, kind, name] = JSON.parse(k) as [string, Kind, string | null]
+  bus.push({ type: 'script.output', workspaceId, kind, ...(name ? { name } : {}), lines })
+})
+
+/** How long a setup or archive script may run, from Settings > Scripts. Run scripts are servers and have no limit (KERNEL-216). */
+export const scriptTimeout = (s: { scripts: { timeoutMinutes: number } }) => s.scripts.timeoutMinutes * 60_000
+/** That limit as the log says it: "15 minutes". */
+export const timeoutText = (s: { scripts: { timeoutMinutes: number } }) => `${s.scripts.timeoutMinutes} minute${s.scripts.timeoutMinutes === 1 ? '' : 's'}`
+
+/** How a script ended: its exit code, null when it was stopped, or `timeout` when it ran past `timeoutMs` and Kernel stopped it. */
+export type ScriptEnd = number | null | 'timeout'
+
+/**
+ * Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. `env` is the whole
+ * environment, from `Kernel.envFor` (KERNEL-247). Its stdin is closed, so a script that asks a question gets no answer
+ * instead of waiting for one, and `timeoutMs` stops its process group once that long has passed (KERNEL-216).
+ */
+export function runScript(o: { workspaceId: string; kind: Kind; name?: string; script: string; cwd: string; env: Record<string, string>; timeoutMs?: number }): Promise<ScriptEnd> {
   const name = nameOf(o.kind, o.name)
   const k = key(o.workspaceId, o.kind, name)
   stopScript(o.workspaceId, o.kind, name)
@@ -178,7 +197,8 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
     const child = spawn(loginShell(), ['-lc', o.script], {
       cwd: o.cwd,
       env: o.env,
-      detached: true
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe']
     })
     running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })
     // Running again, so the last run's exit code no longer says it stopped.
@@ -189,24 +209,30 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
     if (name) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
     const emit = (line: string, stream: 'stdout' | 'stderr') => {
       if (!line) return
-      bus.push({ type: 'script.output', ...tag, lines: [{ line, stream }] })
+      output.add(k, { line, stream })
       // A process a restart replaced may still be printing. Its URL isn't the new run's.
       if (name && !url && current()) {
         url = localUrlIn(line)
-        if (url) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
+        // The URL goes out right after the line that printed it.
+        if (url) { output.flush(k); bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url }) }
       }
     }
-    bus.push({ type: 'script.output', ...tag, lines: [{ line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' }] })
+    output.add(k, { line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
     const flushes = (['stdout', 'stderr'] as const).map((stream) => pipeLines(child[stream], (line) => emit(line, stream)))
-    child.on('error', (err) => { bus.push({ type: 'script.output', ...tag, lines: [{ line: String(err), stream: 'stderr' }] }) })
+    child.on('error', (err) => { output.add(k, { line: String(err), stream: 'stderr' }) })
+    let timedOut = false
+    const timer = o.timeoutMs ? setTimeout(() => { timedOut = true; killGroup(child) }, o.timeoutMs) : undefined
     child.on('close', (code) => {
+      clearTimeout(timer)
       for (const flush of flushes) flush()
+      // Every line before the exit, so the window has the whole log when it reads the code.
+      output.flush(k)
       // A restart already holds the slot with the new process, and its URL.
       const replaced = running.has(k) && !current()
       if (current()) running.delete(k)
       if (name && !replaced) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url: null })
       bus.push({ type: 'script.exit', ...tag, code })
-      resolve(code)
+      resolve(timedOut ? 'timeout' : code)
     })
   })
 }
@@ -221,16 +247,22 @@ export function stopScript(workspaceId: string, kind: Kind, name?: string, o: { 
   if (child?.pid && o.now) {
     // Kernel is quitting and no timer would outlive it, so the group dies now.
     try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
-  } else if (child?.pid) {
-    const group = -child.pid
-    try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
-    // A server that ignores SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the
-    // output open, so the script would never report its exit. The group gets SIGKILL if it hasn't closed by then.
-    const force = setTimeout(() => { try { process.kill(group, 'SIGKILL') } catch { /* already gone */ } }, STOP_GRACE_MS)
-    force.unref()
-    child.once('close', () => clearTimeout(force))
-  }
+  } else if (child) killGroup(child)
   running.delete(k)
+}
+
+/**
+ * SIGTERM to the script's process group, and SIGKILL if it hasn't closed `STOP_GRACE_MS` later. A server that ignores
+ * SIGTERM, or a command the shell forked just as the signal came, would keep running and hold the output open, so the
+ * script would never report its exit.
+ */
+function killGroup(child: ChildProcess) {
+  if (!child.pid) return
+  const group = -child.pid
+  try { process.kill(group, 'SIGTERM') } catch { child.kill('SIGTERM') }
+  const force = setTimeout(() => { try { process.kill(group, 'SIGKILL') } catch { /* already gone */ } }, STOP_GRACE_MS)
+  force.unref()
+  child.once('close', () => clearTimeout(force))
 }
 
 /** The names of the run scripts running in a workspace. */

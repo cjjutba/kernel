@@ -80,6 +80,7 @@ export class Prs extends Feature {
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
+    this.noteRead(id, ws, info)
     const settle = o.settle ?? !this.agentBusy(ws)
     const hold = this.merging.has(id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
     let state: PrState
@@ -90,11 +91,14 @@ export class Prs extends Feature {
     else if (info.conflictsUnknown && ws.prState === 'conflict') state = 'conflict'
     else state = info.state
     const adopt = info && state !== 'none'
-    const next = this.updateWs(id, {
+    const patch: Partial<Workspace> = {
       prState: state,
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
-    })
+    }
+    // A read that changes nothing isn't saved or pushed, so each poll doesn't redraw the window and refresh every task (KERNEL-216).
+    const same = (Object.keys(patch) as (keyof Workspace)[]).every((key) => patch[key] === ws[key])
+    const next = same ? ws : this.updateWs(id, patch)
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info)
@@ -208,8 +212,61 @@ export class Prs extends Feature {
     return chat ? this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 : false
   }
 
-  private async pollPrs() {
-    for (const ws of this.store.workspaces()) if (ws.status !== 'archived' && !['none', 'merged', 'closed'].includes(ws.prState)) await this.k.refreshPr(ws.id).catch(() => undefined)
+  /** How often the poll runs. Each open PR is read on it unless its own wait below says not yet. */
+  pollMs = 45_000
+  /** The longest a PR whose reads keep failing waits between reads. Each failure in a row doubles the wait up to this. */
+  maxBackoffMs = 10 * 60_000
+  /** A ready or draft PR whose read hasn't changed in this long is only waiting on someone, and is read every `quietMs`. */
+  quietAfterMs = 24 * 60 * 60_000
+  quietMs = 5 * 60_000
+
+  /**
+   * Each open PR's place in the poll (KERNEL-216): when it is next due, the reads that failed in a row, and its last read
+   * and when that last changed. Kept in memory, so a restart reads every PR at the full rate again.
+   */
+  private polls = new Map<string, { due: number; failures: number; seen?: string; changedAt: number }>()
+  private polling?: Promise<void>
+
+  /** A read of the PR: gh answered, or it didn't for a workspace that has a PR, which is gh failing or GitHub out of reach. */
+  private noteRead(id: string, ws: Workspace, info: PrInfo | null) {
+    const now = Date.now()
+    const p = this.polls.get(id) ?? { due: 0, failures: 0, changedAt: now }
+    if (!info && ws.prNumber) { this.polls.set(id, { ...p, failures: p.failures + 1 }); return }
+    const seen = JSON.stringify(info)
+    this.polls.set(id, { due: p.due, failures: 0, seen, changedAt: seen === p.seen ? p.changedAt : now })
+  }
+
+  /** How long until the poll reads this PR again. */
+  private waitFor(ws: Workspace, p: { failures: number; changedAt: number }) {
+    if (p.failures) return Math.min(this.pollMs * 2 ** p.failures, this.maxBackoffMs)
+    const quiet = (ws.prState === 'ready' || ws.prState === 'draft') && Date.now() - p.changedAt >= this.quietAfterMs
+    return quiet ? this.quietMs : this.pollMs
+  }
+
+  /**
+   * Reads the open PRs that are due. One poll at a time: a poll still waiting on gh is the one that runs, since another
+   * would only start more gh processes behind it. Nothing is read while the Mac is offline (KERNEL-216).
+   */
+  pollPrs(): Promise<void> {
+    return (this.polling ??= this.pollOnce().finally(() => { this.polling = undefined }))
+  }
+
+  private async pollOnce() {
+    const start = Date.now()
+    if (this.k.account.network?.online !== false) {
+      for (const ws of this.store.workspaces()) {
+        if (ws.status === 'archived' || ['none', 'merged', 'closed'].includes(ws.prState)) { this.polls.delete(ws.id); continue }
+        if ((this.polls.get(ws.id)?.due ?? 0) > start) continue
+        await this.k.refreshPr(ws.id).catch(() => {
+          const p = this.polls.get(ws.id) ?? { due: 0, failures: 0, changedAt: Date.now() }
+          this.polls.set(ws.id, { ...p, failures: p.failures + 1 })
+        })
+        // Counted from the poll's start, less a second for a timer that fires a little early, so a PR due every poll is
+        // read every poll however long the reads before it took.
+        const p = this.polls.get(ws.id)
+        if (p) p.due = start + this.waitFor(this.store.workspace(ws.id) ?? ws, p) - 1000
+      }
+    }
     // Updates held for a busy or paused Lead go out once it can take them.
     this.leadUpdates.flushAll()
     // A rebase message that couldn't go out, or a release that failed, tries again (KERNEL-259). After the flush, since a
@@ -243,10 +300,11 @@ export class Prs extends Feature {
   /** Drops the workspace from the quick read, as when it is archived. */
   cancelRecheck(id: string) { this.rechecks.delete(id) }
 
-  /** Reads every open PR from GitHub every 45 seconds while Kernel runs. */
-  start() { this.prTimer = setInterval(() => void this.pollPrs(), 45_000) }
+  /** Reads the open PRs from GitHub every 45 seconds while Kernel runs, each as often as `waitFor` says. */
+  start() { this.prTimer = setInterval(() => void this.pollPrs(), this.pollMs) }
   stop() {
     clearInterval(this.prTimer)
+    this.polls.clear()
     clearTimeout(this.recheckTimer)
     this.recheckTimer = undefined
     this.rechecks.clear()
