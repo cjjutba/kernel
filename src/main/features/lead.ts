@@ -196,6 +196,10 @@ export class Lead extends Feature {
         return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
       },
       archiveWorkspace: (id) => this.k.archiveWorkspace(id),
+      // The setting and the turn are read on each call: the switch can change, and each message starts a new turn (KERNEL-352).
+      mergeWorkspace: (id) => this.k.prs.mergePr(id),
+      leadMerge: () => this.settings.pr.leadMerge,
+      userTurn: () => !this.sessions.kernelTurn(chat.id),
       setWait: (id, on) => this.k.waits.setWait(id, on),
       refreshPr: (id) => this.k.refreshPr(id, { settle: true }),
       isRunning: (id) => this.k.archive.working(id),
