@@ -1,10 +1,11 @@
 import { join } from 'node:path'
-import type { Provider, ProviderBinary, ProviderStatus } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, MODELS, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { exec } from '../services/exec'
 import { planName } from '../services/preflight'
 import { resolveBinary } from '../services/providers/binary'
-import { codexPlan, readCodexAccount } from '../services/providers/codex/client'
+import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
+import type { ThreadForkResponse } from '../services/providers/codex/protocol/v2/ThreadForkResponse'
 import { Feature } from './feature'
 
 /** Until the provider accounts land later in KERNEL-406, the new channels say so instead of answering. */
@@ -15,6 +16,36 @@ export const versionOf = (out: string) => /(\d+\.\d+\.\d+)/.exec(out)?.[1]
 
 /** Claude Code and Codex: their executables, accounts, switching, model lists and status (KERNEL-406). */
 export class Providers extends Feature {
+  /** Codex's models, read once per launch from `model/list` (KERNEL-406). A failed read is tried again next time. */
+  private codexModels?: Promise<ProviderModel[]>
+
+  /**
+   * A provider's models with the efforts each takes. Claude's are Kernel's own list. Codex's come from `model/list` on the
+   * active account, hidden ones left out.
+   */
+  models(provider: Provider): Promise<ProviderModel[]> {
+    if (provider === 'claude') return Promise.resolve(MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as Effort })))
+    this.codexModels ??= (async () => {
+      const bin = this.binary('codex').path
+      if (!bin) throw new Error('Kernel could not find Codex.')
+      const known = (e: string): e is Effort => e in EFFORT_LABELS
+      return (await readCodexModels(bin, this.codexHome())).map((m) => ({
+        provider: 'codex' as const, id: m.id, label: m.displayName, description: m.description, isDefault: m.isDefault,
+        efforts: m.supportedReasoningEfforts.map((e) => e.reasoningEffort).filter(known),
+        defaultEffort: known(m.defaultReasoningEffort) ? m.defaultReasoningEffort : 'medium'
+      }))
+    })().catch((e) => { this.codexModels = undefined; throw e })
+    return this.codexModels
+  }
+
+  /** Fork chat on Codex: a new thread with the old one's turns, through `lastTurnId` when given. Returns the new thread's id. */
+  async forkCodex(threadId: string, cwd: string, lastTurnId?: string): Promise<string> {
+    const bin = this.binary('codex').path
+    if (!bin) throw new Error('Kernel could not find Codex.')
+    const r = await withCodex(bin, this.codexHome(), (rpc) => rpc.request<ThreadForkResponse>('thread/fork', { threadId, cwd, ...(lastTurnId ? { lastTurnId } : {}) }), { cwd })
+    return r.thread.id
+  }
+
   /** The executable a provider runs, by Settings, Providers. */
   binary(provider: Provider): { path?: string; source: ProviderStatus['source'] } {
     return resolveBinary(provider, this.settings?.providers?.[provider])
@@ -71,7 +102,7 @@ export class Providers extends Feature {
       'accounts.switch': async () => notYet(),
       'accounts.signOut': async () => notYet(),
       'accounts.remove': async () => notYet(),
-      'models.list': async () => notYet()
+      'models.list': async ({ provider }) => this.models(provider)
     } satisfies Partial<Handlers>
   }
 }

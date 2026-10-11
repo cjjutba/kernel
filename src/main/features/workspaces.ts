@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { Chat, ChatPart, Effort, Provider, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
@@ -139,7 +140,9 @@ export class Workspaces extends Feature {
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
-    const pick = { model: o.model ?? this.k.team.modelFor(agent), effort: o.effort ?? agent.effort ?? this.k.team.roleModel(agent).effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
+    const role = this.k.team.pickFor(agent)
+    // A model picked in New workspace runs on its own provider. Otherwise the agent's pin or its role decides (KERNEL-406).
+    const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) }
     // A chat with Rowan's first tab is auto-named, and the chat takes its name (KERNEL-337).
     const chat = o.lead ? this.newChat(ws.id, NEW_TAB, { ...pick, threadId: o.lead.threadId }) : this.newChat(ws.id, title, pick)
     if (stale) this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)

@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, mkdir, rename, stat } from 'node:fs/promi
 import { watch, type FSWatcher } from 'node:fs'
 import { join, basename, dirname } from 'node:path'
 import type { AgentDef, AgentDraft, AgentEdit, Effort } from '@shared/types'
+import { EFFORT_LABELS } from '@shared/types'
 import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 
 // Agents are plain Claude Code subagent files: .claude/agents/<name>.md with YAML-ish frontmatter.
@@ -64,7 +65,8 @@ function blockScalar(lines: string[], folded: boolean): string {
   return text.trim()
 }
 
-const EFFORT_IDS: Effort[] = ['low', 'medium', 'high', 'xhigh']
+/** Every effort a file may name. A Codex agent can take `max` or `ultra`, which only some of Codex's models offer (KERNEL-406). */
+const EFFORT_IDS = Object.keys(EFFORT_LABELS) as Effort[]
 const stripQuotes = (s: string) => {
   const m = /^(['"])(.*)\1$/.exec(s)
   if (!m) return s
@@ -83,6 +85,8 @@ export function agentFromFile(file: string, src: string): AgentDef {
   return {
     id, name: titleCase(id), role, description, lead,
     model: meta.model || undefined,
+    // `provider:` pins the provider `model:` runs on. Without it Kernel tells by the model id (KERNEL-406).
+    provider: meta.model && (meta.provider === 'codex' || meta.provider === 'claude') ? meta.provider : undefined,
     effort: EFFORT_IDS.includes(meta.effort as Effort) ? (meta.effort as Effort) : undefined,
     tools: list(meta.tools),
     skills: list(meta.skills),
@@ -119,7 +123,7 @@ export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}
   return agents.sort((a, b) => Number(b.lead) - Number(a.lead) || a.name.localeCompare(b.name))
 }
 
-const MANAGED = ['name', 'description', 'model', 'effort', 'tools', 'role', 'lead', 'skills']
+const MANAGED = ['name', 'description', 'model', 'provider', 'effort', 'tools', 'role', 'lead', 'skills']
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 /** A frontmatter value Claude Code's YAML reader takes literally: quoted when it holds ": ", " #", or starts or ends with something YAML reads. */
@@ -129,10 +133,10 @@ export function yamlValue(v: string): string {
   return t
 }
 
-type Managed = Partial<Pick<AgentDef, 'description' | 'model' | 'effort' | 'role' | 'lead'>> & { tools?: string[]; skills?: string[] }
+type Managed = Partial<Pick<AgentDef, 'description' | 'model' | 'provider' | 'effort' | 'role' | 'lead'>> & { tools?: string[]; skills?: string[] }
 
 const managedLines = (id: string, a: Managed & { description: string }): [string, string | undefined][] => [
-  ['name', id], ['description', yamlValue(a.description)], ['model', a.model ? yamlValue(a.model) : undefined], ['effort', a.effort],
+  ['name', id], ['description', yamlValue(a.description)], ['model', a.model ? yamlValue(a.model) : undefined], ['provider', a.model ? a.provider : undefined], ['effort', a.effort],
   ['tools', a.tools?.length ? yamlValue(a.tools.join(', ')) : undefined], ['role', a.role ? yamlValue(a.role) : undefined],
   ['lead', a.lead ? 'true' : undefined], ['skills', a.skills?.length ? yamlValue(a.skills.join(', ')) : undefined]
 ]
@@ -219,9 +223,11 @@ export async function updateAgent(repoPath: string, id: string, patch: AgentEdit
   const next = {
     description, role: patch.role ?? meta.role,
     model: patch.model ?? cur.model, effort: patch.effort ?? cur.effort,
+    // Clearing the model clears the provider with it, so the agent follows its role's default again (KERNEL-406).
+    provider: patch.model === '' ? undefined : patch.provider ?? cur.provider,
     tools: patch.tools ?? cur.tools, skills: patch.skills ?? cur.skills
   }
-  const was: Record<keyof typeof next, unknown> = { description: cur.description, role: meta.role, model: cur.model, effort: cur.effort, tools: cur.tools, skills: cur.skills }
+  const was: Record<keyof typeof next, unknown> = { description: cur.description, role: meta.role, model: cur.model, effort: cur.effort, provider: cur.provider, tools: cur.tools, skills: cur.skills }
   const changed = new Set(Object.keys(next).filter((k) => JSON.stringify(next[k as keyof typeof next] ?? null) !== JSON.stringify(was[k as keyof typeof next] ?? null)))
   await writeFile(path, rewriteAgentFile(src, cur.id, { ...next, prompt: patch.prompt ?? cur.prompt }, changed))
   return agentFromFile(path, await readFile(path, 'utf8'))

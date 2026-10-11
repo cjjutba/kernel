@@ -43,7 +43,7 @@ export function saveChat(store: Store, chat: Chat): Chat {
 export function newChat(store: Store, workspaceId: string, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }): Chat {
   const kind = o.kind ?? 'chat'
   const auto = kind === 'chat' && (title === NEW_CHAT || title === NEW_TAB || title === LEAD_CHAT)
-  return store.saveChat({ id: newId(), workspaceId, title, kind, ...(o.provider ? { provider: o.provider } : {}), model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), ...(o.threadId ? { threadId: o.threadId } : {}), createdAt: Date.now() })
+  return store.saveChat({ id: newId(), workspaceId, title, kind, ...(o.provider && o.provider !== 'claude' ? { provider: o.provider } : {}), model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), ...(o.threadId ? { threadId: o.threadId } : {}), createdAt: Date.now() })
 }
 
 /** PR instructions and notes go to the workspace's first chat. */

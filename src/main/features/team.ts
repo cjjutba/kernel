@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
 import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import { providerOf } from '@shared/providers'
 import { MODELS } from '@shared/types'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { countRange } from '@shared/telemetry'
@@ -14,6 +15,9 @@ import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../ser
 import { loadRepoSettings, saveTeamSettings } from '../services/settings'
 import { resolveTeam, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
+
+/** A model id that is Codex's (gpt-6-astra, o4-mini, codex-mini), for an agent file without `provider:` (KERNEL-406). */
+const CODEX_MODEL = /^(gpt-|o\d|codex-)/i
 
 /**
  * Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
@@ -333,11 +337,22 @@ export class Team extends Feature {
     return s
   }
 
-  modelFor(agent: AgentDef): string {
-    if (agent.model?.startsWith('claude-')) return agent.model
-    const alias = MODELS.find((x) => x.id.split('-')[1] === agent.model?.toLowerCase())
-    if (alias) return alias.id
-    return this.roleModel(agent).model
+  /** The model an agent's chats start on: its file's `model:`, else its role's default. */
+  modelFor(agent: AgentDef): string { return this.pickFor(agent).model }
+
+  /**
+   * The provider, model and effort an agent's chats start on (KERNEL-406). The agent file's `model:` pins the agent, on its
+   * `provider:` or the one the model id belongs to, with the file's `effort:` or the role's. Otherwise it is the role's
+   * default from Settings, Models and effort, with the file's `effort:` when it has one.
+   */
+  pickFor(agent: AgentDef): RoleModel {
+    const role = this.roleModel(agent)
+    const pinned = agent.model?.trim()
+    const alias = pinned && MODELS.find((x) => x.id === pinned || x.id.split('-')[1] === pinned.toLowerCase())?.id
+    // `inherit`, or a model Kernel can't place, follows the role, as it always did.
+    const provider = agent.provider ?? (alias || pinned?.startsWith('claude-') ? 'claude' : pinned && CODEX_MODEL.test(pinned) ? providerOf(pinned) : undefined)
+    if (!pinned || !provider) return { ...role, effort: agent.effort ?? role.effort }
+    return { provider, model: provider === 'claude' ? alias || pinned : pinned, effort: agent.effort ?? role.effort }
   }
 
   /** The role Settings, Models and effort reads for this agent. */

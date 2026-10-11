@@ -61,7 +61,7 @@ export class Sharing extends Feature {
     const name = agent?.name ?? ws.agentId
     if (ws.status === 'archived') throw new Error(`${name}'s workspace is archived, so the comment can't reach ${name}. Restore it from History to send.`)
     return open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-      ?? this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.roles.engineers.model, effort: agent?.effort ?? (agent ? this.k.team.roleModel(agent) : this.settings.models.roles.engineers).effort, plan: false }))
+      ?? this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }))
   }
 
   handlers() {

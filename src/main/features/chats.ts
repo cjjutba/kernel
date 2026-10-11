@@ -2,6 +2,7 @@ import type { Chat, ChatItem, Effort, Provider, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
+import { chatProvider, providerOf } from '@shared/providers'
 import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
 import { titleText } from '../services/titles'
@@ -174,7 +175,25 @@ export class Chats extends Feature {
     this.saveChat({ ...chat, closed: true })
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
     if (this.isLeadWorkspace(ws)) return
-    this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
+    this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { provider: chat.provider, model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
+  }
+
+  /**
+   * The provider and model a new tab starts on: the workspace's first chat's, as before. "New chat on Codex" asks for the
+   * other provider: the agent's pick when it is on that provider, else that provider's default model (KERNEL-406).
+   */
+  private async newTabModel(ws: Workspace, provider?: Provider, model?: string): Promise<{ provider: Provider; model: string }> {
+    const first = this.store.chats(ws.id)[0]
+    const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
+    const pick = agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers
+    if (!provider) return first ? { provider: chatProvider(first), model: first.model } : { provider: pick.provider, model: pick.model }
+    if (model) return { provider, model }
+    if (first && chatProvider(first) === provider) return { provider, model: first.model }
+    if (pick.provider === provider) return { provider, model: pick.model }
+    const models = await this.k.providers.models(provider).catch(() => [])
+    const fallback = models.find((m) => m.isDefault) ?? models[0]
+    if (!fallback) throw new Error(`Kernel couldn't read ${provider === 'codex' ? "Codex's" : "Claude's"} models. Check Settings, Providers.`)
+    return { provider, model: fallback.id }
   }
 
   /**
@@ -184,7 +203,7 @@ export class Chats extends Feature {
   private openedEffort(workspaceId: string, model: string): Effort {
     const ws = this.mustWs(workspaceId)
     const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
-    return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? (agent ? this.k.team.roleModel(agent) : this.settings.models.roles.engineers).effort)
+    return effortFor(model, this.settings.models.effortByModel, agent ? this.k.team.pickFor(agent).effort : this.settings.models.roles.engineers.effort)
   }
 
   /**
@@ -209,11 +228,21 @@ export class Chats extends Feature {
       if (anchor) { items = items.slice(0, items.findIndex((i) => i.id === anchor.id) + 1); upTo = anchor.id.split(':')[0] } else items = []
     }
     let sessionId: string | undefined
-    if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
+    if (chatProvider(chat) === 'codex') {
+      // Codex forks a thread through the end of a turn. Its turns end at their result rows (KERNEL-406).
+      let lastTurnId: string | undefined
+      if (itemId) {
+        const keep = this.store.items(chatId).slice(0, this.store.items(chatId).findIndex((i) => i.id === itemId) + 1)
+        const end = [...keep].reverse().find((i) => i.kind === 'result' && i.id.endsWith('-result') && !i.id.startsWith(COPY))
+        items = end ? keep.slice(0, keep.indexOf(end) + 1) : []
+        lastTurnId = end?.id.slice(0, -'-result'.length)
+      }
+      if (chat.sessionId && (!itemId || lastTurnId)) sessionId = await this.k.providers.forkCodex(chat.sessionId, ws.path, lastTurnId)
+    } else if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
     const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => undefined); throw e }) : chat.workspaceId
     // A fork of a Lead tab is another tab of its Lead chat (KERNEL-337), the one its workspace hosts (KERNEL-405). Fork into new
     // workspace refuses the Lead's workspace.
-    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan, threadId: into ? chat.threadId : ws.threadId ?? chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { provider: chat.provider, model: chat.model, effort: chat.effort, plan: chat.plan, threadId: into ? chat.threadId : ws.threadId ?? chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
     for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
     return fork
   }
@@ -260,13 +289,13 @@ export class Chats extends Feature {
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind, preset, threadId }) => {
+      'chats.create': async ({ workspaceId, kind, preset, threadId, provider, model: asked, effort }) => {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
         if (!this.k.team.agentCache.has(ws.roomId)) await this.k.team.agents(ws.roomId)
-        const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.roles.engineers.model
-        const pick = { model, effort: this.openedEffort(workspaceId, model), plan: false }
+        const on = await this.newTabModel(ws, provider, asked)
+        const pick = { provider: on.provider, model: on.model, effort: effort ?? this.openedEffort(workspaceId, on.model), plan: false }
         // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat
         // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat.
         if (!term && this.isLeadWorkspace(ws)) return this.k.lead.leadTab(ws, NEW_TAB, pick, threadId)
@@ -292,7 +321,16 @@ export class Chats extends Feature {
       },
       'chats.send': async ({ chatId, parts }) => { this.k.lead.userSpoke(chatId); return this.sessions.send(chatId, parts) },
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
-      'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch)
+      'chats.configure': async ({ chatId, ...patch }) => {
+        const chat = this.mustChat(chatId)
+        // A model on the other provider can't take over a conversation, which lives in one CLI's transcript. A chat that
+        // hasn't started moves to it; one that has gets a new tab on that provider instead (KERNEL-406).
+        if (patch.model && providerOf(patch.model) !== chatProvider(chat)) {
+          if (chat.sessionId) throw new Error(`This chat runs on ${chatProvider(chat) === 'codex' ? 'Codex' : 'Claude Code'}. Start a new chat to use ${patch.model}.`)
+          this.saveChat({ ...chat, provider: providerOf(patch.model) })
+        }
+        return this.sessions.configure(chatId, patch)
+      }
     } satisfies Partial<Handlers>
   }
 }

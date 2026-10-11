@@ -3,6 +3,7 @@ import { cp } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
+import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { saveAgent } from '../services/agents'
@@ -100,7 +101,9 @@ export class Lead extends Feature {
    */
   async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
-    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.k.team.roleModel(lead).effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const role = this.k.team.pickFor(lead)
+    // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
+    const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id } }) }
@@ -262,7 +265,7 @@ export class Lead extends Feature {
 
   /** The model, effort and plan mode a Lead tab Kernel opens starts with. */
   private leadPick(lead: AgentDef) {
-    return { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.k.team.roleModel(lead).effort, plan: this.settings.models.leadPlanMode }
+    return { ...this.k.team.pickFor(lead), plan: this.settings.models.leadPlanMode }
   }
 
   /**
@@ -278,7 +281,9 @@ export class Lead extends Feature {
   /** A new tab in the open chat `ws` hosts, with the message. A chat on the latest main as last fetched catches up first. */
   private async tabIn(ws: Workspace, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }): Promise<Chat> {
     const lead = await this.leadOf(ws.roomId)
-    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.k.team.roleModel(lead).effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const role = this.k.team.pickFor(lead)
+    // A model picked in New Lead chat runs on its own provider. Otherwise the Lead's pin or its role decides (KERNEL-406).
+    const pick = { provider: o.model ? o.provider ?? providerOf(o.model) : role.provider, model: o.model ?? role.model, effort: o.effort ?? role.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     await this.syncLead(ws.roomId, { workspaceId: ws.id })
     const chat = this.saveChat(this.leadTab(this.mustWs(ws.id), NEW_TAB, pick))
     this.userSpoke(chat.id)
@@ -485,7 +490,7 @@ export class Lead extends Feature {
     if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
-    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.roles.engineers.model, effort: agent?.effort ?? (agent ? this.k.team.roleModel(agent) : this.settings.models.roles.engineers).effort, plan: false }))
+    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }))
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
