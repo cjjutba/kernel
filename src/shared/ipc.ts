@@ -404,8 +404,8 @@ export type PushEvent =
   | { type: 'pr.info'; info: PrInfo }
   /** A ready PR GitHub started blocking (`blocked` set) or stopped blocking, while its state stayed ready (KERNEL-401). */
   | { type: 'pr.blocked'; workspaceId: string; blocked?: PrBlocked }
-  /** A room's Merge all run moved on to its next PR, or ended (no `queue`) (KERNEL-411). */
-  | { type: 'pr.queue'; roomId: string; queue?: MergeQueue }
+  /** A room's Merge all run moved on to its next PR, or ended (no `queue`) with its `result` (KERNEL-411). */
+  | { type: 'pr.queue'; roomId: string; queue?: MergeQueue; result?: MergeAllResult }
   | { type: 'github'; status: GitHubStatus }
   | { type: 'hooks'; status: HookStatus }
   | { type: 'update'; update: AppUpdate }

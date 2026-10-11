@@ -310,7 +310,7 @@ export class Prs extends Feature {
    */
   async mergeAll(roomId: string, ids: string[]): Promise<MergeAllResult> {
     if (this.queues.has(roomId)) throw new Error('Merge all is already running in this room.')
-    const merged: number[] = []
+    const result: MergeAllResult = { merged: [] }
     const step = (current: string) => {
       const queue: MergeQueue = { ids, current }
       this.queues.set(roomId, queue)
@@ -323,17 +323,19 @@ export class Prs extends Feature {
         try {
           if (!ws || ws.roomId !== roomId) throw new Error('It is not an open workspace in this room.')
           const after = await this.mergePr(id)
-          if (after.prNumber) merged.push(after.prNumber)
+          if (after.prNumber) result.merged.push(after.prNumber)
         } catch (e) {
           // mergeBlock's reason is a finished sentence; a failed merge's is gh output, of which the first line is enough.
           const why = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
-          return { merged, stopped: { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` } }
+          result.stopped = { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` }
+          break
         }
       }
-      return { merged }
+      return result
     } finally {
+      // The end goes out with the result, so the PRs tab says where a run stopped even after the window reloads mid-run.
       this.queues.delete(roomId)
-      bus.push({ type: 'pr.queue', roomId })
+      bus.push({ type: 'pr.queue', roomId, result })
     }
   }
 

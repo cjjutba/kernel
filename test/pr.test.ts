@@ -474,7 +474,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
       expect(queues).toEqual([
         { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: ws.id } },
         { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: 'gone' } },
-        { type: 'pr.queue', roomId: ws.roomId }
+        { type: 'pr.queue', roomId: ws.roomId, result }
       ])
     } finally {
       bus.off('push', onPush)

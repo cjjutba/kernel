@@ -1,10 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import type { MergeAllResult } from '@shared/types'
 import { call, cleanError } from '../../../api'
-import { go, useStore } from '../../../store'
+import { actions, go, useStore } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
 import { MergeButton } from './MergeButton'
-import { prDisplayTitle } from './model'
+import { failTitle, prDisplayTitle } from './model'
 import { useLeadPrs, type LeadPr } from './leadPrList'
 import './pr.css'
 
@@ -15,14 +15,15 @@ import './pr.css'
  */
 export function LeadPrs({ roomId }: { roomId: string }) {
   const rows = useLeadPrs(roomId)
-  const [stopped, setStopped] = useState<string | null>(null)
+  const stop = useStore((s) => s.mergeStops[roomId])
+  const stopped = stop ? stoppedText(stop) : null
   if (!rows.length && !stopped) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
   const ready = rows.filter((r) => r.ready)
   const rest = rows.filter((r) => !r.ready)
   return (
     <div className="panel-scroll" aria-label="Pull requests">
       {stopped && <p className="lp-notice" role="status">{stopped}</p>}
-      {ready.length > 0 && <Section title="Ready to merge" rows={ready} action={<MergeAll roomId={roomId} rows={ready} onDone={setStopped} />} />}
+      {ready.length > 0 && <Section title="Ready to merge" rows={ready} action={<MergeAll roomId={roomId} rows={ready} />} />}
       {rest.length > 0 && <Section title="Still open" rows={rest} />}
     </div>
   )
@@ -38,17 +39,17 @@ export function stoppedText(r: MergeAllResult): string | null {
 
 /**
  * Merge all on the Ready to merge heading, with two or more PRs that can merge. While it runs, the button says which PR of how
- * many is merging, from the run's `pr.queue` pushes, and the rows say Merging and Next without spinning.
+ * many is merging, from the run's `pr.queue` pushes, and the rows say Merging and Next without spinning. Where a run stopped
+ * comes back on the last push, so the tab shows it from the store.
  */
-function MergeAll({ roomId, rows, onDone }: { roomId: string; rows: LeadPr[]; onDone: (stopped: string | null) => void }) {
+function MergeAll({ roomId, rows }: { roomId: string; rows: LeadPr[] }) {
   const queue = useStore((s) => s.mergeQueues[roomId])
   const [busy, run] = useBusy()
   const ids = rows.filter((r) => r.ws.prState !== 'merging').map((r) => r.ws.id)
   if (!queue && !busy && ids.length < 2) return null
   const label = queue ? `Merging ${queue.ids.indexOf(queue.current ?? '') + 1} of ${queue.ids.length}` : 'Merging'
   const start = () => void run('all', async () => {
-    onDone(null)
-    try { onDone(stoppedText(await call('pr.mergeAll', { roomId, workspaceIds: ids }))) } catch (e) { onDone(cleanError(e)) }
+    try { await call('pr.mergeAll', { roomId, workspaceIds: ids }) } catch (e) { actions.ui.toast({ title: failTitle.merge, sub: cleanError(e) }) }
   })
   return (
     <span className="pr-tone lp-all" data-tone="ready">
