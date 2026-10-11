@@ -99,7 +99,14 @@ function Detail({ item }: { item: InboxItem }) {
         </>
       )}
       {a && pending && !isTool(a) && <div className="ib-card"><ApprovalCard approval={a} /></div>}
-      {!a && pending && n.workspaceId && (
+      {n.kind === 'trust' && n.roomId && n.workspaceId && (
+        <div className="ib-acts">
+          <button type="button" className="ib-link" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>Open workspace</button>
+          <span className="grow" />
+          <Button variant="primary" onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: n.roomId! })}>Review scripts</Button>
+        </div>
+      )}
+      {!a && pending && n.kind !== 'trust' && n.workspaceId && (
         <div className="ib-acts">
           <Button variant="primary" onClick={() => go({ name: 'workspace', workspaceId: n.workspaceId! })}>{n.kind === 'merge' ? 'Open PR' : 'Open workspace'}</Button>
         </div>
@@ -120,13 +127,14 @@ export function Inbox() {
   const approvals = useStore((s) => s.approvals)
   const rooms = useStore((s) => s.rooms)
   const overlaps = useStore((s) => s.overlaps)
+  const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)
   const firstRoom = useStore((s) => s.rooms.find((r) => !r.archived)?.id)
   const lead = useStore((s) => (firstRoom ? s.agents[firstRoom]?.find((a) => a.lead) : undefined))
   const [tab, setTab] = useState<InboxTab>('all')
   const [sel, setSel] = useState<string | null>(null)
   const detail = useRef<HTMLDivElement>(null)
-  const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps)), [notifications, approvals, rooms, overlaps])
+  const all = useMemo(() => inboxItems(notifications, approvals, rooms, allOverlaps(overlaps), workspaces), [notifications, approvals, rooms, overlaps, workspaces])
   const list = all.filter((i) => inTab(i, tab))
   const cur = list.find((i) => i.n.id === sel) ?? list[0]
   const count = (t: InboxTab) => all.filter((i) => inTab(i, t)).length

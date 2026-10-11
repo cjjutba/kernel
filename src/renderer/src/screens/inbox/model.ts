@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, Notification, Overlap, Room } from '@shared/types'
+import type { AgentDef, Approval, Notification, Overlap, Room, Workspace } from '@shared/types'
 
 export type InboxTab = 'all' | 'needs' | 'updates'
 
@@ -39,16 +39,34 @@ function fromOverlap(o: Overlap, rooms: Room[]): Notification {
 }
 
 /**
- * Everything the Inbox lists, newest first. Stored notifications plus pending approvals that have no row yet, so a count never lags
- * an approval, plus open overlaps, which the floor used to show.
+ * The workspaces held until their room's scripts are trusted (KERNEL-209), which wait on the user like an approval does (KERNEL-342). One that
+ * also has a pending approval is left out, so it counts once, as it does in the sidebar (`chatWaits`).
  */
-export function inboxItems(notifications: Notification[], approvals: Approval[], rooms: Room[], overlaps: Overlap[] = []): InboxItem[] {
+export function heldForTrust(workspaces: Workspace[], approvals: Approval[]): Workspace[] {
+  const asking = new Set(approvals.filter((a) => a.status === 'pending').map((a) => a.workspaceId))
+  return workspaces.filter((w) => w.status === 'trust' && !asking.has(w.id))
+}
+
+/** A row for a workspace waiting on script trust. It lasts until the workspace's `status` moves on, which is when the user trusts the scripts. */
+function fromTrust(w: Workspace, rooms: Room[]): Notification {
+  const room = rooms.find((r) => r.id === w.roomId)
+  return {
+    id: `n-trust-${w.id}`, kind: 'trust', roomId: w.roomId, workspaceId: w.id, agentId: w.agentId, title: `Trust scripts to start ${w.title ?? w.name}`,
+    sub: `Trust scripts${room ? ` · ${room.name}` : ''}`, body: 'Setup has not run yet. It starts once you trust the scripts this room runs.', needsYou: true, read: false, createdAt: w.createdAt
+  }
+}
+
+/**
+ * Everything the Inbox lists, newest first. Stored notifications plus pending approvals that have no row yet, so a count never lags
+ * an approval, plus open overlaps, which the floor used to show, plus workspaces held for script trust.
+ */
+export function inboxItems(notifications: Notification[], approvals: Approval[], rooms: Room[], overlaps: Overlap[] = [], workspaces: Workspace[] = []): InboxItem[] {
   const byApproval = new Map(approvals.map((a) => [a.id, a]))
   const have = new Set(notifications.map((n) => n.approvalId).filter(Boolean))
   const extra = approvals.filter((a) => a.status === 'pending' && !have.has(a.id)).map((a) => fromApproval(a, rooms))
   const open = overlaps.filter((o) => !o.resolved)
   const byOverlap = new Map(open.map((o) => [`n-overlap-${o.id}`, o]))
-  return [...notifications, ...extra, ...open.map((o) => fromOverlap(o, rooms))]
+  return [...notifications, ...extra, ...open.map((o) => fromOverlap(o, rooms)), ...heldForTrust(workspaces, approvals).map((w) => fromTrust(w, rooms))]
     .sort((a, b) => b.createdAt - a.createdAt)
     .map((n) => ({ n, approval: n.approvalId ? byApproval.get(n.approvalId) : undefined, overlap: byOverlap.get(n.id) }))
 }
