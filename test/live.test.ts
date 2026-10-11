@@ -14,6 +14,7 @@ import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
+import { trustRoom } from './helpers'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -66,6 +67,11 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       evidence.agents = agents.map((a) => a.id)
       expect(agents.length).toBeGreaterThan(0)
       const agent = agents.find((a) => a.id === 'implementer') ?? agents[0]
+
+      // The room's committed scripts and files.copy list wait for the user's trust (KERNEL-209). The trusted hash lives in
+      // dataDir, so the side project is not changed. The local override above replaces only `setup`: the run script never
+      // starts (runAfterSetup is off), and files.copy copies the project's .env files into the temp worktree.
+      await trustRoom(k, room.id)
 
       // AC2: worktree, branch, setup and the first prompt
       const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
@@ -231,7 +237,9 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
         workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
         models: { engineers: 'claude-sonnet-5-5', effort: 'low' },
-        permissions: { mode: 'bypassInWorktrees', alwaysAsk: [], neverAllow: [] }
+        permissions: { mode: 'bypassInWorktrees', alwaysAsk: [], neverAllow: [] },
+        // The side project's committed setup (install, database push, seed) is not what this test is about.
+        scripts: { setupOnCreate: false }
       }))
       const evidence: Record<string, unknown> = { repo, how }
       let k = new Kernel(where)
@@ -242,6 +250,8 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         const room = await h['rooms.add']({ path: repo })
         const agents = await h['agents.list']({ roomId: room.id })
         const agent = agents.find((a) => a.id === 'implementer') ?? agents.find((a) => !a.lead) ?? agents[0]
+        // Trust the committed scripts, or the workspace waits and the brief never goes out (KERNEL-209). Setup is off above.
+        await trustRoom(k, room.id)
         const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Remember the word kumquat for later. Run exactly `sleep 20` with the Bash tool, then say done. Run nothing else.' })
         wsId = ws.id
         const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
