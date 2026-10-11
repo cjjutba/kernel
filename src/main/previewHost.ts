@@ -350,7 +350,8 @@ export class PreviewHost {
       e.preventDefault()
       if (act === 'reload') return wc.reload()
       this.o.window()?.webContents.focus()
-      if (act === 'forward') this.o.push({ type: 'preview.key', key: input.key, code: input.code, meta: input.meta, shift: input.shift, alt: input.alt, ctrl: input.control })
+      // F6 is pushed too, so the tab can put focus on its frame. Nothing else in the app runs it.
+      this.o.push({ type: 'preview.key', key: input.key, code: input.code, meta: input.meta, shift: input.shift, alt: input.alt, ctrl: input.control })
     })
     view.setVisible(false)
     w.contentView.addChildView(view)
