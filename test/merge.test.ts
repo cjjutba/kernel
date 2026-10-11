@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import type { PrInfo, PrState, Workspace } from '@shared/types'
+import { afterEach, describe, expect, it } from 'vitest'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { MergeMethod, PrInfo, PrState, Workspace } from '@shared/types'
 import { blockedText, gatingChecks, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
+import { Kernel } from '../src/main/kernel'
+import { allowedMethod } from '../src/main/features/codeHost'
+import { tempRepo } from './helpers'
 
 // The one rule every Merge button and the Lead use for whether a PR can merge (KERNEL-115, KERNEL-349).
 
@@ -126,5 +132,98 @@ describe('the review', () => {
 
   it('ignores the review when Reviewer approval is not required', () => {
     expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info(), { requireGreen: true, requireReviewer: false }, name)).toBeUndefined()
+  })
+})
+
+describe("the room's merge method (KERNEL-468)", () => {
+  const kernels: Kernel[] = []
+  afterEach(async () => { for (const k of kernels.splice(0)) await k.stop() })
+
+  async function kernel() {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, pr: { requireGreen: false } }))
+    const k = new Kernel({ dataDir, home })
+    kernels.push(k)
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    return k
+  }
+
+  /** A room whose repo has `files`, with a workspace per title, each with a PR that reads ready. */
+  async function room(k: Kernel, titles: string[], files: Record<string, string> = {}) {
+    const r = await k.addRoom(await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nYou are Kai.', ...files }))
+    const out: Workspace[] = []
+    for (const title of titles) {
+      const ws = await k.workspaces.createWorkspace(r.id, { prompt: title, agentId: 'kai', title })
+      out.push(k.store.saveWorkspace({ ...ws, prState: 'ready', prNumber: 42 }))
+    }
+    return out
+  }
+
+  /** A GitHub stub whose repo allows `allowed`, or can't say when it is an error. `fail` makes the next merge fail. */
+  function stub(k: Kernel, allowed: MergeMethod[] | Error) {
+    const s = { merges: [] as string[], asked: 0, fail: false }
+    k.github = {
+      info: async (_cwd, _ref, workspaceId): Promise<PrInfo> => ({ workspaceId, number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [] }),
+      merge: async (_cwd, ref, method) => {
+        if (s.fail) { s.fail = false; throw new Error('GraphQL: Merge commits are not allowed on this repository. (mergePullRequest)') }
+        s.merges.push(`${ref} ${method}`)
+      },
+      mergeMethods: async () => { s.asked++; if (allowed instanceof Error) throw allowed; return allowed },
+      ready: async () => {},
+      reopen: async () => {}
+    }
+    return s
+  }
+
+  it("takes the app's method when the repo allows it or the host can't say, else the first one the repo allows", () => {
+    expect(allowedMethod('squash', ['squash', 'merge'])).toBe('squash')
+    expect(allowedMethod('rebase', ['squash', 'rebase'])).toBe('rebase')
+    expect(allowedMethod('squash', ['merge', 'rebase'])).toBe('merge')
+    expect(allowedMethod('squash', ['rebase'])).toBe('rebase')
+    expect(allowedMethod('merge', undefined)).toBe('merge')
+    expect(allowedMethod('merge', [])).toBe('merge')
+  })
+
+  it('merges with a method the repo allows, asks the host once, and keeps the method for the toast', async () => {
+    const k = await kernel()
+    const gh = stub(k, ['merge', 'rebase'])
+    const [a, b, c] = await room(k, ['Invoice table', 'Invoice filters', 'Invoice export'])
+    await k.prs.mergePr(a.id)
+    await k.prs.mergePr(b.id)
+    expect(gh.merges).toEqual([`${a.branch} merge`, `${b.branch} merge`])
+    expect(gh.asked).toBe(1)
+    expect(k.store.workspace(a.id)?.mergedWith).toBe('merge')
+    // Once the answer is old, the host is asked again.
+    k.codeHost.allowedMs = 0
+    await k.prs.mergePr(c.id)
+    expect(gh.asked).toBe(2)
+  })
+
+  it("merges with the room's [pr] merge_method over the app's, without asking the host", async () => {
+    const k = await kernel()
+    const gh = stub(k, ['squash', 'merge', 'rebase'])
+    const [ws] = await room(k, ['Invoice table'], { '.kernel/settings.toml': '[pr]\nmerge_method = "rebase"\n' })
+    await k.prs.mergePr(ws.id)
+    expect(gh.merges).toEqual([`${ws.branch} rebase`])
+    expect(gh.asked).toBe(0)
+    expect(k.store.workspace(ws.id)?.mergedWith).toBe('rebase')
+  })
+
+  it("uses the app's method when the host can't say, and asks again after a merge fails", async () => {
+    const k = await kernel()
+    const unread = stub(k, new Error('gh: Could not resolve to a Repository'))
+    const [a, b] = await room(k, ['Invoice table', 'Invoice filters'])
+    await k.prs.mergePr(a.id)
+    expect(unread.merges).toEqual([`${a.branch} squash`])
+
+    const gh = stub(k, ['merge'])
+    gh.fail = true
+    // The failed read wasn't kept, so this asks, and the failed merge makes the next one ask again.
+    await expect(k.prs.mergePr(b.id)).rejects.toThrow('Merge commits are not allowed')
+    await k.prs.mergePr(b.id)
+    expect(gh.asked).toBe(2)
+    expect(gh.merges).toEqual([`${b.branch} merge`])
   })
 })
