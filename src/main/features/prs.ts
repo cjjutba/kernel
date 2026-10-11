@@ -3,7 +3,8 @@ import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
-import { allGreen, prNote, resolveFile } from '../services/github'
+import { prNote, resolveFile } from '../services/github'
+import { mergeBlock, mergeNeedsPr } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -120,16 +121,21 @@ export class Prs extends Feature {
     if (before !== 'ready' || this.readyUnchecked.delete(id)) this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
   }
 
-  /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
+  /**
+   * Merges with the method from Settings > PRs once `mergeBlock` finds nothing in the way: green checks and a reviewer's
+   * approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
+   */
   async mergePr(id: string) {
     const ws = await this.syncBranch(id)
-    if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
-    if (this.settings.pr.requireGreen) {
-      const info = await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
-      if (!info) throw new Error('Could not read the pull request from GitHub.')
-      bus.push({ type: 'pr.info', info })
-      if (!allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
-    }
+    const rules = this.settings.pr
+    // GitHub is read only when the rule needs it, and never for a PR that isn't ready, which mergeBlock refuses anyway.
+    const info = (ws.prState === 'ready' || ws.prState === 'open') && mergeNeedsPr(ws, rules)
+      ? await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
+      : undefined
+    if (info) bus.push({ type: 'pr.info', info })
+    const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
+    const block = mergeBlock(ws, info, rules, name)
+    if (block) throw new Error(block)
     const method = this.settings.pr.mergeMethod
     this.merging.add(id)
     this.setPrState(ws, 'merging')

@@ -69,9 +69,6 @@ export function prStateOf(pr: PrView | null): PrState {
   return 'ready'
 }
 
-/** Every check passed or was skipped. A PR without checks counts as green. */
-export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
-
 /** The query behind `prReviews`: review threads (inline comments) and each reviewer's latest review. */
 export const REVIEWS_QUERY = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){'
   + 'reviewThreads(first:100){nodes{isResolved path line originalLine comments(first:1){nodes{id body author{login}}}}}'

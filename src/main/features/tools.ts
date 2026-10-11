@@ -3,7 +3,7 @@ import { reviewMcpServer, reviewTools } from '../services/reviewMcp'
 import { teammateMcpServer, teammateTools } from '../services/teammateMcp'
 import { kernelServer } from '../services/kernelServer'
 import { sharedTools } from '../services/sharedMcp'
-import { LEAD_SHARING_RULE, TEAMMATE_RULE } from '../services/handoff'
+import { LEAD_REVIEW_RULE, LEAD_SHARING_RULE, TEAMMATE_RULE } from '../services/handoff'
 import { kernelTools, LEAD_INSTRUCTIONS } from '../services/kernelMcp'
 import { Feature } from './feature'
 
@@ -31,8 +31,12 @@ export class Tools extends Feature {
       : { kernel: teammateMcpServer(this.k.waits.teammateToolDeps(ws.id)) }
   }
 
-  /** The rule added to an agent's prompt. The Lead's is LEAD_RULE, which agentPrompt adds itself. Sharing adds a line after it, only while on (KERNEL-302). */
+  /**
+   * The rule added to an agent's prompt. The Lead's is LEAD_RULE, which agentPrompt adds itself. Auto review and sharing
+   * each add a line after it, only while on (KERNEL-115, KERNEL-302).
+   */
   rulesFor(ws: Workspace, agent: AgentDef | undefined) {
-    return agent?.lead ? (this.sharing ? LEAD_SHARING_RULE : undefined) : ws.reviewOf ? this.k.reviews.reviewRuleFor(ws) : TEAMMATE_RULE
+    if (agent?.lead) return [this.settings?.pr.autoReview !== false && LEAD_REVIEW_RULE, this.sharing && LEAD_SHARING_RULE].filter(Boolean).join('\n') || undefined
+    return ws.reviewOf ? this.k.reviews.reviewRuleFor(ws) : TEAMMATE_RULE
   }
 }
