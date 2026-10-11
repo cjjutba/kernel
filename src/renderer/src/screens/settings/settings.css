@@ -1,5 +1,8 @@
 /* Settings shell and app pages (KERNEL-25). Tokens only. */
-.set-nav { width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; overflow: hidden; }
+.set-nav { position: relative; width: 236px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 0 10px; }
+/* The width is the sidebar's (useSidebarWidth.ts), set inline; 236px is only the fallback. Settings draws .main with 8px of padding on every side, so the
+   gutter to the panel is 16px, not the sidebar's 8. The handle covers all of it, so its glow lands on the panel's border (KERNEL-419). */
+.set-nav > .resize-handle[data-edge='right'] { right: -8px; width: 16px; }
 .set-list { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; margin: 0 -8px 0 -10px; padding: 0 8px 0 10px; }
 .set-back { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); text-align: left; }
 .set-back:hover { background: var(--nav-hover); }

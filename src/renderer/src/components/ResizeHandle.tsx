@@ -16,6 +16,11 @@ function keepWidth(key: string, w: number | null) {
   try { if (w === null) localStorage.removeItem(key); else localStorage.setItem(key, String(w)) } catch { /* not remembered */ }
 }
 
+/** What letting go at `raw` does: hide the target when it has a hide threshold and `raw` is under it, else commit the clamped width, so a handle without one stops at its minimum. */
+export function releasedAs(raw: number, hideBelow: number | undefined): 'hide' | 'commit' {
+  return hideBelow !== undefined && raw < hideBelow ? 'hide' : 'commit'
+}
+
 /** `esc` is kept on the drag, so the listener `end` removes is the one `start` added, whatever renders in between. */
 /** `startInline` is the target's own inline width, which the owner's render put there; a drag that ends puts it back before the owner renders the new one, so a CSS width the owner relies on isn't left as a frozen px. */
 type Drag = { startX: number; startWidth: number; startInline: string; id: number; esc: (e: globalThis.KeyboardEvent) => void }
@@ -34,9 +39,9 @@ interface Props {
   /** What a reset goes back to, and the width at which nothing is stored. Read when needed, since a default that follows the window changes with it. */
   defaultWidth: () => number
   storageKey: string
-  /** Letting go below this hides the target and keeps the saved width. */
-  hideBelow: number
-  onHide: () => void
+  /** Letting go below this hides the target and keeps the saved width. Without it (and `onHide`), letting go below `min` clamps to `min` and the target stays. */
+  hideBelow?: number
+  onHide?: () => void
   /** The width the user chose, or null for the default. */
   onCommit: (w: number | null) => void
 }
@@ -44,8 +49,9 @@ interface Props {
 /**
  * A drag handle on one edge of a panel (D-112, D-113). A drag moves the target's width through `targetRef`; the width is committed
  * to `onCommit` and localStorage on release. Letting go below `hideBelow` hides the target and keeps the saved width, so its
- * shortcut brings it back as it was. There is no hairline, so the `col-resize` cursor is the only sign on hover; the handle
- * gets the app's focus ring from the keyboard.
+ * shortcut brings it back as it was; a handle without `hideBelow` clamps to `min` instead. Hovering, focusing from the keyboard or
+ * dragging lights the panel's border with a glow that is brightest at the middle of the edge (resize.css, KERNEL-419), and the
+ * handle gets the app's focus ring from the keyboard.
  */
 export function ResizeHandle({ targetRef, edge, label, width, min, limit, defaultWidth, storageKey, hideBelow, onHide, onCommit }: Props) {
   const handle = useRef<HTMLDivElement>(null)
@@ -102,7 +108,7 @@ export function ResizeHandle({ targetRef, edge, label, width, min, limit, defaul
     end()
     const raw = d.startWidth + dir * (e.clientX - d.startX)
     restore(d)
-    if (raw < hideBelow) onHide()
+    if (releasedAs(raw, hideBelow) === 'hide') onHide?.()
     else commit(clamp(raw))
   }
   /** A cancelled drag (the window lost the pointer, or Escape) leaves the width where it was. */
