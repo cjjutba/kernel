@@ -30,6 +30,9 @@ const HIDEABLE = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebFetch', '
  */
 export const ALWAYS = ['ExitPlanMode', 'EnterPlanMode', 'AskUserQuestion', 'ToolSearch', 'Skill', 'TodoWrite', 'TaskCreate', 'TaskGet', 'TaskUpdate', 'TaskList', 'TaskOutput', 'TaskStop']
 
+/** Tools that only reach a command Bash started. */
+const BASH_COMPANIONS = ['BashOutput', 'KillShell', 'KillBash']
+
 /** What an agent file's tools line lets a session use (KERNEL-397). */
 export interface ToolPolicy {
   /** Built-in tools to leave out of the session. */
@@ -45,7 +48,9 @@ export function toolPolicy(tools: string[] | undefined): ToolPolicy | undefined 
   if (!tools?.length) return undefined
   const names = new Set(tools.map(toolName))
   const servers = new Set([...names].map((n) => n.split('__')).filter((p) => p[0] === 'mcp' && p[1] && (p.length === 2 || (p.length === 3 && p[2] === '*'))).map((p) => p[1]))
-  const allows = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool)) || (tool.startsWith('mcp__') && servers.has(tool.split('__')[1]))
+  // A background command's output and its stop belong to Bash.
+  const allows = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool))
+    || (BASH_COMPANIONS.includes(tool) && names.has('Bash')) || (tool.startsWith('mcp__') && servers.has(tool.split('__')[1]))
   return { hidden: HIDEABLE.filter((t) => !allows(t)), allows }
 }
 

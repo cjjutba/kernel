@@ -30,6 +30,9 @@ describe('agent tools', () => {
     expect(rowan.allows('mcp__linearx__thing')).toBe(false)
     expect(toolPolicy(['mcp__claude_ai_github__*'])!.allows('mcp__claude_ai_github__search_code')).toBe(true)
     expect(toolPolicy(['Task', 'Read'])!.allows('Agent')).toBe(true)
+    // A background command started with Bash can be read and stopped, and only by an agent that has Bash.
+    expect(theo.allows('BashOutput')).toBe(true)
+    expect(toolPolicy(['Read'])!.allows('KillShell')).toBe(false)
   })
 
   it('names a blocked tool without its MCP server', () => {
