@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { SKIP_FLAG, type AppSettings, type TerminalPreset } from '@shared/types'
+import { skipsPermissions } from '@shared/skipFlag'
+import type { AppSettings, TerminalPreset } from '@shared/types'
 import { call } from './api'
 import { useStore } from './store'
 
@@ -33,5 +34,5 @@ export const selectedPreset = (list: TerminalPreset[], t: AppSettings['terminal'
  */
 export const skipWasDropped = (terminal: { preset: string; command: string | null } | undefined, list: TerminalPreset[] | null): boolean => {
   const preset = terminal && list?.find((p) => p.id === terminal.preset)
-  return !!preset && preset.skipsPermissions && !(terminal.command ?? '').includes(SKIP_FLAG)
+  return !!preset && preset.skipsPermissions && !skipsPermissions(terminal.command ?? '')
 }
