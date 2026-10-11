@@ -6,12 +6,16 @@ import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { branchExists, branchState, createWorktree, detachWorktree, dropBranch, folderGone, freeBranch, leadBase, restoreWorktree } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
-import { snapshot } from '../services/checkpoints'
+import { dropCheckpoints, snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
 import { exec, git } from '../services/exec'
 import { NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
+
+const DAY = 24 * 60 * 60 * 1000
+/** How long an archived workspace keeps its checkpoints, so Restore within it still has its Revert entries (KERNEL-221). */
+export const KEEP_CHECKPOINTS_MS = 30 * DAY
 
 /** Archiving and restoring workspaces, the worktree folders archive throws away, and discarding changes (KERNEL-328). */
 export class Archive extends Feature {
@@ -23,6 +27,9 @@ export class Archive extends Feature {
    */
   private trash = new Set<string>()
   private emptying: Promise<void> = Promise.resolve()
+  /** The daily run that drops old checkpoints, and the run under way, so two never overlap (KERNEL-221). */
+  private checkpointTimer?: NodeJS.Timeout
+  private dropping?: Promise<void>
 
   /** Throws away uncommitted changes, after a checkpoint so they can still come back from the drawer. */
   private async discard(workspaceId: string) {
@@ -244,9 +251,58 @@ export class Archive extends Feature {
   }
 
 
-  /** At launch: worktree folders a quit or a failure left behind are deleted now (KERNEL-284). */
+  /**
+   * Drops the checkpoint refs of every workspace archived more than 30 days ago, in its room's repo, so `.git` stops growing
+   * (KERNEL-221). One workspace at a time, each git call under the usual exec timeout. A room whose folder is gone is
+   * skipped. The meta key `checkpointsDropped` maps each workspace done to the `archivedAt` it was done for, so a daily run
+   * makes no git calls for them, and one restored and archived again counts from its new archive.
+   */
+  dropOldCheckpoints(now = Date.now()): Promise<void> {
+    this.dropping ??= this.dropOld(now).catch((e) => console.warn('[archive] dropping old checkpoints failed', e)).finally(() => { this.dropping = undefined })
+    return this.dropping
+  }
+
+  private async dropOld(now: number) {
+    if (this.stopped) return
+    const before = this.store.meta<Record<string, number>>('checkpointsDropped') ?? {}
+    // Only workspaces still archived since the same time stay in the list. Restored or deleted ones leave it.
+    const done: Record<string, number> = {}
+    const due: { ws: Workspace; at: number }[] = []
+    for (const ws of this.store.workspaces()) {
+      if (ws.status !== 'archived' || !ws.archivedAt) continue
+      if (before[ws.id] === ws.archivedAt) done[ws.id] = ws.archivedAt
+      else if (now - ws.archivedAt > KEEP_CHECKPOINTS_MS) due.push({ ws, at: ws.archivedAt })
+    }
+    this.store.saveMeta('checkpointsDropped', done)
+    const gone = new Map<string, boolean>()
+    for (const { ws, at } of due) {
+      const room = this.store.room(ws.roomId)
+      if (!room) continue
+      if (!gone.has(room.path)) gone.set(room.path, await folderGone(room.path).catch(() => true))
+      // A quit closes the database while the run waits on the disk or git.
+      if (this.stopped) return
+      if (gone.get(room.path)) continue
+      // Restored while the run waited: it keeps what it has.
+      const cur = this.store.workspace(ws.id)
+      if (cur?.status !== 'archived' || cur.archivedAt !== at) continue
+      try { await dropCheckpoints(room.path, ws.id) } catch (e) { console.warn(`[archive] could not drop the checkpoints of ${ws.name}`, e); continue }
+      // The workspace is done again at the next start, with no refs left to find.
+      if (this.stopped) return
+      done[ws.id] = at
+      this.store.saveMeta('checkpointsDropped', done)
+    }
+  }
+
+  /** At launch: worktree folders a quit or a failure left behind are deleted now (KERNEL-284), and old checkpoints go, then daily (KERNEL-221). */
   start() {
     for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
+    void this.dropOldCheckpoints()
+    this.checkpointTimer = setInterval(() => void this.dropOldCheckpoints(), DAY)
+    this.checkpointTimer.unref()
+  }
+  stop() {
+    clearInterval(this.checkpointTimer)
+    this.checkpointTimer = undefined
   }
   handlers() {
     return {

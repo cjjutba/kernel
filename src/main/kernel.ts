@@ -258,6 +258,7 @@ export class Kernel {
     this.account.stop()
     this.team.stop()
     this.telemetry.stop()
+    this.archive.stop()
     await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
