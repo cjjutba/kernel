@@ -16,12 +16,13 @@ export function roomOf(route: Route, s: State): string | undefined {
   return 'roomId' in route ? route.roomId : undefined
 }
 
-/** Is `tab` open in the workspace: an open chat, or a file or diff in its lists. Image and text tabs live in the screen, which checks them itself. */
+/** Is `tab` open in the workspace: an open chat, or a file, diff or shared file in its lists. Image and text tabs live in the screen, which checks them itself. */
 export function hasTab(s: State, workspaceId: string, tab: string): boolean {
   const t = s.ui.tabs[workspaceId]
   if ((s.chats[workspaceId] ?? []).some((c) => c.id === tab && !c.closed)) return true
   if (tab.startsWith('file:')) return !!t?.files.includes(tab.slice(5))
   if (tab.startsWith('diff:')) return !!t?.diffs.includes(tab.slice(5))
+  if (tab.startsWith('shared:')) return !!t?.shared?.includes(tab.slice(7))
   return tab.startsWith('image:') || tab.startsWith('text:')
 }
 
@@ -33,8 +34,8 @@ export function tabOf(s: State, workspaceId: string): string | undefined {
   return (s.chats[workspaceId] ?? []).find((c) => !c.closed)?.id
 }
 
-/** A tab of the chat kind, as opposed to a file, diff, image or text tab. */
-export const isChatTab = (tab: string) => !/^(file|diff|image|text):/.test(tab)
+/** A tab of the chat kind, as opposed to a file, diff, shared, image or text tab. */
+export const isChatTab = (tab: string) => !/^(file|diff|shared|image|text):/.test(tab)
 
 /** The same route and the same tab. */
 export const samePlace = (a: Place, b: Place) => a.tab === b.tab && JSON.stringify(a.route) === JSON.stringify(b.route)
@@ -119,7 +120,12 @@ export function restorePlace(raw: string | null, s: State): { route: Route; tabs
   for (const w of s.workspaces) {
     const t = saved.tabs?.[w.id]
     if (w.status === 'archived' || !t || typeof t !== 'object') continue
-    tabs[w.id] = { ...(isText(t.tab) ? { tab: t.tab } : {}), ...(isText(t.lastChat) ? { lastChat: t.lastChat } : {}), files: paths(t.files), diffs: paths(t.diffs) }
+    const shared = paths(t.shared).filter(isText)
+    const picks = Object.entries(t.sharedVersion && typeof t.sharedVersion === 'object' ? t.sharedVersion : {}).filter(([id, n]) => shared.includes(id) && Number.isInteger(n))
+    tabs[w.id] = {
+      ...(isText(t.tab) ? { tab: t.tab } : {}), ...(isText(t.lastChat) ? { lastChat: t.lastChat } : {}), files: paths(t.files), diffs: paths(t.diffs),
+      ...(shared.length ? { shared } : {}), ...(picks.length ? { sharedVersion: Object.fromEntries(picks) as Record<string, number> } : {})
+    }
   }
   return { route: nearest(route, s), tabs }
 }

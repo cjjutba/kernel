@@ -15,6 +15,7 @@ import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
 import { userView } from './sender'
 import { KernelNote } from './KernelNote'
+import { SharedCard } from './cards/SharedCard'
 import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { ReviewCard } from './pr/ReviewCard'
 
@@ -250,6 +251,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
     case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text">{item.text}</span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
+    case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
     // Result is folded into a meta row or an error card by buildThread.
     case 'result': return null
   }

@@ -242,11 +242,12 @@ export function kernelTools(d: KernelToolDeps) {
       d.handedOff?.()
       // Kernel's backfill reads the "Created <id> on" prefix (kernel.ts backfillLeadChats), so it stays first.
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
+      const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
       const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
       // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
       // for a merge says so above instead.
       const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}`)
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),

@@ -4,7 +4,7 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import { UPDATE_HEADER } from './handoff'
 import type { TurnDone } from './notifications'
-import type { TurnBy } from './sessions'
+import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
 
@@ -120,6 +120,9 @@ const BLOCKER_MAX = 300
 /** What a teammate says it needs from the PR it waits for, kept this long (KERNEL-262). */
 const WHY_MAX = 300
 
+/** A crash event for a teammate Kernel's own quit or crash cut off, which carries on at the next launch (KERNEL-215). */
+const relaunched = (e: TeamEvent) => e.kind === 'crash' && !!e.resumed && (e.reason === QUIT_REASON || e.reason === CRASH_REASON)
+
 /** How the Lead's text names each kind of shared file. */
 const KIND_LABEL: Record<SharedKind, string> = { html: 'HTML', image: 'image', pdf: 'PDF', markdown: 'Markdown' }
 
@@ -140,7 +143,10 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
-    case 'crash': return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
+    case 'crash':
+      // Kernel itself quit or closed (KERNEL-215). Nothing went wrong in the session, and it may still wait for a hold to lift.
+      if (relaunched(e)) return `${e.reason} while ${name} was partway through a turn. ${name} carries on by itself once nothing holds it, such as a paused room or the agent limit.`
+      return `${name}'s session ended unexpectedly${e.reason ? ` (${e.reason})` : ''}, partway through a turn. ${e.resumed ? `A message waiting for ${name} started a new session, so ${name} is working again.` : 'The worktree and chat are saved; the user can restart it from the workspace.'}`
     case 'setup.failed': return `Setup failed${e.code === null ? ' (it was stopped)' : e.code !== undefined ? ` with exit code ${e.code}` : ''}, so ${name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.`
     case 'setup.passed': return e.wait ? `Setup passed on Run again. ${name} still waits for ${e.wait.label} to merge, and Kernel sends the brief then.` : `Setup passed on Run again, and ${name}'s brief was released.`
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'} to merge.${e.wait?.why ? ` ${name} says: ${e.wait.why}` : ''} Kernel ${e.wait?.held === false ? `tells ${name} to rebase onto it` : `sends ${name} the brief`} when it does.`
@@ -174,7 +180,7 @@ function cardText(e: TeamEvent, status = ''): string {
     case 'pr.closed': return `Closed ${prOf(e)} without merging`
     case 'turn': return 'Finished a turn'
     case 'error': return 'Stopped with an error'
-    case 'crash': return 'Session ended unexpectedly'
+    case 'crash': return relaunched(e) ? `Stopped when ${e.reason === QUIT_REASON ? 'Kernel quit' : 'Kernel closed'}` : 'Session ended unexpectedly'
     case 'setup.failed': return 'Setup failed'
     case 'setup.passed': return e.wait ? 'Setup passed, still waiting' : 'Setup passed'
     case 'wait.started': return `Waits for ${e.wait?.label ?? 'another PR'}`

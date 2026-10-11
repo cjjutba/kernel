@@ -4,8 +4,9 @@ import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
-import { Icon, IconButton, Menu, MENU_SEPARATOR } from '../../ui'
+import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
 import { closeChats } from './ConfirmCloseChats'
+import { kindIcon, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerWhenOpen } from './composer/bus'
 
@@ -15,19 +16,20 @@ export const diffTab = (path: string) => `diff:${path}`
 const base = (path: string) => path.split('/').pop() ?? path
 
 /**
- * The row of chat, terminal, file, diff, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
+ * The row of chat, terminal, file, diff, shared file, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
  * a close button on hover and the Checkpoints button. The new tab menu lists a New chat row, then every terminal preset (Settings, Big terminal).
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseImage, onCloseText }: {
-  workspaceId: string; chats: Chat[]; files: string[]; diffs: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
-  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
+export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  workspaceId: string; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+  onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
   const newAnchor = useRef<HTMLSpanElement>(null)
   const tabAnchor = useRef<HTMLSpanElement>(null)
   const checkpoints = useStore((s) => s.ui.workspace.checkpoints)
   const approvals = useStore((s) => s.approvals)
+  const sharedFiles = useStore((s) => s.shared)
   const running = useStore((s) => s.running)
   const [renaming, setRenaming] = useState<string | null>(null)
   const terminal = useStore((s) => s.settings?.terminal)
@@ -71,14 +73,15 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
 
   // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats, terminalOn })
-  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseImage, onCloseText, active, chats, terminalOn }
+  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn })
+  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn }
   useEffect(() => {
     const closeActive = () => {
-      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseDiff: dif, onCloseImage: img, onCloseText: txt } = latest.current
+      const { active: a, chats: cs, close: c, onCloseFile: f, onCloseDiff: dif, onCloseShared: shr, onCloseImage: img, onCloseText: txt } = latest.current
       if (!a) return
       if (a.startsWith('file:')) f(a.slice(5))
       else if (a.startsWith('diff:')) dif(a.slice(5))
+      else if (a.startsWith('shared:')) shr(a.slice(7))
       else if (a.startsWith('image:')) img(a)
       else if (a.startsWith('text:')) txt(a)
       else if (cs.some((x) => x.id === a)) void c([a])
@@ -108,10 +111,11 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'image' | 'text' | 'terminal'; path?: string }[] = [
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
     ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p })),
     ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p })),
+    ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, icon: kindIcon[sharedFiles[id]?.kind ?? 'markdown'] })),
     ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const })),
     ...texts.map((t) => ({ id: t.id, title: t.name, kind: 'text' as const }))
   ]
@@ -137,7 +141,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
                   <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
-                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>
@@ -147,7 +151,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, images, texts, acti
                 <span className="tab-end">
                   {t.kind === 'chat' && on && <span className="tab-pen"><Icon name="pen" size={12} /></span>}
                   <IconButton className="tab-caret more" icon="close" size={11} label={`Close ${t.title}`} data-tip-kbd={on ? '⌘W' : undefined}
-                    onClick={() => (t.kind === 'file' && t.path ? onCloseFile(t.path) : t.kind === 'diff' ? onCloseDiff(t.path ?? '') : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
+                    onClick={() => (t.kind === 'file' && t.path ? onCloseFile(t.path) : t.kind === 'diff' ? onCloseDiff(t.path ?? '') : t.kind === 'shared' ? onCloseShared(t.id.slice(7)) : t.kind === 'image' ? onCloseImage(t.id) : t.kind === 'text' ? onCloseText(t.id) : void close([t.id]))} />
                 </span>
               )}
               {t.kind === 'chat' && on && menu === 'tab' && (

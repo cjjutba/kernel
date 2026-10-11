@@ -3,6 +3,7 @@ import type { ChatItem, TeamUpdateRow, Workspace } from '@shared/types'
 import { go, useStore } from '../../../store'
 import { KernelNote } from '../KernelNote'
 import { copyText, MessageActions } from '../MessageActions'
+import { SharedRow } from './SharedCard'
 import { cardData, eventTone, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
@@ -71,6 +72,7 @@ function Row({ row, workspaceOf }: { row: TeamUpdateRow; workspaceOf: (id: strin
         </p>
       )}
       {row.reply && <Reply text={row.reply} />}
+      {row.shared?.map((f) => <SharedRow key={f.sharedId} sharedId={f.sharedId} version={f.version} title={f.title} kind={f.kind} />)}
     </div>
   )
 }

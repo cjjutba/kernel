@@ -25,7 +25,7 @@ import { LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from './services/handoff
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
+import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
@@ -37,8 +37,8 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refre
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
-import { readAccount, signOut } from './services/account'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
@@ -104,6 +104,14 @@ function unbuilt(): Pick<Handlers, Unbuilt> {
   return out as unknown as Pick<Handlers, Unbuilt>
 }
 
+/** When origin was last fetched, for a workspace that started from it after a fetch failed: "Oct 10, 2:05 PM (3 hours ago)". */
+export function fetchedAt(ts: number, now = Date.now()): string {
+  const min = Math.max(0, Math.round((now - ts) / 60000))
+  const [n, unit] = min < 60 ? [min, 'minute'] : min < 60 * 48 ? [Math.round(min / 60), 'hour'] : [Math.round(min / 1440), 'day']
+  const ago = n === 0 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`
+  return `${new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${ago})`
+}
+
 export class Kernel {
   readonly store: Store
   readonly approvals: Approvals
@@ -117,9 +125,10 @@ export class Kernel {
    */
   private setups = new Map<string, SetupHold>()
   /**
-   * Review workspaces whose reviewed work merged or closed and that Kernel hasn't archived yet, most often because they
-   * were working. They go when their turn ends. Saved under the meta key `reviewsToArchive`, so a quit doesn't keep them
-   * open, and only these are swept at start, so a review the user restored stays restored.
+   * Workspaces Kernel archives on its own and hasn't yet, most often because they were working: reviews whose reviewed
+   * work merged or closed (KERNEL-131), and work whose PR merged (KERNEL-114). They go when their turn ends. Saved under
+   * the meta key `reviewsToArchive`, so a quit doesn't keep them open, and only these are swept at start, so a workspace
+   * the user restored stays restored.
    */
   private reviewsToArchive = new Set<string>()
   /** Archives under way, so a second call for the same workspace waits for the first. */
@@ -271,8 +280,8 @@ export class Kernel {
         const teammate = !this.isLeadWorkspace(ws)
         if (teammate) this.leadUpdates.readingPr(ws.id)
         this.leadUpdates.turnDone(ws, chat, done)
-        // A review workspace that was still working when its work merged or closed goes now (KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
+        // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
         void this.changes(ws.id).catch(() => undefined)
         if (teammate) void this.refreshPr(ws.id).catch(() => undefined).then(() => this.leadUpdates.readPr(ws.id)).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -285,8 +294,8 @@ export class Kernel {
       // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
       onExit: (ws, _chat, reason, midTurn, resumed) => {
         if (midTurn) this.leadUpdates.crashed(this.store.workspace(ws.id) ?? ws, reason, { resumed })
-        // A review waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
+        // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
       },
       onLimits: (limits) => this.applyLimits(limits),
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
@@ -338,11 +347,15 @@ export class Kernel {
       // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
       if (e.type === 'pr' && e.state === 'merged') this.nudges.reset(e.workspaceId, ...this.reviewsOf(e.workspaceId))
       // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
-      if (e.type === 'pr' && (e.state === 'merged' || e.state === 'closed')) void this.archiveReviews(e.workspaceId).catch(() => undefined)
-      else if (e.type === 'pr') this.unmarkReviews(...this.reviewsOf(e.workspaceId))
+      const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? this.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
+      if (e.type === 'pr' && !reviews) this.unmarkReviews(...this.reviewsOf(e.workspaceId), e.workspaceId)
       // A merge releases the workspaces that wait for it, and a close breaks their wait (KERNEL-259). Here, not in
-      // LeadUpdates, which drops events while Lead updates are off.
-      if (e.type === 'pr') void this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
+      // LeadUpdates, which drops events while Lead updates are off. The reviews and the waits run together, and the work
+      // itself is archived once both are done (KERNEL-114).
+      if (e.type === 'pr') {
+        const waits = this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
+        if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => this.archiveMerged(e.workspaceId)).catch(() => undefined)
+      }
     }
     bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
     // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
@@ -355,6 +368,9 @@ export class Kernel {
   private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   async start() {
+    // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
+    const clean = this.store.meta<boolean>('cleanExit') === true
+    this.store.saveMeta('cleanExit', false)
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
     this.o.onSettings?.(this.settings)
@@ -376,18 +392,41 @@ export class Kernel {
     }
     this.tasks.attach()
     for (const r of this.store.rooms()) void this.remoteFor(r.path)
+    // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.
+    await this.sessions.endLeftovers()
+    // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
+    await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.agents(r.id).catch(() => undefined)))
     // Before any session restarts, so a trusted room's env files reach it (KERNEL-247).
     await Promise.all(this.store.rooms().map((r) => this.untrusted(r).catch(() => null)))
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
-    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
+    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
+    // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
+    // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
+    // to notice either. The chats that carry on wait while the network probe and a sign-in read run in the background, so
+    // the window, the rest of start, ordinary sends and other queues don't wait for them.
+    if (this.sessions.wasWorking() || Object.keys(cutOff).length) {
+      this.sessions.holdCarryOn()
+      void (async () => {
+        try {
+          await this.network?.check()
+          const signedIn = await this.signedInReader().catch(() => true)
+          if (!signedIn && !this.stopped) this.signedOut()
+        } finally {
+          // A stopped Kernel's database is closed, and releasing would send what waited.
+          if (!this.stopped) this.sessions.releaseCarryOn()
+        }
+      })()
+    }
     const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], held)
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], cutOff, held, { clean })
     this.recoverTrust(held)
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
-    void this.sweepWaits().catch(() => undefined)
+    // After the waits, which read each room's team first, so the Lead's workspace is known.
+    void this.sweepWaits().catch(() => undefined).then(() => this.sweepMerged()).catch(() => undefined)
     for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
@@ -480,6 +519,8 @@ export class Kernel {
 
   /** Reads `claude auth status`. Tests swap it for a stub. */
   accountReader: () => Promise<ClaudeAccount> = readAccount
+  /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
+  signedInReader: () => Promise<boolean> = claudeSignedIn
   private authTimer?: NodeJS.Timeout
 
   /**
@@ -621,8 +662,20 @@ export class Kernel {
     return new Set(workspaces).size
   }
 
-  /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window. */
-  async stop() {
+  /**
+   * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
+   * Their queues are saved, and they carry on at the next start (KERNEL-215).
+   */
+  stop(o: { budgetMs?: number } = {}): Promise<void> {
+    // Restart to update and before-quit can both ask (KERNEL-214). Each waits for the same stop to finish.
+    this.stopping ??= this.doStop(o)
+    return this.stopping
+  }
+
+  private stopping?: Promise<void>
+
+  /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window (KERNEL-214). */
+  private async doStop(o: { budgetMs?: number }) {
     this.stopped = true
     this.unlisten()
     this.notifications.detach()
@@ -637,10 +690,20 @@ export class Kernel {
     this.limitCheck = undefined
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
-    this.sessions.stopAll()
+    await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
-    await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
+    // The next start tells a quit from a crash by this. It goes before the hook server closes, the one step left that can
+    // wait, so a quit capped by KERNEL-214 still counts as a quit. Nothing after it changes what carries on.
+    this.store.saveMeta('cleanExit', true)
+    // Nobody can answer an approval once Kernel quits, and the next start would expire it anyway (D-137). It ends now,
+    // while the database is open: a dropped hook connection aborts its approval a tick after close() returns, which
+    // would reach a closed database. An outside session's hook gets its fallback answer before the connections end.
+    this.approvals.expirePending()
+    await new Promise((r) => setImmediate(r))
+    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
+    // waits for it, so whatever is still open ends first.
+    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
     this.store.db.close()
   }
 
@@ -995,20 +1058,27 @@ export class Kernel {
     const remote = await this.remoteFor(room.path, repo)
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
     const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    const want = o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote)
+    // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
+    // without that remote has nothing to fetch, so it says nothing.
+    const fetched = !reviewed && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
+      ? await fetchOrigin(room.path, remote) : undefined
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch, remote)
-      : await resolveBaseRef(room.path, o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote), { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
+      : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
+    // A local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
+    const stale = fetched?.ok === false && baseRef.startsWith(`${remote}/`) ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
     // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
     const ws: Workspace = await this.withPort(async (port) => {
       let path: string, branch: string, baselineRef: string | undefined
       if (mode === 'worktree') {
         // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
-        // 60 characters (KERNEL-275). A taken name gets a suffix.
-        const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
+        // 60 characters (KERNEL-275), for a review too (KERNEL-265). A taken name gets a suffix.
+        const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
         const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
-        branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
-          : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        branch = await freeBranch(room.path, asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+          : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels))))
         path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -1023,7 +1093,7 @@ export class Kernel {
       // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105). A review
       // the Lead started with base_ref keeps the Lead's base and branch, and is only linked (KERNEL-299).
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
-      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })
@@ -1031,6 +1101,7 @@ export class Kernel {
     this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
     // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
     if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.startIssue(ws, o.source.id)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -1038,6 +1109,7 @@ export class Kernel {
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    if (stale) this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
@@ -2032,40 +2104,117 @@ export class Kernel {
     const of = this.store.workspace(ofId)
     const reviews = this.store.workspaces().filter((w) => w.reviewOf === ofId && w.status !== 'archived' && (!only || w.id === only))
     if (!of || (of.prState !== 'merged' && of.prState !== 'closed')) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
+    // Archive on merge covers review cleanup too: off, nothing archives on its own (KERNEL-114).
+    if (!reviews.length) return
+    if (!(await this.archiveOnMerge(of.roomId))) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
     for (const r of reviews) this.markReview(r.id)
-    for (const r of reviews) {
-      // A review with a turn running, or a message about to start one, goes when that turn ends.
-      if (this.working(r.id)) continue
-      const keep = (reason: string) => {
-        this.unmarkReviews(r.id)
-        bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text: 'kept the review workspace', object: r.name, warn: true, quote: `The work it reviewed is done, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
-      }
-      const why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.working(id), latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
-      if (why === 'its agent is still working') continue
-      if (why) { keep(why); continue }
-      // Checked again after the git call: a message may have started a turn meanwhile, the user may have restored it,
-      // or another archive got there first.
-      if (this.working(r.id) || !this.reviewsToArchive.has(r.id)) continue
-      if (this.store.workspace(r.id)?.status === 'archived') { this.unmarkReviews(r.id); continue }
-      try { await this.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
-    }
+    for (const r of reviews) await this.archiveDone(r, 'kept the review workspace', 'The work it reviewed is done')
   }
 
   /**
-   * At start: the reviews Kernel meant to archive when it quit, as one whose turn was still running, are archived now
-   * (KERNEL-131). Work that merged or closed while Kernel was closed reaches `archiveReviews` through the first PR poll,
+   * Settings, Git's Archive on merge, with the room's own value first (KERNEL-114). It covers the work whose PR merged and
+   * the reviews of work that merged or closed.
+   */
+  private async archiveOnMerge(roomId: string) {
+    const room = this.store.room(roomId)
+    const own = room ? (await loadRepoSettings(room.path).catch(() => undefined))?.workspace.archiveOnMerge : undefined
+    return typeof own === 'boolean' ? own : this.settings.workspace.archiveOnMerge
+  }
+
+  /**
+   * The workspace's PR merged, so with Archive on merge on it is done (KERNEL-114). It goes through the same checks as a
+   * review, and is also kept when its branch has commits GitHub doesn't. Only a worktree goes: a workspace on the room's
+   * own checkout, as the Lead's is, can't be checked for uncommitted changes, and that holds even before the team is read.
+   * A closed PR keeps its workspace, because its author may reopen it. Reviews go through `archiveReviews`.
+   */
+  private async archiveMerged(id: string) {
+    const ws = this.store.workspace(id)
+    if (ws?.mode !== 'worktree') { this.unmarkReviews(id); return }
+    if (ws.status === 'archived' || ws.reviewOf) return
+    const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+    if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.roomId))) { this.unmarkReviews(id); return }
+    this.markReview(id)
+    await this.archiveDone(ws, 'kept the workspace', `Its PR${ws.prNumber ? ' #' + ws.prNumber : ''} merged`)
+  }
+
+  /** A marked workspace whose turn ended, or whose session died, or that a quit left marked. */
+  private archiveMarked(id: string) {
+    const ws = this.store.workspace(id)
+    if (!ws || ws.status === 'archived') { this.unmarkReviews(id); return Promise.resolve() }
+    return ws.reviewOf ? this.archiveReviews(ws.reviewOf, id) : this.archiveMerged(id)
+  }
+
+  /**
+   * Archives a marked workspace through the same checks as archive_workspace. One still working goes when its turn ends.
+   * One that would lose work is kept, with `text` and `done` in the log, and Kernel doesn't try again.
+   */
+  private async archiveDone(r: Workspace, text: string, done: string) {
+    // A turn running, or a message about to start one: it goes when that turn ends.
+    if (this.working(r.id)) return
+    const keep = (reason: string) => {
+      this.unmarkReviews(r.id)
+      bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text, object: r.name, warn: true, quote: `${done}, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
+    }
+    let why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.working(id), latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
+    if (why === 'its agent is still working') return
+    // The git check followed the branch the work is on now. Work that moved to a fresh branch isn't the merged work.
+    if (!r.reviewOf && this.store.workspace(r.id)?.prState !== 'merged') { this.unmarkReviews(r.id); return }
+    // Archive keeps a branch with unpushed commits, but the work would leave the sidebar unfinished (KERNEL-114).
+    if (!why && !r.reviewOf) {
+      const unpushed = await this.unpushedOf(this.store.workspace(r.id) ?? r)
+      if (unpushed === null) why = 'its commits could not be counted'
+      else if (unpushed > 0) why = `it has ${unpushed === 1 ? 'a commit' : `${unpushed} commits`} that GitHub doesn't`
+    }
+    if (why) { keep(why); return }
+    // Checked again after the git calls: a message may have started a turn meanwhile, the user may have restored it,
+    // or another archive got there first.
+    if (this.working(r.id) || !this.reviewsToArchive.has(r.id)) return
+    const now = this.store.workspace(r.id)
+    if (now?.status === 'archived' || (!r.reviewOf && now?.prState !== 'merged')) { this.unmarkReviews(r.id); return }
+    try { await this.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
+  }
+
+  /**
+   * Commits on the workspace's branch that GitHub doesn't have, or null when they can't be counted. As `unpushedCommits`,
+   * except that what the PR's head had counts as on GitHub: a squash merge leaves the commits off the base, and GitHub may
+   * have deleted the branch.
+   */
+  private async unpushedOf(ws: Workspace): Promise<number | null> {
+    const room = this.store.room(ws.roomId)
+    if (!room) return null
+    const counted = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path))
+    if (counted === 0 || !ws.prHead) return counted
+    const r = await exec('git', ['-C', room.path, 'rev-list', '--count', `refs/heads/${ws.branch}`, '--not', ws.prHead])
+    const n = Number(r.stdout.trim())
+    if (r.code !== 0 || r.stdout.trim() === '' || !Number.isInteger(n)) return counted
+    return counted === null ? n : Math.min(counted, n)
+  }
+
+  /**
+   * At start: the workspaces Kernel meant to archive when it quit, as one whose turn was still running, are archived now
+   * (KERNEL-131, KERNEL-114). Work that merged or closed while Kernel was closed reaches them through the first PR poll,
    * since its saved PR state is still open.
    */
   private async sweepReviews() {
-    for (const id of [...this.reviewsToArchive]) {
-      const r = this.store.workspace(id)
-      if (!r?.reviewOf || r.status === 'archived') { this.unmarkReviews(id); continue }
-      await this.archiveReviews(r.reviewOf, id).catch(() => undefined)
-    }
+    for (const id of [...this.reviewsToArchive]) await this.archiveMarked(id).catch(() => undefined)
     // Reviews the Lead started with base_ref instead of review_of are linked now (KERNEL-299). Those whose work already
     // merged or closed get no PR event, so they are archived here. Each is linked once, so a kept one is noted once. A quit
     // right after start closes the database under it.
     for (const r of await this.linkReviews().catch(() => [])) await this.archiveReviews(r.reviewOf!, r.id).catch(() => undefined)
+  }
+
+  /**
+   * Once, at the first start with Archive on merge working (KERNEL-114): work whose PR merged before then gets no PR event,
+   * so it is archived here, with the same checks. After that a merge archives as it lands, so a workspace the user restores
+   * stays, and a kept one is noted once. Saved under the meta key `mergedSwept`.
+   */
+  private async sweepMerged() {
+    if (this.store.meta<boolean>('mergedSwept')) return
+    for (const ws of this.store.workspaces()) {
+      if (this.stopped) return
+      if (ws.mode === 'worktree' && ws.status !== 'archived' && ws.prState === 'merged' && !ws.reviewOf) await this.archiveMerged(ws.id).catch(() => undefined)
+    }
+    if (!this.stopped) this.store.saveMeta('mergedSwept', true)
   }
 
   /** Links each open reviewer workspace with no `reviewOf` to the workspace whose branch its base names (KERNEL-299). */
@@ -2189,7 +2338,7 @@ export class Kernel {
     let forwarded = true
     if (!now && ws.mode === 'worktree') {
       // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
-      const fetched = await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30_000 }).then((r) => r.code === 0, () => false)
+      const fetched = (await fetchOrigin(room.path, remote, { fresh: true })).ok
       forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
     }
     const after = await this.head(ws.path)
@@ -2618,7 +2767,7 @@ export class Kernel {
     if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
     const room = this.mustRoom(ws.roomId)
     const remote = await this.remoteFor(room.path)
-    if (ws.baseRef.startsWith(`${remote}/`)) await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
+    if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)

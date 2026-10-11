@@ -6,6 +6,7 @@ import { Button, Icon, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, ty
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
+import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
@@ -159,19 +160,25 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
 }
 
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void }) {
-  const right = useStore((s) => s.ui.workspace.right)
+  const shown = useStore((s) => s.ui.workspace.right)
+  const shared = useStore((s) => sharedHere(s, ws).length)
+  // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
+  const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
+  const right = shown === 'shared' && !sharing ? 'changes' : shown
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <div className="panel-tabs">
         <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView({ right: id as typeof right })} tabs={[
           { id: 'files', label: 'All files' },
           { id: 'changes', label: <>Changes <span className="mono muted" style={{ fontSize: 11.5 }}>{changes.length}</span></> },
-          { id: 'checks', label: 'Checks' }
+          { id: 'checks', label: 'Checks' },
+          ...(sharing ? [{ id: 'shared', label: <>Shared <span className="mono muted" style={{ fontSize: 11.5 }}>{shared}</span></> }] : [])
         ]} />
       </div>
       {right === 'files' && <FilesTree workspaceId={ws.id} changes={changes} onOpenFile={onOpenFile} />}
       {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} />}
       {right === 'checks' && <Checks ws={ws} changes={changes} />}
+      {right === 'shared' && <SharedPanel ws={ws} />}
     </div>
   )
 }

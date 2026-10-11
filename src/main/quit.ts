@@ -30,8 +30,8 @@ export interface QuitDialog { message: string; detail: string; buttons: [string,
 export function quitDialog(working: number, reason: QuitReason): QuitDialog {
   return {
     message: working === 1 ? '1 agent is working' : `${working} agents are working`,
-    // KERNEL-215 changes this once agents carry on after a relaunch.
-    detail: 'Quitting stops them partway through their work.',
+    // They carry on by themselves at the next launch (KERNEL-215).
+    detail: 'Quitting stops them. They carry on where they left off when Kernel opens again.',
     buttons: [reason === 'update' ? 'Restart' : 'Quit', 'Cancel'],
     defaultId: 1,
     cancelId: 1

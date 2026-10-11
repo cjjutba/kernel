@@ -752,6 +752,23 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     expect(store.workspace('w1')).toBeTruthy()
   })
 
+  it('says a teammate Kernel quit or closed on carries on by itself, without calling it unexpected or working (KERNEL-215)', async () => {
+    const { u, s, pr, w1 } = await setup()
+    u.crashed(w1, 'Kernel quit', { resumed: true })
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    const post = s.posts.pop()!
+    expect(post).toContain('- Kernel quit while Noor was partway through a turn. Noor carries on by itself once nothing holds it, such as a paused room or the agent limit.')
+    expect(post).not.toMatch(/unexpectedly|working again/)
+    expect(s.updates.at(-1)?.rows[0].events[0]).toEqual({ kind: 'crash', text: 'Stopped when Kernel quit', actionable: false })
+    u.crashed(w1, 'Kernel closed unexpectedly', { resumed: true })
+    pr('w1', 'conflict')
+    await wait()
+    expect(s.posts.pop()).toContain('- Kernel closed unexpectedly while Noor was partway through a turn.')
+  })
+
   it('drops a close the PR left by opening again', async () => {
     const { s, pr, store } = await setup()
     s.accept = false

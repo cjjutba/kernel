@@ -330,7 +330,8 @@ describe('kernel recovery paths', () => {
     await k.start()
     const room = await k.addRoom(repo)
     await trustRoom(k, room.id)
-    const again = async () => { const next = new Kernel({ dataDir, home }); await next.start(); return next }
+    // A start with work to carry on checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
+    const again = async () => { const next = new Kernel({ dataDir, home }); next.signedInReader = async () => true; await next.start(); return next }
     return { k, room, again }
   }
   const texts = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => [(q.parts[0] as { text: string }).text, q.from])
@@ -600,6 +601,8 @@ describe('kernel recovery paths', () => {
     const dataDir = (k as unknown as { o: { dataDir: string } }).o.dataDir
     await k.stop()
     const again = new Kernel({ dataDir })
+    // A start with a cut-off chat checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
+    again.signedInReader = async () => true
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     expect(again.sessions.isPaused(room.id)).toBe(true)
@@ -609,7 +612,10 @@ describe('kernel recovery paths', () => {
     try {
       vi.setSystemTime(resetsAt * 1000 + 1000)
       const later = new Kernel({ dataDir })
+      later.signedInReader = async () => true
       await later.start()
+      // The chats carry on once the launch check, in the background, lets them.
+      await flush()
       expect(later.store.room(room.id)?.paused).toBe(false)
       expect(later.sessions.isRunning(chat.id)).toBe(true)
       expect(later.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })

@@ -31,7 +31,7 @@ describe('quitDialog', () => {
   it('counts agents and makes Cancel the default', () => {
     expect(quitDialog(3, 'user')).toEqual({
       message: '3 agents are working',
-      detail: 'Quitting stops them partway through their work.',
+      detail: 'Quitting stops them. They carry on where they left off when Kernel opens again.',
       buttons: ['Quit', 'Cancel'],
       defaultId: 1,
       cancelId: 1
@@ -202,9 +202,13 @@ describe('Kernel on quit', () => {
 
   it('reads no database when a chat starts or stops, so a push never throws from the counting', async () => {
     const k = await kernel()
-    k.store.db.close()
+    // Every Store query prepares its statement, so this fails any read. Closing the database would prove the same, but
+    // stop() writes on the way out (the working journal and cleanExit, KERNEL-215), so it needs the database back after.
+    const prepare = vi.spyOn(k.store.db, 'prepare').mockImplementation(() => { throw new Error('The database was read') })
     expect(() => bus.push({ type: 'chat.running', chatId: 'c1', running: true })).not.toThrow()
     expect(() => bus.push({ type: 'chat.running', chatId: 'c1', running: false })).not.toThrow()
+    expect(prepare).not.toHaveBeenCalled()
+    prepare.mockRestore()
     await k.stop()
   })
 

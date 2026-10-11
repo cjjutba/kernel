@@ -52,8 +52,9 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
     return () => { live = false }
   }, [id, ws.prNumber])
 
-  // Archive goes through the archive confirmation; once the workspace is archived, it lives in History. A review Kernel
-  // archived on its own while on screen, after its work merged, opens the Lead's chat instead, with a toast (KERNEL-132).
+  // Archive goes through the archive confirmation; once the workspace is archived, it lives in History. A workspace Kernel
+  // archived on its own while on screen, after its PR or the work it reviewed merged, opens the Lead's chat instead, with
+  // a toast (KERNEL-132, KERNEL-114).
   const reviewed = useStore((s) => (ws.reviewOf ? s.workspaces.find((w) => w.id === ws.reviewOf) : undefined))
   const reviewer = useStore((s) => s.agents[ws.roomId]?.find((a) => a.id === ws.agentId)?.name)
   const last = useRef({ id, status: ws.status })

@@ -52,7 +52,22 @@ async function stepToSecondQuestion(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceSharedPhone is drawn at the Phone width, and WorkspaceSharedVersions with the version picker open. Both are local to the tab.
+async function pickPhone(page: Page) {
+  await page.getByRole('radio', { name: 'Phone' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+async function openVersions(page: Page) {
+  await page.getByRole('button', { name: 'Versions' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page) => Promise<void>> = {
+  WorkspaceSharedPhone: pickPhone,
+  WorkspaceSharedVersions: openVersions,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
