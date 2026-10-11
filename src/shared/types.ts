@@ -281,7 +281,7 @@ export interface DeletePreview {
 export interface DeleteResult {
   deleted: string[]
   skipped: DeleteSkip[]
-  /** Branches kept because their commits are pushed nowhere, or another workspace uses them. */
+  /** Branches kept because their commits are pushed nowhere. A branch kept because another workspace uses it isn't counted. */
   keptBranches: number
   freedBytes: number
 }
