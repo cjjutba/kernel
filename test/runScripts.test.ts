@@ -284,7 +284,7 @@ describe('nits from the KERNEL-190 review (KERNEL-244)', () => {
 
   it("reading a room's settings refreshes its remote, as saving does", async () => {
     const { k, h, room, repo } = await kernelOn(scripts('[scripts]\nsetup = "true"\n'))
-    const remotes = (k as unknown as { roomRemotes: Map<string, string | undefined> }).roomRemotes
+    const remotes = k.config.roomRemotes
     // Edited outside Kernel, so nothing has told it yet.
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[workspace]\nremote = "upstream"\n')
     expect(remotes.get(repo)).toBeUndefined()
