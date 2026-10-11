@@ -344,6 +344,10 @@ class Component extends DCLogic {
         { title: 'Cleanup', rows: [
           seg('rg-delbranch', 'Delete branch on archive', ['Use default', 'On', 'Off'], 0, 'The app default is Off'),
           Object.assign(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2), { source: 'Overriding settings.toml' })
+        ] },
+        // KERNEL-401: checks this room never counts, when GitHub requires none on the repo.
+        { title: 'Pull requests', rows: [
+          Object.assign(from(code('Optional checks', ['Vercel*', 'codecov/patch'])), { hint: [['One check name per line. ', 0], ['*', 1], [' matches anything, like ', 0], ['Vercel*', 1], ['. A check on this list that fails doesn\u2019t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.', 0]] })
         ] }
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [

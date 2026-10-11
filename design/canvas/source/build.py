@@ -65,10 +65,12 @@ def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=No
     return s
 out=[]
 HOOKS_DOWN='''<a href="CheckHooks.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks down<span style="margin-left: 4px; color: #f7f8f8; text-decoration: underline">Check hooks</span></a>'''
-def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False, icons=None, rows_html=None):
+# KERNEL-401: a GitHub rate limit holding Kernel's PR reads off. A word with a muted time, not a link, beside where Hooks down shows.
+GH_PAUSED='''<span role="status" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v10M11 3v10"></path></svg>GitHub paused<span style="margin-left: 4px; color: #8a8f98">PRs update at 3:41 PM</span></span>'''
+def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, gh_paused=False, fold=False, icons=None, rows_html=None):
     t=t.replace('<!--HELMET-->',helmet)
     if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons,rows_html))
-    t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else '<span></span>'))
+    t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else GH_PAUSED if gh_paused else '<span></span>'))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
     assert 'Agent Office' not in t, name
     if light: t=lighten(t)
@@ -154,6 +156,7 @@ WS=[
     ('WorkspaceSignedOut','signedout'),
     ('WorkspaceSetupFailed','setupfail'),
     ('WorkspaceHooksDown','hooks'),
+    ('WorkspaceGitHubPaused','ghpaused'),
     ('WorkspaceNewChat','newchat'),
     ('WorkspaceTerminal','terminal'),
     ('WorkspaceLead','lead'),
@@ -193,7 +196,7 @@ WS=[
 ]
 for n,sc in WS:
     if n=='WorkspaceLead': continue  # KERNEL-356 draws it with the Grouped set, below
-    emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks')
+    emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks', gh_paused=sc=='ghpaused')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
