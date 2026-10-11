@@ -72,5 +72,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (method === 'account/login/cancel') { send({ id, result: {} }); return send({ method: 'account/login/completed', params: { loginId: 'login-1', success: false, error: 'canceled' } }) }
   if (method === 'account/logout') { if (home) rmSync(join(home, 'auth.json'), { force: true }); return send({ id, result: {} }) }
   if (method === 'thread/compact/start') return send({ id, result: {} })
+  // Codex's MCP servers, a JSON table in FAKE_CODEX_MCP. `error` fails the request.
+  if (method === 'config/read') {
+    if (process.env.FAKE_CODEX_MCP === 'error') return send({ id, error: { code: -32603, message: 'failed to load configuration' } })
+    return send({ id, result: { config: { mcp_servers: JSON.parse(process.env.FAKE_CODEX_MCP ?? '{}') }, origins: {}, layers: null } })
+  }
   send({ id, result: {} })
 })
