@@ -9,6 +9,7 @@ import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
+import { mustBeInside, OPEN_APPS } from './services/openApps'
 import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
@@ -346,6 +347,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'app.exportLogs': async () => ({ path: '(fixture)' }),
     'app.info': async () => ({ version: '0.1.0', dataDir: join('~', 'Library', 'Application Support', 'Kernel'), telemetry: f.telemetry?.canSend ?? false }),
     'app.openTerminal': async () => ok,
+    // A fixed list with no icons, so a screenshot is the same on every Mac. Opening does nothing, but still refuses a path outside the fixture's rooms (KERNEL-427).
+    'app.openApps': async () => ({ apps: OPEN_APPS.filter((a) => ['finder', 'vscode', 'cursor', 'terminal'].includes(a.id)).map(({ id, name, kind }) => ({ id, name, kind })), defaultId: 'vscode' }),
+    'app.openIn': async ({ path }) => { mustBeInside(path, [...f.rooms, ...f.workspaces].map((x) => x.path)); return ok },
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) }),
     'telemetry.recent': async () => f.telemetry?.recent ?? [],
     'telemetry.track': async () => ok
