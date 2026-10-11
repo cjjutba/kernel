@@ -166,6 +166,19 @@ export class Notifications {
     this.alert(n, 'idle')
   }
 
+  /**
+   * A row in Inbox > Updates that asks nothing of the user, such as the weekly usage warning (KERNEL-220), and a macOS banner
+   * while the app is in the background. The feature that sends it has its own switch, so Settings > Notifications' per-kind
+   * switches don't apply, and quiet hours and the sound setting still do. One row per `id`: a second call with it changes nothing.
+   */
+  notice(n: Pick<Notification, 'id' | 'title' | 'sub'> & Partial<Pick<Notification, 'heading' | 'body'>>): Notification {
+    const had = this.d.store.notification(n.id)
+    if (had) return had
+    const row = this.save({ kind: 'system', needsYou: false, read: false, createdAt: this.d.now?.() ?? Date.now(), ...n })
+    this.alert(row, 'usage')
+    return row
+  }
+
   list(): Notification[] { return this.d.store.notifications() }
 
   read(ids: string[] | 'all'): Notification[] {
@@ -255,9 +268,10 @@ export class Notifications {
     }
   }
 
-  private alert(n: Notification, gate: 'permission' | 'plan' | 'merge' | 'checkFailed' | 'finished' | 'idle') {
+  /** `usage` has no switch here: a warning is on or off in Settings, Account. */
+  private alert(n: Notification, gate: 'permission' | 'plan' | 'merge' | 'checkFailed' | 'finished' | 'idle' | 'usage') {
     const s = this.d.settings().notifications
-    if (!s[gate] || !this.d.show || !this.d.inBackground?.()) return
+    if ((gate !== 'usage' && !s[gate]) || !this.d.show || !this.d.inBackground?.()) return
     if (inQuietHours(s.quietHours, new Date(this.d.now?.() ?? Date.now()))) return
     this.d.show(n, { silent: s.sound === 'none' })
   }

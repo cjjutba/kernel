@@ -23,3 +23,14 @@ export function nearLimit(usage: RateLimit[], now = Date.now()): RateLimit | und
   })
   return holding.sort((a, b) => (b.resetsAt ?? 0) - (a.resetsAt ?? 0))[0]
 }
+
+const DAY = 24 * 3600_000
+
+/** "3:40 PM": the time a limit resets, as banners, the footer and Settings say it. */
+export const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+
+/** "at 3:40 PM" within a day, else "Monday at 9:00 AM". `resetsAt` is in epoch seconds, `now` in milliseconds. */
+export function resetPhrase(resetsAt: number, now: number): string {
+  const ms = resetsAt * 1000
+  return ms - now < DAY ? `at ${clock(ms)}` : `${new Date(ms).toLocaleDateString('en-US', { weekday: 'long' })} at ${clock(ms)}`
+}

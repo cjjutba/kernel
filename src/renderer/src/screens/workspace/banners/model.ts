@@ -1,5 +1,8 @@
 import type { BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, RateLimit, ScriptLine, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
+import { clock, resetPhrase } from '@shared/usage'
+
+export { clock, resetPhrase }
 
 // Which failure banner a workspace shows, worked out from the store alone (KERNEL-28). Every input is a real signal
 // main pushed: usage from rate_limit_event, the account, main's network check, api_retry, setup's exit, the hook server.
@@ -49,15 +52,6 @@ const DAY = 24 * 3600_000
 /** `resetsAt` is epoch seconds. A rejection whose reset has passed no longer counts. */
 const rejected = (l: RateLimit, now: number) => l.status === 'rejected' && (l.resetsAt === undefined || l.resetsAt * 1000 > now)
 const modelLabel = (id: ModelId) => MODELS.find((m) => m.id === id)?.label ?? id
-/** "3:40 PM": the time a limit resets, as banners and the footer say it. */
-export const clock = (ms: number) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-
-/** "at 3:40 PM" within a day, else "Monday at 9:00 AM". */
-export function resetPhrase(resetsAt: number, now: number): string {
-  const ms = resetsAt * 1000
-  return ms - now < DAY ? `at ${clock(ms)}` : `${new Date(ms).toLocaleDateString('en-US', { weekday: 'long' })} at ${clock(ms)}`
-}
-
 /** "in 3 days", or "at 3:40 PM" within a day. */
 export function resetIn(resetsAt: number, now: number): string {
   const ms = resetsAt * 1000

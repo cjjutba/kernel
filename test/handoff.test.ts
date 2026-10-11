@@ -9,7 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, reviewRule } from '../src/main/services/handoff'
 import { reviewTools } from '../src/main/services/reviewMcp'
-import { kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { capRefusal, DEFAULT_OPEN_CAP, kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 // A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
 vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
@@ -77,6 +77,89 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
     const t = leadTools(null)
     expect(await t.call('create_workspace', { agent: 'noor', title: 'Symlink node_modules', brief: 'Goal, files, acceptance criteria' })).toBe('Created ws-1 on kernel/symlink-node-modules for noor.')
     expect(t.handedOff).toHaveBeenCalledOnce()
+  })
+})
+
+describe("create_workspace stops at the room's open teammate workspaces (KERNEL-220)", () => {
+  const ws = (n: number, extra: Partial<Workspace> = {}) => Array.from({ length: n }, (_, i) => ({ id: `w${i}-${extra.status ?? extra.prState ?? extra.reviewOf ?? 'open'}`, name: `w${i}`, branch: `feat/w${i}`, agentId: 'noor', status: 'ready', prState: 'none', ...extra }) as Workspace)
+  const rowan = { id: 'rowan', name: 'Rowan', role: 'Lead', lead: true } as AgentDef
+  const noor = { id: 'noor', name: 'Noor', role: 'Engine', lead: false } as AgentDef
+  const args = { agent: 'noor', title: 'Next task', brief: 'Goal, files, acceptance criteria' }
+  function tools(workspaces: Workspace[], cap?: number) {
+    const createWorkspace = vi.fn(async () => ({ id: 'new', branch: 'feat/next-task', agentId: 'noor' }) as Workspace)
+    const deps = {
+      roomId: 'room', lead: rowan, agents: async () => [rowan, noor], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }),
+      askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, ...(cap === undefined ? {} : { agentCap: () => cap })
+    } as unknown as KernelToolDeps
+    const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
+    return { createWorkspace, run: async (a: object = args) => { const r = await create.handler(a as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } } }
+  }
+
+  it('refuses a fourth build workspace when the agent limit is 0, and says how to go on', async () => {
+    const t = tools(ws(3), DEFAULT_OPEN_CAP)
+    expect(await t.run()).toEqual({ isError: true, text: 'Not created: 3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.' })
+    expect(t.createWorkspace).not.toHaveBeenCalled()
+    expect(capRefusal(3, 3)).toBe('3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.')
+    expect(capRefusal(1, 1)).toContain('1 teammate workspace is open in this room, the limit.')
+    expect(capRefusal(5, 3)).toContain('5 teammate workspaces are open in this room, over the limit of 3.')
+  })
+
+  it('creates it below the limit, and when the user explicitly asked for more', async () => {
+    const below = tools(ws(2), 3)
+    expect((await below.run()).isError).toBe(false)
+    expect(below.createWorkspace).toHaveBeenCalledOnce()
+    const full = tools(ws(3), 3)
+    expect((await full.run({ ...args, user_asked: true })).isError).toBe(false)
+    expect(full.createWorkspace).toHaveBeenCalledOnce()
+    expect((await full.run({ ...args, user_asked: false })).isError).toBe(true)
+  })
+
+  it("counts open build workspaces only: reviews, archived, merged, closed and the Lead's own don't count", async () => {
+    const others = [...ws(4, { reviewOf: 'w0-open' }), ...ws(1, { status: 'archived' }), ...ws(1, { prState: 'merged' }), ...ws(1, { prState: 'closed' }), ...ws(1, { agentId: 'rowan', lead: true })]
+    const t = tools([...ws(2), ...others], 3)
+    expect((await t.run()).isError).toBe(false)
+    // One more build workspace in any state that is still open reaches the limit.
+    expect((await tools([...ws(2), ...ws(1, { status: 'failed' }), ...others], 3).run()).isError).toBe(true)
+    expect((await tools([...ws(2), ...ws(1, { prState: 'ready' }), ...others], 3).run()).isError).toBe(true)
+  })
+
+  it("follows Settings, Models' agent limit, and has no cap when the deps give none", async () => {
+    expect((await tools(ws(2), 2).run()).text).toBe('Not created: 2 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.')
+    expect((await tools(ws(4), 3).run()).text).toContain('4 teammate workspaces are open in this room, over the limit of 3.')
+    expect((await tools(ws(9)).run()).isError).toBe(false)
+  })
+
+  it('refuses nothing it should not: a review of one of them goes through at the limit', async () => {
+    const reviewer = { id: 'theo', name: 'Theo', role: 'Reviewer', lead: false } as AgentDef
+    const workspaces = ws(3)
+    const createWorkspace = vi.fn(async () => ({ id: 'rv', branch: 'review/w0', agentId: 'theo' }) as Workspace)
+    const deps = { roomId: 'room', lead: rowan, agents: async () => [rowan, noor, reviewer], workspaces: () => workspaces, createWorkspace, messageWorkspace: async () => ({ ok: true, sent: true, note: '' }), askUser: async () => null, hireAgent: async () => '', archiveWorkspace: async () => {}, isRunning: () => false, unsaved: async () => false, agentCap: () => 3 } as unknown as KernelToolDeps
+    const create = kernelTools(deps).find((t) => t.name === 'create_workspace')!
+    const r = await create.handler({ agent: 'theo', title: 'Review w0', brief: 'Review it', review_of: workspaces[0].id } as never, {})
+    expect((r as { isError?: boolean }).isError).toBeFalsy()
+    expect(createWorkspace).toHaveBeenCalledOnce()
+  })
+
+  it('tells the Lead to set user_asked only when the user asked for more', () => {
+    expect(LEAD_RULE).toContain('create_workspace refuses once the room has as many teammate workspaces open as its limit allows.')
+    expect(LEAD_RULE).toContain('Pass user_asked true only when the user explicitly asked for more teammate workspaces than the limit allows.')
+  })
+
+  it("refuses the fourth workspace in a real Kernel, where the Lead's tools come from Settings", { timeout: 60_000 }, async () => {
+    const { k, room, chat } = await realLead()
+    k.sessions.send = async () => ({ queued: false })
+    const lead = (await k.agents(room.id)).find((a) => a.lead)!
+    const create = kernelTools(k.lead.leadToolDeps(room.id, lead, chat)).find((t) => t.name === 'create_workspace')!
+    const make = async (title: string, more: object = {}) => { const r = await create.handler({ agent: 'noor', title, brief: 'Build it', ...more } as never, {}); return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError } }
+    for (const title of ['One', 'Two', 'Three']) expect((await make(title)).isError, title).toBe(false)
+    expect(await make('Four')).toEqual({ isError: true, text: 'Not created: 3 teammate workspaces are open in this room, the limit. Archive one, or the user can raise the limit in Settings, Models.' })
+    expect(k.store.workspaces(room.id).filter((w) => !w.lead)).toHaveLength(3)
+    expect((await make('Four, as asked', { user_asked: true })).isError).toBe(false)
+    expect(k.store.workspaces(room.id).filter((w) => !w.lead)).toHaveLength(4)
+    // A limit set in Settings, Models replaces the default of three.
+    await k.handlers()['settings.set']({ patch: { models: { agentLimit: 5 } } })
+    expect((await make('Five')).isError).toBe(false)
+    expect((await make('Six')).text).toContain('5 teammate workspaces are open in this room, the limit.')
   })
 })
 

@@ -8,6 +8,7 @@ import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
+import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -109,6 +110,9 @@ interface Turns {
   blocked?: string
 }
 
+/** How many chats a usage limit cut off restart at once when it lifts. Each next one starts when one ends its turn (KERNEL-220). */
+export const RESUME_AT_ONCE = 2
+
 /** How long a chat with nothing to do keeps its Claude Code process before Kernel stops it. The next message resumes it (KERNEL-183). */
 export const IDLE_STOP_MS = 10 * 60_000
 
@@ -195,6 +199,8 @@ export class Sessions {
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
   private cutOff = new Map<string, CutOffReason>()
+  /** Chats `carryOn` restarted after a usage limit and that haven't finished a turn since, so a lifted limit doesn't restart them all at once (KERNEL-220). */
+  private resuming = new Set<string>()
   /** Chats with a running turn, saved under `working` at every turn start and end, so a crash leaves the right list (KERNEL-215). */
   private working = new Set<string>()
   /** Kernel is quitting: the journal is frozen and nothing new goes out (`shutdown`). */
@@ -296,7 +302,8 @@ export class Sessions {
     if (!g?.reasons.delete(reason) || g.reasons.size) return
     this.global = undefined
     g.release()
-    for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
+    // A cut-off chat's queue goes through `carryOn`, which restarts those a limit stopped two at a time.
+    for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running && !this.cutOff.has(chatId)) this.drain(chatId)
     this.carryOn()
     this.pushReasons()
   }
@@ -344,10 +351,13 @@ export class Sessions {
     this.d.onHeld(held)
   }
 
-  /** Mark a usage window as reset (its resetsAt passed) and tell the renderer. */
+  /**
+   * Mark a usage window as reset (its resetsAt passed) and tell the renderer. A window that was only close to its limit resets
+   * too, so what it held goes out (KERNEL-220). One already at 0 changes nothing.
+   */
   resetLimit(type: RateLimit['type']) {
     const l = this.limits.get(type)
-    if (!l || l.status === 'allowed') return
+    if (!l || (l.status === 'allowed' && !l.utilization)) return
     this.limits.set(type, { ...l, status: 'allowed', utilization: 0 })
     this.pushLimits()
   }
@@ -375,7 +385,7 @@ export class Sessions {
     if (!gate) return
     this.paused.delete(roomId)
     gate.release()
-    for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
+    for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running && !this.cutOff.has(c.id)) this.drain(c.id)
     this.carryOn()
     this.pushReasons()
   }
@@ -508,6 +518,7 @@ export class Sessions {
     if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
     if (this.global) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
+    if (this.nearLimitHolds(chat.id)) return 'limit'
     if (this.atCapacity(chat.id)) return 'capacity'
     return undefined
   }
@@ -515,12 +526,13 @@ export class Sessions {
   /**
    * Kernel's own message into an idle chat, such as the Lead's teammate updates (KERNEL-72). It starts a turn like a user
    * message, but it isn't the user redirecting, so a pending hand-off reminder stays. It sends nothing and returns false
-   * when the chat is running, has messages queued, is paused or is over the agent limit; the caller keeps it for later.
+   * when the chat is running, has messages queued, is paused, is held near a usage limit or is over the agent limit; the caller
+   * keeps it for later.
    */
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
     // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
-    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    if (this.closing || this.waiting.has(chatId) || this.d.store.workspace(chat.workspaceId)?.folderGone || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
@@ -545,8 +557,8 @@ export class Sessions {
 
   /**
    * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. An idle chat
-   * held only by the agent limit sends it at once. `pastPause` sends it from an idle chat even though its room is paused,
-   * which Kernel asks for when a limit paused it.
+   * held only by the agent limit, or by a usage window close to its limit, sends it at once. `pastPause` sends it from an idle
+   * chat even though its room is paused, which Kernel asks for when a limit paused it.
    */
   async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
@@ -557,8 +569,8 @@ export class Sessions {
     const why = this.waitsFor(chatId)
     if (this.closing) return this.queued(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
-    // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271).
-    else if (why === 'capacity' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
+    // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271), or past the near-limit hold (KERNEL-220).
+    else if (why === 'capacity' || why === 'limit' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -636,13 +648,16 @@ export class Sessions {
     const queue = this.queued(chatId)
     const [next] = queue
     const chat = this.d.store.chat(chatId)
-    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.nearLimitHolds(chatId) || this.atCapacity(chatId)) return
     const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
     this.setQueue(chatId, queue.slice(batch.length))
     this.dispatch(chat, next.parts, next, batch.slice(1))
   }
 
-  /** Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher limit starts waiting work. */
+  /**
+   * Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher
+   * limit starts waiting work. The usage switches count too, so the limits go out again for Kernel to act on them (KERNEL-220).
+   */
   applySettings(before?: AppSettings) {
     if (!before || before.permissions.mode !== this.d.settings().permissions.mode) {
       for (const [id, l] of this.live) {
@@ -650,7 +665,7 @@ export class Sessions {
         void l.query.setPermissionMode(this.baseMode()).catch(() => undefined)
       }
     }
-    this.drainWaiting()
+    this.pushLimits()
   }
 
   /**
@@ -671,9 +686,19 @@ export class Sessions {
     return !!ws && !!this.d.agentFor(ws)?.lead
   }
 
+  /**
+   * Settings, Account: with "Pause new work when close to the limit" on, a teammate's chat starts no new turn while the 5-hour
+   * window is at 90% or the weekly one at 95% (`nearLimit`). Turns that are running finish. The Lead's chats are never held,
+   * so Rowan can still answer the user (D-094). What waits goes out when usage drops or the window resets (KERNEL-220).
+   */
+  private nearLimitHolds(chatId: string): boolean {
+    if (!this.d.settings().usage?.pauseNearLimit || this.isLeadChat(chatId)) return false
+    return !!nearLimit([...this.limits.values()])
+  }
+
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
   drainWaiting() {
-    for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
+    for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running && !this.cutOff.has(id)) this.drain(id)
     this.carryOn()
     // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
     this.pushReasons()
@@ -686,10 +711,17 @@ export class Sessions {
    */
   private carryOn() {
     if (this.closing || this.launching) return
+    // A chat that stopped running has finished the turn it was restarted for, so the next one may go.
+    for (const id of this.resuming) if (!this.live.get(id)?.running) this.resuming.delete(id)
     for (const [id, reason] of [...this.cutOff]) {
       const chat = this.d.store.chat(id)
       if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }
-      if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat)) continue
+      if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat) || this.nearLimitHolds(id)) continue
+      // A lifted limit restarts the chats it cut off two at a time. The next starts when one ends its turn, where `drainWaiting` comes back here (KERNEL-220).
+      if (reason === 'limit') {
+        if (this.resuming.size >= RESUME_AT_ONCE) continue
+        this.resuming.add(id)
+      }
       if (this.queued(id).length) this.drain(id)
       else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel' })
     }
@@ -1342,8 +1374,9 @@ export class Sessions {
     const limits = [...this.limits.values()]
     bus.push({ type: 'usage', limits })
     this.d.onLimits?.(limits)
-    // A model's own limit lifting pauses and resumes no room, so its chats carry on from here.
-    this.carryOn()
+    // A model's own limit lifting pauses and resumes no room, so its chats carry on from here. So does what a usage window
+    // close to its limit held: a drop in usage or a reset sends it, and a rise holds the queues again (KERNEL-220).
+    this.drainWaiting()
   }
 
   private clearRetry(chatId: string, live: Live) {
