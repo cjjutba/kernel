@@ -183,10 +183,10 @@ class Component extends DCLogic {
     var MONO = "'Geist Mono', ui-monospace, monospace";
     var R = [
       { id: 'rowan', name: 'Rowan', role: 'Lead', desc: 'Lead. Plans features, gets your approval, and hands each task to the right teammate.', model: 'Default model', st: 'idle', ws: 'lead', shirt: '#3f4652', href: 'AgentProfileBuiltIn.dc.html', tags: ['Built in'], file: 'Built into Kernel' },
-      { id: 'api', name: 'Api', role: 'Backend', desc: 'Backend engineer. Builds the API.', model: 'Default model', st: 'working', ws: 'cart-api', shirt: '#5b6b5e', href: 'AgentProfile.dc.html' },
+      { id: 'api', name: 'Api', role: 'Backend', desc: 'Backend engineer. Builds the API.', model: 'Default model', st: 'working', ws: 'invoice-pdf-renderer', shirt: '#5b6b5e', href: 'AgentProfile.dc.html' },
       { id: 'architect', name: 'Architect', role: 'Architect', desc: 'Designs the system. Writes no code.', model: 'Opus 5.5', st: 'idle', ws: 'none', shirt: '#6b5d73', href: 'AgentProfile.dc.html', tags: ['Helper'], warn: "Its tools can\u2019t edit files and run git, so it doesn\u2019t take tasks." },
-      { id: 'theo', name: 'Theo', role: 'Reviewer', desc: 'Reviewer. Reviews diffs for correctness, security and maintainability before merge.', model: 'Default model', st: 'idle', ws: 'none', shirt: '#4b5560', href: 'AgentProfileBuiltIn.dc.html', tags: ['Built in'], file: 'Built into Kernel' },
-      { id: 'web', name: 'Web', role: 'Frontend', desc: 'Frontend engineer.', model: 'Default model', st: 'idle', ws: 'none', shirt: '#7a6a55', href: 'AgentProfile.dc.html' }
+      { id: 'theo', name: 'Theo', role: 'Reviewer', desc: 'Reviewer. Reviews diffs for correctness, security and maintainability before merge.', model: 'Default model', st: 'idle', ws: 'invoice-pdf-review', shirt: '#4b5560', href: 'AgentProfileBuiltIn.dc.html', tags: ['Built in'], file: 'Built into Kernel' },
+      { id: 'web', name: 'Web', role: 'Frontend', desc: 'Frontend engineer.', model: 'Default model', st: 'working', ws: 'invoice-pdf-tests', shirt: '#7a6a55', href: 'AgentProfile.dc.html' }
     ];
     var look = {
       working: { word: 'Working', fill: '#f7f8f8', ring: '0', pulse: 'pin', color: '#d0d6e0' },
