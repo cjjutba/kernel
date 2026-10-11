@@ -235,13 +235,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
           {acOpen && mention && !files.length && query !== undefined && query.length > 0 && (
             <div className="cmp-ac" role="status"><p style={{ margin: '6px 8px' }}>No files match “{mention.query}”.</p></div>
           )}
-          <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
+          <div className="composer cmp" data-plan={chat.plan || plan ? 'true' : undefined} data-blocked={blocked || undefined} style={{ opacity: blocked ? 0.5 : 1 }} {...d.drop}>
             {plan && <PlanBar a={plan} />}
             <DraftInput d={d} aria-label={`Message ${name}`} aria-autocomplete="list" disabled={blocked} placeholder={placeholder}
               onInput={() => setDismissed('')} onKeyDown={onKey} />
-            <div className="row" style={{ gap: 6 }}>
+            <div className="row cmp-foot">
               <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
-              <span className="cmp-sep" />
               <span ref={modelAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
                 {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}

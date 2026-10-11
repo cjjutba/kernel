@@ -65,6 +65,12 @@ async function openVersions(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The typing shots draw the composer focused, which takes a real focus. Focus also settles the plan glow at full.
+async function focusComposer(page: Page) {
+  await page.locator('.cmp-input').focus()
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceSharedCrashed is the page after its renderer died. A fixture run has no live view, so main pushes the crash for the tab's key
 // (workspace and file), as it would for the view's id.
 async function crashPage(page: Page, app: ElectronApplication) {
@@ -75,6 +81,8 @@ async function crashPage(page: Page, app: ElectronApplication) {
 }
 
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  WorkspacePlanModeTyping: focusComposer,
+  WorkspacePlanTyping: focusComposer,
   WorkspaceSharedCrashed: crashPage,
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
@@ -108,7 +116,8 @@ async function capture(name: string): Promise<boolean> {
     await page.waitForTimeout(500)
     await interactions[name]?.(page, app)
     await lazyLoaded()
-    await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
+    // One-off animations finish and loops (the plan glow's breath, spinners) reset, so a shot is the same on every run.
+    await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`), animations: 'disabled' })
     console.log(`shots/${name}${suffix}.png`)
     return true
   } catch (err) {

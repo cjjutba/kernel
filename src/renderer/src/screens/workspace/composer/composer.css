@@ -1,26 +1,32 @@
 /* composer */
 .composer-wrap { flex-shrink: 0; padding: 4px 24px 18px; }
 .composer-inner { position: relative; max-width: 760px; margin: 0 auto; }
-.cmp { display: flex; flex-direction: column; gap: 10px; padding: 12px 10px 10px 14px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--surface); }
+/* The box sits recessed on the chat (design/redesign/Composer.png, KERNEL-322). Its children sit above the plan glow, which is
+   its ::before, so they are positioned with no z-index: the model, + and context popovers still open past the box. */
+.cmp { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 12px 10px; border-radius: var(--r-lg); border: 1px solid var(--line-2); background: var(--input-bg); }
+.cmp > * { position: relative; }
 .cmp:focus-within { border-color: var(--line-4); }
 /* The body turns selection off, and a contenteditable needs it back. The box border shows focus, as it did for the textarea. */
-.cmp-input { position: relative; min-height: 44px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
+.cmp-input { position: relative; min-height: 34px; max-height: 168px; overflow-y: auto; color: var(--ink); font-size: 14px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; user-select: text; }
 .cmp-input:focus-visible { outline: none; }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
-/* The agent is its name and role, with no letter tile (KERNEL-274). */
-.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.cmp-foot { gap: 12px; }
+/* The agent is its name and role in a pill, with no letter tile and no divider after it. The role stays muted: faint is about 3.4:1 on the box. */
+.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 10px; border: 1px solid var(--line-3); border-radius: 999px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
-.cmp-sep { width: 1px; height: 16px; background: var(--card-line); }
-.cmp-model { padding: 0 8px; color: var(--ink-2); gap: 6px; }
+/* Its own padding is its hover fill, so it pulls left to sit 12px after the pill, as the canvas draws. */
+.cmp-model { margin-left: -8px; padding: 0 8px; color: var(--ink-2); gap: 6px; }
 /* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
 .cmp-model > svg:last-child { position: relative; top: -1px; margin: 0 -3px 0 -1.5px; color: var(--muted); }
 .cmp-model[aria-expanded='true'] { background: var(--card-line); }
-.icon-btn.send { width: 28px; height: 28px; border-radius: var(--r); }
+/* Send and stop are circles. Send turns ink when there is something to send; its color changes fast so it never looks unsure. */
+.icon-btn.send { width: 28px; height: 28px; border-radius: 50%; transition: background-color 160ms ease-out, color 160ms ease-out; }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
-.icon-btn.stop { border: 1px solid var(--line-4); }
+.icon-btn.send.stop { background: transparent; border: 1px solid var(--line-4); }
+.icon-btn.send.stop:hover { background: var(--surface-3); }
 .icon-btn.stop span { width: 9px; height: 9px; border-radius: 2px; background: var(--ink); }
 
 .composer-inner { display: flex; flex-direction: column; gap: 10px; }
@@ -106,27 +112,53 @@
 .hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
 .hunk-row input { margin-top: 3px; accent-color: var(--ink); }
 
-/* A narrow chat column: the composer pulls in, and the agent's role, then its name, give way to the model and send (D-080). */
+/* A narrow chat column: the composer pulls in, and the agent's role, then its whole pill, give way to the model and send (D-080). */
 @container chat (max-width: 520px) {
   .composer-wrap { padding: 4px 12px 12px; }
   .cmp-role { display: none; }
 }
-@container chat (max-width: 420px) { .cmp-name { display: none; } }
+@container chat (max-width: 420px) { .cmp-agent { display: none; } }
 
 /* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
    top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
-   glow and the caret; its border is the modal shell's. */
-.cmp[data-plan='true'], .nw[data-plan] {
-  background-image: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
+   glow and the caret; its border is the modal shell's.
+   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises over 2.4s, fades over 1.6s, and
+   breathes every 8s while the box waits for input. Focus settles it. The strip opens over 1.2s and one light crosses it.
+   Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
+.cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); }
+.cmp { transition: border-color 1.6s ease-in-out; }
+.cmp:focus-within { transition: border-color 0.6s ease-out; }
+.nw { position: relative; }
+.nw > * { position: relative; }
+.cmp::before, .nw::before {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
+  opacity: 0; transform: scaleY(0.85); transform-origin: 50% 100%;
+  transition: opacity 1.6s ease-in-out, transform 1.6s ease-in-out;
 }
-.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--surface)); }
-.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--surface)); }
+/* The modal shell rounds its corners and lets the pickers overflow, so the glow rounds its own bottom corners. */
+.nw::before { border-radius: 0 0 calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px); }
+.cmp[data-plan='true']::before, .nw[data-plan]::before {
+  opacity: 0.9; transform: none;
+  transition: opacity 2.4s var(--ease-plan), transform 2.4s var(--ease-plan);
+  animation: plan-breathe 8s ease-in-out 2.4s infinite;
+}
+.cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity 1s ease-out; }
+.cmp[data-blocked]::before { animation: none; }
+@keyframes plan-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.62; } }
+.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--input-bg)); transition: border-color 2.4s var(--ease-plan); }
+.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); transition: border-color 0.6s ease-out; }
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
 .cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .cmp:has(> .cmp-planbar) { padding-top: 0; }
-.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -10px 2px -14px; padding: 7px 8px 7px 14px; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: var(--r-lg) var(--r-lg) 0 0; background: color-mix(in srgb, var(--plan) 8%, var(--surface)); }
+/* It mounts when a plan arrives: it opens over 1.2s, then one light crosses it over 2.6s, behind its buttons. */
+.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -12px 6px; padding: 7px 8px 7px 12px; overflow: hidden; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0; background: color-mix(in srgb, var(--plan) 8%, transparent); animation: planbar-in 1.2s var(--ease-plan) both; }
+.cmp-planbar > * { position: relative; }
+.cmp-planbar::before { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--plan) 18%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: planbar-sweep 2.6s ease-in-out 0.6s both; }
+@keyframes planbar-in { from { max-height: 0; opacity: 0; padding-top: 0; padding-bottom: 0; } to { max-height: 44px; opacity: 1; } }
+@keyframes planbar-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 .cmp-planbar-icon { display: inline-flex; color: var(--plan); }
 .cmp-planbar .btn { height: 28px; }
 .cmp-planbar .btn.ghost { color: var(--ink-2); }
@@ -134,6 +166,10 @@
 .cmp-planbar .btn.primary:not(:disabled) { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
 .cmp-planbar .btn.primary:not(:disabled):hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
 .cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
+/* States jump instead, and the glow holds at 90%. */
+@media (prefers-reduced-motion: reduce) {
+  .cmp, .cmp::before, .nw::before, .cmp-planbar, .cmp-planbar::before, .icon-btn.send { animation: none !important; transition: none !important; }
+}
 
 /* context ring and its popover (KERNEL-96) */
 .ctx-ring { flex-shrink: 0; }
