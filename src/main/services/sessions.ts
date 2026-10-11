@@ -923,8 +923,12 @@ export class Sessions {
     this.managedIds.add(sessionId)
     const mcpServers = this.d.mcpFor(ws, agent, chat)
     const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
+    const root = this.d.store.room(ws.roomId)?.path
     const options: Options = {
       cwd: ws.path,
+      // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
+      // it worked there, and loads each once (KERNEL-348, KERNEL-355).
+      ...(ws.lead && ws.mode === 'worktree' && root ? { projectConfigRoot: root } : {}),
       model: chat.model,
       effort: chat.effort,
       // Without display: 'summarized' the CLI sends thinking blocks with empty text.
@@ -940,7 +944,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, root ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude(),
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
@@ -1422,8 +1426,10 @@ function toolDetail(name: string, input: any): string {
   return JSON.stringify(input ?? {}).slice(0, 120)
 }
 
-function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
-  const where = ws.mode === 'worktree'
+export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
+  const where = ws.lead && ws.mode === 'worktree'
+    ? `You are working in your own git worktree at ${ws.path}, detached at ${ws.baseRef}, not on a branch. It is not the main checkout, which the user may be running. Stay inside it.`
+    : ws.mode === 'worktree'
     ? `You are working in a git worktree at ${ws.path} on branch ${ws.branch}, created from ${ws.baseRef}. Stay inside it.`
     : `You are working directly in the main checkout at ${ws.path} on ${ws.branch}. Some files already had changes before you started; never commit those unless asked.`
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`

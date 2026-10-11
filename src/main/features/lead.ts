@@ -1,17 +1,23 @@
 import { existsSync } from 'node:fs'
-import type { AgentDef, Approval, Chat, ChatPart, Effort, ModelId, Thread, Workspace } from '@shared/types'
+import { cp, realpath } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
+import type { AgentDef, Approval, Chat, ChatPart, Effort, ModelId, Room, Thread, Workspace } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { saveAgent } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
 import { NUDGE_LIMIT } from '../services/nudges'
-import { revisedPlanFile, savePlan } from '../services/plans'
+import { PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
+import { dropCheckpoints } from '../services/checkpoints'
+import { loadRepoSettings } from '../services/settings'
+import { linkNodeModules } from '../services/scripts'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import type { From } from '../services/leadUpdates'
-import { currentBranch, folderGone } from '../services/worktrees'
+import { createWorktree, currentBranch, folderGone, freeWorktreePath, isWorktreeOf, leadBase, listWorktrees, slugify } from '../services/worktrees'
+import { git } from '../services/exec'
 import { LEAD_CHAT, messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
@@ -52,18 +58,108 @@ export class Lead extends Feature {
     bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
   }
 
-  /** The Lead lives in a room-level workspace on the main checkout, made the first time it is needed. */
+  /** The Lead's workspace being made or moved, by room, so a brief and Ask Rowan arriving together make one worktree (KERNEL-355). */
+  private making = new Map<string, Promise<Workspace>>()
+
+  private once(roomId: string, make: () => Promise<Workspace>): Promise<Workspace> {
+    const running = this.making.get(roomId)
+    if (running) return running
+    const next = make().finally(() => this.making.delete(roomId))
+    this.making.set(roomId, next)
+    return next
+  }
+
+  /**
+   * The Lead lives in a room-level workspace, made the first time it is needed: its own worktree, detached at the latest
+   * `<remote>/<default>` (KERNEL-355). A room with no commit to start from keeps it on the main checkout.
+   */
   private async leadWorkspace(roomId: string): Promise<{ ws: Workspace; lead: AgentDef }> {
     const agents = await this.k.team.agents(roomId)
     const lead = agents.find((a) => a.lead)
     if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
-    let ws = this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
-    if (!ws) {
-      const room = this.mustRoom(roomId)
-      const branch = await currentBranch(room.path)
-      ws = await this.k.workspaces.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', branch, baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, lead: true, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
-    }
+    // A move at startup finishes first, so nothing starts on the checkout it is leaving.
+    await this.making.get(roomId)?.catch(() => undefined)
+    const saved = this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
+    // A worktree folder deleted outside Kernel is made again where it was, so the Lead's chats carry on.
+    const ws = !saved ? await this.once(roomId, () => this.makeLeadWorkspace(roomId, lead.id))
+      : saved.mode === 'worktree' && await folderGone(saved.path).catch(() => false) ? await this.once(roomId, () => this.remakeLead(saved.id, this.mustRoom(roomId)))
+      : saved
     return { ws, lead }
+  }
+
+  private async makeLeadWorkspace(roomId: string, agentId: string): Promise<Workspace> {
+    const room = this.mustRoom(roomId)
+    const own = await this.leadWorktree(room)
+    const at = own ? { mode: 'worktree' as const, path: own.path, branch: 'HEAD', baseRef: own.baseRef } : { mode: 'current' as const, path: room.path, branch: await currentBranch(room.path).catch(() => room.defaultBranch), baseRef: room.defaultBranch }
+    return this.k.workspaces.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', ...at, agentId, lead: true, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
+  }
+
+  /**
+   * The Lead's worktree, detached at `<remote>/<default>` as last fetched, with no setup script and no trust prompt: at `at`,
+   * else the one a move cut short already made, else a new one at `<worktreeRoot>/<room slug>/lead`, or `lead-2` when another
+   * room with the same name has that folder. One already there is used as it is. A folder deleted outside Kernel leaves git's
+   * record behind, which is pruned first and made again. Nothing for a room with no commit to start from (KERNEL-355).
+   */
+  private async leadWorktree(room: Room, at?: string): Promise<{ path: string; baseRef: string } | undefined> {
+    const repo = await loadRepoSettings(room.path)
+    const baseRef = await leadBase(room.path, await this.k.config.remoteFor(room.path, repo))
+    if (!baseRef) return undefined
+    const root = join(this.settings.worktreeRoot, slugify(room.name))
+    let path = at ?? await this.leftLeadWorktree(room.path, root)
+    if (!path || !(await isWorktreeOf(room.path, path))) {
+      if (path) await git(room.path, 'worktree', 'prune')
+      else {
+        path = join(root, 'lead')
+        if (!(await folderGone(path))) path = await freeWorktreePath(room.path, root, 'lead')
+      }
+      await createWorktree({ repo: room.path, root, branch: 'lead', baseRef, detach: true, path })
+    }
+    if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
+    return { path, baseRef }
+  }
+
+  /** A Lead worktree of this repo under `root`, `lead` or `lead-N`, that git still lists, its folder there or not. */
+  private async leftLeadWorktree(repo: string, root: string): Promise<string | undefined> {
+    const real = await realpath(root).catch(() => root)
+    const found = (await listWorktrees(repo)).slice(1).find((w) => (dirname(w.path) === root || dirname(w.path) === real) && /^lead(-\d+)?$/.test(basename(w.path)))
+    return found && join(root, basename(found.path))
+  }
+
+  /** The saved Lead worktree's folder is gone: it is made again at the same path, from the latest base as last fetched. */
+  private async remakeLead(id: string, room: Room): Promise<Workspace> {
+    const ws = this.mustWs(id)
+    const own = await this.leadWorktree(room, ws.path)
+    if (!own) throw new Error(`Kernel couldn't make the Lead's worktree again at ${ws.path}: the room has no commit to start from.`)
+    bus.activity({ kind: 'note', roomId: room.id, workspaceId: id, agentId: ws.agentId, actor: 'kernel', text: "made the Lead's worktree again, since its folder was gone:", object: own.path })
+    const back = this.updateWs(id, { baseRef: own.baseRef, stat: undefined })
+    void this.k.workspaces.changes(id).catch(() => undefined)
+    return back
+  }
+
+  /**
+   * Moves each room's Lead off the main checkout into its own worktree, once, at startup after the agents load and before
+   * any chat carries on (KERNEL-355). Without a fetch. The plans its chats wrote come along as copies, since current-branch
+   * teammates write there too. Its checkpoints were snapshots of the checkout, so they go. Its chats need nothing: a chat
+   * resumes by its session id from the worktree (KERNEL-348). A room that fails stays on the checkout and tries again at the
+   * next start. A Lead worktree whose folder is gone is made again here too.
+   */
+  private async moveLeads() {
+    for (const ws of this.store.workspaces().filter((w) => w.lead && w.status !== 'archived')) {
+      const room = this.store.room(ws.roomId)
+      if (!room || room.archived) continue
+      if (ws.mode === 'current') await this.once(room.id, () => this.moveLead(ws.id, room)).catch((e) => console.warn(`[lead] could not move ${room.name}'s Lead into a worktree, trying again at the next start`, e))
+      else if (await folderGone(ws.path).catch(() => false)) await this.once(room.id, () => this.remakeLead(ws.id, room)).catch((e) => console.warn(`[lead] could not make ${room.name}'s Lead worktree again, trying again when the Lead is next needed`, e))
+    }
+  }
+
+  private async moveLead(id: string, room: Room): Promise<Workspace> {
+    const own = await this.leadWorktree(room)
+    if (!own) return this.mustWs(id)
+    await cp(join(room.path, PLANS_DIR), join(own.path, PLANS_DIR), { recursive: true, force: false }).catch((e) => { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e })
+    await dropCheckpoints(room.path, id)
+    const moved = this.updateWs(id, { mode: 'worktree', path: own.path, branch: 'HEAD', baseRef: own.baseRef, baselineRef: undefined, stat: undefined })
+    void this.k.workspaces.changes(id).catch(() => undefined)
+    return moved
   }
 
   /**
@@ -335,10 +431,11 @@ export class Lead extends Feature {
   /** The ids of every tab in `chat`'s Lead chat, closed ones too, and its own. */
   private threadTabIds(chat: Chat) { return new Set(this.store.threadTabs(chat.id).map((c) => c.id).concat(chat.id)) }
 
-  /** Startup's one-time fixes to data from older versions, after the agents load. */
-  backfill() {
+  /** Startup's fixes to data from older versions, after the agents load and before any chat carries on. */
+  async backfill() {
     this.markLeadWorkspaces()
     this.backfillLeadChats()
+    await this.moveLeads()
   }
 
   /**

@@ -680,13 +680,29 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     items: { [ids.leadChat]: exportItems(), [ids.tableChat]: [], ...o.items },
     approvals: [plan, ...f.approvals],
     push: [...f.push, ...(o.running ?? ['chat-table']).map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true }))],
-    // The Lead works on the main checkout, so no file differs from the base.
+    // The Lead's worktree sits at the base, so no file differs from it.
     tree: { ...f.tree, [ids.lead]: (f.tree?.[ids.table] ?? []).map(({ status: _s, ...e }) => e) },
     fileText: { ...f.fileText, [ids.lead]: f.fileText?.[ids.table] ?? {} },
     ui: {
       route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: o.right ?? 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
       tabs: { [ids.lead]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
     }
+  }
+}
+
+/** WorkspaceLead.png: `grouped` with the export chat's plan still waiting, so it has one tab and nothing handed off, and no demo chat. */
+function leadWaiting(f: Fixture): Partial<Fixture> {
+  const plan = leadPlan(f, { agentId: 'rowan' })
+  const g = grouped(f, { chats: (c) => c.filter((x) => x.threadId !== GROUPED.export && x.threadId !== GROUPED.demo), threads: (t) => t.filter((x) => x.id !== GROUPED.demo) })
+  const lead = plan.workspaces!.find((w) => w.id === ids.lead)!
+  return {
+    ...g,
+    chats: [leadTab(ids.leadChat, GROUPED.export, 'Export invoices as PDF', 5, { plan: true }), ...g.chats!],
+    // The schema workspace has no changes yet, as the PNG draws it.
+    workspaces: g.workspaces!.filter((w) => w.threadId !== GROUPED.export).map((w) => (w.id === ids.lead ? lead : w.id === ids.schema ? { ...w, stat: undefined } : w)),
+    items: { ...g.items, ...plan.items },
+    approvals: plan.approvals,
+    changes: plan.changes
   }
 }
 
@@ -880,8 +896,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ] },
     ui: open
   })),
-  // The canvas draws Rowan's plan in a worktree called export-invoices-as-pdf. WorkspaceLeadPlan keeps the Lead's real workspace, on the main checkout.
-  WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree', lead: undefined })),
+  // Rowan's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
+  WorkspaceLead: scene((f) => leadWaiting(f)),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
