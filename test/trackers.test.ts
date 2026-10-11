@@ -62,8 +62,18 @@ describe('GitHub Issues as a tracker (KERNEL-462)', () => {
       id: '#41', title: 'Crash on save', url: view.url, description: 'Steps to reproduce', labels: ['bug', 'ui'],
       comments: [{ body: 'Seen it too', createdAt: '2026-10-10T09:00:00Z' }, { author: 'sam', body: 'Still happens', createdAt: '2026-10-11T09:00:00Z' }]
     })
-    expect(g.calls).toEqual([{ args: ['issue', 'view', '41', '--json', 'number,title,url,body,labels,comments'], cwd: '/repo' }])
+    expect(g.calls).toEqual([{ args: ['issue', 'view', '41', '--json', 'number,title,url,body,labels,comments,assignees'], cwd: '/repo' }])
     expect(parseIssueView(JSON.stringify({ number: 7, title: 'Empty', body: null }))).toEqual({ id: '#7', title: 'Empty', description: '', comments: [], labels: [] })
+  })
+
+  it("reads the assignees by login and asks gh who the user is only when someone is assigned (KERNEL-479)", async () => {
+    const auth = (login: string) => JSON.stringify({ hosts: { 'github.com': [{ state: 'success', active: true, login }] } })
+    const g = gh((args) => ({ stdout: args[0] === 'auth' ? auth('Sam') : JSON.stringify({ ...view, assignees: [{ login: 'sam' }, { login: 'mchen' }] }) }))
+    expect((await githubTracker('/repo', g.cmd).issue('#41')).assignees).toEqual([{ name: 'sam', me: true }, { name: 'mchen', me: false }])
+    expect(g.calls.map((c) => c.args.slice(0, 2).join(' '))).toEqual(['issue view', 'auth status'])
+    // Signed out, nobody is known to be the user.
+    const out = gh((args) => (args[0] === 'auth' ? { code: 1, stdout: '', stderr: 'not logged in' } : { stdout: JSON.stringify({ ...view, assignees: [{ login: 'sam' }] }) }))
+    expect((await githubTracker('/repo', out.cmd).issue('#41')).assignees).toEqual([{ name: 'sam' }])
   })
 
   it('takes a number with or without #, and refuses any other key without asking gh', async () => {
@@ -106,6 +116,16 @@ describe('Linear as a tracker reading one issue (KERNEL-473)', () => {
     await expect(linearTracker(async () => 'k', linear(400, { errors: [{ message: 'Entity not found: Issue' }] })).issue('KERNEL-999'))
       .rejects.toThrow("Linear has no issue KERNEL-999, or this token can't see it.")
     await expect(linearTracker(async () => 'k', linear(401, {})).issue('KERNEL-83')).rejects.toThrow('Linear rejected the token. Reconnect it in Settings > Integrations.')
+  })
+
+  it("gives the assignee with whether it is the token's user, and none for an issue nobody has (KERNEL-479)", async () => {
+    const node = (assignee: { name: string; isMe: boolean } | null) => ({ data: { issue: {
+      id: 'u1', identifier: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/x/KERNEL-83', branchName: 'b', priority: 0, updatedAt: '2026-10-11T00:00:00Z',
+      state: { id: 's', name: 'Todo', type: 'unstarted', position: 1 }, assignee, labels: { nodes: [] }, team: { id: 't', key: 'KERNEL', name: 'Kernel' },
+      project: null, cycle: null, description: '', comments: { nodes: [] }, inverseRelations: { nodes: [] }
+    } } })
+    expect((await linearTracker(async () => 'k', linear(200, node({ name: 'Maya Chen', isMe: false }))).issue('KERNEL-83')).assignees).toEqual([{ name: 'Maya Chen', me: false }])
+    expect((await linearTracker(async () => 'k', linear(200, node(null))).issue('KERNEL-83')).assignees).toBeUndefined()
   })
 })
 

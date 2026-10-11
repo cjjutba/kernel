@@ -374,7 +374,7 @@ export class Prs extends Feature {
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
-      const free = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)
+      const free = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch, remote)
       await git(ws.path, 'checkout', '-b', free, ws.baseRef)
       return free
     })

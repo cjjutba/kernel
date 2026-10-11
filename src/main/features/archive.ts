@@ -191,7 +191,7 @@ export class Archive extends Feature {
       const base = !kept && isLeadChatWorkspace(ws) ? await leadBase(room.path, remote) : undefined
       if (base) {
         const branch = await this.k.workspaces.withBranchLock(room.id, async () => {
-          const free = await freeBranch(room.path, ws.branch)
+          const free = await freeBranch(room.path, ws.branch, remote)
           await createWorktree({ repo: room.path, root: dirname(path), branch: free, baseRef: base, path })
           return free
         })
