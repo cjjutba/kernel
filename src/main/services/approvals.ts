@@ -123,6 +123,7 @@ export function describeTool(toolName: string, input: unknown): { title: string;
     case 'Edit': case 'Write': case 'MultiEdit': return { title: `${toolName} ${i.file_path ?? ''}` }
     case 'WebFetch': return { title: `Fetch ${i.url ?? ''}` }
     case 'mcp__kernel__share_file': return { title: `Share ${String(i.path ?? '').split('/').pop()}` }
+    case 'mcp__kernel__read_plans': return { title: "Read this chat's plans" }
     default: return { title: toolName.startsWith('mcp__') ? toolName.split('__').slice(1).join(' · ') : toolName }
   }
 }

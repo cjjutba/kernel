@@ -61,8 +61,10 @@ async function setup(files: Record<string, string> = {}) {
   }
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
   const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
-  const target = (owner?: string) => k.lead['leadUpdateTarget'](room.id, owner) as { chat: Chat; closed?: Chat } | undefined
-  return { k, room, first, icons, call, run, byTitle, target, sent, answer, where, rowan }
+  const target = (owner?: string) => k.lead['leadUpdateTarget'](room.id, owner) as { chat: Chat; from?: { title: string; tab?: boolean } } | undefined
+  /** A tab the + button opens in the Lead's workspace, in the Lead chat `threadId` or a new one (KERNEL-337). */
+  const tab = (threadId?: string) => k.handlers()['chats.create']({ workspaceId: first.workspaceId, threadId })
+  return { k, room, first, icons, call, run, byTitle, target, tab, sent, answer, where, rowan }
 }
 
 describe('Lead chats and the work they hand off (KERNEL-105)', () => {
@@ -101,8 +103,7 @@ describe('Lead chats and the work they hand off (KERNEL-105)', () => {
     expect(target(icons.id)).toEqual({ chat: icons })
     expect(target()).toEqual({ chat: first })
     k.closeChat(icons.id)
-    const closed = k.store.chat(icons.id)!
-    expect(target(icons.id)).toEqual({ chat: first, closed })
+    expect(target(icons.id)).toEqual({ chat: first, from: { title: 'Chat icons sizing' } })
     const fork = k.store.saveChat({ ...k.newChat(first.workspaceId, 'Fork of Chat icons sizing', { model: first.model, effort: first.effort, plan: false }), forkOf: { chatId: icons.id, itemId: '' } })
     expect(target(icons.id)).toEqual({ chat: fork })
     // A Lead workspace that was archived has nobody left to tell.
@@ -449,6 +450,168 @@ describe('Ask Rowan (KERNEL-145)', () => {
     expect(brief.id).not.toBe(drafting.id)
     expect(sent.map((s) => s.chatId)).toEqual([chatId, brief.id])
     expect(k.store.chat(drafting.id)).toEqual(drafting)
+  })
+})
+
+describe('Lead chats with several tabs (KERNEL-337)', () => {
+  it('starts a new Lead chat from lead.start, lead.ask, the + button and a first leadChat, and joins the one it is given', async () => {
+    const { k, room, first, tab } = await setup()
+    const h = k.handlers()
+    const thread = (c: Chat) => k.store.thread(k.store.chat(c.id)!.threadId!)
+    // The first leadChat starts a Lead chat named like its tab.
+    expect(thread(first)).toMatchObject({ roomId: room.id, title: 'Lead' })
+    const started = await h['lead.start']({ roomId: room.id, prompt: 'Plan the release' })
+    expect(started.title).toBe('New tab')
+    const asked = k.store.chat((await h['lead.ask']({ roomId: room.id, text: 'How is Kai doing?' })).chatId)!
+    const opened = await tab()
+    expect(opened).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
+    const threads = [first, started, asked, opened].map((c) => thread(c)!.id)
+    expect(new Set(threads).size).toBe(4)
+    expect(thread(opened)).toMatchObject({ title: 'New tab' })
+    // Given a Lead chat, a tab joins it.
+    expect((await tab(started.threadId)).threadId).toBe(started.threadId)
+    const askedIn = (await h['lead.ask']({ roomId: room.id, text: 'And Noor?', threadId: first.threadId })).chatId
+    expect(k.store.chat(askedIn)!.threadId).toBe(first.threadId)
+    expect((await h['threads.list']({ roomId: room.id })).map((t) => t.id)).toEqual(threads)
+    // A big terminal belongs to no Lead chat, and a Lead chat that is gone or in another room takes no tab.
+    expect((await h['chats.create']({ workspaceId: first.workspaceId, kind: 'terminal' })).threadId).toBeUndefined()
+    await expect(tab('gone')).rejects.toThrow('That chat no longer exists.')
+    const other = await k.addRoom(await tempRepo(REPO))
+    await trustRoom(k, other.id)
+    await expect(tab((await k.leadChat(other.id)).threadId)).rejects.toThrow('That chat no longer exists.')
+  })
+
+  it('keeps a fork of a Lead tab in its Lead chat, and leaves a workspace chat out of Lead chats', async () => {
+    const { k, room, first } = await setup()
+    const h = k.handlers()
+    const fork = await h['chats.fork']({ chatId: first.id })
+    expect(fork.threadId).toBe(first.threadId)
+    const ws = await k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
+    expect((await h['chats.create']({ workspaceId: ws.id })).threadId).toBeUndefined()
+    expect(k.store.chats(ws.id).every((c) => !c.threadId)).toBe(true)
+  })
+
+  it('closes a Lead chat with its last open tab, and opens it again for a new tab', async () => {
+    const { k, room, first, icons, tab } = await setup()
+    const second = await tab(first.threadId)
+    const pushed: string[] = []
+    const listen = (e: { type: string; thread?: { id: string; closedAt?: number } }) => { if (e.type === 'thread') pushed.push(`${e.thread!.id}:${e.thread!.closedAt ? 'closed' : 'open'}`) }
+    bus.on('push', listen)
+    onTestFinished(() => { bus.off('push', listen) })
+    k.closeChat(first.id)
+    expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
+    expect(pushed).toEqual([])
+    k.closeChat(second.id)
+    const closed = k.store.thread(first.threadId!)!
+    expect(closed.closedAt).toBeGreaterThan(0)
+    expect(closed.title).toBe('Lead')
+    expect(pushed).toEqual([`${closed.id}:closed`])
+    // Closing the last tab in the Lead's workspace opens a new tab in a new Lead chat.
+    k.closeChat(icons.id)
+    const fresh = k.chatTabs(first.workspaceId).filter((c) => c.kind !== 'terminal')
+    expect(fresh).toHaveLength(1)
+    expect(fresh[0]).toMatchObject({ title: 'New tab' })
+    expect(fresh[0].threadId).not.toBe(first.threadId)
+    expect(k.store.thread(fresh[0].threadId!)).toMatchObject({ roomId: room.id, title: 'New tab' })
+    expect(k.store.thread(fresh[0].threadId!)!.closedAt).toBeUndefined()
+    // A new tab in the closed Lead chat opens it again.
+    await tab(first.threadId)
+    expect(k.store.thread(first.threadId!)!.closedAt).toBeUndefined()
+    expect(pushed.at(-1)).toBe(`${first.threadId}:open`)
+  })
+
+  it("names the Lead chat after its first tab's auto name until the user names it", async () => {
+    const { k, first, tab } = await setup()
+    const second = await tab(first.threadId)
+    const named = (c: Chat, title: string) => k.lead.tabNamed(k.store.saveChat({ ...k.store.chat(c.id)!, title }))
+    named(second, 'Second tab subject')
+    expect(k.store.thread(first.threadId!)!.title).toBe('Lead')
+    named(first, 'Release plan')
+    expect(k.store.thread(first.threadId!)!.title).toBe('Release plan')
+    // Closing tabs leaves the name alone.
+    k.closeChat(first.id)
+    expect(k.store.thread(first.threadId!)!.title).toBe('Release plan')
+    const renamed = await k.handlers()['threads.rename']({ threadId: first.threadId!, title: '  Q3 release  ' })
+    expect(renamed).toMatchObject({ title: 'Q3 release', renamed: true })
+    named(first, 'Something else')
+    expect(k.store.thread(first.threadId!)!.title).toBe('Q3 release')
+    await expect(k.handlers()['threads.rename']({ threadId: first.threadId!, title: ' ' })).rejects.toThrow()
+  })
+
+  it('sends work to the owner tab, then the newest open tab of its Lead chat, then the first Lead tab, and says where it came from', async () => {
+    const { k, first, icons, target, tab } = await setup()
+    const older = await tab(icons.threadId)
+    const owner = await tab(older.threadId)
+    const newer = await tab(owner.threadId)
+    k.store.saveThread({ ...k.store.thread(owner.threadId!)!, title: 'Chat icons work' })
+    expect(target(owner.id)).toEqual({ chat: owner })
+    k.closeChat(owner.id)
+    expect(target(owner.id)).toEqual({ chat: k.store.chat(newer.id), from: { title: owner.title, tab: true } })
+    k.closeChat(newer.id)
+    expect(target(owner.id)).toEqual({ chat: k.store.chat(older.id), from: { title: owner.title, tab: true } })
+    k.closeChat(older.id)
+    expect(target(owner.id)).toEqual({ chat: first, from: { title: 'Chat icons work' } })
+    expect(icons.threadId).toBeUndefined()
+  })
+
+  it('treats work handed off in any tab of the Lead chat as yours, and names the Lead chat for the rest', async () => {
+    const { k, first, call, byTitle, tab } = await setup()
+    const sibling = await tab(first.threadId)
+    const elsewhere = await tab()
+    k.store.saveThread({ ...k.store.thread(elsewhere.threadId!)!, title: 'Composer unit tests' })
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    await call(elsewhere, 'create_workspace', { agent: 'kai', title: 'Composer tests', brief: 'Go' })
+    const drafts = byTitle('Drafts per chat')
+    const composer = byTitle('Composer tests')
+    const lines = (await call(sibling, 'list_workspaces', {})).split('\n')
+    expect(lines.find((l) => l.startsWith(drafts.id))).toMatch(/ · yours$/)
+    expect(lines.find((l) => l.startsWith(composer.id))).toMatch(/ · from Lead chat "Composer unit tests"$/)
+    expect(await call(sibling, 'message_agent', { workspace_id: drafts.id, text: 'Rebase on main.' })).toBe('Sent.')
+    // The same task from another tab of the chat is the one already handed off.
+    expect(await call(sibling, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })).toBe(`Not created: this task is already handed off to Kai (workspace ${drafts.id}). Follow up with message_agent.`)
+    expect(drafts.leadChatId).toBe(first.id)
+  })
+
+  it("links a plan step from a plan approved in another tab of the Lead chat, and read_plans reads only this chat's plans", async () => {
+    const { k, room, first, call, byTitle, tab } = await setup()
+    const sibling = await tab(first.threadId)
+    const elsewhere = await tab()
+    const plan = (id: string, chat: Chat, createdAt: number, status: Approval['status'] = 'allowed') => k.store.saveApproval({
+      id, kind: 'plan', source: 'sdk', roomId: room.id, workspaceId: chat.workspaceId, chatId: chat.id, agentId: 'rowan', title: id, detail: `${id} text`,
+      steps: [{ title: `${id} step`, agentId: 'kai' }], status, createdAt
+    } as Approval)
+    const now = Date.now()
+    plan('first-plan', first, now - 3000)
+    plan('sibling-plan', sibling, now - 2000)
+    plan('rejected-plan', sibling, now - 1500, 'denied')
+    plan('elsewhere-plan', elsewhere, now - 1000)
+    expect(await call(sibling, 'read_plans', {})).toBe([
+      `Approved in the tab "${sibling.title}" at ${new Date(now - 2000).toISOString()}:\nsibling-plan text`,
+      `Approved in the tab "${first.title}" at ${new Date(now - 3000).toISOString()}:\nfirst-plan text`
+    ].join('\n\n'))
+    expect(await call(await tab(), 'read_plans', {})).toBe('No plan has been approved in this chat yet.')
+    // The step goes to the newest plan of the chat, approved in the other tab.
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const ws = byTitle('Drafts per chat')
+    const step = (id: string) => k.store.approvals({ roomId: room.id }).find((a) => a.id === id)!.steps![0].workspaceId
+    expect(step('sibling-plan')).toBe(ws.id)
+    expect(step('first-plan')).toBeUndefined()
+    expect(step('elsewhere-plan')).toBeUndefined()
+  })
+
+  it('starts the loop guard over when the user writes in the tab that took over a closed tab of the same chat', async () => {
+    const { k, first, call, byTitle, run, tab } = await setup()
+    const sibling = await tab(first.threadId)
+    const elsewhere = await tab()
+    await call(first, 'create_workspace', { agent: 'kai', title: 'Drafts per chat', brief: 'Go' })
+    const ws = byTitle('Drafts per chat')
+    k.sessions.kernelTurn = (id) => id === first.id
+    for (let i = 0; i < 3; i++) expect((await run(first, 'message_agent', { workspace_id: ws.id, text: 'Fix the failing check' })).isError).toBe(false)
+    k.closeChat(first.id)
+    await k.handlers()['chats.send']({ chatId: elsewhere.id, parts: [{ type: 'text', text: 'Unrelated' }] })
+    expect(new Nudges(k.store).count(ws.id)).toBe(3)
+    await k.handlers()['chats.send']({ chatId: sibling.id, parts: [{ type: 'text', text: 'Take over' }] })
+    expect(new Nudges(k.store).count(ws.id)).toBe(0)
   })
 })
 

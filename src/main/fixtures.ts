@@ -201,6 +201,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return ws
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
+    'threads.list': async () => [],
+    'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),

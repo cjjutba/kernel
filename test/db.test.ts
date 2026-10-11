@@ -54,7 +54,7 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(3)
+    expect(LATEST).toBe(4)
     for (const t of TABLES) {
       // Approvals gain two columns; the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
@@ -149,6 +149,38 @@ describe('kernel.db versions', () => {
     expect((db.prepare(`select name from pragma_table_info('approvals')`).all() as { name: string }[]).map((c) => c.name)).not.toContain('settled_at')
     db.close()
     expect(existsSync(join(d, 'kernel.db.bak-v1'))).toBe(true)
+  })
+
+  it('gives every Lead tab, open or closed, a Lead chat of its own on upgrade, and nothing else (KERNEL-337)', () => {
+    const d = dir()
+    const file = join(d, 'kernel.db')
+    const db = new Database(file)
+    migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 3))
+    const put = (table: string, id: string, parent: string, data: object, at: number) => db.prepare(`insert into ${table} values (?, ?, ?, ?)`).run(id, parent, JSON.stringify({ id, ...data }), at)
+    db.prepare('insert into rooms values (?, ?, ?)').run('r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: 1 }), 1)
+    put('workspaces', 'lead', 'r1', { roomId: 'r1', name: 'lead', mode: 'current' }, 1)
+    put('workspaces', 'w1', 'r1', { roomId: 'r1', name: 'tabs', mode: 'worktree' }, 1)
+    put('chats', 'open', 'lead', { workspaceId: 'lead', title: 'Release plan', kind: 'chat', createdAt: 10 }, 10)
+    put('chats', 'closed', 'lead', { workspaceId: 'lead', title: 'Chat icons sizing', kind: 'chat', closed: true, createdAt: 20 }, 20)
+    put('chats', 'old', 'lead', { workspaceId: 'lead', title: 'Lead', createdAt: 5 }, 5)
+    put('chats', 'term', 'lead', { workspaceId: 'lead', title: 'Terminal (claude)', kind: 'terminal', createdAt: 30 }, 30)
+    put('chats', 'mate', 'w1', { workspaceId: 'w1', title: 'Tabs', kind: 'chat', createdAt: 40 }, 40)
+    db.close()
+
+    const store = new Store(file)
+    const threads = store.threads('r1')
+    expect(threads.map((t) => [t.title, t.createdAt, !!t.closedAt])).toEqual([['Lead', 5, false], ['Release plan', 10, false], ['Chat icons sizing', 20, true]])
+    for (const [chat, title] of [['old', 'Lead'], ['open', 'Release plan'], ['closed', 'Chat icons sizing']]) {
+      expect(store.thread(store.chat(chat)!.threadId!)?.title, chat).toBe(title)
+    }
+    expect(store.chat('term')!.threadId).toBeUndefined()
+    expect(store.chat('mate')!.threadId).toBeUndefined()
+    store.db.close()
+
+    // Opening again keeps the same Lead chats.
+    const again = new Store(file)
+    expect(again.threads('r1').map((t) => t.id)).toEqual(threads.map((t) => t.id))
+    again.db.close()
   })
 
   describe('a file from a newer build', () => {

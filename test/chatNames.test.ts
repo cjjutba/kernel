@@ -54,7 +54,7 @@ async function setup(o: { dataDir?: string; home?: string; repo?: string; answer
   return Object.assign(t, { d, turn, reply, reset, chat })
 }
 
-/** The Lead workspace's first chat after a message: "New chat", auto-named, with a session. */
+/** The Lead workspace's first chat after a message: "New tab", auto-named, with a session. */
 async function leadChat(s: Awaited<ReturnType<typeof setup>>): Promise<Chat> {
   const room = await s.k.addRoom(s.repo)
   const c = await s.k.startLeadChat(room.id, { prompt: 'Fix the login bug' })
@@ -67,10 +67,10 @@ describe('chat names (KERNEL-202)', () => {
     const room = await s.k.addRoom(s.repo)
     const first = await s.k.leadChat(room.id)
     expect(first).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
-    // A brief opens its own auto-named "New chat" and leaves "Lead" as it was (KERNEL-242).
+    // A brief opens its own auto-named "New tab" and leaves "Lead" as it was (KERNEL-242).
     const started = await s.k.startLeadChat(room.id, { prompt: 'Plan the release' })
     expect(started.id).not.toBe(first.id)
-    expect(s.chat(started.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(started.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     expect(s.chat(first.id)).toMatchObject({ title: 'Lead', autoTitle: { turns: 0 } })
 
     const ws = await s.k.createWorkspace(room.id, { prompt: 'go', agentId: 'kai', title: 'Tabs' })
@@ -169,7 +169,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.k.stop()
   }, 60_000)
 
-  it('puts an auto name back to "New chat" on /clear only, and keeps a typed name', async () => {
+  it('puts an auto name back to "New tab" in a Lead tab on /clear only, and keeps a typed name', async () => {
     const s = await setup()
     const c = await leadChat(s)
     await s.turn(c.id)
@@ -180,13 +180,13 @@ describe('chat names (KERNEL-202)', () => {
       expect(s.chat(c.id)).toMatchObject({ title: 'Named by Kernel', autoTitle: { turns: 1 } })
     }
     await s.reset(c.id, 'clear')
-    expect(s.chat(c.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(c.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
 
     // The old session's title belongs to the old conversation: the /clear turn's end doesn't bring it back.
     s.customTitle = 'Old conversation'
     s.d.onTurnDone!(s.k.store.workspace(c.workspaceId)!, s.chat(c.id), { ok: true, interrupted: false, by: 'user' })
     await settle()
-    expect(s.chat(c.id).title).toBe('New chat')
+    expect(s.chat(c.id).title).toBe('New tab')
 
     // The new conversation gets its own name, and the schedule starts over.
     s.k.store.saveChat({ ...s.chat(c.id), sessionId: 'session-2' })
@@ -200,7 +200,7 @@ describe('chat names (KERNEL-202)', () => {
 
     // An older emitter sends no trigger, which counts as /clear.
     await s.reset(c.id)
-    expect(s.chat(c.id).title).toBe('New chat')
+    expect(s.chat(c.id).title).toBe('New tab')
 
     await s.k.handlers()['chats.rename']({ chatId: c.id, title: 'Mine' })
     await s.reset(c.id, 'clear')
@@ -219,7 +219,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.reset(c.id, 'clear')
     release('About the old conversation')
     await settle()
-    expect(s.chat(c.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(c.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     await s.k.stop()
   }, 60_000)
 
@@ -228,10 +228,10 @@ describe('chat names (KERNEL-202)', () => {
     const c = await leadChat(s)
     s.answer = async () => { throw new Error('timed out') }
     await s.turn(c.id)
-    expect(s.chat(c.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(c.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     s.answer = async () => undefined
     await s.turn(c.id)
-    expect(s.chat(c.id).title).toBe('New chat')
+    expect(s.chat(c.id).title).toBe('New tab')
     s.answer = async () => 'Second try'
     await s.turn(c.id)
     expect(s.asked).toHaveLength(3)
@@ -271,13 +271,13 @@ describe('chat names (KERNEL-202)', () => {
     await s.k.stop()
   }, 60_000)
 
-  it('stops naming a "New chat" after 3 misses in a row, until /clear', async () => {
+  it('stops naming a "New tab" after 3 misses in a row, until /clear', async () => {
     const s = await setup()
     const c = await leadChat(s)
     s.answer = async () => undefined
     for (let n = 0; n < 6; n++) await s.turn(c.id)
     expect(s.asked).toHaveLength(3)
-    expect(s.chat(c.id)).toMatchObject({ title: 'New chat', autoTitle: { turns: 0 } })
+    expect(s.chat(c.id)).toMatchObject({ title: 'New tab', autoTitle: { turns: 0 } })
     await s.reset(c.id, 'clear')
     s.k.store.saveChat({ ...s.chat(c.id), sessionId: 'session-2' })
     s.answer = async () => 'After the clear'
@@ -287,7 +287,7 @@ describe('chat names (KERNEL-202)', () => {
     await s.k.stop()
   }, 60_000)
 
-  it('names open chats stuck at "New chat" on start, one at a time', async () => {
+  it('names open chats stuck at "New chat" or "New tab" on start, one at a time', async () => {
     const s = await setup()
     const room = await s.k.addRoom(s.repo)
     const ws = (await s.k.leadChat(room.id)).workspaceId
@@ -295,7 +295,7 @@ describe('chat names (KERNEL-202)', () => {
     // Chats from before KERNEL-202 have no autoTitle. `turns` is how many finished.
     const legacy = async (o: Partial<Chat>, turns: number) => {
       const { autoTitle: _, ...c } = await h['chats.create']({ workspaceId: ws })
-      s.k.store.saveChat({ ...c, ...o })
+      s.k.store.saveChat({ ...c, title: 'New chat', ...o })
       s.k.store.saveItem(c.id, { kind: 'user', id: `${c.id}-u`, ts: 1, parts: [{ type: 'text', text: 'Stuck chat' }] })
       for (let n = 0; n < turns; n++) s.k.store.saveItem(c.id, { kind: 'result', id: `${c.id}-r${n}`, ts: 2, durationMs: 1, ok: true })
       return c.id
@@ -306,18 +306,20 @@ describe('chat names (KERNEL-202)', () => {
     const noSession = await legacy({}, 1)
     const closed = await legacy({ sessionId: 's4', closed: true }, 1)
     const named = await legacy({ sessionId: 's5', title: 'Already named' }, 1)
+    const stuckTab = await legacy({ sessionId: 's6', title: 'New tab', autoTitle: { turns: 0 } }, 1)
     await s.k.stop()
 
     let live = 0
     let most = 0
     const answer = async () => { live++; most = Math.max(most, live); await new Promise((r) => setTimeout(r, 50)); live--; return 'Recovered name' }
     const again = await setup({ dataDir: s.dataDir, home: s.home, repo: s.repo, answer })
-    await until(() => again.asked.length === 2 && again.chat(stuck2).title === 'Recovered name')
+    await until(() => again.asked.length === 3 && again.chat(stuckTab).title === 'Recovered name')
     await settle()
     expect(most).toBe(1)
     expect(again.asked.every((a) => a.text === 'User: Stuck chat')).toBe(true)
     expect(again.chat(stuck1)).toMatchObject({ title: 'Recovered name', autoTitle: { turns: 1 } })
     expect(again.chat(stuck2)).toMatchObject({ title: 'Recovered name', autoTitle: { turns: 2 } })
+    expect(again.chat(stuckTab)).toMatchObject({ title: 'Recovered name', autoTitle: { turns: 1 } })
     for (const id of [noTurn, noSession, closed]) expect(again.chat(id).title).toBe('New chat')
     expect(again.chat(named).title).toBe('Already named')
     await again.k.stop()

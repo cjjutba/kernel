@@ -10,13 +10,13 @@ export function cardData(item: UserItem): TeamUpdate {
   return item.update ?? legacyRows(textOf(item))
 }
 
-/** Rows in the order the Lead read them, grouped under the closed Lead chat they came from, when they did. */
-export function sections(rows: TeamUpdateRow[]): { fromChat?: string; rows: TeamUpdateRow[] }[] {
-  const out: { fromChat?: string; rows: TeamUpdateRow[] }[] = []
+/** Rows in the order the Lead read them, grouped under the closed Lead chat, or closed tab (`fromTab`), they came from, when they did. */
+export function sections(rows: TeamUpdateRow[]): { fromChat?: string; fromTab?: boolean; rows: TeamUpdateRow[] }[] {
+  const out: { fromChat?: string; fromTab?: boolean; rows: TeamUpdateRow[] }[] = []
   for (const row of rows) {
     const last = out.at(-1)
-    if (last && last.fromChat === row.fromChat) last.rows.push(row)
-    else out.push({ ...(row.fromChat ? { fromChat: row.fromChat } : {}), rows: [row] })
+    if (last && last.fromChat === row.fromChat && !!last.fromTab === !!row.fromTab) last.rows.push(row)
+    else out.push({ ...(row.fromChat ? { fromChat: row.fromChat } : {}), ...(row.fromTab ? { fromTab: true } : {}), rows: [row] })
   }
   return out
 }
@@ -43,7 +43,7 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
 
 // The lines of an update before KERNEL-117: "- Kai · Inbox actions (workspace <id>): PR #54 is ready to merge".
 const LINE = /^- (.+?) · (.+?) \(workspace ([^)]+)\): (.+)$/
-const CLOSED = /^From "(.+)", a Lead chat that is now closed:$/
+const CLOSED = /^From "(.+)", (a Lead chat that is now closed|a tab you closed):$/
 const LEFT_OUT = /^- (\d+) earlier updates? (?:are|is) left out\.$/
 const TURN = /^finished a turn: "(.*)"$/
 
@@ -56,17 +56,18 @@ const KINDS: [RegExp, TeamEventKind][] = [
 export function legacyRows(text: string): TeamUpdate {
   const rows: TeamUpdateRow[] = []
   let fromChat: string | undefined
+  let fromTab = false
   let omitted = 0
   for (const line of text.split('\n').slice(1)) {
     const closed = CLOSED.exec(line)
-    if (closed) { fromChat = closed[1]; continue }
+    if (closed) { fromChat = closed[1]; fromTab = closed[2] === 'a tab you closed'; continue }
     const left = LEFT_OUT.exec(line)
     if (left) { omitted += Number(left[1]); continue }
     const m = LINE.exec(line)
     if (!m) continue
     const [, name, task, workspaceId, what] = m
-    let row = rows.find((r) => r.workspaceId === workspaceId && r.fromChat === fromChat)
-    if (!row) { row = { workspaceId, agentId: '', name, task, events: [], ...(fromChat ? { fromChat } : {}) }; rows.push(row) }
+    let row = rows.find((r) => r.workspaceId === workspaceId && r.fromChat === fromChat && !!r.fromTab === fromTab)
+    if (!row) { row = { workspaceId, agentId: '', name, task, events: [], ...(fromChat ? { fromChat } : {}), ...(fromChat && fromTab ? { fromTab } : {}) }; rows.push(row) }
     const turn = TURN.exec(what)
     if (turn) { row.events.push({ kind: 'turn', text: 'Finished a turn', actionable: true }); row.reply = turn[1]; continue }
     // The PR number comes from the PR's own lines, not from a reply that mentions one.

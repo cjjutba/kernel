@@ -111,7 +111,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const ws = k.store.workspace(first.workspaceId)!
     expect(ws).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'current', path: repo })
     expect(chats(ws.id)).toHaveLength(1)
-    expect(first).toMatchObject({ title: 'New chat', kind: 'chat', model: 'claude-opus-5-5', effort: 'medium', plan: true })
+    expect(first).toMatchObject({ title: 'New tab', kind: 'chat', model: 'claude-opus-5-5', effort: 'medium', plan: true })
     expect(sent).toEqual([{ chatId: first.id, text: 'Add PDF export to invoices' }])
     expect(pushed).toContain(first.id)
 
@@ -153,7 +153,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(chat.id).not.toBe(opened.id)
     expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([opened.id, chat.id])
     expect(k.store.chat(opened.id)).toEqual(opened)
-    expect(chat).toMatchObject({ workspaceId: ws.id, title: 'New chat', model: 'claude-opus-5-5', effort: 'high', plan: true })
+    expect(chat).toMatchObject({ workspaceId: ws.id, title: 'New tab', model: 'claude-opus-5-5', effort: 'high', plan: true })
     await k.stop()
   })
 

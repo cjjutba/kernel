@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { randomUUID } from 'node:crypto'
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, rmSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
@@ -50,6 +51,33 @@ export const migrations: Migration[] = [
       create unique index if not exists shared_files_by_source on shared_files (workspace_id, source);
       create index if not exists shared_files_by_room on shared_files (room_id, updated_at);
     `)
+  },
+  {
+    // Lead chats that hold several tabs (KERNEL-337). Every Lead tab there is, open or closed, becomes the only tab of its own
+    // thread, titled like the tab and closed with it, so nothing moves on upgrade. The Lead's workspace is the room's
+    // `current` workspace named "lead"; a chat with no kind predates terminals and is a chat.
+    version: 4,
+    up: (db, now) => {
+      db.exec(`
+        create table if not exists threads (id text primary key, room_id text not null, data text not null, created_at integer not null);
+        create index if not exists threads_by_room on threads (room_id, created_at);
+      `)
+      const tabs = db.prepare(`
+        select c.id, c.data, w.room_id from chats c join workspaces w on w.id = c.workspace_id
+        where json_extract(w.data, '$.mode') = 'current' and json_extract(w.data, '$.name') = 'lead'
+          and coalesce(json_extract(c.data, '$.kind'), 'chat') = 'chat' and json_extract(c.data, '$.threadId') is null
+      `).all() as { id: string; data: string; room_id: string }[]
+      const thread = db.prepare('insert into threads (id, room_id, data, created_at) values (?, ?, ?, ?)')
+      const chat = db.prepare('update chats set data = ? where id = ?')
+      for (const t of tabs) {
+        let c: { title?: string; closed?: boolean; createdAt?: number }
+        try { c = JSON.parse(t.data) } catch { continue }
+        const id = randomUUID()
+        const createdAt = c.createdAt ?? now
+        thread.run(id, t.room_id, JSON.stringify({ id, roomId: t.room_id, title: c.title ?? '', createdAt, ...(c.closed ? { closedAt: now } : {}) }), createdAt)
+        chat.run(JSON.stringify({ ...c, threadId: id }), t.id)
+      }
+    }
   }
 ]
 

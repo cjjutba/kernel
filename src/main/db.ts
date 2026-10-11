@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { migrate, refuseNewer } from './migrations'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedFile, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedFile, Task, Thread, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
 // migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
@@ -105,6 +105,7 @@ export class Store {
       this.db.prepare('delete from tasks where room_id = ?').run(id)
       this.db.prepare('delete from overlaps where room_id = ?').run(id)
       this.db.prepare('delete from shared_files where room_id = ?').run(id)
+      this.db.prepare('delete from threads where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
   }
@@ -164,6 +165,19 @@ export class Store {
   chats(workspaceId: string): Chat[] { return this.all('select data from chats where workspace_id = ? order by created_at', workspaceId) }
   chat(id: string): Chat | undefined { return this.one('select data from chats where id = ?', id) }
   saveChat(c: Chat) { this.db.prepare('insert or replace into chats (id, workspace_id, data, created_at) values (?, ?, ?, ?)').run(c.id, c.workspaceId, JSON.stringify(c), c.createdAt); return c }
+
+  // Lead chats, each holding one or more Lead tabs (KERNEL-337), oldest first
+  threads(roomId?: string): Thread[] {
+    return roomId ? this.all('select data from threads where room_id = ? order by created_at, rowid', roomId) : this.all('select data from threads order by created_at, rowid')
+  }
+  thread(id: string): Thread | undefined { return this.one('select data from threads where id = ?', id) }
+  saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.roomId, JSON.stringify(t), t.createdAt); return t }
+  /** Every tab of the chat's thread, closed ones too, oldest first. Just the chat when it has no thread, none when it is gone. */
+  threadTabs(chatId: string): Chat[] {
+    const c = this.chat(chatId)
+    if (!c?.threadId) return c ? [c] : []
+    return this.all(`select data from chats where workspace_id = ? and json_extract(data, '$.threadId') = ? order by created_at, rowid`, c.workspaceId, c.threadId)
+  }
 
   // transcript
   items(chatId: string): ChatItem[] { return this.all('select data from chat_items where chat_id = ? order by seq', chatId) }
