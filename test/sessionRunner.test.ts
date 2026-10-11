@@ -9,7 +9,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { CRASH_NOTE, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
+import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
@@ -1211,7 +1211,9 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(next.exits).toEqual([{ reason: 'Kernel quit', midTurn: true, resumed: true }])
     expect(next.sessions.isRunning('chat')).toBe(true)
     expect(s.store.meta('working')).toEqual(['chat'])
-    expect(next.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual([RELAUNCH_NUDGE])
+    // The nudge that waits no longer tells an agent with no memory to pick up where it left off.
+    const nudge = freshNudge('Add a pdf_url column')
+    expect(next.sessions.queued('chat').map((q) => [q.parts[0].type === 'text' && q.parts[0].text, q.from])).toEqual([[nudge, 'kernel']])
     // The fresh session meets a sign-out: the chat waits to carry on, nudge and all, as the resumed one would have.
     fresh.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
     fresh.feed(result('r2', 'error_during_execution'))
@@ -1220,7 +1222,8 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(next.sessions.queued('chat')).toHaveLength(1)
     next.sessions.releaseAll('auth')
     expect(next.sessions.isRunning('chat')).toBe(true)
-    expect(await nextSent(fresh)).toBe(RELAUNCH_NUDGE)
+    expect(await nextSent(fresh)).toBe(nudge)
+    expect(texts(s.store)).not.toContain(RELAUNCH_NUDGE)
   })
 
   it('leaves a session found gone while Kernel quits to the next launch (KERNEL-286)', async () => {
@@ -1339,9 +1342,90 @@ describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
     await flush()
     const fresh = sdk.calls.at(-1)!
     expect(fresh.options.resume).toBeUndefined()
-    expect(await nextSent(fresh)).toBe(RESTART_NUDGE)
-    expect(s.store.items('chat').at(-1)).toMatchObject({ kind: 'note', text: SESSION_GONE_NOTE })
+    // Not "pick up where you left off": the fresh session hears what it lost, the chat's brief and where to look.
+    const nudge = freshNudge('Add a pdf_url column')
+    expect(await nextSent(fresh)).toBe(nudge)
+    expect(nudge).toContain('The chat started with this message:\n\nAdd a pdf_url column')
+    expect(nudge).toContain('git status, git log and any open PR')
+    expect(freshNudge()).not.toContain('The chat started')
+    // The transcript shows what the agent got, once, in the restart nudge's place, and it still counts as a nudge.
+    const rows = s.store.items('chat').filter((i) => i.kind === 'user' || i.kind === 'note').map((i) => (i.kind === 'note' ? i.text : (i.parts[0] as { text: string }).text))
+    expect(rows).toEqual(['Add a pdf_url column', nudge, SESSION_GONE_NOTE])
+    expect(isNudge([{ type: 'text', text: nudge }])).toBe(true)
     expect(s.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it('ends the turn after a Stop pressed before the gone session answered: no fresh session, and the queue goes', async () => {
+    const s = await lost()
+    await s.sessions.interrupt('old')
+    gone(s.first, 'gone-1')
+    await flush()
+    expect(sdk.calls.at(-1)).toBe(s.first)
+    expect(s.sessions.isRunning('old')).toBe(false)
+    expect(s.sessions.queued('old')).toEqual([])
+    expect(s.store.items('old').map((i) => i.kind)).toEqual(['user', 'interrupted', 'note'])
+    expect(s.turns).toEqual(['old:false:lead'])
+    expect(s.exits).toEqual([])
+    // The id is forgotten all the same, so the next message starts a fresh session.
+    expect(s.store.chat('old')?.sessionId).toBeUndefined()
+    await s.sessions.send('old', [{ type: 'text', text: 'Start over' }])
+    expect(sdk.calls.at(-1)!.options.resume).toBeUndefined()
+    s.done()
+  })
+
+  it('sends only the picked message after a Send now pressed before the gone session answered', async () => {
+    const s = await lost()
+    const picked = s.sessions.queued('old')[0]
+    await s.sessions.sendNow('old', picked.id)
+    gone(s.first, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh).not.toBe(s.first)
+    expect(fresh.options.resume).toBeUndefined()
+    expect(await nextSent(fresh)).toBe('Then add a test')
+    expect(s.sessions.isRunning('old')).toBe(true)
+    expect(s.sessions.queued('old')).toEqual([])
+    expect(texts(s.store, 'user')).toEqual(['Build T-14', 'Then add a test'])
+    expect(texts(s.store, 'note')).toEqual([SESSION_GONE_NOTE])
+    s.done()
+  })
+
+  it('renews only on the gone text, for the id it resumed, before init', async () => {
+    const cases: [string, (call: Call) => void][] = [
+      ['after init', (call) => { call.feed({ type: 'system', subtype: 'init', session_id: 'gone-1', apiKeySource: 'none' }); gone(call, 'gone-1') }],
+      ['another error before init', (call) => {
+        call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, duration_ms: 0, uuid: 'other', errors: ['The working directory was deleted'] })
+        call.fail(new Error('Claude Code returned an error result: The working directory was deleted'))
+      }],
+      ['another id', (call) => gone(call, 'someone-else')]
+    ]
+    for (const [name, answer] of cases) {
+      const s = await lost()
+      answer(s.first)
+      await flush()
+      expect(sdk.calls.at(-1), name).toBe(s.first)
+      expect(texts(s.store, 'note'), name).not.toContain(SESSION_GONE_NOTE)
+      expect(s.store.chat('old')?.sessionId, name).toBe('gone-1')
+      expect(s.store.items('old').some((i) => i.kind === 'result' && !i.ok), name).toBe(true)
+      s.done()
+    }
+  })
+
+  it("moves a team update to a Lead chat whose session is gone, and it stays Kernel's turn", async () => {
+    const lead: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+    const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
+    const s = await setup('acceptEdits', { agent: lead })
+    s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1' })
+    expect(s.sessions.post('old', [{ type: 'text', text: 'Team update from Kernel, not from the user.' }], { update })).toBe(true)
+    gone(sdk.calls.at(-1)!, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh.options.resume).toBeUndefined()
+    expect(await nextSent(fresh)).toBe('Team update from Kernel, not from the user.')
+    expect(s.sessions.turnFrom('old')).toBe('kernel')
+    const users = s.store.items('old').filter((i) => i.kind === 'user')
+    expect(users).toHaveLength(1)
+    expect(users[0]).toMatchObject({ from: 'kernel', update })
   })
 
   it("shows a fresh session's own failure once, starts nothing more, and wakes the Lead", async () => {
