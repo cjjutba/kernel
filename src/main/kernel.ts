@@ -70,7 +70,6 @@ const LEAD_CHAT = 'Lead'
 /** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
 const RENAME_AT = [1, 3, 10, 30]
 
-/** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 /** What Delete in History does for one workspace (KERNEL-333). See `Kernel.deleteFacts`. */
 interface DeleteFacts { ws: Workspace; room: Room; branch: 'none' | 'keep' | 'unpushed' | 'delete'; sessions: Map<string, number> }
 
@@ -84,6 +83,7 @@ async function inPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<
   return out
 }
 
+/** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
@@ -1544,6 +1544,8 @@ export class Kernel {
       const { ws, room } = f
       // Disk first and records last, so a failure halfway leaves the row in History and Delete can run again.
       try {
+        // Restored since the plan was made: it is open work again, so its branch and transcripts stay.
+        if (this.store.workspace(ws.id)?.status !== 'archived') throw new Error('It is not archived.')
         const drop = f.branch === 'delete' || (f.branch === 'unpushed' && o.deleteUnpushed)
         if (drop) {
           const r = await exec('git', ['-C', room.path, 'branch', '-D', ws.branch])

@@ -229,6 +229,25 @@ describe('deleting workspaces from History', () => {
     expect(k.store.workspace(a.id)).toBeUndefined()
   })
 
+  it('leaves a workspace that was restored after the plan was made', async () => {
+    const { k, hasBranch, archived } = await setup()
+    const a = await archived('first')
+    const b = await archived('restored-meanwhile', { commit: true, merged: true })
+    // The first transcript to go is the moment b comes back.
+    const real = k.deleteSession
+    k.deleteSession = (async (...args: Parameters<typeof real>) => {
+      k.store.saveWorkspace({ ...k.store.workspace(b.id)!, status: 'ready' })
+      return real(...args)
+    }) as typeof k.deleteSession
+
+    const r = await k.deleteWorkspaces([a.id, b.id], { deleteUnpushed: true })
+
+    expect(r.deleted).toEqual([a.id])
+    expect(r.skipped).toEqual([{ id: b.id, name: b.name, reason: 'It is not archived.' }])
+    expect(await hasBranch(b.branch)).toBe(true)
+    expect(k.store.workspace(b.id)?.status).toBe('ready')
+  })
+
   it('runs one delete at a time, so a second call plans against what the first left', async () => {
     const { k, archived } = await setup()
     const a = await archived('once')
