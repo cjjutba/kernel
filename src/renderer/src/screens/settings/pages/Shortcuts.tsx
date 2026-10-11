@@ -8,7 +8,8 @@ export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
     ['Merge PR', ['⌘', '⇧', 'M']],
     ['Fix conflicts, checks or review', ['⌘', '⇧', 'F']],
     ['Archive merged or closed', ['⌘', '⇧', 'A']],
-    ['Open diff', ['⌘', '⇧', 'D']], ['Run dev script', ['⌘', 'R']]
+    ['Open diff', ['⌘', '⇧', 'D']], ['Run dev script', ['⌘', 'R']],
+    ['Open in default app', ['⌘', 'O']]
   ] },
   { title: 'Agents', rows: [
     ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']], ['Open Lead chat', ['⌘', '⇧', 'L']]
