@@ -50,6 +50,8 @@ export interface Fixture {
   hunks?: Record<string, Hunk[]>
   /** By workspace id, then path. */
   fileText?: Record<string, Record<string, string>>
+  /** By workspace id, then `${at}:${path}`, what `workspaces.readImage` returns (KERNEL-409). */
+  images?: Record<string, Record<string, { dataUrl: string }>>
   skills?: Skill[]
   mcp?: McpServer[]
   integrations?: Integration[]

@@ -104,6 +104,11 @@ export interface KernelApi {
   /** @ mentions: files matching the query, best first. */
   'workspaces.files': { req: { workspaceId: string; query: string; limit?: number }; res: FileEntry[] }
   'workspaces.readFile': { req: { workspaceId: string; path: string }; res: string }
+  /**
+   * An image for the diff tab, as a data URL: `worktree` reads the file on disk, `base` the version the diff compares against.
+   * Null when the file isn't there (KERNEL-409).
+   */
+  'workspaces.readImage': { req: { workspaceId: string; path: string; at: 'worktree' | 'base' }; res: { dataUrl: string } | null }
   'workspaces.hunks': { req: { workspaceId: string; path?: string }; res: Hunk[] }
   /** Commit only the picked hunks (WorkspaceHunks "Commit selected"). */
   'workspaces.commit': { req: { workspaceId: string; hunkIds: string[]; message?: string }; res: Ok }

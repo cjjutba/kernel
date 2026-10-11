@@ -7,7 +7,7 @@ import { clock, worktreeTree, writeTree } from '../services/checkpoints'
 import { branchName, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, leadBase, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
-import { listTree, readWorkspaceFile, searchFiles } from '../services/files'
+import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
 import { head, messageOf, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -338,10 +338,14 @@ export class Workspaces extends Feature {
     return files
   }
 
+  /** What the diff compares against: the baseline for current-branch workspaces, the merge base with the base branch otherwise. */
+  private async since(ws: Workspace) {
+    return ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
+  }
+
   private async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
-    const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
-    return diffText(ws.path, since, file)
+    return diffText(ws.path, await this.since(ws), file)
   }
 
   private async hunks(id: string, path?: string) {
@@ -371,6 +375,10 @@ export class Workspaces extends Feature {
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
       'workspaces.readFile': async ({ workspaceId, path }) => readWorkspaceFile(this.mustWs(workspaceId).path, path),
+      'workspaces.readImage': async ({ workspaceId, path, at }) => {
+        const ws = this.mustWs(workspaceId)
+        return readImage(ws.path, path, at === 'base' ? await this.since(ws) : undefined)
+      },
       'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
       'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {

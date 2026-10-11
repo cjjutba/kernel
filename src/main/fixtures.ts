@@ -120,6 +120,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'workspaces.tree': async ({ workspaceId }) => f.tree?.[workspaceId] ?? [],
     'workspaces.files': async ({ workspaceId, query, limit = 8 }) => (f.tree?.[workspaceId] ?? []).filter((e) => !e.dir && e.path.toLowerCase().includes(query.toLowerCase())).slice(0, limit),
     'workspaces.readFile': async ({ workspaceId, path }) => f.fileText?.[workspaceId]?.[path] ?? '',
+    'workspaces.readImage': async ({ workspaceId, path, at }) => f.images?.[workspaceId]?.[`${at}:${path}`] ?? null,
     'workspaces.hunks': async ({ workspaceId, path }) => (f.hunks?.[workspaceId] ?? []).filter((h) => !path || h.path === path),
     'workspaces.commit': async () => ok,
     'workspaces.discard': async () => ok,
