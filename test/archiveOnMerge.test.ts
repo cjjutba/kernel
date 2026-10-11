@@ -23,7 +23,6 @@ const SLOW = { timeout: 15_000 }
 
 const info = (state: PrInfo['state'], head?: string): PrInfo => ({ workspaceId: '', number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state, baseRef: 'main', checks: [], comments: [], conflicts: [], ...(head ? { head } : {}) })
 
-type Pass = (...a: unknown[]) => Promise<void>
 
 /**
  * A room with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` is the app-wide switch, `room`
@@ -49,7 +48,7 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; origin?: boo
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
   // A merge starts its archive passes without awaiting them, so a check that a workspace stays must wait for them.
-  const passes = [vi.spyOn(k as unknown as { archiveReviews: Pass }, 'archiveReviews'), vi.spyOn(k as unknown as { archiveMerged: Pass }, 'archiveMerged')]
+  const passes = [vi.spyOn(k.autoArchive, 'archiveReviews'), vi.spyOn(k.autoArchive, 'archiveMerged')]
   const settled = async () => {
     await vi.waitFor(() => expect(passes[1]).toHaveBeenCalled(), SLOW)
     await Promise.all(passes.flatMap((p) => p.mock.results.map((r) => r.value)))
@@ -76,7 +75,7 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; origin?: boo
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
     deps.onTurnDone(k.store.workspace(w.id)!, k.store.chats(w.id)[0], { ok: true, interrupted: false, by: 'lead' })
   }
-  return { k, gh, repo, room, lead, author, review, notes, status, land, settled, turnDone, where: k['o'] as ConstructorParameters<typeof Kernel>[0] }
+  return { k, gh, repo, room, lead, author, review, notes, status, land, settled, turnDone, where: k.o }
 }
 
 /** Commits a file in the workspace and pushes its branch, as an agent opening a PR does. The commit pushed. */
@@ -158,7 +157,7 @@ describe('Archive on merge (KERNEL-114)', () => {
     k.sessions.isRunning = (id) => chats.includes(id)
     await land('merged')
     await settled()
-    expect(k['reviewsToArchive'].has(author.id)).toBe(true)
+    expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(true)
     expect(status(author)).not.toBe('archived')
     k.sessions.isRunning = running
     turnDone(author)
@@ -173,17 +172,17 @@ describe('Archive on merge (KERNEL-114)', () => {
     await land('merged')
     await settled()
     expect(status(author)).not.toBe('archived')
-    expect(k['reviewsToArchive'].has(author.id)).toBe(false)
+    expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(false)
   })
 
   it('never archives the Lead\'s workspace, even before the team is read', async () => {
     const { k, lead } = await setup()
     k.store.saveWorkspace({ ...k.store.workspace(lead.workspaceId)!, prState: 'merged' })
     // A cold cache: nothing says which agent is the Lead.
-    k.team['agentCache'].clear()
-    await k['archiveMerged'](lead.workspaceId)
+    k.team.agentCache.clear()
+    await k.autoArchive['archiveMerged'](lead.workspaceId)
     k.store.saveMeta('mergedSwept', false)
-    await k['sweepMerged']()
+    await k.autoArchive['sweepMerged']()
     expect(k.store.workspace(lead.workspaceId)!.status).not.toBe('archived')
   })
 
@@ -194,17 +193,17 @@ describe('Archive on merge (KERNEL-114)', () => {
     k.sessions.isRunning = (id) => chats.includes(id)
     await land('merged')
     await settled()
-    expect(k['reviewsToArchive'].has(author.id)).toBe(true)
+    expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(true)
     // The turn puts the worktree on a new branch, which has no PR on GitHub. The archive's git check drops the merged one.
     await run('git', ['-C', author.path, 'checkout', '-q', '-b', 'feat/next'])
     gh.pr = null
     k.sessions.isRunning = running
-    const passes = (k['archiveMerged'] as unknown as { mock: { results: { value: Promise<void> }[] } }).mock.results.length
+    const passes = (k.autoArchive['archiveMerged'] as unknown as { mock: { results: { value: Promise<void> }[] } }).mock.results.length
     turnDone(author)
-    await vi.waitFor(() => expect((k['archiveMerged'] as unknown as { mock: { results: unknown[] } }).mock.results.length).toBeGreaterThan(passes), SLOW)
+    await vi.waitFor(() => expect((k.autoArchive['archiveMerged'] as unknown as { mock: { results: unknown[] } }).mock.results.length).toBeGreaterThan(passes), SLOW)
     await settled()
     expect(k.store.workspace(author.id)).toMatchObject({ branch: 'feat/next', prState: 'none' })
-    expect(k['reviewsToArchive'].has(author.id)).toBe(false)
+    expect(k.autoArchive['reviewsToArchive'].has(author.id)).toBe(false)
     expect(status(author)).not.toBe('archived')
   })
 
@@ -244,7 +243,7 @@ describe('Archive on merge at start (KERNEL-114)', () => {
     const k3 = new Kernel(where)
     await k3.start()
     onTestFinished(() => k3.stop())
-    await k3['sweepMerged']()
+    await k3.autoArchive['sweepMerged']()
     expect(k3.store.workspace(author.id)!.status).not.toBe('archived')
   })
 

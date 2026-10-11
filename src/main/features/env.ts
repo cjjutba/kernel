@@ -1,10 +1,10 @@
 import type { Workspace } from '@shared/types'
-import type { Handlers } from '../kernel'
 import { loadRepoSettings, loadRepoSettingsSync } from '../services/settings'
 import { buildEnv, envFileReadable, kernelVars, readEnvFiles, withoutClaudeNames } from '../services/env'
+import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
-/** The variables a workspace's sessions, scripts and terminals get (KERNEL-247, KERNEL-327). */
+/** The variables every session, script and terminal in a workspace gets (KERNEL-247, KERNEL-327). */
 export class Env extends Feature {
   /**
    * Every variable a session, script or terminal in the workspace gets: the Mac's, the app's, the room's env files, the
@@ -22,7 +22,7 @@ export class Env extends Feature {
     if (room && list.length && !allowed) void this.k.trust.untrusted(room).catch(() => null)
     const files = allowed ? readEnvFiles(ws.path, list).map((f) => keep(f.vars)) : []
     const kernel: Record<string, string> = { ...kernelVars(ws, room?.path ?? ws.path), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
-    return buildEnv({ base: process.env, app: keep(this.k.envStore.values()), files, room: keep(this.k.envStore.values(ws.roomId)), kernel })
+    return buildEnv({ base: process.env, app: keep(this.envStore.values()), files, room: keep(this.envStore.values(ws.roomId)), kernel })
   }
 
   handlers() {
@@ -32,16 +32,16 @@ export class Env extends Feature {
         // The room's files are checked in its main checkout, without reading them. A workspace reads its own copies when
         // something starts there.
         const files = room ? (await loadRepoSettings(room.path)).env.files.map((path) => ({ path, missing: !envFileReadable(room.path, path) })) : []
-        return { names: this.k.envStore.names(roomId), files }
+        return { names: this.envStore.names(roomId), files }
       },
       'env.set': async ({ roomId, name, value }) => {
         if (roomId) this.mustRoom(roomId)
-        this.k.envStore.set(roomId, name, value)
+        this.envStore.set(roomId, name, value)
         return { ok: true }
       },
       'env.reveal': async ({ roomId, name }) => {
         if (roomId) this.mustRoom(roomId)
-        return this.k.envStore.reveal(roomId, name)
+        return this.envStore.reveal(roomId, name)
       }
     } satisfies Partial<Handlers>
   }

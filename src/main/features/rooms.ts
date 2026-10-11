@@ -224,7 +224,7 @@ export class Rooms extends Feature {
     this.k.trust.envFilesOk.delete(roomId)
     await this.k.roomIcons.remove(room.icon)
     await this.k.shared.remove(shared)
-    await this.k.trust.trusted.forget(roomId)
+    await this.k.trust.forgetRoom(roomId)
     this.k.team.forgetRoom(roomId)
   }
 

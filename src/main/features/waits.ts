@@ -2,10 +2,10 @@ import type { ChatPart, PrState, Workspace } from '@shared/types'
 import type { TeammateToolDeps } from '../services/teammateMcp'
 import { fastForward, fetchOrigin, stripRemote } from '../services/worktrees'
 import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
-import { Feature } from './feature'
 import { head } from './shared'
+import { Feature } from './feature'
 
-/** A workspace waiting for other PRs to merge before it starts or rebases (KERNEL-259, KERNEL-328). */
+/** Workspaces that wait for another PR to merge (KERNEL-259, KERNEL-328). */
 export class Waits extends Feature {
   /** Waits being released, so a merge seen twice (push and poll) sends the brief once (KERNEL-259). */
   private waitReleases = new Map<string, Promise<void>>()
@@ -42,7 +42,7 @@ export class Waits extends Feature {
   /** Tells the Lead a wait can't end on its own: `target` closed or was archived without merging. The waiter stays as it is. */
   breakWait(w: Workspace, target: Workspace, gone: 'closed' | 'archived') {
     if (!w.waitsFor || w.waitsFor.releasing) return
-    this.k.leadUpdates.waits(w, 'wait.broken', { on: w.waitsFor.on, label: waitLabel(target, this.nameOf(target)), held: w.waitsFor.held, target: target.id, gone })
+    this.leadUpdates.waits(w, 'wait.broken', { on: w.waitsFor.on, label: waitLabel(target, this.nameOf(target)), held: w.waitsFor.held, target: target.id, gone })
   }
 
   /** Releases the wait when everything it is on has merged. */
@@ -56,7 +56,7 @@ export class Waits extends Feature {
    * and rebase messages a quit lost go again. A merge made while Kernel was closed reaches them through the first poll.
    */
   async sweepWaits() {
-    for (const r of this.store.rooms()) { if (this.stopped) return; await this.k.agents(r.id).catch(() => undefined) }
+    for (const r of this.store.rooms()) { if (this.stopped) return; await this.k.team.agents(r.id).catch(() => undefined) }
     if (!this.stopped) await this.retryWaits()
   }
 
@@ -99,7 +99,7 @@ export class Waits extends Feature {
     if (!wait.held) {
       if (now) { this.clearWait(id); return }
       this.updateWs(id, { waitsFor: { ...wait, releasing: true } })
-      this.k.leadUpdates.waits(ws, 'wait.released', { on: wait.on, label, held: false })
+      this.leadUpdates.waits(ws, 'wait.released', { on: wait.on, label, held: false })
       await this.deliverRelease(id)
       return
     }
@@ -125,10 +125,10 @@ export class Waits extends Feature {
     else {
       if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
       this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`)
-      this.k.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
+      this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
-    await this.k.setup['startBrief'](current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor })
+    await this.k.setup.startBrief(current, room, chat, { setup: !!after && after !== (wait.base ?? before), released: current.waitsFor })
   }
 
   /** The Lead or the user ends a wait before its merge: a held brief goes now, with whatever merged already under it. */
@@ -190,7 +190,7 @@ export class Waits extends Feature {
     const label = this.waitLabelOf(next)
     if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`)
     // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
-    this.k.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
+    this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
   }
 

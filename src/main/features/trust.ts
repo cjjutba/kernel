@@ -1,16 +1,16 @@
 import { join } from 'node:path'
 import type { QueuedMessage, Room, RoomSettingsPatch, ScriptTrust, Workspace } from '@shared/types'
 import { bus } from '../bus'
+import { loadRepoSettings, localSettingsOwn, type RepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type TrustSubject } from '../services/settings'
 import type { Handlers } from '../kernel'
-import { loadRepoSettings, localSettingsOwn, scriptsToTrust, ScriptTrustStore, trustHash, type RepoSettings, type TrustSubject } from '../services/settings'
-import { Feature } from './feature'
 import type { SetupHold } from './setup'
+import { Feature } from './feature'
 
-/** Whether the user trusts the scripts, files.copy and env files a room's repo brings (KERNEL-327). */
+/** Whether the user trusts the room's scripts, files.copy list and env files (KERNEL-209, KERNEL-327). */
 export class Trust extends Feature {
+  /** The script text the user trusted, per room (KERNEL-209). Made the first time it is read (R1). */
+  private get trusted(): ScriptTrustStore { return this.trustStore ??= new ScriptTrustStore(join(this.o.dataDir, 'trust.json')) }
   private trustStore?: ScriptTrustStore
-  /** The script text the user trusted, per room (KERNEL-209). Built on first use, since a feature's constructor stores only `k` (R1). */
-  get trusted() { return this.trustStore ??= new ScriptTrustStore(join(this.o.dataDir, 'trust.json')) }
   /**
    * Per room, the `[env] files` list `envFor` may read, as JSON: the user's own list, or the repo's once the room is
    * trusted. `untrusted` sets it each time it checks. A room with no entry reads no env file, since `envFor` is
@@ -141,6 +141,9 @@ export class Trust extends Feature {
     }
   }
 
+
+  /** A removed room's trusted text goes with it. */
+  forgetRoom(roomId: string) { return this.trusted.forget(roomId) }
   handlers() {
     return {
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),

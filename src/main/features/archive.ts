@@ -2,15 +2,15 @@ import { basename, dirname } from 'node:path'
 import { rm, stat } from 'node:fs/promises'
 import type { Workspace } from '@shared/types'
 import { bus } from '../bus'
-import type { Handlers } from '../kernel'
 import { loadRepoSettings } from '../services/settings'
 import { detachWorktree, folderGone, restoreWorktree } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, stopRuns, stopScript } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
+import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
-/** Archiving and restoring a workspace, and deleting the folders archive moved aside (KERNEL-328). */
+/** Archiving and restoring workspaces, the worktree folders archive throws away, and discarding changes (KERNEL-328). */
 export class Archive extends Feature {
   /** Archives under way, so a second call for the same workspace waits for the first. */
   private archiving = new Map<string, Promise<void>>()
@@ -43,12 +43,12 @@ export class Archive extends Feature {
   }
 
   private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
-    this.k.setup['setupFailures'].delete(id)
+    this.k.setup.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back.
-    const ws = await this.k.syncBranch(id)
+    const ws = await this.k.prs.syncBranch(id)
     const room = this.mustRoom(ws.roomId)
     this.sessions.stopWorkspace(id)
-    this.k.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
+    this.ptys.killWorkspace(id, this.store.chats(id).map((c) => c.id))
     stopRuns(id)
     // A setup still running would finish after the archive and report on a workspace that is gone.
     stopScript(id, 'setup')
@@ -80,7 +80,7 @@ export class Archive extends Feature {
     this.approvals.expireWorkspace(id)
     this.notifications.forgetWorkspace(id)
     bus.activity({ kind: 'workspace.archived', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'archived', object: ws.name })
-    void this.k.overlaps.check(ws.roomId).catch(() => undefined)
+    void this.overlaps.check(ws.roomId).catch(() => undefined)
   }
 
   /**
@@ -88,7 +88,7 @@ export class Archive extends Feature {
    * to alone. A path leaves the saved list only once it is deleted; a failure stays for the next start, silently. Only a
    * folder inside a `.trash` folder is deleted, whatever the saved list says.
    */
-  throwAway(path: string) {
+  private throwAway(path: string) {
     this.keepTrash(path)
     this.emptying = this.emptying.then(async () => {
       if (this.stopped) return
@@ -117,7 +117,7 @@ export class Archive extends Feature {
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
       const repo = await loadRepoSettings(room.path)
       await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote: await this.k.config.remoteFor(room.path, repo) })
-      if (!(await this.k.trust.untrusted(room, repo))) await this.k.setup['copyFiles'](ws, room, repo)
+      if (!(await this.k.trust.untrusted(room, repo))) await this.k.setup.copyFiles(ws, room, repo)
       else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
@@ -128,7 +128,7 @@ export class Archive extends Feature {
     const back = clash ? await this.k.workspaces.withPort((port) => this.updateWs(id, { archivedAt: undefined, port, status: 'ready' }, { archived: true }))
       : this.updateWs(id, { archivedAt: undefined, status: 'ready' }, { archived: true })
     // A review the user brings back stays, even though the work it reviewed is done (KERNEL-136).
-    this.k['unmarkReviews'](id)
+    this.k.autoArchive.unmarkReviews(id)
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
     return back
   }
@@ -139,7 +139,7 @@ export class Archive extends Feature {
    */
   async unsavedOf(id: string): Promise<'dirty' | 'unknown' | false> {
     try {
-      const ws = await this.k.syncBranch(id)
+      const ws = await this.k.prs.syncBranch(id)
       if (ws.mode !== 'worktree') return false
       if (await folderGone(ws.path)) return false
       return (await gitStatus(ws.path, ws.branch, ws.baseRef, await this.k.config.remoteOfWs(ws))).dirty.files ? 'dirty' : false
@@ -156,16 +156,21 @@ export class Archive extends Feature {
     return this.chatTabs(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
   }
 
+
+  /** At launch: worktree folders a quit or a failure left behind are deleted now (KERNEL-284). */
+  start() {
+    for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
+  }
   handlers() {
     return {
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
-        if (push) { const ws = await this.k.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch, await this.k.config.remoteOfWs(ws)) }
+        if (push) { const ws = await this.k.prs.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch, await this.k.config.remoteOfWs(ws)) }
         await this.k.archiveWorkspace(workspaceId, deleteBranch)
         return { ok: true }
       },
-      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.k.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef, await this.k.config.remoteOfWs(ws)) },
-      'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.k.prs.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef, await this.k.config.remoteOfWs(ws)) },
+      'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } }
     } satisfies Partial<Handlers>
   }
 }

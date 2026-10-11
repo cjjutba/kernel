@@ -2,15 +2,15 @@ import { join } from 'node:path'
 import type { ChatPart, Effort, ModelId, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
-import type { Handlers } from '../kernel'
 import { loadRepoSettings } from '../services/settings'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, fetchOrigin, freeBranch, mergeBase, onRemote, resolveBaseRef, reviewBranch, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readWorkspaceFile, searchFiles } from '../services/files'
 import { commitHunks, listHunks } from '../services/hunks'
-import { Feature } from './feature'
 import { head, messageOf } from './shared'
+import type { Handlers } from '../kernel'
+import { Feature } from './feature'
 
 /** When origin was last fetched, for a workspace that started from it after a fetch failed: "Oct 10, 2:05 PM (3 hours ago)". */
 export function fetchedAt(ts: number, now = Date.now()): string {
@@ -20,7 +20,7 @@ export function fetchedAt(ts: number, now = Date.now()): string {
   return `${new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${ago})`
 }
 
-/** Starting a workspace, its ports, and what it changed (KERNEL-328). */
+/** Creating workspaces, their ports, and what they changed (KERNEL-328). */
 export class Workspaces extends Feature {
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
   readonly reservedPorts = new Set<number>()
@@ -29,12 +29,12 @@ export class Workspaces extends Feature {
     const room = this.mustRoom(roomId)
     const repo = await loadRepoSettings(room.path)
     const s = this.settings
-    const agents = await this.k.agents(roomId)
+    const agents = await this.k.team.agents(roomId)
     const agent = agents.find((a) => a.id === o.agentId) ?? agents.find((a) => a.lead) ?? agents[0]
     if (!agent) throw new Error('This room has no agents. Add one to .claude/agents first.')
     // A review gets its own worktree started from the work it reviews (KERNEL-130).
     // The branch the author is on now, which may not be the one the workspace started on (KERNEL-68).
-    const reviewed = o.reviewOf && this.store.workspace(o.reviewOf) ? await this.k.syncBranch(o.reviewOf) : undefined
+    const reviewed = o.reviewOf && this.store.workspace(o.reviewOf) ? await this.k.prs.syncBranch(o.reviewOf) : undefined
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
@@ -47,7 +47,7 @@ export class Workspaces extends Feature {
     // without that remote has nothing to fetch, so it says nothing.
     const fetched = !reviewed && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
       ? await fetchOrigin(room.path, remote) : undefined
-    const baseRef = reviewed ? await this.k['reviewBase'](room.path, reviewed.branch, remote)
+    const baseRef = reviewed ? await this.k.reviews.reviewBase(room.path, reviewed.branch, remote)
       : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
     // A local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
     const stale = fetched?.ok === false && baseRef.startsWith(`${remote}/`) ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
@@ -97,11 +97,11 @@ export class Workspaces extends Feature {
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
-    this.k.setup.setSetup(ws.id, { ...this.k.setup['setups'].get(ws.id), chatId: chat.id, brief: parts, ...(from ? { from } : {}), later: this.k.setup['setups'].get(ws.id)?.later ?? [] })
+    this.k.setup.setSetup(ws.id, { ...this.k.setup.setups.get(ws.id), chatId: chat.id, brief: parts, ...(from ? { from } : {}), later: this.k.setup.setups.get(ws.id)?.later ?? [] })
     // The Lead's messages sent before the brief went out follow it, never go before it (KERNEL-118). Messages that
     // arrive while the brief is sent are still caught here, and the mark goes only once the list is empty.
     const after = async (send: (m: ChatPart[]) => Promise<unknown> | void) => {
-      for (let held = this.k.setup['setups'].get(ws.id); held?.later.length; held = this.k.setup['setups'].get(ws.id)) { const m = held.later.shift()!; this.k.setup['saveSetups'](); await send(m) }
+      for (let held = this.k.setup.setups.get(ws.id); held?.later.length; held = this.k.setup.setups.get(ws.id)) { const m = held.later.shift()!; this.k.setup.saveSetups(); await send(m) }
       this.k.setup.setSetup(ws.id, undefined)
     }
     // Nothing from the repo's settings runs or copies until the user trusts that text for the room (KERNEL-209). The
@@ -114,7 +114,7 @@ export class Workspaces extends Feature {
       return this.k.trust.holdForTrust(ws.id)
     }
     let ready: boolean
-    try { ready = await this.k.setup['prepare'](ws, room, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
+    try { ready = await this.k.setup.prepare(ws, room, repo) } catch (e) { this.k.setup.setSetup(ws.id, undefined); throw e }
     // Archived while setup ran: archive stopped the script, and the workspace stays archived.
     if (this.mustWs(ws.id).status === 'archived') { this.k.setup.setSetup(ws.id, undefined); return this.mustWs(ws.id) }
     // The first prompt waits in the chat's queue until setup passes (WorkspaceSetupFailed.png, "Run again").
@@ -124,8 +124,8 @@ export class Workspaces extends Feature {
       const failed = this.updateWs(ws.id, { status: 'failed' })
       // The Lead's create_workspace says so in its result while the Lead's turn still waits for it, so this event doesn't
       // wake the Lead a second time (KERNEL-126). A setup that was stopped, by archive or quit, isn't a failure to report.
-      const code = this.k.setup['setupFailures'].get(ws.id)
-      if (code !== null && failed.status !== 'archived') this.k.leadUpdates.setup(failed, false, { told: !!o.leadChatId && this.sessions.isRunning(o.leadChatId), code })
+      const code = this.k.setup.setupFailures.get(ws.id)
+      if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { told: !!o.leadChatId && this.sessions.isRunning(o.leadChatId), code })
       return failed
     }
     // Read again: wait_for_merge may have set or cleared the wait while setup ran (KERNEL-259).
@@ -142,12 +142,12 @@ export class Workspaces extends Feature {
       const label = this.k.waits.waitLabelOf(held)
       this.note(ws.id, `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.`)
       // The Lead reads it in create_workspace's result while its turn still waits for it (KERNEL-126's pattern).
-      this.k.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
+      this.leadUpdates.waits(held, 'wait.started', { on: held.waitsFor!.on, label, held: true, ...(o.leadChatId && this.sessions.isRunning(o.leadChatId) ? { told: true } : {}) })
       // Something it waits for may have merged while setup ran.
       void this.k.waits.settleWait(ws.id).catch(() => undefined)
       return held
     }
-    return this.k.setup['setupDone'](ws, room, chat, o.prompt, async () => {
+    return this.k.setup.setupDone(ws, room, chat, o.prompt, async () => {
       // A wait set while the brief was on its way is now a started teammate's (KERNEL-259).
       const late = this.mustWs(ws.id).waitsFor
       if (late?.held) this.updateWs(ws.id, { waitsFor: { ...late, held: false } })
@@ -213,7 +213,7 @@ export class Workspaces extends Feature {
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)
         return { ok: true }
-      },
+      }
     } satisfies Partial<Handlers>
   }
 }

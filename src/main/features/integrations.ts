@@ -63,7 +63,7 @@ export class Integrations extends Feature {
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),
       'linear.plan': async ({ id, roomId }) => {
         const issue = await getIssue(await this.linearKey(), id, this.linearFetch)
-        const chat = await this.k.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
+        const chat = await this.k.lead.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'integrations.list': async () => this.integrations(),

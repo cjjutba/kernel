@@ -22,7 +22,7 @@ sessions.ts                         hookServer.ts (localhost:7420)
                  renderer store -> screens
 ```
 
-Requests go the other way: screens call `call(channel, req)`, the preload forwards to `ipcMain.handle`, and `kernel.ts` maps each channel to a method.
+Requests go the other way: screens call `call(channel, req)`, the preload forwards to `ipcMain.handle`, and each feature under `src/main/features/` maps its own channels to its methods. `kernel.ts` joins those maps into one (KERNEL-324).
 
 ## Sessions
 

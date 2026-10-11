@@ -95,7 +95,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     const room = await k.addRoom(repo)
     const chat = await k.leadChat(room.id)
     const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const deps = (k as unknown as { leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps }).leadToolDeps(room.id, lead, chat)
+    const deps = k.lead.leadToolDeps(room.id, lead, chat)
     const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
     const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
     return { k, chat, tool, plans }

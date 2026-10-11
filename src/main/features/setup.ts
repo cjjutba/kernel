@@ -1,28 +1,28 @@
 import type { Chat, ChatPart, Room, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
-import type { Handlers } from '../kernel'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
 import { copyLocalFiles, replayScripts, runScript, stopRuns, stopScript } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { waitMet } from '../services/waits'
-import { Feature } from './feature'
 import { head } from './shared'
+import type { Handlers } from '../kernel'
+import { Feature } from './feature'
 
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 export interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
-/** Setting up a workspace: copying its files, running setup and the run scripts, and holding its brief until setup passes (KERNEL-327). */
+/** A workspace's setup script, the brief that waits for it, and the run scripts (KERNEL-327). */
 export class Setup extends Feature {
   /**
    * Workspaces whose brief hasn't gone out yet: the chat and brief, and the Lead's messages that follow it (KERNEL-118).
    * Saved under the meta key `setups`, so a quit during setup doesn't lose the brief (KERNEL-128).
    */
-  private setups = new Map<string, SetupHold>()
+  readonly setups = new Map<string, SetupHold>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
-  private setupFailures = new Map<string, number | null>()
+  readonly setupFailures = new Map<string, number | null>()
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
-  private async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
+  async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
     const repo = await loadRepoSettings(room.path)
     if (this.mustWs(ws.id).status === 'archived') return this.mustWs(ws.id)
     // The start of chat: reverting to it undoes everything the agent did. Taken before the workspace counts as ready, so
@@ -49,7 +49,7 @@ export class Setup extends Feature {
   }
 
   /** Workspaces whose setup is rerunning, so a second Run again doesn't start it twice. */
-  private settingUp = new Set<string>()
+  readonly settingUp = new Set<string>()
 
   /** "Run again" on a failed setup: rerun the script, and when it passes send the prompt that was waiting. */
   async retrySetup(workspaceId: string): Promise<Workspace> {
@@ -70,11 +70,11 @@ export class Setup extends Feature {
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
-        if (code !== null && now.status !== 'archived') this.k.leadUpdates.setup(now, false, { code })
+        if (code !== null && now.status !== 'archived') this.leadUpdates.setup(now, false, { code })
         return now
       }
     } else this.setupFailures.delete(ws.id)
-    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.k.leadUpdates.setup(now, true); return now }
+    const passed = (w: Workspace) => { const now = this.mustWs(w.id); if (now.status === 'ready') this.leadUpdates.setup(now, true); return now }
     // A brief that waits for a PR stays held: the workspace is ready and keeps waiting (KERNEL-259).
     const wait = this.mustWs(ws.id).waitsFor
     if (wait?.held && chat) {
@@ -85,7 +85,7 @@ export class Setup extends Feature {
       }
       const base = await head(ws.path)
       const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
-      if (held.status === 'ready') this.k.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
+      if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
       return held
     }
     return passed(await this.startBrief(ws, room, chat))
@@ -97,7 +97,7 @@ export class Setup extends Feature {
    * shows a waiting workspace whose brief went out. Run again's tail and a released wait share it. A setup that fails
    * here leaves the workspace failed, with no wait, so Run again works as it always has.
    */
-  private async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor } = {}): Promise<Workspace> {
+  async startBrief(ws: Workspace, room: Room, chat: Chat | undefined, o: { setup?: boolean; released?: WaitsFor } = {}): Promise<Workspace> {
     const repo = o.setup && this.settings.scripts.setupOnCreate ? await loadRepoSettings(room.path) : undefined
     const script = repo?.scripts.setup
     // The setup text changed while the brief waited and nobody trusted it yet: the brief keeps waiting, for trust now,
@@ -107,7 +107,7 @@ export class Setup extends Feature {
       const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
-        if (code !== null && failed.status !== 'archived') this.k.leadUpdates.setup(failed, false, { code })
+        if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
         return failed
       }
     }
@@ -122,7 +122,7 @@ export class Setup extends Feature {
   }
 
   /** Copy the local files into a new worktree, then run setup. Only for text the user trusted (KERNEL-209). */
-  private async prepare(ws: Workspace, room: Room, repo: RepoSettings): Promise<boolean> {
+  async prepare(ws: Workspace, room: Room, repo: RepoSettings): Promise<boolean> {
     // An archive can land while the trust check or the copy waits: then nothing starts in the removed folder, and the
     // caller sees the workspace archived.
     const archived = () => this.mustWs(ws.id).status === 'archived'
@@ -132,7 +132,7 @@ export class Setup extends Feature {
   }
 
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
-  private async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
+  async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
     const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy)
     for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' })
   }
@@ -156,7 +156,7 @@ export class Setup extends Feature {
       if (!ready) {
         const failed = this.updateWs(ws.id, { status: 'failed' })
         const code = this.setupFailures.get(ws.id)
-        if (code !== null && failed.status !== 'archived') this.k.leadUpdates.setup(failed, false, { code })
+        if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
         return
       }
       // A workspace that also waits for a PR keeps waiting, ready, until it merges. Otherwise its brief goes now, and
@@ -192,7 +192,7 @@ export class Setup extends Feature {
     this.saveSetups()
   }
 
-  private saveSetups() { this.store.saveMeta('setups', Object.fromEntries(this.setups)) }
+  saveSetups() { this.store.saveMeta('setups', Object.fromEntries(this.setups)) }
 
   /**
    * A workspace still in setup when Kernel quit has no script running any more (KERNEL-128). It counts as failed, with a
