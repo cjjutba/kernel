@@ -35,7 +35,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onReply: (ws, chat) => void k['nameChat'](ws, chat),
     onReset: (_ws, chat, trigger) => k['resetName'](chat, trigger),
     onTurnDone: (ws, chat, turn) => {
-      void k.checkpoint(ws, chat).catch(() => undefined)
+      void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
       void k['nameChat'](ws, chat, true)
       const lead = !!k['agentsSync'](ws.roomId).find((a) => a.id === ws.agentId)?.lead
       const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
@@ -53,8 +53,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       k['releaseTaken'](ws.id, chat.id, turn.by)
     },
     onFailure: (failure) => {
-      if (failure === 'auth') k['signedOut']()
-      else if (failure === 'network') void k['network']?.check()
+      if (failure === 'auth') k.account.signedOut()
+      else if (failure === 'network') void k.account.network?.check()
     },
     // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
     onExit: (ws, _chat, reason, midTurn, resumed) => {
@@ -62,7 +62,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
       if (k['reviewsToArchive'].has(ws.id)) void k['archiveMarked'](ws.id).catch(() => undefined)
     },
-    onLimits: (limits) => k['applyLimits'](limits),
+    onLimits: (limits) => k.account.applyLimits(limits),
     onCutOff: (chatIds) => k.store.saveMeta('cutOff', chatIds),
     onHeld: (held) => k.store.saveMeta('held', held)
   }

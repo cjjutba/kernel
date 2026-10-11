@@ -31,6 +31,10 @@ const noCanvas = [
   'HistoryConfirmDeleteOne', // the same confirm from one row (KERNEL-333)
   // The PR states the PR header canvas didn't draw (KERNEL-274, drawn in design/redesign/).
   ...['NoChanges', 'None', 'Creating', 'Open', 'Checks', 'Conflict', 'Resolving', 'Ready', 'Merging'].map((s) => `WorkspacePR${s}`),
+  // Plan mode with nothing waiting, typing in it, and typing changes to a waiting plan (KERNEL-322, drawn in design/redesign/PlanStates.png).
+  'WorkspacePlanMode',
+  'WorkspacePlanModeTyping',
+  'WorkspacePlanTyping',
 ]
 
 describe('fixtures', () => {

@@ -1,5 +1,4 @@
 import type { PushEvent } from '@shared/ipc'
-import type { AgentStatus } from '@shared/types'
 import type { Kernel } from '../kernel'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -57,9 +56,6 @@ export function overlapDeps(k: Kernel): OverlapDeps {
   }
 }
 
-/** How a hook from an outside session moves its agent on the floor. */
-const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
-
 /**
  * Kernel's listeners on the shared bus. A push event goes through one listener that reacts in a fixed order, so a feature's
  * reaction goes in `onPush`, not in a listener of its own. Returns what removes them: a stopped kernel has a closed
@@ -67,14 +63,7 @@ const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', 
  */
 export function listen(k: Kernel): () => void {
   const onActivity = (e: Parameters<Store['saveActivity']>[0]) => k.store.saveActivity(e)
-  const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => {
-    k['hookSeen'].set(e.hook_event_name, Date.now())
-    // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
-    const status = HOOK_STATUS[e.hook_event_name]
-    if (!status || !ctx?.roomId || !ctx.agentId) return
-    if (k['statuses'].get(ctx.roomId)?.[ctx.agentId] === 'paused') return
-    bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
-  }
+  const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => k.hooks.onHook(e, ctx)
   const onPush = (e: PushEvent) => {
     // A turn waiting on an approval or a question is still running, so its agent still counts as working.
     // No database read here: the count looks the chats up when the quit asks for it.

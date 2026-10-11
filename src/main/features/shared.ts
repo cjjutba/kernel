@@ -1,0 +1,21 @@
+import type { ChatPart } from '@shared/types'
+import { exec } from '../services/exec'
+
+// Constants and helpers more than one feature uses (KERNEL-325). A helper only one feature uses stays in that feature.
+
+/**
+ * The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session, or to the one
+ * Kernel picks at the end of a turn, and comes back after /clear (`nameChat`, KERNEL-202).
+ */
+export const NEW_CHAT = 'New chat'
+/** The Lead's first tab before anyone writes in it. Like "New chat", it gives way to a real name. */
+export const LEAD_CHAT = 'Lead'
+
+/** A composer message: `parts` in order when they carry text (chips sit inline), else `text` first and the parts after it. */
+export const messageOf = (text: string, parts: ChatPart[] = []): ChatPart[] =>
+  parts.some((p) => p.type === 'text') ? parts : [...(text ? [{ type: 'text' as const, text }] : []), ...parts]
+
+export async function head(path: string) {
+  const r = await exec('git', ['-C', path, 'rev-parse', 'HEAD'])
+  return r.code === 0 ? r.stdout.trim() : undefined
+}
