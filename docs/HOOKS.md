@@ -10,7 +10,7 @@ Each entry is a command hook that pipes the payload to the server with curl (D-0
 
 ## Who can post
 
-`<token>` is 64 hex characters from `randomBytes(32)`, made once and kept in `hook-token` in the app data folder (mode 0600). The server checks every `POST /hooks` before it reads the body:
+`<token>` is 64 hex characters from `randomBytes(32)`, made once and kept in `hook-token` in the app data folder (mode 0600). A dev run copies it into `Kernel Dev` when it moves the data, so the hook entries keep working (KERNEL-408). The server checks every `POST /hooks` before it reads the body:
 
 - The Host must be `127.0.0.1:<port>` or `localhost:<port>`, and the `X-Kernel-Token` header must match the token. Either failing gets a 401. The token is compared in constant time.
 - The content type must be `application/json`, or the server answers 415. A web page's `no-cors` fetch can only send `text/plain`.

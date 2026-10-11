@@ -143,6 +143,47 @@ describe('Updater', () => {
   })
 })
 
+// KERNEL-408: a Kernel that could not start checks once and offers an update it finds.
+describe('Updater.readyWithin after a failed start', () => {
+  it('gives the version once the update downloads, and install runs', async () => {
+    const engine = new FakeEngine()
+    // The check answers first, and the download finishes later.
+    engine.next = (e) => { e.emit('update-available', info); setTimeout(() => e.emit('update-downloaded', info), 20) }
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    expect(await u.readyWithin(5000)).toBe('0.2.0')
+    u.install()
+    expect(engine.installs).toBe(1)
+  })
+
+  it('gives nothing when there is no update', async () => {
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine: new FakeEngine() })
+    expect(await u.readyWithin(5000)).toBeUndefined()
+  })
+
+  it('gives nothing when the check fails or the download does', async () => {
+    const offline = new FakeEngine()
+    offline.next = (e) => e.emit('error', new Error('net::ERR_INTERNET_DISCONNECTED'))
+    expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: offline }).readyWithin(5000)).toBeUndefined()
+    const rejects = new FakeEngine()
+    rejects.checkForUpdates = async () => { throw new Error('HttpError: 404') }
+    expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: rejects }).readyWithin(5000)).toBeUndefined()
+    const broken = new FakeEngine()
+    broken.next = (e) => { e.emit('update-available', info); setTimeout(() => e.emit('error', new Error('sha512 checksum mismatch')), 20) }
+    expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: broken }).readyWithin(5000)).toBeUndefined()
+  })
+
+  it('stops waiting when the network is too slow', async () => {
+    const slow = new FakeEngine()
+    slow.checkForUpdates = () => new Promise(() => undefined)
+    const started = Date.now()
+    expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: slow }).readyWithin(50)).toBeUndefined()
+    const stuck = new FakeEngine()
+    stuck.next = (e) => e.emit('update-available', info)
+    expect(await new Updater({ current: '0.1.0', dataDir: await dir(), engine: stuck }).readyWithin(50)).toBeUndefined()
+    expect(Date.now() - started).toBeLessThan(2000)
+  })
+})
+
 describe('packagedClaude', () => {
   it('points at the unpacked SDK binary in a packaged app, and leaves the SDK to find its own otherwise', async () => {
     const resources = await dir()
