@@ -325,7 +325,7 @@ describe('a hand-off that waits for a merge', () => {
     await k.continuePr(noor.id)
     expect(k.store.workspace(noor.id)).toMatchObject({ prState: 'none', mergedAt: expect.any(Number) })
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    await k['retryWaits']()
+    await k.waits['retryWaits']()
     const next = k.store.workspace(noor.id)!
     gh.prs.set(next.branch, prInfo('open', 164))
     await k.refreshPr(noor.id)

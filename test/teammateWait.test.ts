@@ -67,7 +67,7 @@ async function setup() {
   const noor = k.store.saveWorkspace({ ...k.store.workspace(made.id)!, source: { kind: 'issue', id: 'KERNEL-197', title: 'Tool rows' } })
   const kai = await k.createWorkspace(room.id, { prompt: 'Build KERNEL-198', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id })
   const call = async (ws: Workspace, input: { on: string; why?: string }) => {
-    const [t] = teammateTools(k['teammateToolDeps'](ws.id))
+    const [t] = teammateTools(k.waits['teammateToolDeps'](ws.id))
     const r = await t.handler(input as never, {})
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
