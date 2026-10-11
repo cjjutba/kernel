@@ -259,7 +259,7 @@ export async function folderGone(path: string): Promise<boolean> {
 export async function removeWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean } = {}) {
   if (await folderGone(path)) await git(repo, 'worktree', 'prune')
   else await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
-  if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+  if (opts.deleteBranch) await dropBranch(repo, opts.deleteBranch)
 }
 
 /**
@@ -292,8 +292,13 @@ export async function detachWorktree(repo: string, path: string, opts: { deleteB
     // failed prune doesn't fail the archive: the next prune drops the record.
     if (moved) await exec('git', ['-C', repo, 'worktree', 'prune'])
   }
-  if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+  if (opts.deleteBranch) await dropBranch(repo, opts.deleteBranch)
   return moved
+}
+
+/** Deletes a local branch. A failure is quiet: git refuses a branch checked out in a worktree, and that one stays. */
+export async function dropBranch(repo: string, branch: string): Promise<void> {
+  await exec('git', ['-C', repo, 'branch', '-D', branch])
 }
 
 export interface WorktreeInfo { path: string; branch?: string; head: string; locked?: boolean }

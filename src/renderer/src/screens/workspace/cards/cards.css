@@ -102,7 +102,12 @@
 .tucard-name { flex-shrink: 0; color: var(--ink); font-weight: 500; }
 .tucard-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--faint); }
 .tucard-task { flex: 1; min-width: 0; color: var(--ink-2); }
-.tucard-open { flex-shrink: 0; border: 0; background: transparent; margin-left: 8px; padding: 0; color: var(--muted); font-size: 12px; }
+.tucard-act { display: flex; align-items: center; align-self: center; gap: 12px; flex-shrink: 0; margin: -4px 0 -4px 8px; }
+/* Merge #N sits in the ready band's soft tone (pr.css); the reason it can't is plain muted text, and Merged is violet (KERNEL-351). */
+.tucard-merge { height: 24px; padding: 0 9px; font-size: 12px; font-weight: 500; border-radius: 6px; }
+.tucard-why { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tucard-merged { font-size: 12px; font-weight: 500; color: var(--merged); }
+.tucard-open { flex-shrink: 0; border: 0; background: transparent; padding: 0; color: var(--muted); font-size: 12px; }
 .tucard-open[data-to='workspace']::after { content: ' ↗'; }
 .tucard-open:hover { color: var(--ink); }
 .tucard-events { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }

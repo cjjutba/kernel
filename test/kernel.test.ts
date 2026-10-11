@@ -52,11 +52,12 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     expect(k.store.workspace(ws.id)?.status).toBe('archived')
     await expect(stat(ws.path)).rejects.toThrow()
 
-    // The sidebar row, Cmd+K and Cmd+Shift+L open the Lead before anyone briefs it. lead.open makes the workspace once and sends nothing.
+    // The sidebar row, Cmd+K and Cmd+Shift+L open the Lead before anyone briefs it. lead.open makes the workspace once, with
+    // no chat, and sends nothing (KERNEL-365).
     const quiet = sent.length
     const opened = await k.handlers()['lead.open']({ roomId: room.id })
     expect(opened).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'current', path: repo, status: 'ready' })
-    expect(k.store.chats(opened.id).filter((c) => c.kind !== 'terminal')).toHaveLength(1)
+    expect(k.store.chats(opened.id)).toEqual([])
     expect((await k.handlers()['lead.open']({ roomId: room.id })).id).toBe(opened.id)
     expect(sent).toHaveLength(quiet)
 
@@ -135,7 +136,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     await k.stop()
   })
 
-  it('lead.start leaves the empty "Lead" chat lead.open made and opens its own (KERNEL-242)', async () => {
+  it('lead.open makes no chat, and lead.start opens its own tab (KERNEL-242, KERNEL-365)', async () => {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -145,14 +146,12 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     k.sessions.send = async () => ({ queued: false })
     const room = await k.addRoom(repo)
 
-    // Opening the room shows the "Lead" tab, so the user may be typing in it.
+    // Opening the room shows the Lead's workspace with no chat in it.
     const ws = await k.handlers()['lead.open']({ roomId: room.id })
-    const [opened] = k.store.chats(ws.id)
-    expect(opened.title).toBe('Lead')
+    expect(k.store.chats(ws.id)).toEqual([])
+    expect(k.store.threads(room.id)).toEqual([])
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Add PDF export' })
-    expect(chat.id).not.toBe(opened.id)
-    expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([opened.id, chat.id])
-    expect(k.store.chat(opened.id)).toEqual(opened)
+    expect(k.store.chats(ws.id).map((c) => c.id)).toEqual([chat.id])
     expect(chat).toMatchObject({ workspaceId: ws.id, title: 'New tab', model: 'claude-opus-5-5', effort: 'high', plan: true })
     await k.stop()
   })

@@ -159,7 +159,8 @@ export class Chats extends Feature {
 
   /**
    * The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab of a Lead chat closes
-   * the chat (KERNEL-337). The last open tab is replaced by a fresh chat, which in the Lead's workspace starts a new Lead chat.
+   * the chat (KERNEL-337). In a teammate's workspace the last open tab is replaced by a fresh chat. The Lead's workspace is
+   * left with none, since only the user starts a chat with the Lead (KERNEL-365).
    */
   closeChat(chatId: string) {
     const chat = this.mustChat(chatId)
@@ -168,9 +169,8 @@ export class Chats extends Feature {
     this.saveChat({ ...chat, closed: true })
     this.k.lead.tabClosed(chat)
     if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
-    const pick = { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }
-    const ws = this.mustWs(chat.workspaceId)
-    this.saveChat(this.isLeadWorkspace(ws) ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(chat.workspaceId, NEW_CHAT, pick))
+    if (this.isLeadWorkspace(this.mustWs(chat.workspaceId))) return
+    this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
   }
 
   /**
