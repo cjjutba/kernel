@@ -27,7 +27,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const settings = useStore((s) => s.settings)
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const name = lead?.name ?? 'Rowan'
-  const [model, setModel] = useState<ModelId>(settings?.models.lead ?? 'claude-opus-5-5')
+  const [model, setModel] = useState<ModelId>((settings?.models.roles.lead.model as ModelId | undefined) ?? 'claude-opus-5-5')
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(lead?.effort)
   const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, fallback))

@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type { Chat, Checkpoint, ClaudeAccount, ClaudePlan, Effort, ModelId, QueuedMessage, RateLimit, Workspace } from '@shared/types'
+import type { Chat, Checkpoint, ClaudeAccount, ClaudePlan, Effort, Provider, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store } from './db'
 import { bus } from './bus'
@@ -51,6 +51,7 @@ import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
 import { Telemetry } from './features/telemetry'
 import { BaseWatch } from './features/baseWatch'
+import { Providers } from './features/providers'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -123,6 +124,7 @@ export class Kernel {
   readonly reviews = new Reviews(this)
   readonly telemetry = new Telemetry(this)
   readonly baseWatch = new BaseWatch(this)
+  readonly providers = new Providers(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -282,7 +284,7 @@ export class Kernel {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
-      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers())
+      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers(), this.providers.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)
@@ -293,7 +295,7 @@ export class Kernel {
   checkLimits(): Promise<void> { return this.account.checkLimits() }
   checkpoint(ws: Workspace, chat: Chat): Promise<Checkpoint> { return this.checkpoints.checkpoint(ws, chat) }
   chatTabs(workspaceId: string): Chat[] { return records.chatTabs(this.store, workspaceId) }
-  newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
+  newChat(workspaceId: string, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
     return records.newChat(this.store, workspaceId, title, o)
   }
   workingAgents(...a: Parameters<Chats['workingAgents']>): ReturnType<Chats['workingAgents']> { return this.chats.workingAgents(...a) }

@@ -1,4 +1,4 @@
-import type { Chat, ChatItem, Effort, ModelId, Workspace } from '@shared/types'
+import type { Chat, ChatItem, Effort, Provider, Workspace } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
@@ -181,10 +181,10 @@ export class Chats extends Feature {
    * The effort of a chat the user opens: the one they last picked for its model, else the workspace agent's, else Settings, Models (D-130).
    * The Lead's hand-offs and its first chat skip the memory, so they follow the agent file.
    */
-  private openedEffort(workspaceId: string, model: ModelId): Effort {
+  private openedEffort(workspaceId: string, model: string): Effort {
     const ws = this.mustWs(workspaceId)
     const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
-    return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? this.settings.models.effort)
+    return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? (agent ? this.k.team.roleModel(agent) : this.settings.models.roles.engineers).effort)
   }
 
   /**
@@ -265,7 +265,7 @@ export class Chats extends Feature {
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
         if (!this.k.team.agentCache.has(ws.roomId)) await this.k.team.agents(ws.roomId)
-        const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
+        const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.roles.engineers.model
         const pick = { model, effort: this.openedEffort(workspaceId, model), plan: false }
         // A Lead tab joins the chat its workspace hosts (KERNEL-405), or in the shared Lead workspace from before, the Lead chat
         // `threadId` (KERNEL-337). A big terminal belongs to no Lead chat.

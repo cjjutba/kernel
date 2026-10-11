@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { AgentDef, Approval, Chat, ChatArchivePreview, ChatPart, Effort, ModelId, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
@@ -98,9 +98,9 @@ export class Lead extends Feature {
    * files.copy and setup pass, unless "Wait for setup" is off. Returns at once with the tab, and setup runs on its own, like a
    * fork's. A room with no commit keeps Rowan on the checkout with no setup, as before KERNEL-355.
    */
-  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
+  async newLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }): Promise<Chat> {
     const lead = await this.leadOf(roomId)
-    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.k.team.roleModel(lead).effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     const thread = this.pushThread({ id: newId(), roomId, title: NEW_TAB, createdAt: Date.now() })
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id } }) }
@@ -262,7 +262,7 @@ export class Lead extends Feature {
 
   /** The model, effort and plan mode a Lead tab Kernel opens starts with. */
   private leadPick(lead: AgentDef) {
-    return { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode }
+    return { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.k.team.roleModel(lead).effort, plan: this.settings.models.leadPlanMode }
   }
 
   /**
@@ -270,15 +270,15 @@ export class Lead extends Feature {
    * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). With `threadId` the tab joins that
    * chat while it is open, else it starts a new chat with its own workspace (KERNEL-405). The first message names the tab.
    */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; baseRef?: string }, threadId?: string): Promise<Chat> {
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }, threadId?: string): Promise<Chat> {
     const ws = threadId ? leadChatWorkspaceOf(this.store.workspaces(roomId), threadId) : undefined
     return ws ? this.tabIn(ws, o) : this.newLeadChat(roomId, o)
   }
 
   /** A new tab in the open chat `ws` hosts, with the message. A chat on the latest main as last fetched catches up first. */
-  private async tabIn(ws: Workspace, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
+  private async tabIn(ws: Workspace, o: { prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }): Promise<Chat> {
     const lead = await this.leadOf(ws.roomId)
-    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.k.team.roleModel(lead).effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     await this.syncLead(ws.roomId, { workspaceId: ws.id })
     const chat = this.saveChat(this.leadTab(this.mustWs(ws.id), NEW_TAB, pick))
     this.userSpoke(chat.id)
@@ -291,7 +291,7 @@ export class Lead extends Feature {
    * none, so there `threadId` names the chat, or the tab starts one. A tab opened while the chat's first message waits for
    * setup or trust waits with it. Saved, not pushed, like `newChat`.
    */
-  leadTab(ws: Workspace, title: string, o: { model: ModelId; effort: Effort; plan: boolean }, threadId?: string): Chat {
+  leadTab(ws: Workspace, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean }, threadId?: string): Chat {
     const id = ws.threadId ?? threadId
     const thread = id ? this.store.thread(id) : undefined
     if (id && thread?.roomId !== ws.roomId) throw new Error('That chat no longer exists.')
@@ -485,7 +485,7 @@ export class Lead extends Feature {
     if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
-    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
+    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.roles.engineers.model, effort: agent?.effort ?? (agent ? this.k.team.roleModel(agent) : this.settings.models.roles.engineers).effort, plan: false }))
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`

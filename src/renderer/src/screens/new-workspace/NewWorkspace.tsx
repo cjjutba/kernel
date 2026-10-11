@@ -45,7 +45,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   /** The base a picked PR or branch set, which its prompt already says. */
   const [pickedRef, setPickedRef] = useState('')
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
-  const [model, setModel] = useState<ModelId>(settings?.models.lead ?? 'claude-opus-5-5')
+  const [model, setModel] = useState<ModelId>((settings?.models.roles.lead.model as ModelId | undefined) ?? 'claude-opus-5-5')
   const lead = useStore((s) => leadOf(s.agents, room))
   const memory = useEffortMemory()
   const defaultEffort = useDefaultEffort(lead?.effort)

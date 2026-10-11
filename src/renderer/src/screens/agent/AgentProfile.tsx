@@ -30,7 +30,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const status = useStore((s) => s.status[roomId]?.[agentId] ?? 'idle')
   const workspaces = useStore((s) => s.workspaces)
   const tasks = useStore((s) => s.tasks[roomId])
-  const defaultEffort = useStore((s) => s.settings?.models.effort)
+  const defaultEffort = useStore((s) => s.settings?.models.roles.engineers.effort)
   const models = useStore((s) => s.settings?.models)
   const agent = agents.find((a) => a.id === agentId && !a.retired)
   useEffect(() => { void loadRoom(roomId) }, [roomId])
@@ -75,7 +75,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const team = agents.filter((a) => !a.retired)
   const builtIn = !!agent.builtIn
   // Kernel's own agents have no model of their own: Settings, Models picks it.
-  const modelId = builtIn ? (agent.lead ? models?.lead : models?.reviewer) ?? '' : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
+  const modelId = builtIn ? (agent.lead ? models?.roles.lead.model : models?.roles.reviewer.model) ?? '' : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffort ?? 'high'
 
   const save = () => run('save', async () => {

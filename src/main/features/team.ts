@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, ModelId, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { countRange } from '@shared/telemetry'
@@ -333,16 +333,23 @@ export class Team extends Feature {
     return s
   }
 
-  modelFor(agent: AgentDef): ModelId {
-    const m = this.settings.models
-    if (agent.model?.startsWith('claude-')) return agent.model as ModelId
+  modelFor(agent: AgentDef): string {
+    if (agent.model?.startsWith('claude-')) return agent.model
     const alias = MODELS.find((x) => x.id.split('-')[1] === agent.model?.toLowerCase())
     if (alias) return alias.id
-    if (agent.lead) return m.lead
-    if (isReviewer(agent)) return m.reviewer
-    if (/qa/i.test(agent.role)) return m.qa
-    return m.engineers
+    return this.roleModel(agent).model
   }
+
+  /** The role Settings, Models and effort reads for this agent. */
+  roleOf(agent: AgentDef): Role {
+    if (agent.lead) return 'lead'
+    if (isReviewer(agent)) return 'reviewer'
+    if (/qa/i.test(agent.role)) return 'qa'
+    return 'engineers'
+  }
+
+  /** The agent's role default from Settings, Models and effort (KERNEL-406). */
+  roleModel(agent: AgentDef): RoleModel { return this.settings.models.roles[this.roleOf(agent)] }
 
   handlers() {
     return {

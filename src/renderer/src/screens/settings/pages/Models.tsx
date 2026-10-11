@@ -12,7 +12,7 @@ export function Models({ s }: { s: AppSettings }) {
   const m = s.models
   const role = (key: 'lead' | 'engineers' | 'qa' | 'reviewer', title: string, ids: ModelId[]) => (
     <Row label={title}>
-      <Select label={title} value={m[key]} options={pick(ids, m[key])} onChange={(e) => void patchSettings({ models: { [key]: e.target.value as ModelId } })} />
+      <Select label={title} value={m.roles[key].model} options={pick(ids, m.roles[key].model as ModelId)} onChange={(e) => void patchSettings({ models: { roles: { [key]: { provider: 'claude', model: e.target.value } } } })} />
     </Row>
   )
   return (
@@ -25,7 +25,7 @@ export function Models({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Defaults">
         <Row label="Effort">
-          <SegmentedControl label="Effort" value={m.effort} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} onChange={(v) => void patchSettings({ models: { effort: v as Effort } })} />
+          <SegmentedControl label="Effort" value={m.roles.engineers.effort} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} onChange={(v) => void patchSettings({ models: { roles: Object.fromEntries((['lead', 'engineers', 'qa', 'reviewer'] as const).map((r) => [r, { effort: v as Effort }])) } })} />
         </Row>
         <Row label="Start the Lead in plan mode"><Toggle label="Start the Lead in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
         <Row label="Start new workspaces in plan mode" desc="For workspaces you start from New workspace. The Lead's hand-offs start without it, because the Lead already planned."><Toggle label="Start new workspaces in plan mode" checked={m.workspacePlanMode} onChange={(v) => void patchSettings({ models: { workspacePlanMode: v } })} /></Row>

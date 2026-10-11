@@ -30,7 +30,7 @@ function EffortMenu({ effort, at, onAt, onPick, onClose }: { effort: Effort; at:
  * The caller remembers a picked effort. The Effort row opens the levels to its right (Enter or ArrowRight).
  * Ctrl+Cmd+1 to 4 pick a model and Cmd+Shift+/ cycles the effort; the workspace composer also takes them while it is closed.
  */
-export function ModelPicker({ model, effort, fallback, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: ModelId; effort: Effort; fallback: Effort; onModel: (m: ModelId, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
+export function ModelPicker({ model, effort, fallback, onModel, onEffort, onClose, anchorRef }: { anchorRef: React.RefObject<HTMLElement | null>; model: string; effort: Effort; fallback: Effort; onModel: (m: ModelId, effort: Effort) => void; onEffort: (e: Effort) => void; onClose: () => void }) {
   const [q, setQ] = useState('')
   const [at, setAt] = useState(() => Math.max(0, MODELS.findIndex((m) => m.id === model)))
   const [sub, setSub] = useState(false)

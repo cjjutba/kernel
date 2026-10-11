@@ -2,8 +2,8 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, Effort, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import type { Retry } from '@shared/ipc'
@@ -734,7 +734,7 @@ export class Sessions {
   /** A known usage limit stops this chat: one on the whole account, or on the chat's model. */
   private limitHolds(chat: Chat) {
     const limits = [...this.limits.values()]
-    return !!blockingLimit(limits) || limitedModels(limits).includes(chat.model)
+    return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
   }
 
   /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
@@ -820,7 +820,7 @@ export class Sessions {
     if (live) {
       if (patch.model) await live.query.setModel(patch.model).catch(() => undefined)
       // After the model, so a model switch keeps the effort picked with it (D-093).
-      if (patch.effort) await live.query.applyFlagSettings({ effortLevel: patch.effort }).catch(() => undefined)
+      if (patch.effort) await live.query.applyFlagSettings({ effortLevel: claudeEffort(patch.effort) }).catch(() => undefined)
       if (patch.plan !== undefined) await live.query.setPermissionMode(patch.plan ? 'plan' : this.baseMode()).catch(() => undefined)
     }
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
@@ -1039,7 +1039,7 @@ export class Sessions {
       // it worked there, and loads each once (KERNEL-348, KERNEL-355).
       ...(ws.lead && ws.mode === 'worktree' && root ? { projectConfigRoot: root } : {}),
       model: chat.model,
-      effort: chat.effort,
+      effort: claudeEffort(chat.effort),
       // Without display: 'summarized' the CLI sends thinking blocks with empty text.
       thinking: { type: 'adaptive', display: 'summarized' },
       permissionMode: chat.plan ? 'plan' : this.baseMode(),
@@ -1532,6 +1532,9 @@ function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
     ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
   }))
 }
+
+/** Claude has no `ultra`, which only Codex models offer. A Claude chat never picks it, but a hand-edited one runs at `max`. */
+const claudeEffort = (e: Effort): EffortLevel => (e === 'ultra' ? 'max' : e)
 
 /** The tool that starts a subagent. Task is its old name. */
 const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])

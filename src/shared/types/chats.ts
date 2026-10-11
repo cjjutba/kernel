@@ -1,7 +1,17 @@
 import type { ChangedFile } from './workspaces'
 
+/** The agent CLI a chat runs on: Claude Code through the Agent SDK, or Codex through `codex app-server` (KERNEL-406). */
+export type Provider = 'claude' | 'codex'
+
+export const PROVIDERS: { id: Provider; label: string }[] = [
+  { id: 'claude', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' }
+]
+
+/** Claude's models. A Codex model id is whatever its `model/list` returns, so it is a plain string (`ProviderModel`). */
 export type ModelId = 'claude-fable-5-1' | 'claude-opus-5-5' | 'claude-sonnet-5-5' | 'claude-haiku-4-5-20251001'
-export type Effort = 'low' | 'medium' | 'high' | 'xhigh'
+/** Claude offers the first four (EFFORTS). Codex models list their own, which can go up to `max` and `ultra` (KERNEL-406). */
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
 
 export const MODELS: { id: ModelId; label: string }[] = [
   { id: 'claude-fable-5-1', label: 'Fable 5.1' },
@@ -17,15 +27,33 @@ export const EFFORTS: { id: Effort; label: string }[] = [
   { id: 'xhigh', label: 'Extra high' }
 ]
 
+/** Every effort's label, Codex's own levels included. */
+export const EFFORT_LABELS: Record<Effort, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max', ultra: 'Ultra' }
+
+/** A model a provider offers, with the efforts it takes. Claude's come from MODELS, Codex's from `model/list` (KERNEL-406). */
+export interface ProviderModel {
+  provider: Provider
+  id: string
+  label: string
+  efforts: Effort[]
+  defaultEffort: Effort
+  /** The provider's own default, which a role starts on. */
+  isDefault?: boolean
+  description?: string
+}
+
 export interface Chat {
   id: string
   workspaceId: string
   title: string
   /** A terminal chat runs Claude Code's own TUI in a pty (KERNEL-12, D-001). */
   kind: 'chat' | 'terminal'
-  /** Claude Code session id, used to resume. */
+  /** Claude Code session id, or the Codex thread id, used to resume. */
   sessionId?: string
-  model: ModelId
+  /** Which CLI runs the chat. Absent reads as `claude`, which every chat before KERNEL-406 ran on. A chat keeps it for life. */
+  provider?: Provider
+  /** A Claude `ModelId`, or a Codex model id from `model/list`. */
+  model: string
   effort: Effort
   plan: boolean
   /** Set on a fork: the chat and the transcript item it was forked after. */
