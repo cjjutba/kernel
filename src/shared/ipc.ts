@@ -3,7 +3,7 @@ import type {
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
   PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
-  Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
+  Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
 type Ok = { ok: true }
@@ -380,6 +380,8 @@ export type PushEvent =
   | { type: 'preview.key'; key: string; code: string; meta: boolean; shift: boolean; alt: boolean; ctrl: boolean }
   /** A comment on a shared file was stored (KERNEL-310). */
   | { type: 'shared.comment'; comment: SharedComment }
+  /** A toast from main, for news no other event carries: the window reloaded after a crash, or diagnostics were copied (KERNEL-288). */
+  | { type: 'toast'; toast: Omit<Toast, 'id'> }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
 export const NOT_IMPLEMENTED = 'Not built yet'

@@ -283,6 +283,19 @@ describe('worktrees', () => {
     expect(files.map((f) => f.path)).toEqual(['other.ts'])
   })
 
+  it("leaves Claude Code's own worktrees out of a current-branch workspace's changes (KERNEL-350)", async () => {
+    const repo = await tempRepo({ 'a.ts': 'a\n' })
+    const base = await snapshotBaseline(repo)
+    await git(repo, 'worktree', 'add', '-b', 'kernel-274', join(repo, '.claude/worktrees/kernel-274'))
+    await mkdir(join(repo, '.claude/worktrees/loose'), { recursive: true })
+    await writeFile(join(repo, '.claude/worktrees/loose/notes.md'), 'n\n')
+    await writeFile(join(repo, '.claude/settings.json'), '{}\n')
+    expect(await git(repo, 'ls-files', '--others', '--exclude-standard')).toContain('.claude/worktrees/')
+    const files = await changedFiles(repo, base.ref, base.untracked)
+    expect(files.map((f) => f.path)).toEqual(['.claude/settings.json'])
+    expect((await snapshotBaseline(repo)).untracked).toEqual(['.claude/settings.json'])
+  })
+
   it('reports overlapping files between workspaces', () => {
     expect(overlaps([{ path: 'a', status: 'M', added: 1, removed: 0 }], [{ path: 'a', status: 'M', added: 2, removed: 0 }, { path: 'b', status: 'A', added: 1, removed: 0 }])).toEqual(['a'])
   })

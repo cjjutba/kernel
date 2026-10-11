@@ -275,4 +275,9 @@ describe('renderer store', () => {
     expect(s.roomSetup.r1[0].state).toBe('run')
     expect(s.retry.c1).toBeUndefined()
   })
+
+  it('shows a toast main pushes (KERNEL-288)', () => {
+    apply({ type: 'toast', toast: { title: 'Kernel reloaded' } })
+    expect(getState().ui.toasts.at(-1)).toMatchObject({ title: 'Kernel reloaded' })
+  })
 })
