@@ -14,6 +14,9 @@ export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === '
 /** The checks that decide a PR: all but the optional ones, which the repo doesn't require or the room lists (KERNEL-388). */
 export const gatingChecks = (checks: PrCheck[]) => checks.filter((c) => !c.optional)
 
+/** Why GitHub won't merge a ready PR, in a few words for a list or a card: "GitHub blocks the merge: {why}" (KERNEL-401). */
+export const blockedWhy: Record<PrBlocked, string> = { review: 'it needs an approving review', behind: 'the branch is behind its base', rules: "the branch's rules" }
+
 /** Why GitHub won't merge a PR whose checks passed, as Merge PR and the Lead say it. `base` is the branch it merges into. */
 export function blockedText(blocked: PrBlocked, base: string): string {
   if (blocked === 'review') return 'GitHub needs an approving review before this pull request can merge.'

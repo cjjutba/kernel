@@ -2,6 +2,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
+import { blockedWhy } from '@shared/merge'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
 import { renderAgentFile } from './agents'
@@ -61,9 +62,6 @@ export interface KernelToolDeps {
 }
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
-
-/** Why GitHub won't merge a ready PR, as `list_workspaces` says it (KERNEL-388). */
-const BLOCKED_WHY: Record<NonNullable<Workspace['prBlocked']>, string> = { review: 'it needs an approving review', behind: 'the branch is behind its base', rules: "the branch's rules" }
 
 /** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
 const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
@@ -192,7 +190,7 @@ export function kernelTools(d: KernelToolDeps) {
     tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
       const all = d.workspaces()
       const list = all.filter((w) => w.status !== 'archived')
-      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${BLOCKED_WHY[w.prBlocked]})` : ''}${waits(w, all)}${owner(w)}`).join('\n') || 'No open workspaces.')
+      return text(list.map((w) => `${w.id} · ${w.agentId} · ${w.branch} · PR ${w.prState}${w.prNumber ? ' #' + w.prNumber : ''}${w.prBlocked ? ` (GitHub blocks the merge: ${blockedWhy[w.prBlocked]})` : ''}${waits(w, all)}${owner(w)}`).join('\n') || 'No open workspaces.')
     }),
     tool('request_plan_approval', 'Show a plan to the user and wait for approval. Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off. Put the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Returns "approved" with what to do next, or the requested changes.', {
       title: z.string().describe('Short plan title, for example "T-15 Export invoices as PDF"'),

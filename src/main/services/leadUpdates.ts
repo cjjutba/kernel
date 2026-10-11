@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrBlocked, PrState, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -7,7 +7,7 @@ import type { TurnDone } from './notifications'
 import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
-import { blockedText } from '@shared/merge'
+import { blockedText, blockedWhy } from '@shared/merge'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
@@ -81,6 +81,8 @@ export interface TeamEvent {
   wait?: WaitNews
   /** A file the teammate shared, at the version it shared (KERNEL-302). `source` is its path in the workspace. */
   shared?: { sharedId: string; version: number; title: string; kind: SharedKind; source: string }
+  /** `pr.blocked`: why GitHub won't merge the ready PR (KERNEL-401). */
+  blocked?: PrBlocked
 }
 
 /**
@@ -150,6 +152,8 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.conflict': return `${upper(pr)} has conflicts with its base branch.`
     case 'pr.merged': return `${upper(pr)} was merged.`
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
+    case 'pr.blocked': return `GitHub won't merge ${pr} yet: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}.`
+    case 'pr.unblocked': return `GitHub no longer blocks ${pr}.`
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash':
@@ -187,6 +191,8 @@ function cardText(e: TeamEvent, status = ''): string {
     case 'pr.conflict': return 'Has conflicts with its base branch'
     case 'pr.merged': return e.pr ? `Merged PR #${e.pr}` : 'Merged'
     case 'pr.closed': return `Closed ${prOf(e)} without merging`
+    case 'pr.blocked': return `Blocked on GitHub: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}`
+    case 'pr.unblocked': return 'GitHub no longer blocks it'
     case 'turn': return 'Finished a turn'
     case 'error': return 'Stopped with an error'
     case 'crash': return relaunched(e) ? `Stopped when ${e.reason === QUIT_REASON ? 'Kernel quit' : 'Kernel closed'}` : 'Session ended unexpectedly'

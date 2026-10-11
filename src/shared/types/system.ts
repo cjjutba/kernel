@@ -23,6 +23,15 @@ export interface HookStatus {
   needsInstall?: boolean
 }
 
+/**
+ * Kernel's PR reads from GitHub (WorkspaceGitHubPaused.png, KERNEL-401). `pausedUntil` is set while a GitHub rate limit holds
+ * the poll off, until that time. `slowDown` is GitHub's "slow down" limit rather than its rate limit running out.
+ */
+export interface GitHubStatus {
+  pausedUntil?: number
+  slowDown?: boolean
+}
+
 /** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
 export interface AppUpdate {
   status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'

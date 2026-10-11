@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -84,7 +84,7 @@ export interface State {
   roomSettings: Record<string, RoomSettings>
   /** By shared id. Every file agents shared, from `shared.list` and the `shared` push (KERNEL-305). */
   shared: Record<string, SharedFile>
-  system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null }
+  system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null; github: GitHubStatus }
   /** By room id. The Ask Rowan popover's draft and last question, kept while it is closed. */
   quickAsk: Record<string, QuickAskState>
   ui: UiState
@@ -143,7 +143,7 @@ let state: State = {
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
-  system: { booted: false, online: true, preflight: null, hooks: null, update: null },
+  system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
   ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
@@ -584,6 +584,7 @@ export const actions = {
     setOnline: (online: boolean) => setState((s) => ({ system: { ...s.system, online } })),
     setPreflight: (preflight: PreflightCheck[]) => setState((s) => ({ system: { ...s.system, preflight } })),
     setHooks: (hooks: HookStatus) => setState((s) => ({ system: { ...s.system, hooks } })),
+    setGitHub: (github: GitHubStatus) => setState((s) => ({ system: { ...s.system, github } })),
     setUpdate: (update: AppUpdate) => setState((s) => ({ system: { ...s.system, update } }))
   }
 }
@@ -624,6 +625,7 @@ export function apply(e: PushEvent) {
     case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)
+    case 'github': return actions.system.setGitHub(e.status)
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
     case 'online': return actions.system.setOnline(e.online)
@@ -665,6 +667,7 @@ async function start() {
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
+  void call('github.status', undefined).then(actions.system.setGitHub).catch(() => undefined)
   const update = call('update.get', undefined).then((u) => { actions.system.setUpdate(u); return u }).catch(() => null)
   // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
   // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.

@@ -554,6 +554,7 @@ export class Prs extends Feature {
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
+      'github.status': async () => ({}),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId)
