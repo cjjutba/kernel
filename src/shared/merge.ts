@@ -31,7 +31,7 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id): string | undefined {
   if (ws.prState !== 'ready' && ws.prState !== 'open') return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
-  if (rules.requireGreen && pr && !allGreen(pr.checks)) return 'Checks have not passed yet. Merging needs green checks (Settings > Pull requests).'
+  if (rules.requireGreen && pr && !allGreen(pr.checks)) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
   if (!rules.requireReviewer) return undefined
   const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })
   const latest = (vs: ReviewVerdict[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))

@@ -25,7 +25,7 @@ export const LEAD_RULE = [
 ].join('\n')
 
 /** Appended to the Lead's prompt after LEAD_RULE while auto review is on, which it is by default (`pr.autoReview`, KERNEL-115). */
-export const LEAD_REVIEW_RULE = 'When a PR passed checks and nobody has reviewed it, hand it to the reviewer that way without asking the user.'
+export const LEAD_REVIEW_RULE = "When a PR passed checks and nobody has reviewed it, hand it to the team's reviewer with create_workspace and review_of without asking the user."
 
 /** Appended to the Lead's prompt after LEAD_RULE while sharing is on, which it is by default (KERNEL-302, KERNEL-308). */
 export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'
