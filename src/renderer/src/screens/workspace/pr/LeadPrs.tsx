@@ -29,12 +29,12 @@ export function LeadPrs({ roomId }: { roomId: string }) {
   )
 }
 
-/** "Merged #331. Stopped at #330, which ..." for a run that stopped, or nothing for one that merged everything. */
+/** "Merged #331. Stopped at #330. It has merge conflicts." for a run that stopped, or nothing for one that merged everything. */
 export function stoppedText(r: MergeAllResult): string | null {
   if (!r.stopped) return null
   const merged = r.merged.length ? `Merged ${r.merged.map((n) => `#${n}`).join(', ')}. ` : ''
   const at = r.stopped.prNumber ? `#${r.stopped.prNumber}` : 'the next pull request'
-  return `${merged}Stopped at ${at}: ${r.stopped.reason}`
+  return `${merged}Stopped at ${at}. ${r.stopped.reason}`
 }
 
 /**

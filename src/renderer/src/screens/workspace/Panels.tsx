@@ -210,7 +210,8 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diff
     <div className="col grow" style={{ minHeight: 0 }}>
       <div className="panel-tabs" data-lead={isLead || undefined}>
         <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })} tabs={[
-          ...(isLead ? [{ id: 'prs', label: <>PRs {count(ready)}</> }] : []),
+          // No count with nothing ready, as LeadPrsEmpty and LeadPrsNoneReady draw it (KERNEL-411).
+          ...(isLead ? [{ id: 'prs', label: ready ? <>PRs {count(ready)}</> : 'PRs' }] : []),
           { id: 'files', label: 'All files' },
           { id: 'changes', label: <>Changes {count(changes.length)}</> },
           { id: 'checks', label: 'Checks' },

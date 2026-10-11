@@ -8,6 +8,16 @@ import type { AppSettings, PrBlocked, PrCheck, PrInfo, PrState, ReviewVerdict, W
 /** The PR states a merge can start from. Any other state, a merge already running included, offers no Merge (KERNEL-349). */
 export const mergeableState = (state: PrState): state is 'ready' | 'open' => state === 'ready' || state === 'open'
 
+/**
+ * Why a PR in this state can't merge, in a few lowercase words for a sentence: Rowan's merge_workspace and Merge all
+ * (KERNEL-411) both say it. Nothing for the states a merge can start from, which `mergeBlock` checks.
+ */
+export const notMergeable: Partial<Record<PrState, string>> = {
+  none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',
+  checks: 'checks are still running', cifail: 'checks failing', changes: 'a review asked for changes', conflict: 'it has merge conflicts',
+  resolving: 'its conflicts are being resolved', merging: 'it is already merging', merged: 'it already merged', closed: 'it was closed'
+}
+
 /** Every check passed or was skipped. A PR with no checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
 

@@ -5,7 +5,7 @@ import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, strip
 import { git } from '../services/exec'
 import { fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
 import { PrCadence } from '../services/prCadence'
-import { mergeableState, mergeBlock, mergeNeedsPr } from '@shared/merge'
+import { mergeableState, mergeBlock, mergeNeedsPr, notMergeable } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -325,8 +325,11 @@ export class Prs extends Feature {
           const after = await this.mergePr(id)
           if (after.prNumber) result.merged.push(after.prNumber)
         } catch (e) {
-          // mergeBlock's reason is a finished sentence; a failed merge's is gh output, of which the first line is enough.
-          const why = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+          // The PR is read again, so its row moves to where it now stands and the reason names it: a merge just before often
+          // leaves the next PR conflicting. Otherwise mergeBlock's sentence, or the first line of gh's output.
+          const now = ws ? await this.k.refreshPr(id).catch(() => undefined) : undefined
+          const state = now ? notMergeable[now.prState] : undefined
+          const why = state ? `${state.charAt(0).toUpperCase()}${state.slice(1)}` : (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
           result.stopped = { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` }
           break
         }
