@@ -31,6 +31,8 @@ export interface KernelApi {
   'hooks.restart': { req: { port?: number }; res: HookStatus }
   /** Settings > Hooks "Remove": takes Kernel's entries out of Claude Code's user settings and keeps every other hook. */
   'hooks.uninstall': { req: void; res: HookStatus }
+  /** CheckHooksOff "Turn hooks on": takes disableAllHooks out of Claude Code's user settings, after the first backup (KERNEL-461). */
+  'hooks.turnOn': { req: void; res: HookStatus }
 
   // rooms (KERNEL-20, 22, 24)
   'rooms.list': { req: void; res: Room[] }
