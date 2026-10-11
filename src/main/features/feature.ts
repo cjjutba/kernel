@@ -1,4 +1,4 @@
-import type { Chat, Effort, ModelId, NoteRef, Workspace } from '@shared/types'
+import type { Chat, Effort, Provider, NoteRef, Workspace } from '@shared/types'
 import type { Kernel } from '../kernel'
 import * as records from './records'
 
@@ -35,7 +35,7 @@ export abstract class Feature {
   protected saveWs(ws: Workspace) { return records.saveWs(this.k.store, ws) }
   protected updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}) { return records.updateWs(this.k.store, id, patch, o) }
   protected saveChat(chat: Chat) { return records.saveChat(this.k.store, chat) }
-  protected newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }) { return records.newChat(this.k.store, workspaceId, title, o) }
+  protected newChat(workspaceId: string, title: string, o: { provider?: Provider; model: string; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }) { return records.newChat(this.k.store, workspaceId, title, o) }
   protected prChat(id: string) { return records.prChat(this.k.store, id) }
   protected note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail', refs?: NoteRef[]) { return records.note(this.k.store, workspaceId, text, pr, refs) }
 

@@ -255,8 +255,8 @@
 </div>
 </sc-if>
 <sc-if value="{{ menu.model }}" hint-placeholder-val="{{ false }}">
-<div role="menu" aria-label="Model" style="position: absolute; left: 0; bottom: calc(100% + 8px); width: 300px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; z-index: 5">
-<sc-for list="{{ models }}" as="o" hint-placeholder-count="4"><button type="button" role="menuitemradio" class="mi" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="width: 100%; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ o.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="font-weight: 500">{{ o.label }}</span><span style="flex: 1; color: #8a8f98">{{ o.effort }}</span><span style="font-size: 12px; color: #8a8f98">{{ o.key }}</span></button></sc-for>
+<div role="menu" aria-label="Model" style="position: absolute; left: 0; bottom: calc(100% + 8px); width: 320px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b; z-index: 5">
+<sc-for list="{{ models }}" as="o" hint-placeholder-count="4"><sc-if value="{{ o.isHead }}" hint-placeholder-val="{{ false }}"><p role="presentation" style="margin: 0; padding: {{ o.headPad }}; font-size: 12px; color: #8a8f98">{{ o.label }}</p></sc-if><sc-if value="{{ o.isRow }}" hint-placeholder-val="{{ true }}"><button type="button" role="menuitemradio" class="mi" aria-checked="{{ o.checked }}" onClick="{{ o.pick }}" style="width: 100%; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ o.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="font-weight: 500">{{ o.label }}</span><span style="flex: 1; color: #8a8f98">{{ o.effort }}</span><span style="font-size: 12px; color: #8a8f98">{{ o.key }}</span></button></sc-if></sc-for>
 <div style="height: 1px; margin: 6px 4px; background: #26272b"></div>
 <button type="button" class="mi" onClick="{{ cycleEffort }}" style="width: 100%; display: flex; align-items: center; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer"><span style="flex: 1">Effort</span><span style="color: #8a8f98">{{ effortLabel }}</span></button>
 </div>
@@ -490,6 +490,9 @@ class Component extends DCLogic {
     var B = function (kind, title, sub, actions, extra) { s.banner = { kind: kind, title: title, sub: sub, actions: actions }; Object.assign(s, extra || {}); };
     if (sc === 'session') B('limit', "You've hit your 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped.', [{ id: 'queue', label: 'Queue message' }, { id: 'notify', label: 'Notify me', primary: true }]);
     if (sc === 'weekly') B('limit', "You've used your weekly limit", 'Resets Monday at 9:00 AM. Every room is paused.', [{ id: 'usage', label: 'Open /usage' }, { id: 'notify', label: 'Notify me', primary: true }], { block: true });
+    // KERNEL-406: with Codex in use the banner names the provider, and offers another Claude account that isn't limited.
+    if (sc === 'providerlimit') B('limit', "You've hit your Claude Code 5-hour limit", 'Resets at 3:40 PM. Kai finished this turn and stopped. Agents on Codex keep working.', [{ id: 'notify', label: 'Notify me' }, { id: 'switchacct', label: 'Switch to Work', primary: true }]);
+    if (sc === 'picker') Object.assign(s, { menu: 'model', providers: true });
     if (sc === 'model') B('limit', "You've reached your Fable 5.1 limit", 'It resets in 3 days. Opus 5.5 can pick up where this left off.', [{ id: 'wait', label: 'Wait' }, { id: 'switch', label: 'Switch to Opus 5.5', primary: true }], { model: 'fable' });
     if (sc === 'context') B('context', 'Context is almost full', 'Compacting keeps a summary and frees space. A new chat starts clean on this branch.', [{ id: 'newchat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], { ctx: 92 });
     if (sc === 'overloaded') { B('retry', 'Claude is overloaded', 'RETRY', [{ id: 'switchmodel', label: 'Switch model' }, { id: 'retrynow', label: 'Retry now', primary: true }]); s.msgs = s.msgs.concat([U('Shorten the empty state copy.')]); }
@@ -870,7 +873,13 @@ class Component extends DCLogic {
     var modelDefs = [['fable', 'Fable 5.1', '^⌘1'], ['opus', 'Opus 5.5', '^⌘2'], ['sonnet', 'Sonnet 5.5', '^⌘3'], ['haiku', 'Haiku 4.5', '^⌘4']];
     var effortDefs = [['low', 'Low'], ['medium', 'Medium'], ['high', 'High'], ['xhigh', 'Extra high']];
     var effortLabel = effortDefs.filter(function (d) { return d[0] === s.effort; })[0][1];
-    var models = modelDefs.map(function (d) { var on = s.model === d[0]; return { label: d[1], effort: on ? effortLabel : '', key: on ? 'Selected' : d[2], checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent', pick: function () { self.setState({ model: d[0], menu: null }); } }; });
+    var models = modelDefs.map(function (d) { var on = s.model === d[0]; return { isRow: true, isHead: false, label: d[1], effort: on ? effortLabel : '', key: on ? 'Selected' : d[2], checked: on ? 'true' : 'false', bg: on ? '#232428' : 'transparent', pick: function () { self.setState({ model: d[0], menu: null }); } }; });
+    // KERNEL-406: with Codex in use the picker groups by provider. This chat runs on Claude, so a Codex model opens a new chat.
+    if (s.providers) {
+      var head = function (label, first) { return { isHead: true, isRow: false, label: label, headPad: first ? '4px 8px 4px' : '10px 8px 4px' }; };
+      var codex = [['astra', 'GPT-6-Astra'], ['sol', 'GPT-5.6-Sol'], ['terra', 'GPT-5.6-Terra'], ['luna', 'GPT-5.6-Luna']].map(function (d) { return { isRow: true, isHead: false, label: d[1], effort: '', key: 'New chat', checked: 'false', bg: 'transparent', pick: function () { self.setState({ menu: null }); } }; });
+      models = [head('Claude Code', true)].concat(models, [head('Codex')], codex);
+    }
     var toggleMenu = function (name) { return function () { self.setState({ menu: s.menu === name ? null : name }); }; };
     var FILES = {
       kai: [['M', 'src/app/invoices/', 'table.tsx', '+212', '-20'], ['A', 'src/app/invoices/', 'empty-state.tsx', '+64', ''], ['M', 'src/app/invoices/', 'page.tsx', '+18', '-9'], ['A', 'tests/', 'invoices.spec.ts', '+118', '-9']],

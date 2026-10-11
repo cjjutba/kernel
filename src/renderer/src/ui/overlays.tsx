@@ -28,7 +28,7 @@ export const MENU_SEPARATOR = { id: '-' } as const
 
 const ITEM_ON = ':is([role=menuitem], [role=menuitemradio]):not(:disabled)'
 
-function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; onBack?: () => void; label?: string; heading?: string; initiallyOpen?: string }) {
+function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; onBack?: () => void; label?: string; heading?: ReactNode; initiallyOpen?: string }) {
   const ref = useRef<HTMLDivElement>(null)
   const openers = useRef<Record<string, HTMLButtonElement | null>>({})
   const [open, setOpen] = useState<string | null>(initiallyOpen ?? null)
@@ -45,7 +45,7 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
   }
   return (
     <div ref={ref} role="menu" aria-label={label} className="menu" onKeyDown={onKey}>
-      {heading && <div className="menu-head" aria-hidden="true">{heading}</div>}
+      {heading && <div className="menu-head" aria-hidden={typeof heading === 'string' || undefined}>{heading}</div>}
       {items.map((it) => {
         if (it.id === '-') return <div key={`sep-${items.indexOf(it)}`} role="separator" className="menu-sep" />
         const m = it as MenuEntry
@@ -75,9 +75,10 @@ function MenuList({ items, onClose, onBack, label, heading, initiallyOpen }: { i
 
 /**
  * A menu with shortcuts and submenus. Position it by placing it in a `position: relative` parent (see Popover),
- * or pass `style`. Escape and a press outside call `onClose`. `heading` is a short title above the first item.
+ * or pass `style`. Escape and a press outside call `onClose`. `heading` is a short title above the first item, or a few
+ * lines of it, such as the account menu's accounts.
  */
-export function Menu({ items, onClose, label, heading, style, initiallyOpen, anchorRef }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; heading?: string; style?: React.CSSProperties; initiallyOpen?: string; anchorRef?: RefObject<HTMLElement | null> }) {
+export function Menu({ items, onClose, label, heading, style, initiallyOpen, anchorRef }: { items: (MenuEntry | typeof MENU_SEPARATOR)[]; onClose: () => void; label?: string; heading?: ReactNode; style?: React.CSSProperties; initiallyOpen?: string; anchorRef?: RefObject<HTMLElement | null> }) {
   const ref = useRef<HTMLDivElement>(null)
   useLayer({ onEscape: onClose, onOutside: onClose, ref, anchorRef })
   return <div ref={ref} className="menu-anchor" style={style}><MenuList items={items} onClose={onClose} label={label} heading={heading} initiallyOpen={initiallyOpen} /></div>

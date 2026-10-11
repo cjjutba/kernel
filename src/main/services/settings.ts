@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type Role, type RoleModel, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 
@@ -27,7 +27,16 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
+  models: {
+    roles: {
+      lead: { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' },
+      engineers: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
+      qa: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' },
+      reviewer: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'high' }
+    },
+    leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {}
+  },
+  providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -43,8 +52,15 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   privacy: { telemetry: 'ask' }
 })
 
-/** The five settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). */
-export const PLAN_KEYS = ['models.lead', 'models.reviewer', 'models.effort', 'models.agentLimit', 'pr.autoReview'] as const
+/**
+ * The settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). The Lead's and the
+ * reviewer's models and every role's effort live in `models.roles` since KERNEL-406.
+ */
+export const PLAN_KEYS = [
+  'models.roles.lead.model', 'models.roles.reviewer.model',
+  'models.roles.lead.effort', 'models.roles.engineers.effort', 'models.roles.qa.effort', 'models.roles.reviewer.effort',
+  'models.agentLimit', 'pr.autoReview'
+] as const
 
 /**
  * What every launch saved for the plan keys, and for the Address review text, before KERNEL-225. A saved value equal to it was
@@ -52,7 +68,7 @@ export const PLAN_KEYS = ['models.lead', 'models.reviewer', 'models.effort', 'mo
  * from the default Kernel pinned, and moves to the plan's default too (D-094).
  */
 const SAVED_BEFORE: Record<string, unknown> = {
-  'models.lead': 'claude-opus-5-5', 'models.reviewer': 'claude-opus-5-5', 'models.effort': 'high', 'models.agentLimit': 0, 'pr.autoReview': true,
+  'models.lead': 'claude-opus-5-5', 'models.reviewer': 'claude-opus-5-5', 'models.effort': 'high', 'models.engineers': 'claude-sonnet-5-5', 'models.qa': 'claude-sonnet-5-5', 'models.agentLimit': 0, 'pr.autoReview': true,
   // The text of Address review before it told the agent to act only on the comments listed (KERNEL-222), likewise saved on every launch.
   'pr.addressReviewInstructions': '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
 }
@@ -72,16 +88,26 @@ export function planOf(subscriptionType: unknown): ClaudePlan {
  * keeps the defaults but for a Sonnet reviewer (KERNEL-225).
  */
 export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSettings> {
-  if (plan === 'pro') return { models: { lead: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'medium', agentLimit: 2 }, pr: { autoReview: false } }
-  return { models: { reviewer: 'claude-sonnet-5-5' } }
+  if (plan === 'pro') {
+    return {
+      models: {
+        roles: { lead: { model: 'claude-sonnet-5-5', effort: 'medium' }, reviewer: { model: 'claude-sonnet-5-5', effort: 'medium' }, engineers: { effort: 'medium' }, qa: { effort: 'medium' } },
+        agentLimit: 2
+      },
+      pr: { autoReview: false }
+    }
+  }
+  return { models: { roles: { reviewer: { model: 'claude-sonnet-5-5' } } } }
 }
 
 const at = (o: unknown, dotted: string): unknown => dotted.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
 
 /** The settings in force: the app's defaults, then the plan's, then what the user saved. `plan` and `planDefaulted` say where each came from. */
 export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSettings>, plan: ClaudePlan): AppSettings {
-  const s = deepMerge(deepMerge(defaults, planDefaults(plan)), saved)
+  const base = deepMerge(defaults, planDefaults(plan))
+  const s = deepMerge(base, saved)
   s.models.effortByModel = effortMemory(s.models.effortByModel)
+  s.models.roles = roleModels(s.models.roles, base.models.roles)
   s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
   return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
 }
@@ -95,8 +121,9 @@ export function withPlan(before: AppSettings, defaults: AppSettings, saved: Deep
   const next = structuredClone(before)
   for (const key of PLAN_KEYS) {
     if (at(saved, key) !== undefined) continue
-    const [group, name] = key.split('.') as ['models' | 'pr', string]
-    ;(next[group] as Record<string, unknown>)[name] = at(base, key)
+    const path = key.split('.')
+    const parent = path.slice(0, -1).reduce<Record<string, unknown>>((o, k) => (o[k] ??= {}) as Record<string, unknown>, next as unknown as Record<string, unknown>)
+    parent[path[path.length - 1]] = at(base, key)
   }
   return { ...next, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
 }
@@ -160,6 +187,7 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
     s.terminal = Object.fromEntries(Object.keys(own).map((k) => [k, checked[k]]))
   }
   const saved: DeepPartial<AppSettings> = (version === SAVED_VERSION ? s : sparse(s, defaults)) ?? {}
+  migrateRoles(saved)
   return { saved, resolved: resolveSettings(defaults, saved, plan) }
 }
 
@@ -177,8 +205,46 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
   next.scripts.timeoutMinutes = whole(next.scripts.timeoutMinutes, 1, 240, current.scripts.timeoutMinutes)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
+  next.models.roles = roleModels(next.models.roles, current.models.roles)
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   return next
+}
+
+const ROLES: Role[] = ['lead', 'engineers', 'qa', 'reviewer']
+
+/**
+ * Before KERNEL-406 each role had one Claude model and every role shared one `effort`. What the user chose of those moves into
+ * `models.roles` as Claude roles, the effort to every role, and the old keys go. What they never chose stays unset, so the
+ * plan's defaults and the app's still apply. A file that already has `roles` keeps them.
+ */
+function migrateRoles(saved: DeepPartial<AppSettings>) {
+  const m = saved.models as Record<string, unknown> | undefined
+  if (!m) return
+  const legacy = ROLES.filter((r) => typeof m[r] === 'string')
+  const effort = typeof m.effort === 'string' ? m.effort : undefined
+  if (!m.roles && (legacy.length || effort)) {
+    const roles: Record<string, Record<string, unknown>> = {}
+    for (const r of legacy) roles[r] = { provider: 'claude', model: m[r] }
+    if (effort) for (const r of ROLES) roles[r] = { ...roles[r], effort }
+    m.roles = roles
+  }
+  for (const k of [...ROLES, 'effort']) delete m[k]
+}
+
+/**
+ * Each role keeps a known provider, a model and an effort, else the fallback's. A Claude role needs one of Claude's models
+ * and efforts. Codex lists its models at run time, so any id stands, with any of its efforts.
+ */
+export function roleModels(v: unknown, fallback: Record<Role, RoleModel>): Record<Role, RoleModel> {
+  const given = v && typeof v === 'object' ? (v as Record<string, Partial<RoleModel> | undefined>) : {}
+  return Object.fromEntries(ROLES.map((r) => {
+    const g = given[r]
+    const provider = g?.provider === 'codex' || g?.provider === 'claude' ? g.provider : fallback[r].provider
+    const model = typeof g?.model === 'string' && g.model.trim() && (provider === 'codex' ? !g.model.startsWith('claude-') : MODELS.some((m) => m.id === g.model)) ? g.model : undefined
+    const effort = (provider === 'claude' ? EFFORTS.some((e) => e.id === g?.effort) : typeof g?.effort === 'string' && g.effort in EFFORT_LABELS) ? (g!.effort as Effort) : undefined
+    if (!model) return [r, provider === fallback[r].provider ? { ...fallback[r], ...(effort ? { effort } : {}) } : fallback[r]]
+    return [r, { provider, model, effort: effort ?? fallback[r].effort }]
+  })) as Record<Role, RoleModel>
 }
 
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)

@@ -1,8 +1,7 @@
-import { createRequire } from 'node:module'
 import { createConnection } from 'node:net'
 import { exec } from './exec'
 import { ghAuth } from './github'
-import { packagedClaude } from './sessions'
+import { bundledClaude } from './providers/binary'
 import type { PreflightCheck } from '@shared/types'
 
 export const MIN_CLAUDE = '2.1.80'
@@ -55,14 +54,7 @@ export function planName(subscriptionType: unknown): string | undefined {
 }
 
 /** The `claude` binary sessions run: the unpacked copy in a packaged app, or the SDK's own platform package (sessions.ts). */
-export function sessionClaude(): string | undefined {
-  const packaged = packagedClaude()
-  if (packaged) return packaged
-  try {
-    const sdk = createRequire(import.meta.url).resolve('@anthropic-ai/claude-agent-sdk')
-    return createRequire(sdk).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`)
-  } catch { return undefined }
-}
+export function sessionClaude(): string | undefined { return bundledClaude() }
 
 /** The official installer from Claude Code's docs (code.claude.com/docs/en/setup). It needs no Node. */
 export const CLAUDE_INSTALL = 'curl -fsSL https://claude.ai/install.sh | bash'
@@ -75,7 +67,7 @@ export const MIN_GIT = '2.38'
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
  * `run` and `claude` are for tests: a stubbed command runner and the session binary's path.
  */
-export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number> }): Promise<PreflightCheck[]> {
+export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string } }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
   const bin = o.claude === undefined ? sessionClaude() : o.claude
@@ -103,6 +95,8 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
       : { id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan. Sign in, then check again.', fix: { command: 'claude auth login' } })
   }
 
+  // Only while a role in Settings, Models and effort runs on Codex, so a Claude-only setup sees the checks it always did.
+  if (o.codex) checks.push(await codexCheck(o.codex.bin, run))
   checks.push(await gitCheck(run))
   checks.push(await ghCheck(run))
 
@@ -114,6 +108,17 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
     checks.push({ id: 'hooks', ok: false, blocking: true, title: `Port ${o.hookPort} is taken`, detail: `${who} is using it. Kernel can listen on ${next} and update your hooks.`, fix: { action: 'use-next-port' } })
   }
   return checks
+}
+
+/** Codex runs only the roles set to it, so a missing or signed-out Codex is a warning, never a block (KERNEL-406). */
+async function codexCheck(bin: string | undefined, run: typeof exec): Promise<PreflightCheck> {
+  const v = bin ? await run(bin, ['--version'], { timeoutMs: 60000 }) : null
+  const version = v?.code === 0 ? parseClaudeVersion(v.stdout) : null
+  if (!version) return { id: 'codex', ok: false, blocking: false, title: 'Codex did not start', detail: 'A role in Settings, Models and effort runs on Codex, and Kernel could not start it. Check Settings, Providers.' }
+  const signedIn = (await run(bin!, ['login', 'status'], { timeoutMs: 15000 })).code === 0
+  return signedIn
+    ? { id: 'codex', ok: true, blocking: false, title: 'Codex', detail: 'Signed in with ChatGPT', meta: `v${version}` }
+    : { id: 'codex', ok: false, blocking: false, title: 'Not signed in to Codex', detail: 'A role runs on Codex. Sign in with your ChatGPT plan in Settings, Providers.', meta: `v${version}`, fix: { command: 'codex login' } }
 }
 
 /** Every worktree, commit and merge goes through git, so a missing one blocks. An old one only loses conflict lists. */

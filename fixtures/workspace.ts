@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -1360,6 +1360,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
+  // KERNEL-406: a role runs on Codex, so the picker groups models by provider. This chat has started on Claude, so Codex's open a new chat.
+  WorkspaceModelPicker: scene((f) => {
+    const d = DEFAULT_SETTINGS('/Users/you')
+    return {
+      settings: { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } },
+      chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
+      models: { codex: ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 })) },
+      ui: { ...open, menu: 'model' }
+    }
+  }),
   WorkspaceQueued: scene((f) => ({
     items: { [ids.tableChat]: queuedItems() },
     queue: { [ids.tableChat]: [

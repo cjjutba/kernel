@@ -1,5 +1,5 @@
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'git' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'git' | 'gh' | 'hooks' | 'codex'
   ok: boolean
   /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
   blocking: boolean

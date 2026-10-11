@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { modelLabelOf, useCodexInUse, useProviderModels } from './composer/providerModels'
 import type { ChatPart, Effort, ModelId } from '@shared/types'
-import { MODELS } from '@shared/types'
+import { providerOf } from '@shared/providers'
 import { effortFor } from '@shared/effort'
 import { call, cleanError } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
@@ -27,7 +28,9 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
   const settings = useStore((s) => s.settings)
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const name = lead?.name ?? 'Rowan'
-  const [model, setModel] = useState<ModelId>(settings?.models.lead ?? 'claude-opus-5-5')
+  const codexInUse = useCodexInUse()
+  const codexModels = useProviderModels('codex')
+  const [model, setModel] = useState<string>(settings?.models.roles.lead.model ?? 'claude-opus-5-5')
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(lead?.effort)
   const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, fallback))
@@ -71,7 +74,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
     else if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
+  const modelLabel = modelLabelOf(model, codexModels)
   const hasDraft = !d.empty
   return (
     <ChatWelcome title={`New chat with ${name}`} sub="Its own worktree and branch, from the latest main." suggestions={LEAD_SUGGESTIONS} onPick={(text) => { if (!busy) start([{ type: 'text', text }]) }}>
@@ -82,7 +85,7 @@ export function NewLeadChat({ roomId, focusIn }: { roomId: string; focusIn?: str
             <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{lead?.role}</span></span>
             <span ref={modelAnchor} style={{ position: 'relative' }}>
               <Button variant="ghost" className="cmp-model" disabled={busy} aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel(effort)}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
-              {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); setModel(m); setEffort(x) }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
+              {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); setModel(m); setEffort(x) }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
             </span>
             <span className="grow" />
             <span ref={plusAnchor} style={{ position: 'relative' }}>

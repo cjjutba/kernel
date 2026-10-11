@@ -331,7 +331,9 @@ app.whenReady().then(async () => {
       confirmQuit: () => quit.confirmUpdate(),
       capture: preview,
       reveal: (path) => shell.showItemInFolder(path),
-      openFile: async (path) => { const err = await shell.openPath(path); if (err) throw new Error(err) }
+      openFile: async (path) => { const err = await shell.openPath(path); if (err) throw new Error(err) },
+      // Only web pages, as system.openExternal: a sign-in page Codex or Claude Code names.
+      openExternal: async (url) => { if (isWebUrl(url)) await shell.openExternal(url) }
     })
     app.on('before-quit', (e) => quit.beforeQuit(e))
     powerMonitor.on('shutdown', () => quit.shutdown())

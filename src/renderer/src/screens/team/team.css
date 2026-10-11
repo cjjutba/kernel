@@ -129,3 +129,4 @@ button.ap-card:hover { background: var(--surface); }
 .tm-template:disabled { opacity: 0.55; cursor: default; }
 .tm-template[aria-busy='true'] { opacity: 1; background: var(--hover); }
 .tm-template-busy { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; }
+.ap-unpin { padding: 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; text-decoration: underline; cursor: pointer; }

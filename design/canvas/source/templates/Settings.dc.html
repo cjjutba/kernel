@@ -60,6 +60,7 @@
 </div></sc-if>
 </div>
 <sc-if value="{{ page.hasIntro }}" hint-placeholder-val="{{ false }}"><p style="margin: 8px 0 0; color: #8a8f98; font-size: 14px">{{ page.intro }}</p></sc-if>
+<sc-if value="{{ page.hasTabs }}" hint-placeholder-val="{{ false }}"><div role="tablist" aria-label="{{ page.title }}" style="display: flex; gap: 4px; margin-top: 18px"><sc-for list="{{ page.tabs }}" as="tb" hint-placeholder-count="2"><button type="button" role="tab" aria-selected="{{ tb.selected }}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ tb.bg }}; color: {{ tb.color }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ tb.label }}</button></sc-for></div></sc-if>
 </div>
 <sc-for list="{{ page.sections }}" as="sec" hint-placeholder-count="2">
 <section style="display: flex; flex-direction: column; gap: 10px">
@@ -77,6 +78,7 @@
 </div>
 <sc-if value="{{ r.hasReset }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ r.reset }}" aria-label="Reset {{ r.label }}" style="height: 30px; margin-right: -10px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">Reset</button></sc-if>
 <sc-if value="{{ r.isSelect }}" hint-placeholder-val="{{ true }}"><button type="button" onClick="{{ r.act }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-if>
+<sc-if value="{{ r.isMulti }}" hint-placeholder-val="{{ false }}"><div style="flex-shrink: 0; display: flex; gap: 8px"><sc-for list="{{ r.sels }}" as="sl" hint-placeholder-count="3"><button type="button" aria-label="{{ sl.aria }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid #23252a; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ sl.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button></sc-for></div></sc-if>
 <sc-if value="{{ r.isToggle }}" hint-placeholder-val="{{ false }}"><button type="button" role="switch" aria-checked="{{ r.checked }}" aria-label="{{ r.label }}" onClick="{{ r.act }}" style="width: 32px; height: 20px; position: relative; flex-shrink: 0; padding: 0; border: 0; border-radius: 999px; background: {{ r.swBg }}; cursor: pointer"><span aria-hidden="true" style="position: absolute; top: 2px; left: {{ r.knob }}; width: 16px; height: 16px; border-radius: 50%; background: {{ r.knobBg }}"></span></button></sc-if>
 <sc-if value="{{ r.isSegment }}" hint-placeholder-val="{{ false }}"><div role="radiogroup" aria-label="{{ r.label }}" style="display: flex; gap: 2px; padding: 2px; border-radius: 8px; border: 1px solid #23252a; background: #0f1011">
 <sc-for list="{{ r.segs }}" as="sg" hint-placeholder-count="3"><button type="button" role="radio" aria-checked="{{ sg.checked }}" onClick="{{ sg.pick }}" style="height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: {{ sg.bg }}; color: {{ sg.color }}; font-family: inherit; font-size: 12.5px; font-weight: 500; cursor: pointer">{{ sg.label }}</button></sc-for>
@@ -151,6 +153,7 @@ class Component extends DCLogic {
       account: 'M10.5 5.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0ZM3 13.5c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5',
       shortcuts: 'M2 4.5h12v7H2ZM4.5 7h1M7.5 7h1M10.5 7h1M5 9.5h6',
       models: 'M5 5h6v6H5ZM6.5 2.5V5M9.5 2.5V5M6.5 11v2.5M9.5 11v2.5M2.5 6.5H5M2.5 9.5H5M11 6.5h2.5M11 9.5h2.5',
+      providers: 'M3 3.5h10v4H3ZM3 9.5h10v3H3ZM5 5.5h.01M5 11h.01',
       team: 'M8 5.5a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM2 13c.4-2 2-3 4-3s3.6 1 4 3M11 3.9a1.8 1.8 0 1 1 0 3.6M12 10.2c1.2.4 1.9 1.4 2 2.8',
       permissions: 'M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z',
       skills: 'M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z',
@@ -174,7 +177,7 @@ class Component extends DCLogic {
     var pages = [['r-general', 'General'], ['r-git', 'Git'], ['r-scripts', 'Scripts'], ['r-files', 'Files to copy'], ['r-env', 'Environment'], ['r-instructions', 'Instructions'], ['r-permissions', 'Permissions'], ['r-agents', 'Agents'], ['r-skills', 'Skills and MCP']];
     return [
       { title: 'Personal', items: [['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Shortcuts']] },
-      { title: 'Agents', items: [['models', 'Models and effort'], ['permissions', 'Permissions'], ['env', 'Environment']] },
+      { title: 'Agents', items: [['models', 'Models and effort'], ['providers', 'Providers'], ['permissions', 'Permissions'], ['env', 'Environment']] },
       { title: 'Workspaces', items: [['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests']] },
       { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']] },
       { title: 'Rooms', items: [['r-general', 'Client A', 'A', 'open']].concat(pages.map(function (p) { return [p[0], p[1], '', 'page']; }), [['room-b', 'Client B', 'B', 'shut']]) }
@@ -191,6 +194,11 @@ class Component extends DCLogic {
     var text = function (label, desc) { return { label: label, type: 'text', desc: desc }; };
     var kbd = function (label, keys) { return { label: label, type: 'kbd', keys: keys }; };
     var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
+    // KERNEL-406. A role row picks provider, model and effort. An account row says which one is active in words, never a dot.
+    var role = function (label, provider, model, effort) { return { label: label, type: 'role', sels: [[provider, label + ' provider'], [model, label + ' model'], [effort, label + ' effort']] }; };
+    var account = function (label, desc, active, actions) { return { label: label, desc: desc, type: 'account', tag: active ? 'Active' : '', actions: actions }; };
+    var path = function (label, mono, desc, actions) { return { label: label, desc: desc, mono: mono, type: 'path', actions: actions }; };
+    var providerTabs = function (on) { return ['Claude Code', 'Codex'].map(function (t, i) { return [t, i === on]; }); };
     // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
     var from = function (row) { row.source = 'From settings.toml'; return row; };
     var over = function (row) { row.source = 'Overriding settings.toml'; row.reset = true; return row; };
@@ -238,8 +246,33 @@ class Component extends DCLogic {
         { title: 'App', rows: [kbd('Command palette', ['⌘', 'K']), kbd('Settings', ['⌘', ','])] }
       ] },
       models: { title: 'Models and effort', sections: [
-        { title: 'Default model by role', rows: [sel('m-lead', 'Lead', ['Opus 5.5', 'Sonnet 5.5']), sel('m-eng', 'Frontend and Backend', ['Sonnet 5.5', 'Opus 5.5', 'Haiku 4.5']), sel('m-qa', 'QA', ['Sonnet 5.5', 'Haiku 4.5']), sel('m-rev', 'Reviewer', ['Opus 5.5', 'Sonnet 5.5'])] },
-        { title: 'Defaults', rows: [seg('effort', 'Effort', ['Low', 'Medium', 'High', 'Extra high'], 2), tog('planlead', 'Start the Lead in plan mode', true), sel('max', 'Agents working at once', ['4', '5', '6', '3'], 'More agents means more usage and more diffs for you to review'), tog('teams', 'Use agent teams', true, 'Experimental in Claude Code. The Lead coordinates teammates through a shared task list.')] }
+        { title: 'Default model by role', note: 'An agent file with its own model line keeps that model. Its profile shows the pin.', rows: [role('Lead', 'Claude Code', 'Opus 5.5', 'High'), role('Frontend and Backend', 'Codex', 'GPT-6-Astra', 'Medium'), role('QA', 'Claude Code', 'Sonnet 5.5', 'High'), role('Reviewer', 'Claude Code', 'Opus 5.5', 'High')] },
+        { title: 'Defaults', rows: [tog('planlead', 'Start the Lead in plan mode', true), sel('max', 'Agents working at once', ['4', '5', '6', '3'], 'More agents means more usage and more diffs for you to review'), tog('teams', 'Use agent teams', true, 'Experimental in Claude Code. The Lead coordinates teammates through a shared task list.')] }
+      ] },
+      // KERNEL-406: Claude Code and Codex side by side. Kernel already calls teammates agents, so the page is Providers.
+      providers: { title: 'Providers', tabs: providerTabs(0), sections: [
+        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
+          account('cj@example.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
+          account('Work', 'Claude Team \u00b7 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM', false, ['Use', 'Sign out', 'Remove'])
+        ] },
+        { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
+        { title: 'Executable', rows: [path('Claude Code', 'Bundled with Kernel', 'Agents run on this copy of Claude Code', ['Choose', 'Use system Claude']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.claude/settings.json' })] }
+      ] },
+      'providers-codex': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
+        { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
+          account('cj@example.com', 'ChatGPT Plus \u00b7 Codex\u2019s own login \u00b7 7% of the 5-hour limit used', true, ['Sign out'])
+        ] },
+        { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'ChatGPT'), val('Plan', 'ChatGPT Plus'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser, for the active account')] },
+        { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
+        { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
+      ] },
+      'providers-codex-out': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
+        { title: 'Accounts', action: 'Add account', note: 'Sign in with your ChatGPT plan to run agents on Codex.', rows: [
+          account('Codex\u2019s own login', 'Not signed in', false, ['Sign in'])
+        ] },
+        { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'Not signed in'), btn('Sign in', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser')] },
+        { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
+        { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
       ] },
       permissions: { title: 'Permissions', sections: [
         { title: 'Mode', rows: [seg('pmode', 'Permission mode', ['Ask', 'Accept edits', 'Bypass in worktrees'], 1, 'Bypass only applies inside isolated worktrees, never on your current branch'), tog('net', 'Allow network access', true)] },
@@ -410,7 +443,7 @@ class Component extends DCLogic {
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
           hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
-          isIcon: false, isPreview: false, files: r.files || []
+          isIcon: false, isPreview: false, files: r.files || [], isMulti: false, sels: []
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
@@ -435,6 +468,8 @@ class Component extends DCLogic {
           o.isCommand = !!r.value; o.wrap = 'nowrap'; o.basis = '120px';
           if (r.custom) { o.hasActions = true; o.actions = [{ label: 'Edit' }, { label: 'Remove' }]; }
         }
+        if (r.type === 'role') { o.isMulti = true; o.sels = r.sels.map(function (x) { return { value: x[0], aria: x[1] }; }); o.wrap = 'nowrap'; o.basis = '120px'; }
+        if (r.type === 'account' || r.type === 'path') { o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'preview') { o.isPreview = true; o.isButton = true; o.wrap = 'wrap'; }
         if (r.type === 'icon') {
           var avatar = r.kind === 'avatar';
@@ -491,6 +526,7 @@ class Component extends DCLogic {
       modal: P.modal || {},
       page: {
         title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,
+        hasTabs: !!P.tabs, tabs: (P.tabs || []).map(function (t) { return { label: t[0], selected: t[1] ? 'true' : 'false', bg: t[1] ? '#1c1d21' : 'transparent', color: t[1] ? '#f7f8f8' : '#8a8f98' }; }),
         isRoom: !!P.isRoom, hasModal: !!P.modal, menuShown: !!s.menu, menuOpen: s.menu ? 'true' : 'false', menuBg: s.menu ? '#1c1d21' : 'transparent',
         toggleMenu: function () { self.setState({ menu: !self.state.menu }); }
       }

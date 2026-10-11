@@ -3,3 +3,8 @@
 .acct:hover, .acct[aria-expanded='true'] { background: var(--nav-hover); }
 .acct svg { color: var(--muted); flex-shrink: 0; }
 .acct-av { width: 20px; height: 20px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; background: var(--ink); color: var(--canvas); font-size: 9.5px; font-weight: 600; }
+
+/* KERNEL-406: each provider's active account at the top of the menu, in words */
+.acct-who { display: flex; flex-direction: column; gap: 2px; padding-bottom: 4px; }
+.acct-who-row { display: flex; gap: 8px; }
+.acct-who-name { width: 76px; flex-shrink: 0; color: var(--ink-2); }

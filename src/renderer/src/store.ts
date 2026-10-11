@@ -1,5 +1,5 @@
 import { useRef, useSyncExternalStore } from 'react'
-import type {
+import type { AccountAddStep, AccountProfile,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, GitHubStatus, HookStatus, MenuId, MergeAllResult, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
@@ -83,6 +83,10 @@ export interface State {
   // usage, account, settings, system
   usage: RateLimit[]
   account: ClaudeAccount | null
+  /** Both providers' accounts, each CLI login first (KERNEL-406). Empty until `accounts.list` answers. */
+  accounts: AccountProfile[]
+  /** Where Add account is, for its sheet. Null when no sign-in is open. */
+  accountAdd: AccountAddStep | null
   settings: AppSettings | null
   /** By room id. */
   roomSettings: Record<string, RoomSettings>
@@ -152,7 +156,7 @@ let state: State = {
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {}, mergeQueues: {}, mergeStops: {},
-  usage: [], account: null, settings: null, roomSettings: {}, shared: {},
+  usage: [], account: null, accounts: [], accountAdd: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
   ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
@@ -594,6 +598,10 @@ export const actions = {
   account: {
     set: (account: ClaudeAccount) => setState({ account })
   },
+  accounts: {
+    set: (accounts: AccountProfile[]) => setState({ accounts }),
+    adding: (accountAdd: AccountAddStep | null) => setState({ accountAdd })
+  },
   shared: {
     set: (list: SharedFile[]) => setState({ shared: Object.fromEntries(list.map((f) => [f.id, f])) }),
     upsert: (file: SharedFile) => setState((s) => ({ shared: { ...s.shared, [file.id]: file } }))
@@ -652,6 +660,8 @@ export function apply(e: PushEvent) {
     case 'github': return actions.system.setGitHub(e.status)
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
+    case 'accounts': return actions.accounts.set(e.accounts)
+    case 'account.add': return actions.accounts.adding(e.add)
     case 'online': return actions.system.setOnline(e.online)
     case 'toast': return void actions.ui.toast(e.toast)
   }
@@ -690,6 +700,7 @@ async function start() {
   if (threads.length) dropLastTabs((id) => !state.threads[id] || !!state.threads[id].closedAt)
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
+  void call('accounts.list', undefined).then(actions.accounts.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
   void call('github.status', undefined).then(actions.system.setGitHub).catch(() => undefined)
   const update = call('update.get', undefined).then((u) => { actions.system.setUpdate(u); return u }).catch(() => null)

@@ -1,4 +1,4 @@
-import type { Effort } from './chats'
+import type { Effort, Provider } from './chats'
 
 export type AgentStatus = 'working' | 'planning' | 'walking' | 'needs' | 'idle' | 'blocked' | 'offline' | 'paused'
 
@@ -17,7 +17,10 @@ export interface AgentDef {
   /** Short role, for example "Frontend". */
   role: string
   description: string
+  /** Pins this agent to a model, over its role's default in Settings, Models and effort (KERNEL-406). */
   model?: string
+  /** The provider `model` runs on, from `provider:` in the file. Without it Kernel tells by the model id. */
+  provider?: Provider
   /** Default effort for this agent's chats. Falls back to Settings > Models. */
   effort?: Effort
   tools?: string[]
@@ -86,7 +89,9 @@ export interface AgentEdit {
   name?: string
   role?: string
   description?: string
+  /** An empty string clears the pin, `provider` with it, so the agent uses its role's default again (KERNEL-406). */
   model?: string
+  provider?: Provider
   effort?: Effort
   tools?: string[]
   skills?: string[]

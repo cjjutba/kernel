@@ -1,8 +1,8 @@
 import type {
-  ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
+  ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -84,7 +84,7 @@ export interface KernelApi {
   // workspaces (KERNEL-10, 11, 16, 21, 28)
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
   /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
-  'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; model?: ModelId; effort?: Effort; plan?: boolean }; res: Workspace }
+  'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; provider?: Provider; model?: string; effort?: Effort; plan?: boolean }; res: Workspace }
   /**
    * Fork into new workspace (KERNEL-346): a new worktree workspace on a branch from the chat's workspace's HEAD, with its files as
    * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
@@ -134,11 +134,13 @@ export interface KernelApi {
    * `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). In the Lead's workspace a chat tab
    * joins `threadId`, or starts a new thread when it is unset (KERNEL-337).
    */
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string; threadId?: string }; res: Chat }
+  /** `provider` opens the tab on that provider, with `model` and `effort` when given ("New chat on Codex", KERNEL-406). */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string; threadId?: string; provider?: Provider; model?: string; effort?: Effort }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
-  'chats.configure': { req: { chatId: string; model?: ModelId; effort?: Effort; plan?: boolean }; res: Chat }
+  /** Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`). */
+  'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean }; res: Chat }
   'chats.rename': { req: { chatId: string; title: string }; res: Chat }
   'chats.close': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
@@ -197,7 +199,7 @@ export interface KernelApi {
    * The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). The
    * chat gets its own worktree, on a branch from `baseRef` or the latest default branch, and the prompt waits for setup (KERNEL-405).
    */
-  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean; baseRef?: string }; res: Chat }
+  'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; provider?: Provider; model?: string; effort?: Effort; plan?: boolean; baseRef?: string }; res: Chat }
   /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
   'threads.list': { req: { roomId?: string }; res: Thread[] }
   /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
@@ -238,6 +240,35 @@ export interface KernelApi {
   /** Opens a terminal running `claude /login`, then reports the new account. */
   'account.signIn': { req: void; res: ClaudeAccount }
   'account.signOut': { req: void; res: ClaudeAccount }
+
+  // providers and accounts (KERNEL-406). Subscription logins only: there is no API key option (D-018).
+  /** The status table on Settings, Providers: version, executable, login method, plan and email, read through Kernel's own binary. */
+  'providers.status': { req: { provider: Provider }; res: ProviderStatus }
+  /** The executable path field and "Use system Claude" / "Use system Codex" / "Use bundled". An empty path clears the override. */
+  'providers.setPath': { req: { provider: Provider; path?: string; useSystem?: boolean }; res: ProviderStatus }
+  /** Run login: the provider's own sign-in for the active account, in the browser. */
+  'providers.signIn': { req: { provider: Provider }; res: ProviderStatus }
+  /** Opens the CLI's own config file: Claude Code's user settings, or Codex's config.toml. */
+  'providers.openConfig': { req: { provider: Provider }; res: Ok }
+  /** Every account of both providers, the CLI's own logins first. */
+  'accounts.list': { req: void; res: AccountProfile[] }
+  /**
+   * Add account. Claude runs `claude setup-token` and keeps the token it prints; Codex signs in with ChatGPT in the account's
+   * own home. Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
+   */
+  'accounts.add': { req: { provider: Provider; label?: string; plan?: Exclude<ClaudePlan, 'unknown'> }; res: AccountProfile }
+  /** The code the sign-in page shows, when `claude setup-token` asks for one (an `account.add` step of `code`). */
+  'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
+  /** Closes the Add account sheet: stops the sign-in that is running. */
+  'accounts.cancelAdd': { req: { provider: Provider }; res: Ok }
+  /** Use: the account runs the provider's next turns. A running turn finishes on the account it started on. */
+  'accounts.switch': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
+  /** Sign out of an account. The CLI's own login signs the CLI out; an added account forgets its credential. */
+  'accounts.signOut': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
+  /** Removes an added account and its credential. The CLI's own login can't be removed. */
+  'accounts.remove': { req: { provider: Provider; accountId: string }; res: AccountProfile[] }
+  /** A provider's models with their efforts: Claude's from MODELS, Codex's from `model/list`, read once per launch. */
+  'models.list': { req: { provider: Provider }; res: ProviderModel[] }
 
   // settings (KERNEL-25, 26)
   'settings.get': { req: void; res: AppSettings }
@@ -410,6 +441,10 @@ export type PushEvent =
   | { type: 'hooks'; status: HookStatus }
   | { type: 'update'; update: AppUpdate }
   | { type: 'account'; account: ClaudeAccount }
+  /** Accounts changed: one added, removed, signed out or switched to (KERNEL-406). */
+  | { type: 'accounts'; accounts: AccountProfile[] }
+  /** Where Add account is, for its sheet (KERNEL-406). */
+  | { type: 'account.add'; add: AccountAddStep }
   /** Network reachability as main sees it (WorkspaceOffline.png). */
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */

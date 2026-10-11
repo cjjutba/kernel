@@ -1603,6 +1603,60 @@
       "w": 1440,
       "x": 6080,
       "y": 18200
+    },
+    "SettingsProviders.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Claude Code tab",
+      "w": 1440,
+      "x": 0,
+      "y": 26000
+    },
+    "SettingsProvidersCodex.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Codex tab, signed in",
+      "w": 1440,
+      "x": 1520,
+      "y": 26000
+    },
+    "SettingsProvidersCodexSignedOut.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Providers, Codex tab, signed out",
+      "w": 1440,
+      "x": 3040,
+      "y": 26000
+    },
+    "WorkspaceModelPicker.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Model picker grouped by provider",
+      "w": 1440,
+      "x": 4560,
+      "y": 26000
+    },
+    "WorkspaceProviderLimit.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Claude Code limit, Switch to another account",
+      "w": 1440,
+      "x": 6080,
+      "y": 26000
+    },
+    "WorkspaceQuestionLong.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Question with long options",
+      "w": 1440,
+      "x": 13680,
+      "y": 15600
     }
   },
   "createdOnFiles": {
@@ -1773,6 +1827,14 @@
       "w": 600,
       "x": 0,
       "y": 11400
+    },
+    "row20": {
+      "kind": "title1",
+      "maxW": 8000,
+      "text": "21 \u00b7 Claude Code and Codex",
+      "w": 600,
+      "x": 0,
+      "y": 25700
     }
   },
   "order": [
@@ -1858,6 +1920,7 @@
     "WorkspacePaste.dc.html",
     "WorkspaceMention.dc.html",
     "WorkspaceSlash.dc.html",
+    "WorkspaceModelPicker.dc.html",
     "WorkspaceActions.dc.html",
     "WorkspaceQueued.dc.html",
     "WorkspaceHunks.dc.html",
@@ -1884,6 +1947,7 @@
     "WorkspaceSessionLimit.dc.html",
     "WorkspaceWeeklyLimit.dc.html",
     "WorkspaceModelLimit.dc.html",
+    "WorkspaceProviderLimit.dc.html",
     "WorkspaceContext.dc.html",
     "WorkspaceOverloaded.dc.html",
     "WorkspaceOffline.dc.html",
@@ -1902,6 +1966,9 @@
     "SettingsAccount.dc.html",
     "SettingsShortcuts.dc.html",
     "SettingsModels.dc.html",
+    "SettingsProviders.dc.html",
+    "SettingsProvidersCodex.dc.html",
+    "SettingsProvidersCodexSignedOut.dc.html",
     "SettingsTeam.dc.html",
     "SettingsPermissions.dc.html",
     "SettingsSkills.dc.html",

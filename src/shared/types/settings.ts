@@ -1,11 +1,11 @@
 import type { TeamConfig } from './agents'
-import type { Effort, ModelId } from './chats'
+import type { Effort, Provider } from './chats'
 import type { WorkspaceMode } from './workspaces'
 
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'permissions' | 'env'
+  | 'models' | 'providers' | 'permissions' | 'env'
   | 'git' | 'scripts' | 'prs'
   | 'hooks' | 'integrations' | 'experimental' | 'privacy' | 'bigterm' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
@@ -13,6 +13,14 @@ export type SettingsPage =
 
 /** The Claude plan the account is on, from `subscriptionType`. `unknown` covers a sign-out and a type Kernel doesn't know (KERNEL-225). */
 export type ClaudePlan = 'pro' | 'max' | 'team' | 'enterprise' | 'unknown'
+
+/** The plans a Claude account Kernel adds can be on, for the Add account sheet, which asks since its token can't tell (KERNEL-406). */
+export const CLAUDE_PLANS: { id: Exclude<ClaudePlan, 'unknown'>; label: string }[] = [
+  { id: 'pro', label: 'Pro' },
+  { id: 'max', label: 'Max' },
+  { id: 'team', label: 'Team' },
+  { id: 'enterprise', label: 'Enterprise' }
+]
 
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
 export interface AppSettings {
@@ -43,15 +51,21 @@ export interface AppSettings {
     /** Minutes a setup or archive script may run before Kernel stops it (KERNEL-216). Run scripts have no limit. */
     timeoutMinutes: number
   }
-  models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; agentTeams: boolean
+  /** `roles` replaced one model per role and a global effort (KERNEL-406). `loadAppSettings` moves the old keys over. */
+  models: { roles: Record<Role, RoleModel>; leadPlanMode: boolean; agentTeams: boolean
     /** Agents working at once, the Lead's chats left out (D-094). 0 means no limit. Was `maxConcurrent`, whose saved 4 was only the old default. */
     agentLimit: number
     /** Kernel tells the Lead when teammates finish a turn or their PRs change (KERNEL-72). */
     leadUpdates: boolean
     /** Workspaces you start from New workspace begin in plan mode. The Lead's hand-offs don't (KERNEL-74). */
     workspacePlanMode: boolean
-    /** The effort you last picked for each model. Chats you open start at it, the Lead's hand-offs don't (D-130). */
-    effortByModel: Partial<Record<ModelId, Effort>> }
+    /**
+     * The effort you last picked for each model, by model id. Chats you open start at it, the Lead's hand-offs don't (D-130).
+     * Claude's ids start with `claude-` and Codex's never do, so one map holds both (KERNEL-406).
+     */
+    effortByModel: Partial<Record<string, Effort>> }
+  /** Settings, Providers (KERNEL-406). Accounts and their credentials live apart from this file. */
+  providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
@@ -72,6 +86,21 @@ export interface AppSettings {
    */
   privacy: { telemetry: 'ask' | 'on' | 'off' }
 }
+
+/** The roles Settings, Models and effort sets a default for. */
+export type Role = 'lead' | 'engineers' | 'qa' | 'reviewer'
+
+/** A role's default: the provider, the model on it, and the effort (KERNEL-406). An agent file's `model:` overrides it. */
+export interface RoleModel { provider: Provider; model: string; effort: Effort }
+
+/**
+ * Which executable a provider runs. An empty `path` uses Kernel's bundled copy, or the one on the PATH while `useSystem`
+ * is on. A `path` wins over both.
+ */
+export interface ProviderBinary { path: string; useSystem: boolean }
+
+/** Codex personality for new chats: Pragmatic by default, Friendly, or None. */
+export type CodexPersonality = 'pragmatic' | 'friendly' | 'none'
 
 /**
  * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).

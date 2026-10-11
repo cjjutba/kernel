@@ -15,7 +15,7 @@ export const GROUPS: { title: string; items: { page: SettingsPage; label: string
     { page: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' }
   ] },
   { title: 'Agents', items: [
-    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
+    { page: 'models', label: 'Models and effort', icon: 'chip' }, { page: 'providers', label: 'Providers', icon: 'providers' }, { page: 'permissions', label: 'Permissions', icon: 'shield' }, { page: 'env', label: 'Environment', icon: 'env' }
   ] },
   { title: 'Workspaces', items: [
     { page: 'git', label: 'Git and worktrees', icon: 'branch' }, { page: 'scripts', label: 'Scripts', icon: 'term' },

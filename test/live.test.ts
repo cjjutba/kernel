@@ -410,3 +410,140 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
     }
   })
 })
+
+// KERNEL-406: the same journey on Codex, on the bundled Codex and the ChatGPT plan it is signed in to. It spends a few short
+// turns on a small Codex model, so it runs only when asked:
+//   KERNEL_LIVE=1 KERNEL_LIVE_CODEX=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts -t codex
+// KERNEL_LIVE_CODEX_MODEL picks the model (gpt-5.6-luna).
+const codexModel = process.env.KERNEL_LIVE_CODEX_MODEL ?? 'gpt-5.6-luna'
+const liveCodex = !!process.env.KERNEL_LIVE && !!process.env.KERNEL_LIVE_CODEX
+
+/** Settings with every role on Codex, two commands on Always ask and one on Never allow. */
+async function codexSettings(dataDir: string, home: string) {
+  const role = { provider: 'codex', model: codexModel, effort: 'medium' }
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
+    hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+    workspace: { baseRef: process.env.KERNEL_LIVE_BASE ?? 'origin/main' },
+    models: { roles: { lead: role, engineers: role, qa: role, reviewer: role }, leadPlanMode: true },
+    permissions: { mode: 'acceptEdits', alwaysAsk: ['touch kernel-ask-check', 'touch kernel-deny-check'], neverAllow: ['git push origin main'] }
+  }))
+}
+
+async function codexKernel(dataDir: string, home: string) {
+  const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
+  await k.start()
+  return k
+}
+
+describe.skipIf(!liveCodex)('live codex teammate', () => {
+  it('runs a teammate on Codex through approvals, tool rows, limits and a resume after a restart', { timeout: 600_000 }, async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-codex-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-live-codex-home-'))
+    await codexSettings(dataDir, home)
+    const pushes: PushEvent[] = []
+    const onPush = (e: PushEvent) => pushes.push(e)
+    bus.on('push', onPush)
+    let k = await codexKernel(dataDir, home)
+    const evidence: Record<string, unknown> = { repo, model: codexModel }
+    let wsId: string | undefined
+    try {
+      const room = await k.handlers()['rooms.add']({ path: repo })
+      await trustRoom(k, room.id)
+      const agents = await k.handlers()['agents.list']({ roomId: room.id })
+      const agent = agents.find((a) => !a.lead && !a.builtIn) ?? agents[0]
+      const ws = await k.handlers()['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Think briefly about which is larger, 2^10 or 10^3. Then run exactly `touch kernel-ask-check` in the shell, and reply in one short sentence.' })
+      wsId = ws.id
+      const chat = (await k.handlers()['chats.list']({ workspaceId: ws.id }))[0]
+      expect(chat).toMatchObject({ provider: 'codex', model: codexModel })
+      const items = () => k.store.items(chat.id)
+      const results = () => items().filter((i) => i.kind === 'result').length
+      const tools = () => items().filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
+      const pending = (match: string) => waitFor(`approval for ${match}`, () => k.store.approvals({ roomId: room.id }).find((a) => a.status === 'pending' && a.title.includes(match)))
+
+      // Always ask: the card shows, and the command runs once allowed.
+      k.approvals.decide((await pending('kernel-ask-check')).id, { behavior: 'allow' })
+      await waitFor('first turn', () => results() >= 1)
+      expect(existsSync(join(ws.path, 'kernel-ask-check'))).toBe(true)
+      expect(k.store.chat(chat.id)?.sessionId).toBeTruthy()
+
+      // A denied command doesn't run.
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `touch kernel-deny-check` in the shell. If it is declined, do not retry; say so in one sentence.' }] })
+      k.approvals.decide((await pending('kernel-deny-check')).id, { behavior: 'deny', message: 'Not now.' })
+      await waitFor('deny turn', () => results() >= 2)
+      expect(existsSync(join(ws.path, 'kernel-deny-check'))).toBe(false)
+
+      // Never allow is declined without asking.
+      const asked = k.store.approvals({ roomId: room.id }).length
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Run exactly `git push origin main` in the shell once. If it is declined, do not retry; say so in one sentence.' }] })
+      await waitFor('never allow turn', () => results() >= 3)
+      expect(k.store.approvals({ roomId: room.id }).length).toBe(asked)
+
+      const kinds = items().reduce<Record<string, number>>((acc, i) => ({ ...acc, [i.kind]: (acc[i.kind] ?? 0) + 1 }), {})
+      evidence.transcript = kinds
+      evidence.tools = tools().map((t) => [t.name, t.status, t.detail])
+      expect(kinds.text).toBeGreaterThan(0)
+      expect(kinds.thinking).toBeGreaterThan(0)
+      expect(tools().some((t) => t.name === 'Bash' && t.status === 'done')).toBe(true)
+
+      // Codex's usage windows arrive, kept apart from Claude's.
+      const usage = pushes.filter((e) => e.type === 'usage').map((e) => (e as { limits: RateLimit[] }).limits).at(-1) ?? []
+      evidence.usage = usage
+      expect(usage.some((l) => l.provider === 'codex' && l.type === 'five_hour' && typeof l.utilization === 'number')).toBe(true)
+
+      // Kernel restarts, and the chat resumes its thread.
+      const thread = k.store.chat(chat.id)?.sessionId
+      await k.stop()
+      k = await codexKernel(dataDir, home)
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Which file did you create with touch in this chat? Reply with just its name.' }] })
+      await waitFor('resumed turn', () => k.store.items(chat.id).filter((i) => i.kind === 'result').length >= 4 && !k.sessions.isRunning(chat.id))
+      const reply = k.store.items(chat.id).filter((i): i is ChatItem & { kind: 'text' } => i.kind === 'text').at(-1)?.text ?? ''
+      evidence.resumedReply = reply
+      expect(k.store.chat(chat.id)?.sessionId).toBe(thread)
+      expect(reply).toContain('kernel-ask-check')
+    } finally {
+      const out = process.env.KERNEL_LIVE_OUT ?? join(tmpdir(), 'kernel-live-codex-evidence.json')
+      await writeFile(out, JSON.stringify(evidence, null, 2))
+      console.log(`[live] codex evidence: ${out}`)
+      bus.off('push', onPush)
+      if (wsId) await k.archiveWorkspace(wsId, true).catch((e) => console.log('[live] archive failed', e))
+      await k.stop()
+      await rm(home, { recursive: true, force: true })
+      await rm(dataDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe.skipIf(!liveCodex)('live codex lead', () => {
+  it('has a Lead on Codex plan in plan mode, get the approval card, and hand off with create_workspace', { timeout: 600_000 }, async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-codex-lead-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-live-codex-lead-home-'))
+    await codexSettings(dataDir, home)
+    const k = await codexKernel(dataDir, home)
+    const evidence: Record<string, unknown> = { repo, model: codexModel }
+    try {
+      const room = await k.handlers()['rooms.add']({ path: repo })
+      await trustRoom(k, room.id)
+      const agents = await k.handlers()['agents.list']({ roomId: room.id })
+      const teammate = agents.find((a) => !a.lead && !a.builtIn) ?? agents.find((a) => !a.lead)!
+      const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: `Plan one small task for ${teammate.name}: add the line "Hello from Kernel" to the end of README.md. One task, a short plan. Don't read any files.` })
+      expect(chat).toMatchObject({ provider: 'codex', plan: true })
+      const plan = await waitFor('plan card', () => k.store.approvals({ roomId: room.id }).find((a) => a.kind === 'plan' && a.status === 'pending'), 300_000)
+      evidence.plan = plan.detail
+      k.approvals.decide(plan.id, { behavior: 'allow' })
+      const handed = await waitFor('hand-off', () => k.store.workspaces(room.id).find((w) => w.leadChatId === chat.id), 300_000)
+      evidence.handedOff = { name: handed.name, agent: handed.agentId }
+      const rows = k.store.items(chat.id).filter((i): i is ChatItem & { kind: 'tool' } => i.kind === 'tool')
+      evidence.leadTools = rows.map((t) => [t.name, t.status])
+      expect(rows.some((t) => t.name === 'mcp__kernel__create_workspace' && t.status === 'done')).toBe(true)
+      expect(k.store.chat(chat.id)?.plan).toBe(false)
+      await k.archiveWorkspace(handed.id, true).catch(() => undefined)
+    } finally {
+      const out = join(tmpdir(), 'kernel-live-codex-lead-evidence.json')
+      await writeFile(out, JSON.stringify(evidence, null, 2))
+      console.log(`[live] codex lead evidence: ${out}`)
+      await k.stop()
+      await rm(home, { recursive: true, force: true })
+      await rm(dataDir, { recursive: true, force: true })
+    }
+  })
+})

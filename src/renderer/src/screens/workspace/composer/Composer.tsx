@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill, Workspace } from '@shared/types'
-import { MODELS } from '@shared/types'
+import { MODELS, type Provider } from '@shared/types'
+import { chatProvider } from '@shared/providers'
+import { effortsOf, modelLabelOf, useCodexInUse, useProviderModels } from './providerModels'
 import { call, cleanError } from '../../../api'
 import { FileIcon } from '../../../components/FileIcon'
 import { actions, getState, loadWorkspace, useStore } from '../../../store'
@@ -54,7 +56,8 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   // A plan waiting on you here puts Copy and Approve on the box, and what you send goes back as changes to it.
   const plan = useStore((s) => waitingPlan(s.approvals, chat))
   const d = useDraft(forced, chat.id)
-  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : null)
+  // Fixtures open the model picker the same way, through the app's menu, for a shot (WorkspaceModelPicker, KERNEL-406).
+  const [menu, setMenu] = useState<MenuName>(contextForced ? 'context' : getState().ui.menu === 'model' ? 'model' : null)
   const [skills, setSkills] = useState<Skill[]>([])
   const [commands, setCommands] = useState<BuiltinCommand[]>([])
   const [files, setFiles] = useState<FileEntry[]>([])
@@ -146,7 +149,17 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   }
 
   const togglePlan = () => void configure({ plan: !chat.plan })
-  const pickModel = (m: ModelId, effort: Effort) => void configure({ model: m, effort })
+  const pickModel = (m: string, effort: Effort) => void configure({ model: m, effort })
+  // KERNEL-406: the chat's provider, its models, and a new tab on the other provider for a chat that has started.
+  const provider = chatProvider(chat)
+  const grouped = useCodexInUse(provider)
+  const providerModels = useProviderModels(provider)
+  const efforts = effortsOf(chat.model, providerModels)
+  const newChatOn = (p: Provider, m: string, x: Effort) => void attempt('Could not open a tab', async () => {
+    const c = await call('chats.create', { workspaceId: chat.workspaceId, kind: 'chat', provider: p, model: m, effort: x, ...(chat.threadId ? { threadId: chat.threadId } : {}) })
+    await loadWorkspace(chat.workspaceId)
+    actions.ui.openTab(chat.workspaceId, c.id)
+  })
   const setEffort = (effort: Effort) => { rememberEffort(chat.model, effort); void configure({ effort }) }
   const memory = useEffortMemory()
   const fallback = useDefaultEffort(agent?.effort)
@@ -164,7 +177,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     if (e.metaKey && !e.shiftKey && e.key.toLowerCase() === 'i' && roomId) { e.preventDefault(); setMenu('linkIssue') }
   }
 
-  const configure = (patch: { model?: ModelId; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
+  const configure = (patch: { model?: string; effort?: Effort; plan?: boolean }) => attempt('Could not change the chat', async () => { await call('chats.configure', { chatId: chat.id, ...patch }); await loadWorkspace(chat.workspaceId) })
   const editQueued = (q: QueuedMessage) => {
     const id = chat.id
     void attempt('Could not edit the message', async () => {
@@ -174,7 +187,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     })
   }
 
-  const model = MODELS.find((m) => m.id === chat.model)?.label ?? chat.model
+  const model = modelLabelOf(chat.model, providerModels)
   const effort = effortLabel(chat.effort)
   const hasDraft = !d.empty
   const placeholder = blocked ? 'Paused until this is resolved' : plan ? 'Enter your plan adjustments here' : running ? 'Add a follow up' : `Ask ${name} to make changes, @mention files, run /skills`
@@ -188,14 +201,14 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
         if (blocked) return
         e.preventDefault()
         d.focus()
-      } else if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key)) {
+      } else if (e.ctrlKey && e.metaKey && /^[1-4]$/.test(e.key) && provider === 'claude') {
         const m = MODELS[Number(e.key) - 1]
         if (!m) return
         e.preventDefault()
         pickModel(m.id, m.id === chat.model ? chat.effort : effortFor(m.id, memory, fallback))
       } else if (e.metaKey && e.shiftKey && (e.key === '/' || e.key === '?')) {
         e.preventDefault()
-        setEffort(nextEffort(chat.effort))
+        setEffort(nextEffort(chat.effort, efforts))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -259,7 +272,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               <span className="cmp-agent"><span className="cmp-name">{name}</span><span className="muted cmp-role">{agent?.role}</span></span>
               <span ref={modelAnchor} style={{ position: 'relative' }}>
                 <Button variant="ghost" className="cmp-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => setMenu(menu === 'model' ? null : 'model')}>{model}<span className="muted" style={{ fontWeight: 400 }}>{effort}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
-                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
+                {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={provider} grouped={grouped} started={!!chat.sessionId} onNewChat={(p, m, x) => { setMenu(null); newChatOn(p, m, x) }} model={chat.model} effort={chat.effort} fallback={fallback} onClose={() => setMenu(null)} onModel={(m, x) => { setMenu(null); pickModel(m, x) }} onEffort={setEffort} />}
               </span>
               <span className="grow" />
               {chat.context !== undefined && <ContextRing chat={chat} blocked={blocked} open={menu === 'context'} onOpen={(o) => setMenu(o ? 'context' : null)} />}

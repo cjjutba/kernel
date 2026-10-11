@@ -342,7 +342,7 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Rebase' })).toBe("Opened a new chat in Kai's workspace and sent it.")
     const open = k.chatTabs(ws.id)
     expect(open).toHaveLength(1)
-    expect(open[0]).toMatchObject({ model: k.settings.models.engineers, effort: k.settings.models.effort, plan: false })
+    expect(open[0]).toMatchObject({ model: k.settings.models.roles.engineers.model, effort: k.settings.models.roles.engineers.effort, plan: false })
     expect(sent.at(-1)).toMatchObject({ chatId: open[0].id, text: 'Rebase', from: 'lead' })
   })
 

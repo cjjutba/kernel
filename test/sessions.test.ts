@@ -2,15 +2,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { Options, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, Query, SDKControlGetUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentDef, Chat, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { bashVerdict, matchesRoomRule, roomRule } from '../src/main/services/bashGuard'
-import { IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type SessionDeps } from '../src/main/services/sessions'
+import { IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, mergeLimit, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type LimitPatch, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
+import { ClaudeRunner, readUsage } from '../src/main/services/providers/claude'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 
@@ -131,19 +132,52 @@ describe('usage', () => {
 
   it('asks a live session on demand and falls back to event data when the call fails', async () => {
     const s = new Sessions({} as SessionDeps)
-    const inner = s as unknown as { live: Map<string, unknown>; limits: Map<string, unknown> }
+    const inner = s as unknown as { live: Map<string, unknown>; limits: Map<string, unknown>; mergeLimits: (p: LimitPatch[]) => void }
     inner.limits.set('five_hour', { type: 'five_hour', status: 'allowed_warning', utilization: 0.8 })
     expect(await s.usage()).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
 
     let answer: () => Promise<SDKControlGetUsageResponse> = () => Promise.reject(new Error('not supported'))
-    inner.live.set('chat', { abort: new AbortController(), query: { usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: () => answer() } })
+    // The chat's runner asks its Claude Code session, as ClaudeRunner.usage does (KERNEL-406).
+    const query = { usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: () => answer() } as unknown as Query
+    inner.live.set('chat', { runner: { closed: false, usage: () => readUsage(query, (p) => inner.mergeLimits(p)) } })
     expect(await s.usage()).toEqual([{ type: 'five_hour', status: 'allowed_warning', utilization: 0.8 }])
 
     answer = async () => usage(85, 20)
     expect(await s.usage()).toEqual([
-      { type: 'five_hour', status: 'allowed_warning', utilization: 0.85, resetsAt: 1791361200 },
-      { type: 'seven_day', status: 'allowed', utilization: 0.2 }
+      { type: 'five_hour', status: 'allowed_warning', utilization: 0.85, resetsAt: 1791361200, readAt: expect.any(Number) },
+      { type: 'seven_day', status: 'allowed', utilization: 0.2, readAt: expect.any(Number) }
     ])
+  })
+
+  it("never asks the usage call for a Claude account Kernel added, whose token it answers nothing for (KERNEL-406)", async () => {
+    let account: string | undefined = 'work'
+    const s = new Sessions({ accountFor: (p: string) => (p === 'claude' ? account : undefined) } as unknown as SessionDeps)
+    const inner = s as unknown as { live: Map<string, unknown> }
+    let asked = 0
+    const claudeRunner = (on?: string) => {
+      const r = Object.create(ClaudeRunner.prototype) as ClaudeRunner
+      Object.defineProperty(r, 'closed', { value: false })
+      Object.defineProperty(r, 'usage', { value: async () => { asked++ } })
+      return { runner: r, ...(on ? { account: on } : {}) }
+    }
+    inner.live.set('token', claudeRunner('work'))
+    await s.usage()
+    expect(asked).toBe(0)
+    // Back on the CLI's own login, a session of it answers. The token account's process still running doesn't.
+    account = undefined
+    await s.usage()
+    expect(asked).toBe(0)
+    inner.live.set('cli', claudeRunner())
+    await s.usage()
+    expect(asked).toBe(1)
+  })
+
+  it('says when each window was last read', async () => {
+    const s = new Sessions({} as SessionDeps)
+    const inner = s as unknown as { mergeLimits: (p: LimitPatch[]) => void }
+    const before = Date.now()
+    inner.mergeLimits([{ type: 'five_hour', utilization: 0.1 }])
+    expect((await s.usage())[0].readAt).toBeGreaterThanOrEqual(before)
   })
 })
 

@@ -1,4 +1,4 @@
-import type {
+import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
@@ -81,6 +81,12 @@ export interface Fixture {
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
   localFiles?: Record<string, FileToCopy[]>
   account?: ClaudeAccount
+  /** Both providers' accounts (Settings, Providers, the account menu, KERNEL-406). */
+  accounts?: AccountProfile[]
+  /** The status table of each provider's Providers tab. */
+  providerStatus?: Partial<Record<Provider, ProviderStatus>>
+  /** Each provider's models for the pickers. Claude's default to Kernel's list. */
+  models?: Partial<Record<Provider, ProviderModel[]>>
   hooks?: HookStatus
   /** A GitHub rate limit holding Kernel's PR reads off (WorkspaceGitHubPaused, KERNEL-401). */
   github?: GitHubStatus

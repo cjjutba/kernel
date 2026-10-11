@@ -18,6 +18,8 @@ asarUnpack:
   - node_modules/better-sqlite3/**
   - node_modules/node-pty/**
   - node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/**
+  # Codex's binary, pinned in package.json, which Codex chats run as `codex app-server` (KERNEL-406).
+  - node_modules/@openai/codex-darwin-arm64/**
 # Flipped in the packaged binary (KERNEL-208). With these off, no local process can run its own code under Kernel's
 # signature and Automation grant through ELECTRON_RUN_AS_NODE, NODE_OPTIONS or --inspect, and the app only loads
 # from an app.asar whose hash matches the one signed into Info.plist.

@@ -219,7 +219,7 @@ export class Archive extends Feature {
     let tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
     if (!tabs.length) {
       const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
-      const pick = { model: agent ? this.k.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }
+      const pick = { ...(agent ? this.k.team.pickFor(agent) : this.settings.models.roles.engineers), plan: false }
       tabs = [this.saveChat(ws.lead ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(ws.id, NEW_CHAT, pick))]
     }
     for (const c of tabs) this.sessions.hold(c.id)

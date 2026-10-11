@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { modelLabelOf, useCodexInUse, useProviderModels } from '../workspace/composer/providerModels'
 import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
-import { MODELS } from '@shared/types'
+import { providerOf } from '@shared/providers'
 import { call, cleanError } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { leadOf, openLeadChat } from '../../lead'
@@ -45,7 +46,9 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   /** The base a picked PR or branch set, which its prompt already says. */
   const [pickedRef, setPickedRef] = useState('')
   const [mode, setMode] = useState<WorkspaceMode>(settings?.workspace.mode ?? 'worktree')
-  const [model, setModel] = useState<ModelId>(settings?.models.lead ?? 'claude-opus-5-5')
+  const codexInUse = useCodexInUse()
+  const codexModels = useProviderModels('codex')
+  const [model, setModel] = useState<string>(settings?.models.roles.lead.model ?? 'claude-opus-5-5')
   const lead = useStore((s) => leadOf(s.agents, room))
   const memory = useEffortMemory()
   const defaultEffort = useDefaultEffort(lead?.effort)
@@ -66,7 +69,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const targets = useMemo(() => targetOptions(branches, fallback, target, remote), [branches, fallback, target, remote])
   const modeInfo = MODES.find((m) => m.id === mode) ?? MODES[0]
   const label = sourceLabel(source)
-  const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
+  const modelLabel = modelLabelOf(model, codexModels)
   const effortLabel = labelOf(effort)
 
   const modelAnchor = useRef<HTMLSpanElement>(null)
@@ -184,7 +187,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-foot">
           <span ref={modelAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-model" aria-haspopup="dialog" aria-expanded={menu === 'model'} onClick={() => toggle('model')}>{modelLabel}<span className="muted" style={{ fontWeight: 400 }}>{effortLabel}</span><Icon name="chevron" size={11} stroke={1.9} /></Button>
-            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
+            {menu === 'model' && <ModelPicker anchorRef={modelAnchor} provider={providerOf(model)} grouped={codexInUse} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
           <span className="grow">
             {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}

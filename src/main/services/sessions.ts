@@ -1,58 +1,35 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
-import { MODELS } from '@shared/types'
-import type { HookPayload } from '@shared/hookSchemas'
+import type { Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, Provider, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import type { Store } from '../db'
 import { bus } from '../bus'
-import { describeTool, needsUser, type Approvals } from './approvals'
-import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from './bashGuard'
-import { toActivity } from './hookServer'
-import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
-import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
-import { missingServers, toolKind, toolPolicy, type ToolPolicy } from './agentTools'
-import { IMAGE_DATA_URL, revisedPlanFile, savePlan } from './plans'
+import type { Approvals } from './approvals'
+import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
+import { forProvider, Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { missingServers } from './agentTools'
+import { revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
+import { ClaudeRunner, claudeCommands, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
+import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
+import { CodexRunner } from './providers/codex/runner'
+import { chatProvider, limitProvider } from '@shared/providers'
+import type { Ask, Proc, Runner, RunnerHost } from './providers/types'
 
-/**
- * The SDK's `claude` binary in a packaged app. The SDK finds it with require.resolve, which points inside app.asar,
- * and a binary there can't be spawned. electron-builder unpacks it to app.asar.unpacked (electron-builder.yml).
- * Outside a packaged app this is undefined and the SDK finds its own.
- */
-export function packagedClaude(resources = (process as { resourcesPath?: string }).resourcesPath): string | undefined {
-  if (!resources) return undefined
-  const path = join(resources, 'app.asar.unpacked', 'node_modules', '@anthropic-ai', `claude-agent-sdk-${process.platform}-${process.arch}`, 'claude')
-  return existsSync(path) ? path : undefined
-}
-
-/** An async queue the SDK reads user turns from. Pushing a message sends it into the running session. */
-export class InputQueue<T> implements AsyncIterable<T> {
-  private items: T[] = []
-  private waiters: ((r: IteratorResult<T>) => void)[] = []
-  private closed = false
-  push(item: T) { const w = this.waiters.shift(); if (w) w({ value: item, done: false }); else this.items.push(item) }
-  close() { this.closed = true; for (const w of this.waiters.splice(0)) w({ value: undefined as never, done: true }) }
-  [Symbol.asyncIterator](): AsyncIterator<T> {
-    return {
-      next: () => {
-        if (this.items.length) return Promise.resolve({ value: this.items.shift()!, done: false })
-        if (this.closed) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => this.waiters.push(resolve))
-      }
-    }
-  }
-}
+// Moved behind the provider seam (KERNEL-406). Exported here too for what imports them from Sessions.
+export { askedQuestions, packagedClaude, InputQueue, toUserMessage, builtinCommands, sessionEnv, AGENT_TEAMS, switchedOff, limitsFromEvent, limitsFromUsage, HOLD_TIMEOUT_SEC, SESSION_GONE, TOOL_STOPPED } from './providers/claude'
+export { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 
 interface Live {
-  query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
+  /** The chat's process on its provider (KERNEL-406). */
+  runner: Runner
+  running: boolean; interrupted: boolean
   /** Background tasks (shells, subagents, monitors) the process is running, from its latest background_tasks_changed. */
   tasks: Set<string>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
@@ -63,13 +40,6 @@ interface Live {
   limited?: boolean
   /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
   cleared?: boolean
-  toolItems: Map<string, ChatItem & { kind: 'tool' }>
-  /** Agent rows whose label already names the subagent's model, by tool use id. The call's own `model` is final (KERNEL-158). */
-  agentModels: Set<string>
-  /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
-  commands: Map<string, string>
-  /** The Claude Code process, once spawned, and the end of what it wrote to stderr. */
-  proc: Proc
   /** Called once when the running turn ends. Set by `shutdown`, which waits for interrupted turns. */
   whenIdle?: () => void
   /**
@@ -81,16 +51,14 @@ interface Live {
   carrying?: boolean
   /** This turn hit a sign-out or a dropped connection. */
   failed?: 'auth' | 'network'
-  /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
-  resume?: string
+  /** The account the process runs on, which its usage windows belong to. Undefined is the CLI's own login (KERNEL-406). */
+  account?: string
   /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
-  sent?: SDKUserMessage
+  sent?: ChatPart[]
   sentItem?: ChatItem & { kind: 'user' }
 }
 
-interface Proc { child?: ChildProcess; stderr: string }
-
-/** A Claude Code process as started: the binary, and its first argument (a script path when the SDK runs node or bun). */
+/** A process as started: the binary, and its first argument (a script path when the SDK runs node or bun). */
 interface Spawned { command: string; arg?: string }
 interface SavedPid extends Spawned { pid: number }
 
@@ -123,12 +91,21 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
+  /**
+   * What a Codex chat runs (KERNEL-406): the executable, the active account's CODEX_HOME, the personality, and Kernel's
+   * own tools with their instructions, which Codex gets as dynamic tools. Without it a Codex chat can't start.
+   */
+  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
   /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
+  /** The account a provider runs on now, undefined for the CLI's own login (KERNEL-406). */
+  accountFor?: (provider: Provider) => string | undefined
+  /** What a Claude chat's process adds to its environment for the active account, such as its token (KERNEL-406). */
+  claudeEnv?: () => Record<string, string>
   /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
   envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
@@ -148,7 +125,7 @@ export interface SessionDeps {
    */
   onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean, resumed: boolean) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
-  onFailure?: (failure: Failure, ws: Workspace) => void
+  onFailure?: (failure: Failure, ws: Workspace, provider: Provider) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
   /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
@@ -197,8 +174,13 @@ export class Sessions {
   private mcpChecked = new Set<string>()
   /** Rooms the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
-  /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
-  private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
+  /**
+   * Holds on every room at once: offline, or a provider signed out. Each reason holds one provider's chats, or every chat
+   * when it names none, with the same rules as a pause, while it stands (KERNEL-406). `gates` are what a held provider's
+   * tool calls wait on.
+   */
+  private holds = new Map<string, Provider | undefined>()
+  private gates = new Map<Provider, { open: Promise<void>; release: () => void }>()
   /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
@@ -234,7 +216,7 @@ export class Sessions {
    * gate as a limit: a pause, an offline or signed-out hold, a limit and the agent limit all make it wait.
    */
   restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
-    for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
+    for (const l of limits) this.limits.set(limitKey(l), l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
     const saved: [string, CutOffReason][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
     for (const [id, reason] of saved) if (reason === 'limit' || reason === 'quit') this.cutOff.set(id, reason)
     // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
@@ -291,28 +273,55 @@ export class Sessions {
     this.d.onExit?.(ws, chat, clean ? QUIT_REASON : CRASH_REASON, true, true)
   }
 
-  /** Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. */
-  holdAll(reason: string) {
-    if (this.global) { this.global.reasons.add(reason); return }
-    let release!: () => void
-    const open = new Promise<void>((resolve) => { release = resolve })
-    this.global = { open, release, reasons: new Set([reason]) }
+  /**
+   * Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. With `provider`, only that
+   * provider's chats wait, as when it is signed out (KERNEL-406).
+   */
+  holdAll(reason: string, o: { provider?: Provider } = {}) {
+    if (this.holds.has(reason)) return
+    this.holds.set(reason, o.provider)
+    for (const p of PROVIDER_IDS) {
+      if (this.gates.has(p) || !this.holding(p)) continue
+      let release!: () => void
+      const open = new Promise<void>((resolve) => { release = resolve })
+      this.gates.set(p, { open, release })
+    }
     this.pushReasons()
   }
 
-  /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
+  /** Drop one reason for the hold. A provider nothing holds any more goes on, and what queued for it meanwhile is sent. */
   releaseAll(reason: string) {
-    const g = this.global
-    if (!g?.reasons.delete(reason) || g.reasons.size) return
-    this.global = undefined
-    g.release()
+    if (!this.holds.delete(reason)) return
+    const freed = PROVIDER_IDS.filter((p) => this.gates.has(p) && !this.holding(p))
+    if (!freed.length) return
+    for (const p of freed) { this.gates.get(p)!.release(); this.gates.delete(p) }
     // A cut-off chat's queue goes through `carryOn`, which restarts those a limit stopped two at a time.
-    for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running && !this.cutOff.has(chatId)) this.drain(chatId)
+    for (const chatId of [...this.queues.keys()]) {
+      const chat = this.d.store.chat(chatId)
+      if (chat && freed.includes(chatProvider(chat)) && !this.live.get(chatId)?.running && !this.cutOff.has(chatId)) this.drain(chatId)
+    }
     this.carryOn()
     this.pushReasons()
   }
 
-  heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
+  /** The reasons holding `provider`'s chats, or every reason when it names none. */
+  heldFor(provider?: Provider): string[] { return [...this.holds].filter(([, p]) => !provider || !p || p === provider).map(([r]) => r) }
+
+  /** Something holds this provider's chats: offline, or the provider signed out. */
+  private holding(provider: Provider): boolean { return [...this.holds.values()].some((p) => !p || p === provider) }
+
+  /**
+   * The provider's account changed (KERNEL-406). A process runs on the account it started with, so an idle one ends now and
+   * a busy one when its turn ends. The next message resumes the conversation on the account that is active then.
+   */
+  restartProvider(provider: Provider) {
+    for (const [id, live] of [...this.live]) {
+      const chat = this.d.store.chat(id)
+      if (!chat || chatProvider(chat) !== provider) continue
+      if (live.running || live.tasks.size) this.stale.add(id)
+      else this.end(id, live)
+    }
+  }
 
   /**
    * Kernel checks the network and the sign-in at launch before agents carry on (KERNEL-215). Until `releaseCarryOn`, chats
@@ -357,17 +366,26 @@ export class Sessions {
 
   /**
    * Mark a usage window as reset (its resetsAt passed) and tell the renderer. A window that was only close to its limit resets
-   * too, so what it held goes out (KERNEL-220). One already at 0 changes nothing.
+   * too, so what it held goes out (KERNEL-220). One already at 0 changes nothing. `key` is its `limitKey`: a Claude window's type.
    */
-  resetLimit(type: RateLimit['type']) {
-    const l = this.limits.get(type)
+  resetLimit(key: string) {
+    const l = this.limits.get(key)
     if (!l || (l.status === 'allowed' && !l.utilization)) return
-    this.limits.set(type, { ...l, status: 'allowed', utilization: 0 })
+    this.limits.set(key, { ...l, status: 'allowed', utilization: 0 })
     this.pushLimits()
   }
 
-  /** /compact in the chat: Claude Code summarises the conversation and frees context. Queues behind a running turn. */
-  compact(chatId: string) { return this.send(chatId, [{ type: 'text', text: '/compact' }]) }
+  /**
+   * /compact in the chat: the agent summarises the conversation and frees context. On Claude it queues behind a running
+   * turn. Codex compacts its thread through its own call (KERNEL-406).
+   */
+  async compact(chatId: string): Promise<{ queued: boolean; why?: QueueReason }> {
+    const chat = this.mustChat(chatId)
+    if (chatProvider(chat) !== 'codex') return this.send(chatId, [{ type: 'text', text: '/compact' }])
+    const live = this.live.get(chatId) ?? this.start(chat, this.mustWorkspace(chat.workspaceId))
+    await (live.runner as CodexRunner).compact()
+    return { queued: false }
+  }
 
   isPaused(roomId: string) { return this.paused.has(roomId) }
 
@@ -395,7 +413,7 @@ export class Sessions {
   }
 
   private pausedChat(chat: Chat) {
-    if (this.global || this.waiting.has(chat.id)) return true
+    if (this.holding(chatProvider(chat)) || this.waiting.has(chat.id)) return true
     const ws = this.d.store.workspace(chat.workspaceId)
     return !!ws && this.paused.has(ws.roomId)
   }
@@ -411,20 +429,21 @@ export class Sessions {
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
   /**
-   * 5-hour and weekly windows, fetched only when asked. A live session answers the experimental usage call.
-   * Without one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last rate_limit_event numbers stand.
+   * 5-hour and weekly windows, fetched only when asked. A live session of each provider answers its usage call. Without a
+   * live Claude one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last
+   * rate_limit_event numbers stand. A Claude account Kernel added runs on a `setup-token` token, which the usage call
+   * answers nothing for, so it is never asked: its numbers come from its turns' rate_limit_event (KERNEL-406).
    */
   async usage(o: { probeIn?: string } = {}): Promise<RateLimit[]> {
-    const live = [...this.live.values()].find((l) => !l.abort.signal.aborted)
-    if (live) await this.readUsage(live.query)
-    else if (o.probeIn) await this.probeUsage(o.probeIn)
+    const open = [...this.live.values()].filter((l) => !l.runner.closed)
+    const other = open.find((l) => !(l.runner instanceof ClaudeRunner))
+    if (other) await other.runner.usage()
+    if (this.d.accountFor?.('claude') === undefined) {
+      const claude = open.find((l) => l.runner instanceof ClaudeRunner && !l.account)
+      if (claude) await claude.runner.usage()
+      else if (o.probeIn) await probeClaudeUsage(o.probeIn, (p) => this.mergeLimits(p))
+    }
     return [...this.limits.values()]
-  }
-
-  private async readUsage(q: Query) {
-    const ask = q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET
-    if (typeof ask !== 'function') return
-    try { this.mergeLimits(limitsFromUsage(await withTimeout(ask.call(q, { skipBehaviors: true }), 10_000))) } catch { /* keep rate_limit_event data */ }
   }
 
   /**
@@ -437,30 +456,9 @@ export class Sessions {
   }
 
   private async readCommands(cwd: string): Promise<BuiltinCommand[]> {
-    const live = [...this.live.values()].find((l) => !l.abort.signal.aborted)
-    if (live) return builtinCommands(await withTimeout(live.query.supportedCommands(), 15_000))
-    const input = new InputQueue<SDKUserMessage>()
-    const abort = new AbortController()
-    try {
-      const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
-      return builtinCommands(await withTimeout(q.supportedCommands(), 15_000))
-    } finally {
-      input.close()
-      abort.abort()
-    }
-  }
-
-  /** Claude Code started with no prompt, no settings and no transcript, asked for usage and stopped. It sends no message, so it uses none of the plan. */
-  private async probeUsage(cwd: string) {
-    const input = new InputQueue<SDKUserMessage>()
-    const abort = new AbortController()
-    try {
-      const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, {}), pathToClaudeCodeExecutable: packagedClaude() } })
-      await this.readUsage(q)
-    } catch { /* keep rate_limit_event data */ } finally {
-      input.close()
-      abort.abort()
-    }
+    const live = [...this.live.values()].find((l) => !l.runner.closed && l.runner instanceof ClaudeRunner)
+    if (live) return (live.runner as ClaudeRunner).commandList()
+    return claudeCommands(cwd)
   }
 
   /**
@@ -520,7 +518,7 @@ export class Sessions {
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
-    if (this.global) return 'offline'
+    if (this.holding(chatProvider(chat))) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.nearLimitHolds(chat.id)) return 'limit'
     if (this.atCapacity(chat.id)) return 'capacity'
@@ -622,8 +620,8 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = toUserMessage([...parts, ...more.flatMap((m) => m.parts)])
-    live.input.push(live.sent)
+    live.sent = [...parts, ...more.flatMap((m) => m.parts)]
+    live.runner.push(live.sent)
     this.setRunning(chat, ws, live, true)
   }
 
@@ -666,7 +664,8 @@ export class Sessions {
     if (!before || before.permissions.mode !== this.d.settings().permissions.mode) {
       for (const [id, l] of this.live) {
         if (this.d.store.chat(id)?.plan) continue
-        void l.query.setPermissionMode(this.baseMode()).catch(() => undefined)
+        // Plan mode off puts the session on the mode Settings, Permissions now has.
+        void l.runner.setPlan(false)
       }
     }
     this.pushLimits()
@@ -697,7 +696,8 @@ export class Sessions {
    */
   private nearLimitHolds(chatId: string): boolean {
     if (!this.d.settings().usage?.pauseNearLimit || this.isLeadChat(chatId)) return false
-    return !!nearLimit([...this.limits.values()])
+    const chat = this.d.store.chat(chatId)
+    return !!chat && !!nearLimit(this.limitsFor(chat))
   }
 
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
@@ -731,10 +731,20 @@ export class Sessions {
     }
   }
 
-  /** A known usage limit stops this chat: one on the whole account, or on the chat's model. */
+  /**
+   * A known usage limit stops this chat: one on the whole account, or on the chat's model. Only the windows of its provider,
+   * on the account that provider runs on now, count (KERNEL-406).
+   */
   private limitHolds(chat: Chat) {
-    const limits = [...this.limits.values()]
-    return !!blockingLimit(limits) || limitedModels(limits).includes(chat.model)
+    const limits = this.limitsFor(chat)
+    return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
+  }
+
+  /** The usage windows that count for a chat: its own provider's, on the account in use (KERNEL-406). */
+  private limitsFor(chat: Chat) {
+    const provider = chatProvider(chat)
+    const account = this.d.accountFor?.(provider)
+    return [...this.limits.values()].filter((l) => limitProvider(l) === provider && l.accountId === account)
   }
 
   /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
@@ -807,7 +817,7 @@ export class Sessions {
     // A Stop while Send now is already interrupting wins: the queue is dropped.
     if (live.interrupted) { if (!sendNext) live.sendNext = false; return }
     live.interrupted = true
-    await live.query.interrupt().catch(() => undefined)
+    await live.runner.interrupt()
     this.item(this.mustChat(chatId), { kind: 'interrupted', id: randomUUID(), ts: Date.now() })
   }
 
@@ -818,10 +828,10 @@ export class Sessions {
     bus.push({ type: 'chat', chat })
     const live = this.live.get(chatId)
     if (live) {
-      if (patch.model) await live.query.setModel(patch.model).catch(() => undefined)
+      if (patch.model) await live.runner.setModel(patch.model)
       // After the model, so a model switch keeps the effort picked with it (D-093).
-      if (patch.effort) await live.query.applyFlagSettings({ effortLevel: patch.effort }).catch(() => undefined)
-      if (patch.plan !== undefined) await live.query.setPermissionMode(patch.plan ? 'plan' : this.baseMode()).catch(() => undefined)
+      if (patch.effort) await live.runner.setEffort(patch.effort)
+      if (patch.plan !== undefined) await live.runner.setPlan(patch.plan)
     }
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
@@ -855,8 +865,7 @@ export class Sessions {
   private end(chatId: string, live: Live) {
     this.stopIdle(chatId)
     this.stale.delete(chatId)
-    live.input.close()
-    live.abort.abort()
+    live.runner.close()
     this.live.delete(chatId)
   }
 
@@ -953,15 +962,14 @@ export class Sessions {
       live.interrupted = true
       live.sendNext = true
       live.quit = true
-      void live.query.interrupt().catch(() => undefined)
+      void live.runner.interrupt()
     })))
     await Promise.race([ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, budgetMs) })])
     clearTimeout(timer)
     for (const [id, live] of [...this.live]) {
       this.end(id, live)
-      // The SDK waits about 2 seconds after closing stdin before it kills the process, and Kernel is gone by then. A
-      // process left mid-step carries on alone, so it gets SIGTERM now, which also ends the shells its tools started.
-      if (live.proc.child && live.proc.child.exitCode === null) live.proc.child.kill('SIGTERM')
+      // A process left mid-step would carry on alone, so it ends now, and so do the shells its tools started.
+      live.runner.kill()
     }
   }
 
@@ -996,15 +1004,15 @@ export class Sessions {
    * Each process leads its own process group. In Kernel's group, a Ctrl+C or a closed tab in the terminal that ran `pnpm dev`
    * reached every agent at once and ended its turn before the quit could save it to carry on (KERNEL-340).
    */
-  private spawn(o: SpawnOptions, proc: Proc): SpawnedProcess {
-    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: true })
+  private spawn(command: string, args: string[], o: { cwd?: string; env?: Record<string, string | undefined>; signal?: AbortSignal }, proc: Proc): ChildProcess {
+    const child = spawn(command, args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: true })
     proc.child = child
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (d: string) => { proc.stderr = (proc.stderr + d).slice(-STDERR_KEPT) })
     child.stderr?.on('error', () => undefined)
     const pid = child.pid
     if (pid) {
-      this.pids.set(pid, { command: o.command, ...(o.args[0] ? { arg: o.args[0] } : {}) })
+      this.pids.set(pid, { command, ...(args[0] ? { arg: args[0] } : {}) })
       this.savePids()
       child.once('exit', () => { if (this.pids.delete(pid)) this.savePids() })
     }
@@ -1016,95 +1024,112 @@ export class Sessions {
     try { this.d.store.saveMeta<SavedPid[]>(PIDS, [...this.pids].map(([pid, p]) => ({ pid, ...p }))) } catch { /* Kernel stopped */ }
   }
 
-  private baseMode(): NonNullable<Options['permissionMode']> { return this.d.settings().permissions.mode === 'ask' ? 'default' : 'acceptEdits' }
-
   private start(chat: Chat, ws: Workspace): Live {
     const agent = this.d.agentFor(ws)
-    const input = new InputQueue<SDKUserMessage>()
-    const abort = new AbortController()
-    const commands = new Map<string, string>()
-    const proc: Proc = { stderr: '' }
-    const ctx = { roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id }
-    // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
-    const sessionId = chat.sessionId ?? randomUUID()
-    this.managedIds.add(sessionId)
-    const mcpServers = this.d.mcpFor(ws, agent, chat)
-    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
-    const tools = toolPolicy(agent?.tools)
-    const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
     const root = this.d.store.room(ws.roomId)?.path
-    const options: Options = {
-      cwd: ws.path,
-      // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
-      // it worked there, and loads each once (KERNEL-348, KERNEL-355).
-      ...(ws.lead && ws.mode === 'worktree' && root ? { projectConfigRoot: root } : {}),
-      model: chat.model,
-      effort: chat.effort,
-      // Without display: 'summarized' the CLI sends thinking blocks with empty text.
-      thinking: { type: 'adaptive', display: 'summarized' },
-      permissionMode: chat.plan ? 'plan' : this.baseMode(),
-      canUseTool: this.canUseTool(chat, ws, agent, commands),
-      settingSources: ['user', 'project', 'local'],
-      systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)) },
-      mcpServers,
-      ...(off ? { settings: off } : {}),
-      ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
-      hooks: kernelHooks({
-        ctx, commands, tools,
-        verdict: (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)),
-        held: () => this.paused.get(ws.roomId)?.open ?? this.global?.open,
-        networkAllowed: () => this.d.settings().permissions.network !== false,
-        handoff: agent?.lead ? {
-          afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined),
-          atStop: () => { const t = this.handoffs.reminder(chat.id); if (t) bus.track({ name: 'handoff.reminder' }); return t }
-        } : undefined
-      }),
-      includeHookEvents: true,
-      ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
-      abortController: abort,
-      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
-      pathToClaudeCodeExecutable: packagedClaude(),
-      spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
+    const live = { running: false, interrupted: false, tasks: new Set<string>(), account: this.d.accountFor?.(chatProvider(chat)) } as Live
+    const host = this.hostFor(chat.id, ws, agent, live)
+    const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
+    const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
+    if (chatProvider(chat) === 'codex') {
+      const c = this.d.codexFor?.(ws, agent, chat)
+      // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
+    } else {
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env: { ...env, ...this.d.claudeEnv?.() }, root })
     }
-    const q = query({ prompt: input, options })
-    const live: Live = { query: q, input, abort, running: false, interrupted: false, tasks: new Set(), toolItems: new Map(), agentModels: new Set(), commands, proc, resume: chat.sessionId }
     this.live.set(chat.id, live)
-    void this.consume(chat.id, ws, live)
+    live.runner.start()
     return live
   }
 
-  private async consume(chatId: string, ws: Workspace, live: Live) {
-    let ended: string | null = null
-    // Kernel is quitting and ended this process. The stream ends on its own time, often after Kernel has closed the store,
-    // and nothing of it changes what carries on: `shutdown` already froze the journal and kept the queue (KERNEL-396).
-    const quitEnded = () => this.closing && live.abort.signal.aborted
-    try {
-      // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, they are dropped.
-      for await (const msg of live.query) if (!this.replaced(chatId, live) && !quitEnded()) this.handle(chatId, ws, live, msg)
-      // Nobody asked it to stop, so the process went away on its own.
-      if (!live.abort.signal.aborted) ended = ''
-    } catch (err) {
-      if (!live.abort.signal.aborted) {
-        ended = withStderr(String((err as Error).message ?? err), live.proc.stderr)
-        this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
-      }
-    } finally {
-      if (!quitEnded()) {
-        const replaced = this.replaced(chatId, live)
-        const midTurn = live.running
-        if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
-        const chat = this.d.store.chat(chatId)
-        if (chat && !replaced) this.setRunning(chat, ws, live, false)
-        if (chat && !replaced) this.drainWaiting()
-        if (chat && !replaced && ended !== null) {
-          // A message that waited for this chat may have started a new session just now. Then it is working again.
-          const resumed = !!this.live.get(chatId)?.running
-          // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
-          if (midTurn && !resumed) this.crashed.add(chatId)
-          if (!resumed) this.offline(ws, ended)
-          this.d.onExit?.(ws, chat, ended, midTurn, resumed)
+  /** What the chat's runner calls back into (KERNEL-406). Each method acts on this chat and this process. */
+  private hostFor(chatId: string, ws: Workspace, agent: AgentDef | undefined, live: Live): RunnerHost {
+    return {
+      chatId, workspace: ws, agent,
+      chat: () => this.mustChat(chatId),
+      settings: () => this.d.settings(),
+      roomAllow: () => this.d.roomAllow(ws.roomId),
+      allowInRoom: (rule) => this.d.allowInRoom(ws.roomId, rule),
+      held: () => this.paused.get(ws.roomId)?.open ?? this.gates.get(chatProvider(this.mustChat(chatId)))?.open,
+      spawn: (command, args, o, proc) => this.spawn(command, args, o, proc),
+      managed: (sessionId) => { this.managedIds.add(sessionId) },
+      item: (item) => this.item(this.mustChat(chatId), item),
+      sessionStarted: (sessionId, o = {}) => {
+        let chat = this.mustChat(chatId)
+        this.managedIds.add(sessionId)
+        if (chat.sessionId !== sessionId) { chat = { ...chat, sessionId }; this.d.store.saveChat(chat) }
+        const source = o.billedBy
+        if (source !== undefined) {
+          if (!this.billing.has(chatId) && source !== 'none') {
+            this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: `This session is billed through ${source}, not your Claude plan.` })
+            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId, text: `is billed through ${source}, not the Claude plan` })
+          }
+          this.billing.set(chatId, source)
         }
-      }
+        if (o.mcpServers && !this.mcpChecked.has(chatId)) {
+          this.mcpChecked.add(chatId)
+          const missing = missingServers(this.d.agentFor(ws)?.tools, o.mcpServers)
+          const text = missing.map((m) => `This agent's file lists ${m.entry}, but no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`).join(' ')
+          if (text) this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text })
+        }
+        this.setRunning(chat, ws, live, true)
+      },
+      blocked: (event, output) => this.blocked(ws, chatId, event, output),
+      toolSucceeded: () => { if (this.turns.get(chatId)?.blocked === 'PreToolUse') this.unblock(this.mustChat(chatId), ws) },
+      setTasks: (ids) => { live.tasks = new Set(ids) },
+      retrying: (retry) => { live.retry = retry; bus.push({ type: 'retry', chatId, retry }) },
+      clearRetry: () => this.clearRetry(chatId, live),
+      reached: () => this.d.onReached?.(),
+      replied: () => this.d.onReply?.(ws, this.mustChat(chatId)),
+      failed: (failure, o = {}) => { live.failed = failure; if (o.notify) this.d.onFailure?.(failure, ws, chatProvider(this.mustChat(chatId))) },
+      limited: (o = {}) => { if (o.always || live.running) live.limited = true },
+      // A window is the provider's and the account's the process runs on. Claude's on the CLI login stay as they always were.
+      mergeLimits: (patches) => this.mergeLimits(patches.map((p) => ({ ...p, ...(live.account ? { accountId: live.account } : {}) }))),
+      reset: (trigger) => {
+        this.d.store.clearItems(chatId)
+        if (trigger === 'clear') live.cleared = true
+        bus.push({ type: 'chat.cleared', chatId })
+        this.d.onReset?.(ws, this.mustChat(chatId), trigger)
+      },
+      setContext: (context, usage) => this.setContext(chatId, context, usage),
+      turnEnded: (t) => this.turnEnded(chatId, ws, live, t),
+      sessionGone: () => this.renew(this.mustChat(chatId), ws, live),
+      ended: (reason, o = {}) => this.ended(chatId, ws, live, reason, o.error === true),
+      // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, or Kernel is
+      // quitting and ended this process, they are dropped (KERNEL-396).
+      stale: () => this.replaced(chatId, live) || (this.closing && live.runner.closed),
+      get quitting() { return live.quit === true },
+      get interrupted() { return live.interrupted },
+      ask: (a, o) => this.ask(chatId, ws, agent, a, o),
+      requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
+      handoffAfterPlan: () => (this.handoffs.due(chatId) ? forProvider(HANDOFF_NOW, chatProvider(this.mustChat(chatId))) : undefined),
+      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t && forProvider(t, chatProvider(this.mustChat(chatId))) },
+      followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
+    }
+  }
+
+  /**
+   * The chat's process ended. `ended` is null when Kernel stopped it, else why it went away. A process that failed leaves a
+   * note. Kernel is quitting and ended this process: the stream ends on its own time, often after Kernel has closed the
+   * store, and nothing of it changes what carries on, since `shutdown` already froze the journal and kept the queue (KERNEL-396).
+   */
+  private ended(chatId: string, ws: Workspace, live: Live, ended: string | null, error: boolean) {
+    if (error && ended !== null) this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
+    if (this.closing && live.runner.closed) return
+    const replaced = this.replaced(chatId, live)
+    const midTurn = live.running
+    if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
+    const chat = this.d.store.chat(chatId)
+    if (chat && !replaced) this.setRunning(chat, ws, live, false)
+    if (chat && !replaced) this.drainWaiting()
+    if (chat && !replaced && ended !== null) {
+      // A message that waited for this chat may have started a new session just now. Then it is working again.
+      const resumed = !!this.live.get(chatId)?.running
+      // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
+      if (midTurn && !resumed) this.crashed.add(chatId)
+      if (!resumed) this.offline(ws, ended)
+      this.d.onExit?.(ws, chat, ended, midTurn, resumed)
     }
   }
 
@@ -1134,7 +1159,7 @@ export class Sessions {
     // The row keeps its place: the store saves it again where it was, before the note.
     if (row && nudged(row)) {
       this.item(fresh, { ...row, parts })
-      sent = toUserMessage(parts)
+      sent = parts
     }
     // A nudge still waiting, as the one after a quit, would tell the agent to pick up where it left off too.
     const queue = this.queued(chat.id)
@@ -1143,7 +1168,7 @@ export class Sessions {
     next.carrying = live.carrying
     next.sent = sent
     next.sentItem = row
-    next.input.push(sent)
+    next.runner.push(sent)
     this.setRunning(fresh, ws, next, true)
     return true
   }
@@ -1161,201 +1186,70 @@ export class Sessions {
     return !!current && current !== live
   }
 
-  private handle(chatId: string, ws: Workspace, live: Live, msg: SDKMessage) {
-    let chat = this.mustChat(chatId)
-    const now = Date.now()
-    switch (msg.type) {
-      case 'system': {
-        // The CLI sends init at the start of every turn, including queued follow-ups after an interrupt.
-        if (msg.subtype === 'init') {
-          live.resume = undefined
-          this.managedIds.add(msg.session_id)
-          if (chat.sessionId !== msg.session_id) { chat = { ...chat, sessionId: msg.session_id }; this.d.store.saveChat(chat) }
-          if (!this.billing.has(chatId) && msg.apiKeySource !== 'none') {
-            this.item(chat, { kind: 'note', id: randomUUID(), ts: now, text: `This session is billed through ${msg.apiKeySource}, not your Claude plan.` })
-            bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId: msg.session_id, text: `is billed through ${msg.apiKeySource}, not the Claude plan` })
-          }
-          this.billing.set(chatId, msg.apiKeySource)
-          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init.
-          if (!this.mcpChecked.has(chatId)) {
-            this.mcpChecked.add(chatId)
-            const missing = missingServers(this.d.agentFor(ws)?.tools, (msg.mcp_servers ?? []).map((s) => s.name))
-            const text = missing.map((m) => `This agent's file lists ${m.entry}, but no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`).join(' ')
-            if (text) this.item(chat, { kind: 'note', id: randomUUID(), ts: now, text })
-          }
-          this.setRunning(chat, ws, live, true)
-        }
-        if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, chatId, msg.hook_event, msg.stderr || msg.output || msg.stdout)
-        // The SDK's level signal for background work, which replaces the whole set. Ambient tasks are housekeeping, not work.
-        if (msg.subtype === 'background_tasks_changed') live.tasks = new Set(msg.tasks.filter((t) => !t.ambient).map((t) => t.task_id))
-        if (msg.subtype === 'api_retry') {
-          const failure = failureOf(msg.error, msg.error_status)
-          // A connection error is the network's banner, not the overloaded one.
-          if (failure === 'network' || failure === 'auth') { live.failed = failure; this.d.onFailure?.(failure, ws) }
-          else { live.retry = { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms }; bus.push({ type: 'retry', chatId, retry: live.retry }) }
-        }
-        if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
-        // Most commands answer with an assistant message; some print here instead.
-        if (msg.subtype === 'local_command_output' && msg.content.trim()) this.item(chat, { kind: 'text', id: msg.uuid, ts: now, text: msg.content })
-        return
-      }
-      case 'conversation_reset': {
-        // /clear (or /reset, /new): Claude Code starts a fresh conversation under a new session id, which the next init
-        // saves. The transcript starts over too, as the CLI's screen does. The old conversation stays in Claude Code's own history.
-        this.d.store.clearItems(chatId)
-        live.toolItems.clear()
-        live.agentModels.clear()
-        if (msg.trigger === 'clear') live.cleared = true
-        bus.push({ type: 'chat.cleared', chatId })
-        this.d.onReset?.(ws, chat, msg.trigger)
-        return
-      }
-      case 'assistant': {
-        this.clearRetry(chatId, live)
-        const failure = failureOf(msg.error)
-        if (failure === 'auth' || failure === 'network') live.failed = failure
-        if (failure === 'auth') this.d.onFailure?.(failure, ws)
-        if (failure === 'limit') live.limited = true
-        // Only a clean answer counts. `unknown` and `server_error` are what Claude Code sends when its retries run out.
-        if (!msg.error) this.d.onReached?.()
-        this.d.onReply?.(ws, chat)
-        // Subagent chatter stays inside the tool row. Only the model it runs on reaches the row's label.
-        if (msg.parent_tool_use_id) { this.subagentModel(chat, live, msg.parent_tool_use_id, msg.message.model); return }
-        msg.message.content.forEach((block: any, i: number) => {
-          const id = `${msg.uuid}:${i}`
-          if (block.type === 'text' && block.text?.trim()) this.item(chat, { kind: 'text', id, ts: now, text: block.text })
-          else if (block.type === 'thinking' && block.thinking?.trim()) this.item(chat, { kind: 'thinking', id, ts: now, text: block.thinking })
-          else if (block.type === 'tool_use') {
-            const d = describeTool(block.name, block.input)
-            // A fork ignores `model` and runs on the parent's, so its first message names it instead.
-            const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model && block.input.subagent_type !== 'fork' ? String(block.input.model) : undefined
-            if (model) live.agentModels.add(block.id)
-            const label = model ? `${d.title} · ${modelName(model)}` : d.title
-            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running', input: clipInput(block.input) }
-            live.toolItems.set(block.id, item)
-            this.item(chat, item)
-          }
-        })
-        return
-      }
-      case 'user': {
-        const content = (msg.message as any).content
-        if (!Array.isArray(content)) return
-        for (const block of content) {
-          if (block?.type !== 'tool_result') continue
-          const item = live.toolItems.get(block.tool_use_id)
-          live.commands.delete(block.tool_use_id)
-          // A step that went through after a PreToolUse refusal: the agent found its way past it.
-          if (item && !block.is_error && this.turns.get(chatId)?.blocked === 'PreToolUse') this.unblock(chat, ws)
-          if (!item) continue
-          const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
-          const cut = output.length > TOOL_TEXT_MAX
-          const done = (live.quit
-            ? { ...item, status: 'failed', output: TOOL_STOPPED, outputCut: undefined }
-            : { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, TOOL_TEXT_MAX), outputCut: cut || undefined, ts: item.ts }) as ChatItem & { kind: 'tool' }
-          live.toolItems.set(block.tool_use_id, done)
-          this.item(chat, done)
-        }
-        return
-      }
-      case 'result': {
-        const ok = msg.subtype === 'success'
-        // A turn that ended on an API error is `success` with `is_error`, so it never says the API was reached.
-        if (ok && !msg.is_error) this.d.onReached?.()
-        if (msg.subtype !== 'success' && live.resume && msg.errors?.includes(`${SESSION_GONE}${live.resume}`) && this.renew(chat, ws, live)) return
-        // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
-        if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
-        this.clearRetry(chatId, live)
-        void this.refreshContext(chatId, live)
-        const stopped = live.interrupted && !live.sendNext
-        const interrupted = live.interrupted
-        // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
-        if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
-        // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
-        // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
-        if (!ok && !stopped && live.carrying && live.failed && this.global) this.setCutOff(chatId, 'quit')
-        live.carrying = false
-        live.failed = undefined
-        live.interrupted = false
-        live.sendNext = false
-        // The hook that refused to let the agent finish has now let it finish.
-        const turns = this.turnsOf(chatId)
-        if (ok && turns.blocked !== 'PreToolUse') turns.blocked = undefined
-        // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
-        if (ok) { this.crashed.delete(chatId); this.renewed.delete(chatId) }
-        live.limited = false
-        live.cleared = false
-        this.setRunning(chat, ws, live, false)
-        // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
-        if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user' })
-        // Stop means stop: held messages are dropped, not sent. Send now keeps them.
-        if (stopped) this.setQueue(chatId, [])
-        else this.drain(chatId)
-        this.drainWaiting()
-        return
-      }
-      case 'rate_limit_event': {
-        const info = msg.rate_limit_info
-        if (info.status === 'rejected' && live.running) live.limited = true
-        this.mergeLimits(limitsFromEvent(info))
-        if (info.status === 'rejected' && info.rateLimitType) bus.activity({ kind: 'limit', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `hit the ${info.rateLimitType.replace(/_/g, ' ')} limit`, data: { resetsAt: info.resetsAt } })
-        return
-      }
-      default: return
-    }
+  /** The running turn ended. Its result row, then what waits for the chat goes out, or Stop drops it. */
+  private turnEnded(chatId: string, ws: Workspace, live: Live, t: { id: string; ok: boolean; durationMs?: number; error?: string }) {
+    const chat = this.mustChat(chatId)
+    const ok = t.ok
+    // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
+    if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: t.id, ts: Date.now(), durationMs: t.durationMs ?? 0, ok, error: ok ? undefined : t.error })
+    this.clearRetry(chatId, live)
+    void live.runner.context()
+    const stopped = live.interrupted && !live.sendNext
+    const interrupted = live.interrupted
+    // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
+    if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
+    // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
+    // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
+    if (!ok && !stopped && live.carrying && live.failed && this.holding(chatProvider(chat))) this.setCutOff(chatId, 'quit')
+    live.carrying = false
+    live.failed = undefined
+    live.interrupted = false
+    live.sendNext = false
+    // The hook that refused to let the agent finish has now let it finish.
+    const turns = this.turnsOf(chatId)
+    if (ok && turns.blocked !== 'PreToolUse') turns.blocked = undefined
+    // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
+    if (ok) { this.crashed.delete(chatId); this.renewed.delete(chatId) }
+    live.limited = false
+    live.cleared = false
+    this.setRunning(chat, ws, live, false)
+    // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
+    if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user' })
+    // Stop means stop: held messages are dropped, not sent. Send now keeps them.
+    if (stopped) this.setQueue(chatId, [])
+    else this.drain(chatId)
+    this.drainWaiting()
   }
 
   /**
-   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
-   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then the user decides.
+   * Put a runner's request in front of the user and wait: a tool to allow, a question, or a plan. The agent shows as
+   * needing the user meanwhile. Order: Never allow, the room's rules, Always ask and Bypass were the runner's to apply first.
    */
-  private canUseTool(chat: Chat, ws: Workspace, agent: AgentDef | undefined, commands: Map<string, string>): CanUseTool {
-    return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
-      const p = this.d.settings().permissions
-      if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
-      if (p.network === false && (toolName === 'WebFetch' || toolName === 'WebSearch')) return { behavior: 'deny', message: NETWORK_OFF }
-      const command = toolName === 'Bash' ? commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      if (command && p.network === false && usesNetwork(command)) return { behavior: 'deny', message: NETWORK_OFF }
-      const verdict = command ? bashVerdict(command, p, this.d.roomAllow(ws.roomId)) : undefined
-      if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
-      if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassInWorktrees' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
-
-      const isQuestion = toolName === 'AskUserQuestion'
-      const shown = command ? { ...input, command } : input
-      const d = describeTool(toolName, shown)
-      const questions = isQuestion ? askedQuestions(input) : undefined
-      const options = questions?.[0]?.options.map((o) => o.label) ?? (isQuestion ? [] : undefined)
-      this.setStatus(ws, agent, 'needs', d.title)
-      const isPlan = toolName === 'ExitPlanMode'
-      const plan = isPlan ? String((input as any).plan ?? '') : ''
-      const reuse = isPlan ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chat.id) : undefined
-      const { approval, decision } = this.d.approvals.request({
-        kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
-        toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : isPlan ? `Plan for ${ws.name}` : d.title,
-        detail: isPlan ? plan : d.detail, options, questions
-      }, { signal })
-      this.placeApproval(chat.id, approval.id)
-      if (isPlan && plan.trim() && existsSync(ws.path)) {
-        void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
-      }
-      const result = await decision
-      if (!this.showBlocked(ws, chat.id)) this.setStatus(ws, agent, 'working')
-      if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      if (isPlan && result.behavior === 'allow') await this.planApproved(chat.id)
-      if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
-      if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
-      // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
-      // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
-      if (result.behavior === 'answer') {
-        const given = result.answers && Object.keys(result.answers).length ? result.answers : undefined
-        const answers = given ?? (questions?.length === 1 ? { [questions[0].question]: result.text } : undefined)
-        if (isQuestion && answers) return { behavior: 'allow', updatedInput: { ...input, answers } }
-        if (questions && questions.length > 1) return { behavior: 'deny', message: `The user saw and answered only your first question, "${questions[0].question}": ${result.text}. Ask the other ${questions.length - 1} again.` }
-        return { behavior: 'deny', message: `The user answered: ${result.text}` }
-      }
-      return { behavior: 'deny', message: result.message ?? 'Denied in Kernel.' }
+  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal }, plan?: string): Promise<Decision | undefined> {
+    this.setStatus(ws, agent, 'needs', a.activity)
+    const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
+    const { approval, decision } = this.d.approvals.request({
+      kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
+      toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions
+    } as Parameters<Approvals['request']>[0], { signal: o.signal })
+    this.placeApproval(chatId, approval.id)
+    if (plan?.trim() && existsSync(ws.path)) {
+      void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
+    const result = await decision
+    // A Codex plan waits for approval after its turn ended, so the agent goes back to idle rather than working.
+    if (!this.showBlocked(ws, chatId)) this.setStatus(ws, agent, this.live.get(chatId)?.running === false ? 'idle' : 'working')
+    return result ?? undefined
+  }
+
+  /**
+   * A plan for the user to approve, from either provider (KERNEL-406): Claude's ExitPlanMode, or a Codex plan-mode turn's
+   * plan. Approval takes the chat out of plan mode and starts a Lead's hand-off (`planApproved`).
+   */
+  private async requestPlan(chatId: string, ws: Workspace, agent: AgentDef | undefined, plan: string, o: { signal?: AbortSignal; toolName?: string; input?: unknown; activity?: string }): Promise<Decision | undefined> {
+    const result = await this.ask(chatId, ws, agent, { kind: 'plan', toolName: o.toolName, input: o.input, title: `Plan for ${ws.name}`, detail: plan, activity: o.activity ?? 'Plan' }, o, plan)
+    if (result?.behavior === 'allow') await this.planApproved(chatId)
+    return result
   }
 
   private setRunning(chat: Chat, ws: Workspace, live: Live, running: boolean) {
@@ -1381,7 +1275,12 @@ export class Sessions {
 
   private mergeLimits(next: LimitPatch[]) {
     if (!next.length) return
-    for (const l of next) this.limits.set(l.type, mergeLimit(this.limits.get(l.type), { ...l, model: l.model ?? WINDOW_MODEL[l.type] }, Date.now()))
+    for (const l of next) {
+      const key = limitKey(l)
+      // Claude's per-model windows name their model. Codex's windows are the account's.
+      const now = Date.now()
+      this.limits.set(key, { ...mergeLimit(this.limits.get(key), limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, now), readAt: now })
+    }
     this.pushLimits()
   }
 
@@ -1400,24 +1299,14 @@ export class Sessions {
     bus.push({ type: 'retry', chatId, retry: null })
   }
 
-  /** Context window use from Claude Code's own /context numbers, saved on the chat for the composer and the banner. */
-  private async refreshContext(chatId: string, live: Live) {
-    const ask = (live.query as Partial<Query>).getContextUsage
-    if (typeof ask !== 'function') return
-    try {
-      const usage = await withTimeout(ask.call(live.query), 10_000)
-      const context = Math.max(0, Math.round(usage.percentage))
-      const chat = this.d.store.chat(chatId)
-      if (!chat) return
-      // Deferred tool schemas sit outside the window, so they are not part of the breakdown.
-      const contextUsage: Chat['contextUsage'] = typeof usage.totalTokens === 'number' && typeof usage.maxTokens === 'number'
-        ? { used: usage.totalTokens, max: usage.maxTokens, rows: (usage.categories ?? []).flatMap(({ name, tokens, kind }) => (kind === 'deferred' ? [] : [{ name, tokens, kind }])) }
-        : undefined
-      if (chat.context === context && JSON.stringify(chat.contextUsage) === JSON.stringify(contextUsage)) return
-      const next = { ...chat, context, contextUsage }
-      this.d.store.saveChat(next)
-      bus.push({ type: 'chat', chat: next })
-    } catch { /* the composer keeps the last number */ }
+  /** Context window use, saved on the chat for the composer and the banner. Nothing changes when the numbers are the same. */
+  private setContext(chatId: string, context: number, contextUsage: Chat['contextUsage']) {
+    const chat = this.d.store.chat(chatId)
+    if (!chat) return
+    if (chat.context === context && JSON.stringify(chat.contextUsage) === JSON.stringify(contextUsage)) return
+    const next = { ...chat, context, contextUsage }
+    this.d.store.saveChat(next)
+    bus.push({ type: 'chat', chat: next })
   }
 
   /** A paused room shows everyone as paused, except an agent waiting on the user, blocked by a hook or offline. */
@@ -1465,21 +1354,6 @@ export class Sessions {
     bus.push({ type: 'chat.item', chatId: chat.id, item })
   }
 
-  /**
-   * A subagent's messages carry the model it runs on. The first one names its Agent row, which is saved again so the
-   * name survives a restart. A row that is already done keeps its status. With no message and no `model` in the call,
-   * the row stays "Agent": the model is never guessed.
-   */
-  private subagentModel(chat: Chat, live: Live, toolUseId: string, model: string | undefined) {
-    const row = live.toolItems.get(toolUseId)
-    // "<synthetic>" marks the CLI's own messages, which no model wrote.
-    if (!row || !model || model.startsWith('<') || !SUBAGENT_TOOLS.has(row.name) || live.agentModels.has(toolUseId)) return
-    live.agentModels.add(toolUseId)
-    const named = { ...row, label: `${row.label} · ${modelName(model)}` }
-    live.toolItems.set(toolUseId, named)
-    this.item(chat, named)
-  }
-
   /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
   placeApproval(chatId: string, approvalId: string) {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
@@ -1494,84 +1368,6 @@ export class Sessions {
   private mustWorkspace(id: string) { const w = this.d.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 }
 
-/** Turn composer parts into one SDK user message. Pasted text is inlined, images become image blocks. */
-export function toUserMessage(parts: ChatPart[]): SDKUserMessage {
-  const content: any[] = []
-  // A skill chip is a slash command, and Claude Code only reads one at the start of a text block, so the text after it joins it.
-  let lead = ''
-  const text = (t: string) => { content.push({ type: 'text', text: [lead, t].filter(Boolean).join(' ') }); lead = '' }
-  for (const p of parts) {
-    if (p.type === 'text' && p.text.trim()) text(p.text)
-    else if (p.type === 'skill') { if (lead) text(''); lead = `/${p.name}` }
-    else if (p.type === 'file') text(p.text ? `<pasted name="${p.name}">\n${p.text}\n</pasted>` : `@${p.path ?? p.name}`)
-    else if (p.type === 'issue' || p.type === 'workspace') text(linkText(p))
-    else if (p.type === 'image' && p.dataUrl) {
-      const m = IMAGE_DATA_URL.exec(p.dataUrl)
-      if (m) content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } })
-    }
-  }
-  if (lead) text('')
-  return { type: 'user', message: { role: 'user', content: content.length ? content : [{ type: 'text', text: '' }] }, parent_tool_use_id: null } as SDKUserMessage
-}
-
-/** The commands the / menu offers: Claude Code's own, without its internal ones (named with a leading underscore). */
-export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
-  return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
-}
-
-/** "(Recommended)" at the end of an AskUserQuestion label, in any case. */
-const RECOMMENDED = /\s*\(recommended\)$/i
-
-/** Every question of an AskUserQuestion call, with what the card needs from each. */
-export function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
-  const list = Array.isArray(input.questions) ? input.questions : []
-  return list.filter((q: any) => q && typeof q.question === 'string').map((q: any) => ({
-    question: q.question,
-    ...(typeof q.header === 'string' ? { header: q.header } : {}),
-    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => {
-      // Claude Code's habit is "Postgres (Recommended)". The card shows a tag instead (KERNEL-415).
-      const label = String(o?.label ?? o).trim()
-      const plain = label.replace(RECOMMENDED, '') || label
-      return {
-        label: plain,
-        ...(typeof o?.description === 'string' ? { description: o.description } : {}),
-        ...(plain !== label ? { recommended: true } : {})
-      }
-    }),
-    ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
-  }))
-}
-
-/** The tool that starts a subagent. Task is its old name. */
-const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
-
-/** "Haiku 4.5" for a model id or alias, matched the way the team screens match (sameModel). An unknown model stays as it is. */
-function modelName(model: string): string {
-  const m = model.toLowerCase()
-  return MODELS.find(({ id }) => m === id || m === id.split('-')[1] || id.includes(`-${m}-`))?.label ?? model
-}
-
-/** How much of a tool's output, and of each string in its input, a chat row keeps, so a big Write or log can't bloat chat_items. */
-const TOOL_TEXT_MAX = 20_000
-
-/** The tool's input for its row, with every string longer than TOOL_TEXT_MAX clipped, nested ones too. */
-function clipInput(input: unknown): Record<string, unknown> | undefined {
-  const clip = (v: unknown): unknown =>
-    typeof v === 'string' ? v.slice(0, TOOL_TEXT_MAX)
-      : Array.isArray(v) ? v.map(clip)
-        : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clip(x)]))
-          : v
-  return input && typeof input === 'object' && !Array.isArray(input) ? clip(input) as Record<string, unknown> : undefined
-}
-
-function toolDetail(name: string, input: any): string {
-  if (name === 'Bash') return String(input?.command ?? '').split('\n')[0]
-  if (SUBAGENT_TOOLS.has(name) && input?.description) return String(input.description)
-  if (input?.file_path) return String(input.file_path)
-  if (input?.pattern) return String(input.pattern)
-  return JSON.stringify(input ?? {}).slice(0, 120)
-}
-
 export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: string): string {
   // Before KERNEL-405 the Lead's shared worktree was detached, on no branch. Each chat with Rowan now has a branch of its own.
   const where = ws.lead && ws.mode === 'worktree' && ws.branch === 'HEAD'
@@ -1582,75 +1378,6 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
   const port = `If you start a dev server, use port ${ws.port} ($KERNEL_PORT).`
   return [agent?.prompt, agent?.lead && LEAD_RULE, rule, where, port].filter(Boolean).join('\n\n')
 }
-
-/**
- * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
- * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
- */
-function kernelHooks(o: {
-  ctx: { roomId: string; workspaceId: string; agentId?: string }
-  commands: Map<string, string>
-  verdict: (command: string) => BashVerdict
-  held: () => Promise<void> | undefined
-  networkAllowed?: () => boolean
-  handoff?: LeadHandoff
-  /** The agent file's tools line, when it has one (KERNEL-397). */
-  tools?: ToolPolicy
-}): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, held, networkAllowed = () => true, handoff, tools } = o
-  const report: HookCallback = async (input) => {
-    const a = toActivity(input as HookPayload, ctx)
-    if (a) bus.activity(a)
-    return {}
-  }
-  const guard: HookCallback = async (input) => {
-    const { tool_use_id, tool_input } = input as PreToolUseHookInput
-    const command = String((tool_input as any)?.command ?? '')
-    commands.set(tool_use_id, command)
-    const v = verdict(command)
-    if (v === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${command}" in every room.` } }
-    if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
-    return {}
-  }
-  // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
-  const hold: HookCallback = async (_input, _id, { signal }) => {
-    const open = held()
-    // A Stop ends the wait too, so no promise is left pending. A Resume takes the abort listener off again.
-    if (open && !signal.aborted) {
-      await new Promise<void>((resolve) => {
-        const done = () => { signal.removeEventListener('abort', done); resolve() }
-        signal.addEventListener('abort', done, { once: true })
-        void open.then(done)
-      })
-    }
-    return {}
-  }
-  const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
-  const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
-  const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
-  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
-  // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
-  if (tools) {
-    const gate: HookCallback = async (input) => {
-      const { tool_name: tool, tool_input } = input as PreToolUseHookInput
-      if (tools.allows(tool, tool_input)) return {}
-      bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
-      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
-    }
-    hooks.PreToolUse!.push({ hooks: [gate] })
-  }
-  if (handoff) {
-    // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
-    const afterPlan: HookCallback = async () => { const t = handoff.afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }
-    const atStop: HookCallback = async () => { const t = handoff.atStop(); return t ? { hookSpecificOutput: { hookEventName: 'Stop', additionalContext: t } } : {} }
-    hooks.PostToolUse!.push({ matcher: 'ExitPlanMode', hooks: [afterPlan] })
-    hooks.Stop!.push({ hooks: [atStop] })
-  }
-  return hooks
-}
-
-/** A Lead's hand-off hooks: context right after an approved ExitPlanMode, and the Stop reminder. Each returns the text to send, or nothing. */
-interface LeadHandoff { afterPlan: () => string | undefined; atStop: () => string | undefined }
 
 /** What Restart session sends, after any messages held for the chat. */
 export const RESTART_NUDGE = 'Your session ended unexpectedly. Check the worktree and pick up where you left off.'
@@ -1672,12 +1399,6 @@ export const CRASH_REASON = 'Kernel closed unexpectedly'
 export const QUIT_NOTE = 'Kernel quit while this agent was working.'
 export const CRASH_NOTE = 'Kernel closed unexpectedly while this agent was working.'
 
-/**
- * What Claude Code 2.1.292 answers a resume of a session it has no transcript for, followed by the id, as the only entry
- * of an error_during_execution result's `errors` that comes before any init (KERNEL-286). It prints the same on stderr.
- */
-export const SESSION_GONE = 'No conversation found with session ID: '
-
 /** The note in a chat whose session was gone, so Kernel started a new one. */
 export const SESSION_GONE_NOTE = "Kernel started a new session because the old one is gone. The agent doesn't remember earlier turns in this chat."
 
@@ -1693,11 +1414,11 @@ export function freshNudge(brief?: string): string {
   ].join('\n\n')
 }
 
-/** What a tool row still marked running says once Kernel opens again. */
-export const TOOL_STOPPED = 'Stopped when Kernel quit'
-
 /** How long a quit waits for interrupted turns to end before it stops their processes. */
 export const QUIT_BUDGET_MS = 3000
+
+/** Every provider, for the holds that name one. */
+const PROVIDER_IDS: Provider[] = ['claude', 'codex']
 
 /** Meta keys Sessions saves itself: the working journal, every queue not held for setup, and the pids of live processes. */
 const WORKING = 'working'
@@ -1722,98 +1443,6 @@ const firstTurn = (queue: QueuedMessage[]): QueuedMessage[] => {
   return end < 0 ? queue : queue.slice(0, end)
 }
 
-/** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
-export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
-
-/** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
-const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
-
-/** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
-  const env = { ...base, ...extra } as Record<string, string>
-  delete env.ANTHROPIC_API_KEY
-  delete env.ANTHROPIC_AUTH_TOKEN
-  // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
-  if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
-  else if (o.agentTeams === false) delete env[AGENT_TEAMS]
-  // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
-  return env
-}
-
-/** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
-export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
-
-/**
- * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
- * server never started. Kernel's own servers (`own`) stay whatever their name. Nothing switched off adds nothing (KERNEL-226).
- */
-export function switchedOff(off: { skills: string[]; mcp: string[] } | undefined, own: string[] = []): Options['settings'] | undefined {
-  const skills = [...new Set(off?.skills ?? [])]
-  const mcp = [...new Set(off?.mcp ?? [])].filter((name) => !own.includes(name))
-  if (!skills.length && !mcp.length) return undefined
-  return {
-    ...(skills.length ? { skillOverrides: Object.fromEntries(skills.map((name) => [name, 'off' as const])) } : {}),
-    ...(mcp.length ? { deniedMcpServers: mcp.map((serverName) => ({ serverName })) } : {})
-  }
-}
-
-const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'] as const
-
-/** A window update. Status is left out when the source doesn't know it, so an earlier warning isn't cleared. */
-export type LimitPatch = Omit<RateLimit, 'status'> & { status?: RateLimit['status'] }
-
-/**
- * rate_limit_event names the window that matters right now, and the CLI also sends `unifiedWindows`
- * (not in sdk.d.ts) with the 5-hour and weekly numbers. Utilization is 0 to 1, resetsAt is epoch seconds.
- */
-export function limitsFromEvent(info: SDKRateLimitInfo): LimitPatch[] {
-  const windows = (info as { unifiedWindows?: Record<string, { utilization?: number; resetsAt?: number } | undefined> }).unifiedWindows ?? {}
-  const out: LimitPatch[] = []
-  for (const type of WINDOWS) {
-    const w = windows[type]
-    if (w) out.push({ type, utilization: w.utilization, resetsAt: w.resetsAt })
-  }
-  if (info.rateLimitType) {
-    const named = defined({ type: info.rateLimitType, status: info.status, utilization: info.utilization, resetsAt: info.resetsAt })
-    const i = out.findIndex((l) => l.type === info.rateLimitType)
-    if (i >= 0) out[i] = { ...out[i], ...named }; else out.push(named)
-  }
-  return out
-}
-
-/**
- * The experimental usage call reports utilization 0 to 100 and ISO reset times. Converted to the rate_limit_event units.
- * Fable's own weekly window comes in `model_scoped` and is the window rate_limit_event calls `seven_day_overage_included`.
- */
-export function limitsFromUsage(res: SDKControlGetUsageResponse): LimitPatch[] {
-  const out: LimitPatch[] = []
-  const add = (type: LimitPatch['type'], w: { utilization: number | null; resets_at: string | null } | null | undefined) => {
-    if (w && w.utilization !== null) out.push({ type, utilization: w.utilization / 100, resetsAt: w.resets_at ? Math.round(Date.parse(w.resets_at) / 1000) : undefined })
-  }
-  for (const type of WINDOWS) add(type, res.rate_limits?.[type])
-  add('seven_day_overage_included', res.rate_limits?.model_scoped?.find((m) => /fable/i.test(m.display_name)))
-  return out
-}
-
-/** Below this, a reading of a rejected window means it lifted early (a reset on claude.ai, a bigger plan). Near 100% it may be rounding, so the rejection stands. */
-const LIFTED_UNDER = 0.95
-
-/**
- * A patch without a status keeps the stored one, unless that window has since reset or the reading shows clear room again.
- * A new window resets at least a minute later: reset times read back from ISO strings can be a second off.
- */
-export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: number): RateLimit {
-  const reset = prev?.resetsAt !== undefined && (prev.resetsAt * 1000 <= now || (patch.resetsAt !== undefined && patch.resetsAt > prev.resetsAt + 60))
-  const room = prev?.status === 'rejected' && patch.status === undefined && patch.utilization !== undefined && patch.utilization < Math.min(prev.utilization ?? 1, LIFTED_UNDER)
-  return { ...prev, status: reset || room || !prev ? 'allowed' : prev.status, ...defined(patch) }
-}
-
-/** The SDK adds the end of stderr to a process's exit error only when it spawned the process itself. */
-function withStderr(message: string, stderr: string): string {
-  const tail = stderr.trim().slice(-500)
-  return tail && !message.includes('stderr:') ? `${message}. stderr: ${tail}` : message
-}
-
 /**
  * The process is alive and was started the way Kernel saved: its binary and first argument. Matching the first argument
  * too keeps a reused pid running `node something-else` from passing for `node cli.js`. An exited one (`(claude)`) is not.
@@ -1829,12 +1458,3 @@ function runs(p: SavedPid): Promise<boolean> {
 }
 
 function signal(pid: number, sig: NodeJS.Signals) { try { process.kill(pid, sig) } catch { /* already gone */ } }
-
-const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
-
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error('timed out')), ms)
-    p.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e) })
-  })
-}

@@ -1,3 +1,15 @@
+import type { Provider } from '@shared/types'
+import { CODEX_TOOL_PREFIX } from './providers/codex/tools'
+
+/** What an agent on `provider` calls one of Kernel's tools: `mcp__kernel__<name>` on Claude, `kernel_<name>` on Codex (KERNEL-406). */
+export const kernelTool = (provider: Provider, name: string) => (provider === 'codex' ? `${CODEX_TOOL_PREFIX}${name}` : `mcp__kernel__${name}`)
+
+/**
+ * Kernel's rules and messages name its tools the way Claude sees them. This gives the text an agent on `provider` reads,
+ * with each tool named as that provider calls it (KERNEL-406).
+ */
+export const forProvider = (text: string, provider: Provider) => (provider === 'codex' ? text.replace(/mcp__kernel__/g, CODEX_TOOL_PREFIX) : text)
+
 /**
  * "Approve and hand off" (KERNEL-67). A repo's own Lead file may say nothing about handing work out,
  * or even "you only plan", so Kernel adds its rule to every Lead and holds the Lead to it after an approval.

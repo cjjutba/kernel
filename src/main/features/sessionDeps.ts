@@ -13,6 +13,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     settings: () => k.settings,
     agentFor: (ws) => k.team.agentOf(ws.roomId, ws.agentId),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
+    codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
@@ -49,8 +50,10 @@ export function sessionDeps(k: Kernel): SessionDeps {
       // A sync skipped while this chat's turn ran happens once it ends. It does nothing while another of its tabs runs (KERNEL-181, KERNEL-405).
       if (!teammate) void k.lead.syncLead(ws.roomId, { workspaceId: ws.id })
     },
-    onFailure: (failure) => {
-      if (failure === 'auth') k.account.signedOut()
+    accountFor: (provider) => k.providers.active(provider),
+    claudeEnv: () => k.providers.claudeEnv(),
+    onFailure: (failure, _ws, provider) => {
+      if (failure === 'auth') k.account.signedOut(provider)
       else if (failure === 'network') void k.account.network?.lost()
     },
     // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
