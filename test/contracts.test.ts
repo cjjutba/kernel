@@ -223,11 +223,30 @@ describe('renderer store', () => {
     expect(getState().ui.foldedChats).toEqual([])
   })
 
+  it('unfolding a chat also drops the ids its fold was saved under before threads', () => {
+    actions.ui.foldChat('t1', true)
+    actions.ui.foldChat('t2', true)
+    actions.ui.foldChat('old-a', true)
+    actions.ui.foldChat('t1', false, ['old-a', 'old-b'])
+    expect(getState().ui.foldedChats).toEqual(['t2'])
+    actions.ui.foldChat('t2', false)
+  })
+
+  it('forgets the last tab of a thread when the thread closes', () => {
+    apply({ type: 'thread', thread: { id: 'tc', roomId: 'a', title: 'Closing', createdAt: 1 } })
+    const tab = { id: 'tc1', workspaceId: 'lead-ws', title: 'tc1', kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: 1, threadId: 'tc' }
+    apply({ type: 'chat', chat: tab })
+    actions.ui.openTab('lead-ws', 'tc1')
+    expect(getState().lastTabs.tc).toBe('tc1')
+    apply({ type: 'thread', thread: { id: 'tc', roomId: 'a', title: 'Closing', createdAt: 1, closedAt: 9 } })
+    expect(getState().lastTabs.tc).toBeUndefined()
+  })
+
   it('keeps the threads the thread push brings, closed ones too', () => {
     apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1 } })
     apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1, closedAt: 5 } })
     apply({ type: 'thread', thread: { id: 't2', roomId: 'a', title: 'Fix the build', createdAt: 2 } })
-    expect(Object.keys(getState().threads).sort()).toEqual(['t1', 't2'])
+    expect(Object.keys(getState().threads)).toEqual(expect.arrayContaining(['t1', 't2']))
     expect(getState().threads.t1.closedAt).toBe(5)
   })
 

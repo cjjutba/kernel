@@ -123,6 +123,15 @@ function lastTabs(): Record<string, string> {
 function keepLastTabs(map: Record<string, string>) {
   try { localStorage.setItem(LAST_TABS, JSON.stringify(map)) } catch { /* not remembered */ }
 }
+/** Forgets the last tab of the threads `gone` picks out, so `kernel.lastTabs` doesn't keep a chat nobody can open. */
+function dropLastTabs(gone: (threadId: string) => boolean) {
+  const ids = Object.keys(state.lastTabs).filter(gone)
+  if (!ids.length) return
+  const next = { ...state.lastTabs }
+  for (const id of ids) delete next[id]
+  setState({ lastTabs: next })
+  keepLastTabs(next)
+}
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
 const folded = new Set<keyof typeof HIDDEN>()
 
@@ -406,9 +415,12 @@ export const actions = {
     },
     /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
     setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
-    /** Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. */
-    foldChat: (chatId: string, fold: boolean) => {
-      const ids = getState().ui.foldedChats.filter((id) => id !== chatId)
+    /**
+     * Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. `saved` are ids
+     * a fold was kept under before chats had threads (the chat ids of its tabs): any of them counts as a fold of the chat, and unfolding drops them too.
+     */
+    foldChat: (chatId: string, fold: boolean, saved: string[] = []) => {
+      const ids = getState().ui.foldedChats.filter((id) => id !== chatId && !saved.includes(id))
       const next = fold ? [...ids, chatId] : ids
       setUi({ foldedChats: next })
       keepFoldedChats(next)
@@ -520,7 +532,11 @@ export const actions = {
   },
   threads: {
     set: (list: Thread[]) => setState({ threads: Object.fromEntries(list.map((t) => [t.id, t])) }),
-    upsert: (thread: Thread) => setState((s) => ({ threads: { ...s.threads, [thread.id]: thread } }))
+    upsert: (thread: Thread) => {
+      setState((s) => ({ threads: { ...s.threads, [thread.id]: thread } }))
+      // A closed chat has no tab to reopen on, and a new tab reopens it with a fresh entry.
+      if (thread.closedAt) dropLastTabs((id) => id === thread.id)
+    }
   },
   tasks: {
     set: (roomId: string, list: Task[]) => setState((s) => ({ tasks: { ...s.tasks, [roomId]: list } })),
@@ -639,6 +655,8 @@ async function start() {
   // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
   actions.ui.setStartError(undefined)
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
+  // Last tabs of chats closed since, or gone, would otherwise pile up in localStorage. A failed load leaves no threads to judge them by.
+  if (threads.length) dropLastTabs((id) => !state.threads[id] || !!state.threads[id].closedAt)
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)

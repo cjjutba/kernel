@@ -183,7 +183,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} threadId={isLead ? threadId : undefined} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />

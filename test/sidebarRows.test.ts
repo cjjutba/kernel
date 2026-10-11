@@ -99,6 +99,14 @@ describe('sidebar rows with threads (KERNEL-338)', () => {
     expect(keys(slotsFor(room, agents, workspaces, chats, threads, ['t1']))).toEqual(['chat:t1', 'chat:t2'])
   })
 
+  it('keeps a fold saved under a chat id from before threads, which migration 5 turned into a thread of its own', () => {
+    const chats = { home: [chat('c1', { threadId: 'new-uuid-1' }), chat('c2', { threadId: 'new-uuid-1' }), chat('c3', { threadId: 'new-uuid-2' })] }
+    const workspaces = [home, ws('w1', { threadId: 'new-uuid-1' }), ws('w2', { threadId: 'new-uuid-2' })]
+    const threads = threadsOf(thread('new-uuid-1'), thread('new-uuid-2'))
+    expect(keys(sidebarRows(room, agents, workspaces, chats, threads, ['c2']))).toEqual(['chat:new-uuid-1', 'chat:new-uuid-2', 'workspace:w2'])
+    expect(keys(slotsFor(room, agents, workspaces, chats, threads))).toEqual(['chat:new-uuid-1', 'workspace:w1', 'chat:new-uuid-2', 'workspace:w2'])
+  })
+
   it('opens a thread on the tab last shown in it, else its first tab', () => {
     const tabs = [chat('a1'), chat('a2'), chat('a3')]
     expect(threadTab(tabs, { t1: 'a2' }, 't1')?.id).toBe('a2')

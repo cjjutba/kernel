@@ -75,9 +75,14 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const chats = useStore((s) => s.chats[workspaceId])?.filter((c) => chatIds.includes(c.id)) ?? []
   const working = useStore((s) => chatIds.filter((id) => s.running[id]))
   const queued = useStore((s) => chatIds.reduce((n, id) => n + (s.queue[id]?.length ?? 0), 0))
-  // Every open tab of a Lead chat: the whole chat closes, which has its own words (GroupedCloseLastTab.png).
-  const thread = useStore((s) => closesThread(s, workspaceId, chatIds))
-  const started = useStore((s) => ws && thread ? chatRows(s, ws.roomId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 : 0)
+  // Every open tab of a Lead chat: the whole chat closes, which has its own words (GroupedCloseLastTab.png). Read once, when the dialog opens:
+  // pressing Close chat closes the tabs, and a live read would then turn this into the generic dialog while the button is still busy.
+  const [whole] = useState(() => {
+    const s = getState()
+    const thread = closesThread(s, workspaceId, chatIds)
+    const roomId = s.workspaces.find((w) => w.id === workspaceId)?.roomId
+    return thread && roomId ? { thread, started: chatRows(s, roomId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 } : undefined
+  })
   const [closing, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   if (!ws) return null
@@ -95,7 +100,8 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const drops = queued ? ` and drops ${plural(queued, 'queued message')}` : ''
   const body = `${agent} is still working in ${where}. Closing stops ${working.length > 1 ? 'those turns' : 'the turn'}${drops}. Changes already in the worktree stay.`
 
-  if (thread) {
+  if (whole) {
+    const { thread, started } = whole
     const handed = started ? ` The ${started === 1 ? 'workspace' : `${started} workspaces`} it started ${started === 1 ? 'stays' : 'stay'} in the sidebar.` : ''
     return (
       <ConfirmDialog

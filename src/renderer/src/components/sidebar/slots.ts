@@ -78,7 +78,8 @@ export function sidebarRows(
   const owned = new Set<string>()
   for (const { thread, tabs } of open) {
     const started = live.filter((ws) => owner(ws) === thread.id)
-    const hidden = !!started.length && folded.includes(thread.id)
+    // Before threads a fold was kept under the chat's id. Migration 5 gave each such chat a thread of its own, so a fold under any tab's id still counts.
+    const hidden = !!started.length && (folded.includes(thread.id) || tabs.some((c) => folded.includes(c.id)))
     rows.push({ kind: 'chat', thread, tabs, owned: started, folded: hidden })
     for (const ws of started) { owned.add(ws.id); if (!hidden) rows.push({ kind: 'workspace', ws, nested: true }) }
   }
