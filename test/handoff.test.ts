@@ -7,7 +7,8 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
-import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, reviewRule } from '../src/main/services/handoff'
+import { reviewTools } from '../src/main/services/reviewMcp'
 import { kernelTools, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
@@ -312,5 +313,29 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
     expect(await t.review('done')).toEqual({ isError: true, text: "Not created: done's PR is already merged, so there is nothing left to review." })
     expect(await t.review('main')).toEqual({ isError: true, text: 'Not created: main works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.' })
     expect(t.made).toEqual([])
+  })
+})
+
+describe('reviews block only on real problems (KERNEL-377)', () => {
+  const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main' })
+
+  it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
+    const [submit] = reviewTools({ submit: async () => '' })
+    const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+    for (const text of [rule, submit.description, ...theos]) expect(text).toContain(BLOCKER_RULE)
+    for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)
+  })
+
+  it('keeps blockers short, approves with notes, and scopes a re-review to the earlier blockers', () => {
+    expect(rule).toContain('Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. Kai picks the fix.')
+    expect(rule).toContain('When nothing blocks, approve. Put minor findings in the summary as at most three short notes.')
+    expect(rule).toContain('check only your earlier blockers and anything the fix broke')
+    expect(rule).toContain('Raise nothing new unless the fix caused it.')
+    expect(rule).toContain('Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.')
+  })
+
+  it('has the Lead pass on blockers only and mention notes to the user', () => {
+    expect(LEAD_RULE).toContain('When a review found blockers, pass on the blockers and nothing else.')
+    expect(LEAD_RULE).toContain("mention them to the user in one line and don't send them to the author")
   })
 })
