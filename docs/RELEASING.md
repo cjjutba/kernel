@@ -64,7 +64,7 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
    pnpm release
    ```
 
-   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
+   The script checks the tag (on HEAD and on origin), the release notes file, the certificate and the notary profile. It builds, signs with the hardened runtime, notarizes and staples the app, and verifies it with `codesign`, `spctl` and `stapler`. It adds `minimumSystemVersion` to `latest-mac.yml`, so a Mac older than the build needs isn't offered the update (KERNEL-223). Only then does it create the GitHub release with `gh`, uploading `Kernel-arm64.dmg`, `Kernel-arm64.zip`, their blockmaps and `latest-mac.yml`.
 
 `pnpm release --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 

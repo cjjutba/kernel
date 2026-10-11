@@ -76,6 +76,19 @@ smoke || { cat "$tmp/smoke.log" >&2; fail "the packaged app can't load better-sq
 # The RunAsNode fuse is off (KERNEL-208). If it were on, this would run the -e script and print node instead of ok.
 ELECTRON_RUN_AS_NODE=1 smoke -e 'console.log("node")' || fail "the packaged app still runs as Node with ELECTRON_RUN_AS_NODE. Check electronFuses in electron-builder.yml."
 
+# Electron sets the oldest macOS the app opens on. An installed copy skips an update whose minimumSystemVersion is
+# above its os.release(), so a Mac too old for this build isn't offered it (KERNEL-223). On a Mac os.release() is the
+# Darwin version, not the macOS one, so the feed gets the Darwin version. electron-builder doesn't write the field.
+min_macos=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")
+case "${min_macos%%.*}" in
+  12) min_darwin=21.0.0 ;;
+  13) min_darwin=22.0.0 ;;
+  14) min_darwin=23.0.0 ;;
+  15) min_darwin=24.0.0 ;;
+  *) fail "the app needs macOS $min_macos, and release.sh doesn't know its Darwin version. Add it to the list above." ;;
+esac
+echo "minimumSystemVersion: $min_darwin" >> dist/latest-mac.yml
+
 if $dry; then
   node scripts/release-notes.ts --github "$version" > dist/release-body.md
   echo "release: dry run done. Artifacts are in dist/, and the release body (without GitHub's list) in dist/release-body.md."
