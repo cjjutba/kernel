@@ -33,8 +33,12 @@ export class Archive extends Feature {
     bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
   }
 
-  /** One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice. */
-  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}): Promise<void> {
+  /**
+   * One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice.
+   * The Lead's workspace only goes with its room (`removingRoom`), since every Lead chat lives there (KERNEL-355).
+   */
+  async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean } = {}): Promise<void> {
+    if (this.store.workspace(id)?.lead && !o.removingRoom) throw new Error("The Lead's workspace stays as long as its room. Close its chats instead.")
     const running = this.archiving.get(id)
     if (running) return running
     const next = this.archiveNow(id, deleteBranch, o).finally(() => this.archiving.delete(id))
@@ -42,7 +46,7 @@ export class Archive extends Feature {
     return next
   }
 
-  private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
+  private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean; removingRoom?: boolean } = {}) {
     this.k.setup.setupFailures.delete(id)
     // The branch the work is on now: archive deletes it, and restore brings it back.
     const ws = await this.k.prs.syncBranch(id)
@@ -64,7 +68,8 @@ export class Archive extends Feature {
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
     // The caller's choice wins, then the room's own value, then the app's (KERNEL-370).
-    const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive'))
+    // The Lead's worktree is detached, so it has no branch to delete (KERNEL-355).
+    const wanted = ws.mode === 'worktree' && !ws.lead && !o.keepWorktree && (deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive'))
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).

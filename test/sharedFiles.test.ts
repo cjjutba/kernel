@@ -230,9 +230,9 @@ describe('share_file (KERNEL-302)', () => {
     expect(k().store.sharedFiles().map((x) => x.source)).toEqual(['full.md'])
   })
 
-  it('shares from the Lead, whose workspace is the room, and from a reviewer, into their own chats', async () => {
+  it('shares from the Lead, in its own worktree, and from a reviewer, into their own chats', async () => {
     const { k, leadWs, review, put, share, lead, chatOf, room } = await setup()
-    expect(leadWs.path).toBe(room.path)
+    expect(leadWs.path).not.toBe(room.path)
     await put(leadWs, '.kernel/shared/plan.md', '# The plan\n')
     expect((await share(leadWs, { path: '.kernel/shared/plan.md' })).text).toMatch(/^Shared "The plan" as v1 \(Markdown, /)
     await put(review, 'diagram.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')

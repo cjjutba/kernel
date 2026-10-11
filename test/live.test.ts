@@ -290,6 +290,64 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
   }
 })
 
+// KERNEL-355: a Lead chat that ran on the main checkout before the Lead moved into its own worktree still remembers its
+// turns, resumed by session id from the worktree (KERNEL-348). Two short Sonnet turns in a throwaway repo in a temp folder,
+// nothing in KERNEL_LIVE_REPO. `-t "live lead move"`.
+describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
+  it('resumes a Lead chat from the checkout in its new worktree', { timeout: 300_000 }, async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-live-lead-'))
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-live-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-live-home-'))
+    const where = { dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') }
+    for (const args of [['init', '-q', '-b', 'main', repo], ['-C', repo, 'config', 'user.email', 't@t.dev'], ['-C', repo, 'config', 'user.name', 'Test']]) await exec('git', args)
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    await writeFile(join(repo, 'README.md'), '# lead move\n')
+    await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), '---\nname: rowan\ndescription: Lead.\nlead: true\nmodel: sonnet\n---\nYou are Rowan. Answer in one short line.')
+    await exec('git', ['-C', repo, 'add', '-A'])
+    await exec('git', ['-C', repo, 'commit', '-q', '-m', 'init'])
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({
+      hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'),
+      models: { effort: 'low', leadPlanMode: false }, permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [] }
+    }))
+    const evidence: Record<string, unknown> = { repo }
+    let k = new Kernel(where)
+    await k.start()
+    try {
+      const room = await k.addRoom(repo)
+      // The Lead as it was before the move: on the checkout.
+      const made = k.store.workspace((await k.handlers()['lead.open']({ roomId: room.id })).id)!
+      await exec('git', ['-C', repo, 'worktree', 'remove', '--force', made.path])
+      k.store.saveWorkspace({ ...made, mode: 'current', path: repo, branch: 'main', baseRef: 'main' })
+      const chat = await k.lead.startLeadChat(room.id, { prompt: 'Remember the word kumquat for later. Reply with just ok. Use no tools.', plan: false })
+      const items = () => k.store.items(chat.id)
+      await waitFor('the first turn', () => items().some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
+      const session = k.store.chat(chat.id)?.sessionId
+      evidence.before = { session, cwd: repo }
+      expect(session).toBeTruthy()
+      await k.stop()
+
+      k = new Kernel(where)
+      await k.start()
+      const moved = k.store.workspace(made.id)!
+      evidence.after = { mode: moved.mode, path: moved.path, baseRef: moved.baseRef }
+      expect(moved).toMatchObject({ mode: 'worktree', branch: 'HEAD', baseRef: 'main' })
+      const from = items().length
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Which word did I ask you to remember? Reply with just that word.' }] })
+      await waitFor('the word', () => items().slice(from).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
+      evidence.reply = items().slice(from).flatMap((i) => (i.kind === 'text' ? [i.text] : i.kind === 'note' ? [`note: ${i.text}`] : []))
+      evidence.sessionAfter = k.store.chat(chat.id)?.sessionId
+      expect(items().slice(from).some((i) => i.kind === 'text' && /kumquat/i.test(i.text))).toBe(true)
+      expect(k.store.chat(chat.id)?.sessionId).toBe(session)
+    } finally {
+      const out = join(process.env.KERNEL_LIVE_OUT ? join(process.env.KERNEL_LIVE_OUT, '..') : tmpdir(), 'kernel-live-lead-move.json')
+      await writeFile(out, JSON.stringify(evidence, null, 2))
+      console.log(`[live] evidence: ${out}`)
+      await k.stop({ budgetMs: 0 })
+      for (const dir of [home, dataDir, repo]) await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 async function waitFor<T>(what: string, check: () => T | undefined | false, timeoutMs = 180_000): Promise<T> {
   const end = Date.now() + timeoutMs
   for (;;) {

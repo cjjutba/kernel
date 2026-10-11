@@ -214,7 +214,7 @@ export class Rooms extends Feature {
     const room = this.mustRoom(roomId)
     const failed: string[] = []
     for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
-      try { await this.k.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
+      try { await this.k.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees, removingRoom: true }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
     }
     if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
     this.k.overlaps.forget(roomId)

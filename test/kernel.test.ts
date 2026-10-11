@@ -55,14 +55,16 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // The sidebar row, Cmd+K and Cmd+Shift+L open the Lead before anyone briefs it. lead.open makes the workspace once and sends nothing.
     const quiet = sent.length
     const opened = await k.handlers()['lead.open']({ roomId: room.id })
-    expect(opened).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'current', path: repo, status: 'ready' })
+    // Its own worktree, detached at the room's default branch, not the main checkout (KERNEL-355).
+    expect(opened).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'worktree', branch: 'HEAD', baseRef: 'main', lead: true, status: 'ready' })
+    expect(opened.path).not.toBe(repo)
     expect(k.store.chats(opened.id).filter((c) => c.kind !== 'terminal')).toHaveLength(1)
     expect((await k.handlers()['lead.open']({ roomId: room.id })).id).toBe(opened.id)
     expect(sent).toHaveLength(quiet)
 
     const lead = await k.leadChat(room.id)
     expect(lead.workspaceId).toBe(opened.id)
-    expect(k.store.workspace(lead.workspaceId)).toMatchObject({ agentId: 'rowan', mode: 'current', path: repo })
+    expect(k.store.workspace(lead.workspaceId)).toMatchObject({ agentId: 'rowan', mode: 'worktree', path: opened.path })
     expect(k.statusOf(room.id)).toEqual({ rowan: 'idle', kai: 'idle' })
 
     // A brief logs the line the floor's briefing sequence starts from (FloorSent.png).
@@ -109,7 +111,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     // The first call makes the Lead's workspace and one chat with the Lead's defaults, and sends the prompt.
     const first = await start({ roomId: room.id, prompt: 'Add PDF export to invoices' })
     const ws = k.store.workspace(first.workspaceId)!
-    expect(ws).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'current', path: repo })
+    expect(ws).toMatchObject({ name: 'lead', agentId: 'rowan', mode: 'worktree', branch: 'HEAD', lead: true })
     expect(chats(ws.id)).toHaveLength(1)
     expect(first).toMatchObject({ title: 'New tab', kind: 'chat', model: 'claude-opus-5-5', effort: 'medium', plan: true })
     expect(sent).toEqual([{ chatId: first.id, text: 'Add PDF export to invoices' }])

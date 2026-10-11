@@ -97,6 +97,18 @@ export async function defaultBranch(repo: string, remote = 'origin'): Promise<st
   return currentBranch(repo)
 }
 
+/**
+ * Where the Lead's worktree starts (KERNEL-355): `<remote>/<default>`, else the local default branch when the remote
+ * doesn't have it. Nothing for a folder that isn't a git repo or has no commit yet: that room's Lead stays on the checkout.
+ * Reads the refs as they are, without fetching.
+ */
+export async function leadBase(repo: string, remote = 'origin'): Promise<string | undefined> {
+  if (!(await refExists(repo, 'HEAD'))) return undefined
+  const d = await defaultBranch(repo, remote)
+  if (await refExists(repo, `${remote}/${d}`)) return `${remote}/${d}`
+  return await refExists(repo, d) ? d : undefined
+}
+
 async function refExists(repo: string, ref: string): Promise<boolean> {
   return (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`])).code === 0
 }
@@ -188,7 +200,11 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
   }
 }
 
-export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
+/**
+ * `detach` makes no branch: the worktree's HEAD is detached at `baseRef` (the Lead's, KERNEL-355), and `branch` only names
+ * the folder. `path` is a fixed folder instead of one picked under `root`.
+ */
+export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string; detach?: boolean; path?: string }
 
 /**
  * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
@@ -214,7 +230,8 @@ export async function freeWorktreePath(repo: string, root: string, branch: strin
  */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
-  const path = await freeWorktreePath(o.repo, o.root, o.branch)
+  const path = o.path ?? await freeWorktreePath(o.repo, o.root, o.branch)
+  if (o.detach) { await git(o.repo, 'worktree', 'add', '--detach', path, o.baseRef); return path }
   const wasMissing = (await branchState(o.repo, o.branch)) === 'missing'
   try {
     await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
@@ -294,6 +311,12 @@ export async function detachWorktree(repo: string, path: string, opts: { deleteB
   }
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
   return moved
+}
+
+/** Whether `path` is one of `repo`'s worktrees, not the repo itself. git may list it by its real path. */
+export async function isWorktreeOf(repo: string, path: string): Promise<boolean> {
+  const real = await realpath(path).catch(() => path)
+  return (await listWorktrees(repo)).slice(1).some((w) => w.path === path || w.path === real)
 }
 
 export interface WorktreeInfo { path: string; branch?: string; head: string; locked?: boolean }

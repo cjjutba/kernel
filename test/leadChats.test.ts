@@ -189,8 +189,8 @@ describe("marking the Lead's workspace (KERNEL-353)", () => {
     // A worktree handed to the Lead when its agent retired is the Lead agent's too, and isn't the Lead's workspace.
     const handed = await old.workspaces.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
     old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'rowan' })
-    // As if this database came from a version before the mark existed.
-    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined })
+    // As if this database came from a version before the mark existed, when the Lead worked on the main checkout.
+    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined, mode: 'current', path: old.store.room(ws.roomId)!.path, branch: 'main' })
     old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
     old.store.saveMeta('leadWorkspaceBackfill', false)
     await old.stop()

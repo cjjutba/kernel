@@ -26,7 +26,7 @@ export function shirtOf(agent: AgentDef, team: AgentDef[], room?: Pick<Room, 'de
   return agent.look?.shirt ?? overflowShirt(Math.max(0, overflow.findIndex((a) => a.id === agent.id)))
 }
 
-/** Where the agent is working now: their newest open workspace, or the main checkout for the Lead. */
+/** Where the agent is working now: their newest open workspace, else one on the main checkout. The Lead's is its own worktree, `lead` (KERNEL-355). */
 export function currentWorkspace(agentId: string, roomId: string, workspaces: Workspace[]): Workspace | undefined {
   const open = workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived')
   const own = open.filter((w) => w.mode !== 'current').sort((a, b) => b.createdAt - a.createdAt)[0]
