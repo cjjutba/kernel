@@ -69,6 +69,27 @@ export function toolPolicy(tools: string[] | undefined, o: { plans?: string } = 
   return { hidden: HIDEABLE.filter((t) => !listed(t)), allows }
 }
 
+/** A server the tools line names that the session doesn't have, and a connected one whose name contains it. */
+export interface MissingServer { server: string; entry: string; suggestion?: string }
+
+/**
+ * The MCP servers a tools line names (`mcp__linear`, `mcp__linear__*`, `mcp__linear__get_issue`) that aren't among the
+ * session's connected servers. Kernel's own server is always there. A server that failed or needs auth still counts as
+ * connected: its name matches, so the gate lets its tools through and the problem is elsewhere.
+ */
+export function missingServers(tools: string[] | undefined, connected: string[]): MissingServer[] {
+  const have = new Set(connected)
+  const missing = new Map<string, MissingServer>()
+  for (const entry of tools ?? []) {
+    const p = toolName(entry).split('__')
+    const server = p[0] === 'mcp' && p.length <= 3 ? p[1] : undefined
+    if (!server || server === 'kernel' || have.has(server) || missing.has(server)) continue
+    const suggestion = connected.find((c) => c !== 'kernel' && c.toLowerCase().includes(server.toLowerCase()))
+    missing.set(server, { server, entry: toolName(entry), ...(suggestion ? { suggestion } : {}) })
+  }
+  return [...missing.values()]
+}
+
 /** A tool as usage data names it: a built-in by name, any MCP tool as `mcp`, since server names are the user's own. */
 export const toolKind = (tool: string): (typeof TOOL_KINDS)[number] => {
   const name = toolName(tool)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canOpenPr, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
+import { canOpenPr, missingServers, toolKind, toolName, toolPolicy } from '../src/main/services/agentTools'
 
 // KERNEL-397: an agent file's tools line holds in Kernel the way it does when Claude Code runs the file as a subagent.
 describe('agent tools', () => {
@@ -41,5 +41,19 @@ describe('agent tools', () => {
 
   it('names a blocked tool without its MCP server', () => {
     expect(['Write', 'MultiEdit', 'mcp__acme_secret__deploy', 'Monitor'].map(toolKind)).toEqual(['Write', 'Edit', 'mcp', 'other'])
+  })
+
+  it('names each MCP server the tools line lists that the session lacks, once, with a connected match', () => {
+    const connected = ['kernel', 'claude_ai_Linear', 'github']
+    expect(missingServers(['Read', 'mcp__linear', 'mcp__linear__get_issue', 'mcp__sentry__*', 'mcp__github__create_pr'], connected)).toEqual([
+      { server: 'linear', entry: 'mcp__linear', suggestion: 'claude_ai_Linear' },
+      { server: 'sentry', entry: 'mcp__sentry__*' },
+    ])
+  })
+
+  it("finds nothing missing without a tools line, for Kernel's own tools, or when every server is connected", () => {
+    expect(missingServers(undefined, [])).toEqual([])
+    expect(missingServers(['Read', 'mcp__kernel__submit_review', 'mcp__kernel'], [])).toEqual([])
+    expect(missingServers(['mcp__linear__get_issue', 'mcp__github'], ['linear', 'github'])).toEqual([])
   })
 })

@@ -316,6 +316,20 @@ describe('session runner (SDK scripted)', () => {
     expect(sessions.billingOf(chat.id)).toBe('ANTHROPIC_API_KEY')
     expect(store.items(chat.id).find((i) => i.kind === 'note')).toMatchObject({ text: 'This session is billed through ANTHROPIC_API_KEY, not your Claude plan.' })
   })
+
+  it("says once when the agent file lists an MCP server the session doesn't have", async () => {
+    const agent = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'mcp__linear', 'mcp__kernel__submit_review'] } as AgentDef
+    const servers = [{ name: 'kernel', status: 'connected' }, { name: 'claude_ai_Linear', status: 'connected' }]
+    const { call, options, store, chat } = await setup('acceptEdits', { agent })
+    for (let i = 0; i < 2; i++) call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none', mcp_servers: servers })
+    await flush()
+    expect(store.items(chat.id).filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toEqual(["This agent's file lists mcp__linear, but no MCP server named linear is connected. Did you mean mcp__claude_ai_Linear?"])
+
+    const ok = await setup('acceptEdits', { agent: { ...agent, tools: ['mcp__claude_ai_Linear__get_issue'] } })
+    ok.call.feed({ type: 'system', subtype: 'init', session_id: ok.options.sessionId, apiKeySource: 'none', mcp_servers: servers })
+    await flush()
+    expect(ok.store.items(ok.chat.id).filter((i) => i.kind === 'note')).toEqual([])
+  })
   it('holds follow-ups while a turn runs and sends them in order when it ends', async () => {
     const { sessions, call, options, chat, kinds } = await setup()
     call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
