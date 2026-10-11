@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
+import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
 import { effortMemory } from '@shared/effort'
@@ -184,12 +185,65 @@ const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
 const repoFile = (repo: string, name: string) => join(repo, '.kernel', name)
 
+/** A settings file smol-toml couldn't parse: the line, when it says, and what is wrong there. */
+export interface TomlProblem { line?: number; what: string }
+
+export function tomlProblem(e: unknown): TomlProblem {
+  const line = (e as { line?: unknown }).line
+  const what = String((e as Error)?.message ?? e).split('\n')[0].replace(/^Invalid TOML document:\s*/, '').replace(/[.\s]*$/, '')
+  return typeof line === 'number' ? { line, what } : { what }
+}
+
+/** "has a mistake on line 3: unexpected character", for a sentence about the file. */
+export const mistake = (p: TomlProblem) => `has a mistake${p.line ? ` on line ${p.line}` : ''}: ${p.what}`
+
+/** The settings files that didn't parse, by path, with the problem last reported, so a broken file warns once (KERNEL-231). */
+const tomlErrors = new Map<string, string>()
+
+/** What the bus carries when a settings file stops parsing, or its problem changes. */
+export interface SettingsError { file: string; problem: TomlProblem }
+
+/**
+ * A settings file's text as a table. A missing or unreadable file is empty. One that doesn't parse is empty too, so the room
+ * runs on the other file and the app's defaults, and `settingsError` goes out on the bus for the room to warn (KERNEL-231).
+ */
+function tomlOf(file: string, text: string | undefined): Record<string, any> {
+  if (text === undefined) { tomlErrors.delete(file); return {} }
+  try {
+    const doc = parseToml(text) as Record<string, any>
+    tomlErrors.delete(file)
+    return doc
+  } catch (e) {
+    const problem = tomlProblem(e)
+    const said = mistake(problem)
+    if (tomlErrors.get(file) !== said) { tomlErrors.set(file, said); bus.emit('settingsError', { file, problem } satisfies SettingsError) }
+    return {}
+  }
+}
+
 async function readToml(file: string): Promise<Record<string, any>> {
-  try { return parseToml(await readFile(file, 'utf8')) as Record<string, any> } catch { return {} }
+  return tomlOf(file, await readFile(file, 'utf8').catch(() => undefined))
 }
 
 function readTomlSync(file: string): Record<string, any> {
-  try { return parseToml(readFileSync(file, 'utf8')) as Record<string, any> } catch { return {} }
+  let text: string | undefined
+  try { text = readFileSync(file, 'utf8') } catch { /* missing */ }
+  return tomlOf(file, text)
+}
+
+/**
+ * The file a save starts from. A missing one is empty. One that can't be read or doesn't parse throws, since writing over
+ * it would erase what the user wrote (KERNEL-231).
+ */
+async function readTomlToSave(repo: string, file: string): Promise<Record<string, any>> {
+  let text: string
+  try { text = await readFile(file, 'utf8') } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return {}
+    throw e
+  }
+  try { return parseToml(text) as Record<string, any> } catch (e) {
+    throw new Error(`${relative(repo, file)} ${mistake(tomlProblem(e))}. Kernel didn't save, so the file is as you left it. Fix the mistake, then save again.`)
+  }
 }
 
 /** The room's workspace keys as the app names them (`base_ref` in the file is `baseRef` here). Unknown keys are dropped. */
@@ -537,7 +591,7 @@ export class ScriptTrustStore {
  * can't wait, so a change in either file, from Settings or by hand, reaches the next session (KERNEL-226).
  */
 export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled']> {
-  const read = (name: string): Record<string, any> => { try { return parseToml(readFileSync(repoFile(repo, name), 'utf8')) as Record<string, any> } catch { return {} } }
+  const read = (name: string) => readTomlSync(repoFile(repo, name))
   const d = { ...roomValues(read('settings.toml')).disabled, ...roomValues(read('settings.local.toml')).disabled } as { skills?: string[]; mcp?: string[] }
   return { skills: d.skills ?? [], mcp: d.mcp ?? [] }
 }
@@ -551,7 +605,7 @@ export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled
  */
 export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, shared = false): Promise<RepoSettings> {
   const file = repoFile(repo, shared ? 'settings.toml' : 'settings.local.toml')
-  const doc = await readToml(file)
+  const doc = await readTomlToSave(repo, file)
   const set = (table: string, key: string, value: unknown) => {
     const t = (doc[table] ??= {}) as Record<string, unknown>
     // A blank text is unset, the way `prInstructions` reads it (KERNEL-244).

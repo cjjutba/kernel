@@ -51,7 +51,7 @@ function listen() {
   return { pushes, off: () => bus.off('push', on) }
 }
 
-async function runner(o: { onFailure?: (f: string) => void } = {}) {
+async function runner(o: { onFailure?: (f: string) => void; onReached?: () => void } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-health-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-table', branch: 'feat/x', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'kai', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Table', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -60,7 +60,7 @@ async function runner(o: { onFailure?: (f: string) => void } = {}) {
   const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 } } as unknown as AppSettings
   const sessions = new Sessions({
     store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined, roomAllow: () => [], allowInRoom: () => undefined,
-    onFailure: (f) => o.onFailure?.(f)
+    onFailure: (f) => o.onFailure?.(f), onReached: () => o.onReached?.()
   })
   return { store, sessions, chat }
 }
@@ -138,6 +138,46 @@ describe('failure signals', () => {
     expect(seen).toEqual([false, false, true])
     m.stop()
   })
+
+  it('trusts a reply from the API over a failing DNS probe, until a session loses its connection (KERNEL-231)', async () => {
+    let dns = false
+    const seen: boolean[] = []
+    const m = new NetworkMonitor({ probe: async () => dns, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000 })
+    // Behind a proxy: DNS for the API fails, so the first check says offline.
+    expect(await m.check()).toBe(false)
+    expect(seen).toEqual([false])
+    // A turn reaches the API anyway: back online, and later failed probes no longer hold sends.
+    m.reached()
+    expect(m.online).toBe(true)
+    expect(seen).toEqual([false, true])
+    expect(await m.check()).toBe(true)
+    expect(await m.check()).toBe(true)
+    expect(seen).toEqual([false, true])
+    // A dropped connection makes the probe count again.
+    expect(await m.lost()).toBe(false)
+    expect(seen).toEqual([false, true, false])
+    // A probe that passes puts things back as they were.
+    dns = true
+    expect(await m.check()).toBe(true)
+    m.stop()
+  })
+
+  it('keeps a failing probe from holding sends right after a turn reached the API (KERNEL-231)', async () => {
+    let now = 1_000_000
+    const seen: boolean[] = []
+    const m = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, trustMs: 120_000, now: () => now })
+    m.reached()
+    now += 30_000
+    expect(await m.check()).toBe(true)
+    expect(seen).toEqual([])
+    m.stop()
+    // Long after the last reply, with nothing reached since, a failing probe still means offline.
+    const idle = new NetworkMonitor({ probe: async () => false, onChange: (o) => seen.push(o), everyMs: 60_000, offlineMs: 60_000, trustMs: 120_000, now: () => now })
+    idle.reached()
+    now += 600_000
+    expect(await idle.check()).toBe(false)
+    idle.stop()
+  })
 })
 
 describe('sessions under failure', () => {
@@ -188,6 +228,39 @@ describe('sessions under failure', () => {
     expect(failures).toEqual(['network', 'auth'])
     expect(pushes.some((e) => e.type === 'retry')).toBe(false)
     off()
+  })
+
+  it('says the API was reached on a reply with no error and on a turn that ended well, never on a failure (KERNEL-231)', async () => {
+    let reached = 0
+    const { sessions, chat } = await runner({ onReached: () => reached++ })
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed({ type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 500, error_status: null, error: 'unknown', uuid: 'a', session_id: 's' })
+    call.feed({ type: 'assistant', uuid: 'm0', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] }, session_id: 's' })
+    await flush()
+    expect(reached).toBe(0)
+    call.feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Done.' }] }, session_id: 's' })
+    call.feed(result())
+    await flush()
+    expect(reached).toBe(2)
+  })
+
+  it.each(['unknown', 'server_error'])('never says the API was reached on a message with error %s, as when retries run out (KERNEL-231)', async (error) => {
+    let reached = 0
+    const { sessions, chat } = await runner({ onReached: () => reached++ })
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    sdk.calls[sdk.calls.length - 1].feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, error, message: { content: [{ type: 'text', text: 'API Error: Connection error.' }] }, session_id: 's' })
+    await flush()
+    expect(reached).toBe(0)
+  })
+
+  it('never says the API was reached on a turn that ended on an API error, success with is_error (KERNEL-231)', async () => {
+    let reached = 0
+    const { sessions, chat } = await runner({ onReached: () => reached++ })
+    await sessions.send(chat.id, [{ type: 'text', text: 'Go' }])
+    sdk.calls[sdk.calls.length - 1].feed({ ...result(), is_error: true, result: 'API Error: Connection error.' })
+    await flush()
+    expect(reached).toBe(0)
   })
 
   it('saves the context use Claude Code reports after each turn', async () => {

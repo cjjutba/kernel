@@ -9,7 +9,7 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, roomState } from '../src/renderer/src/screens/rooms/roomInfo'
-import { assertFreeFolder, ensureRepoSettings, expandHome, inspectFolder, installScripts, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
+import { assertFreeFolder, ensureRepoSettings, expandHome, initGit, inspectFolder, installScripts, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
@@ -135,15 +135,55 @@ describe('Kernel rooms', () => {
     await k.stop()
   })
 
-  it('asks before turning a plain folder into a repo, and initializes git when told to', async () => {
+  it('asks before turning a plain folder into a repo, and initializes git when told to, committing nothing (KERNEL-231)', async () => {
     const { k } = await kernel()
     const plain = await mkdtemp(join(tmpdir(), 'plain-'))
     await writeFile(join(plain, 'index.html'), '<p>hi</p>')
+    await writeFile(join(plain, '.env'), 'SECRET=1\n')
     await expect(k.createRoom({ source: 'folder', name: 'Plain', from: plain, team: [], autostart: false })).rejects.toThrow('not a git repository')
-    const wait = (async () => { const room = await k.createRoom({ source: 'folder', name: 'Plain', from: plain, team: [], autostart: false, initGit: true }); await setupDone(room.id); return room })()
-    const room = await wait
-    expect((await exec('git', ['-C', plain, 'rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim()).toBe('main')
+    const wait = (async () => { const room = await k.createRoom({ source: 'folder', name: 'Plain', from: plain, team: ['kai'], autostart: false, initGit: true }); return { room, steps: await setupDone(room.id) } })()
+    const { room, steps } = await wait
+    expect((await exec('git', ['-C', plain, 'symbolic-ref', '--short', 'HEAD'])).stdout.trim()).toBe('main')
+    expect((await exec('git', ['-C', plain, 'rev-parse', '--verify', '--quiet', 'HEAD'])).code).not.toBe(0)
+    expect(steps.find((s) => s.id === 'clone')).toMatchObject({ state: 'ok', detail: expect.stringContaining('Make the first commit') })
     expect(room.defaultBranch).toBe('main')
+    // Until the user commits, a new workspace says why it can't start.
+    k.sessions.send = async () => ({ queued: false })
+    await expect(k.workspaces.createWorkspace(room.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree' })).rejects.toThrow('has no commit yet')
+    await k.stop()
+  })
+
+  it('refuses the home folder and a folder too big to initialize, and commits nothing (KERNEL-231)', async () => {
+    const { k, home } = await kernel()
+    await writeFile(join(home, 'notes.txt'), 'x')
+    await expect(k.createRoom({ source: 'folder', name: 'Home', from: '~', team: [], autostart: false, initGit: true })).rejects.toThrow("home folder can't be a room")
+    await expect(initGit(home, home)).rejects.toThrow("home folder can't be a room")
+    expect(existsSync(join(home, '.git'))).toBe(false)
+    const big = await mkdtemp(join(tmpdir(), 'big-'))
+    await mkdir(join(big, 'node_modules', 'pkg'), { recursive: true })
+    for (let i = 0; i < 5001; i += 500) await Promise.all(Array.from({ length: Math.min(500, 5001 - i) }, (_, j) => writeFile(join(big, 'node_modules', 'pkg', `f${i + j}.js`), '')))
+    await expect(k.createRoom({ source: 'folder', name: 'Big', from: big, team: [], autostart: false, initGit: true })).rejects.toThrow('more than 5,000 files')
+    expect(existsSync(join(big, '.git'))).toBe(false)
+    expect(k.store.rooms()).toEqual([])
+    await k.stop()
+  })
+
+  it('gives two rooms with the same name their own worktree folders, and keeps an older room in its old one (KERNEL-231)', async () => {
+    const { k, home } = await kernel()
+    k.sessions.send = async () => ({ queued: false })
+    const agent = { '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' }
+    const one = await k.addRoom(await tempRepo(agent), 'app')
+    const two = await k.addRoom(await tempRepo(agent), 'app')
+    const a = await k.workspaces.createWorkspace(one.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    const b = await k.workspaces.createWorkspace(two.id, { prompt: 'Go', title: 'Go', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    expect(a.path.startsWith(join(home, 'wt', one.id) + '/')).toBe(true)
+    expect(b.path.startsWith(join(home, 'wt', two.id) + '/')).toBe(true)
+    // A room saved before KERNEL-231 has no folder of its own and keeps the slug of its name.
+    const { worktreeDir: _dir, ...old } = k.store.room(one.id)!
+    k.store.saveRoom({ ...old, name: 'Old app' })
+    const c = await k.workspaces.createWorkspace(one.id, { prompt: 'More', title: 'More', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    expect(c.path.startsWith(join(home, 'wt', 'old-app') + '/')).toBe(true)
+    expect(k.store.workspace(a.id)?.path).toBe(a.path)
     await k.stop()
   })
 
@@ -157,6 +197,18 @@ describe('Kernel rooms', () => {
     await expect(stat(ws.path)).rejects.toThrow()
     expect(k.store.workspace(ws.id)).toBeUndefined()
     expect(await stat(repo)).toBeTruthy()
+    await k.stop()
+  })
+
+  it('gives two workspaces created at once in one room their own branch and folder (KERNEL-231)', async () => {
+    const { k } = await kernel()
+    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' })
+    const room = await k.addRoom(repo)
+    k.sessions.send = async () => ({ queued: false })
+    const make = () => k.workspaces.createWorkspace(room.id, { prompt: 'Same task', title: 'Same task', agentId: 'kai', mode: 'worktree', baseRef: 'main' })
+    const [a, b] = await Promise.all([make(), make()])
+    expect(a.branch).not.toBe(b.branch)
+    expect(a.path).not.toBe(b.path)
     await k.stop()
   })
 })

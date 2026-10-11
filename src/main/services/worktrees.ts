@@ -175,11 +175,28 @@ export async function fastForward(path: string, ref: string): Promise<boolean> {
   return (await exec('git', ['-C', path, 'merge', '--ff-only', '--quiet', ref])).code === 0
 }
 
+/** `owner/name` from a GitHub remote URL, https or ssh. A dot in the name, a `.git` suffix and a trailing slash are fine (KERNEL-231). */
+export function githubRepoOf(url: string): string | undefined {
+  const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(url.trim())
+  return m ? `${m[1]}/${m[2]}` : undefined
+}
+
 export async function remoteRepo(repo: string, remote = 'origin'): Promise<string | undefined> {
   const r = await exec('git', ['-C', repo, 'remote', 'get-url', remote])
-  if (r.code !== 0) return undefined
-  const m = /github\.com[:/]([^/]+\/[^/.]+)(\.git)?$/.exec(r.stdout.trim())
-  return m?.[1]
+  return r.code === 0 ? githubRepoOf(r.stdout) : undefined
+}
+
+/**
+ * The folder a room's new worktrees go in. A room made since KERNEL-231 uses its id, so two rooms named "app" get two
+ * folders. An older room keeps the slug of its name. Workspaces made before keep their own paths either way.
+ */
+export function roomWorktreeRoot(worktreeRoot: string, room: { name: string; worktreeDir?: string }): string {
+  return join(worktreeRoot, room.worktreeDir ?? slugify(room.name))
+}
+
+/** Whether the repo has a commit to branch from. A fresh `git init` has none. */
+export async function hasCommit(repo: string): Promise<boolean> {
+  return refExists(repo, 'HEAD')
 }
 
 export async function branchExists(repo: string, branch: string): Promise<boolean> {

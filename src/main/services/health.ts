@@ -61,29 +61,64 @@ export async function probeNetwork(host = 'api.anthropic.com', timeoutMs = 4000)
 /**
  * Watches the network. Checks every `everyMs` while online and every `offlineMs` while offline, and on demand
  * (a session's connection error, "Try again"). `onChange` fires when the answer flips, and after every check while offline.
+ *
+ * A turn that reached Claude's API (`reached`) is the real answer, and beats the probe (KERNEL-231). Behind a proxy, DNS for the
+ * API can fail while every request goes through, so once the API answers while the probe fails, or the probe fails within
+ * `trustMs` of the API answering, failed probes stop counting until one passes again.
  */
 export class NetworkMonitor {
   online = true
   private timer?: NodeJS.Timeout
   private running?: Promise<boolean>
   private stopped = false
-  constructor(private o: { probe: () => Promise<boolean>; onChange: (online: boolean) => void; everyMs?: number; offlineMs?: number }) {}
+  /** When a turn last reached the API. */
+  private reachedAt = 0
+  /** The last probe failed. */
+  private probeFailed = false
+  /** The API answered while the probe failed, so a failed probe says nothing about this network. */
+  private probeBlind = false
+  constructor(private o: { probe: () => Promise<boolean>; onChange: (online: boolean) => void; everyMs?: number; offlineMs?: number; trustMs?: number; now?: () => number }) {}
 
   start() { void this.check() }
   stop() { clearTimeout(this.timer); this.timer = undefined; this.stopped = true }
 
+  private now() { return this.o.now?.() ?? Date.now() }
+
   /** Probe now. Concurrent calls share one probe. */
   check(): Promise<boolean> {
-    this.running ??= this.o.probe().catch(() => false).then((online) => {
+    this.running ??= this.o.probe().catch(() => false).then((passed) => {
       this.running = undefined
-      const flipped = online !== this.online
-      this.online = online
-      // Repeated while offline, so a window that opened after the flip still hears it.
-      if (flipped || !online) this.o.onChange(online)
+      this.probeFailed = !passed
+      if (passed) this.probeBlind = false
+      else if (this.now() - this.reachedAt < (this.o.trustMs ?? 120_000)) this.probeBlind = true
+      this.set(passed || this.probeBlind)
       this.schedule()
-      return online
+      return this.online
     })
     return this.running
+  }
+
+  /** A session heard from Claude's API: the network works, whatever the probe says. Sends held for offline go out. */
+  reached() {
+    this.reachedAt = this.now()
+    if (this.probeFailed) this.probeBlind = true
+    if (this.online) return
+    this.set(true)
+    this.schedule()
+  }
+
+  /** A session lost its connection: the probe counts again, so a real outage holds sends. */
+  lost(): Promise<boolean> {
+    this.probeBlind = false
+    this.reachedAt = 0
+    return this.check()
+  }
+
+  private set(online: boolean) {
+    const flipped = online !== this.online
+    this.online = online
+    // Repeated while offline, so a window that opened after the flip still hears it.
+    if (flipped || !online) this.o.onChange(online)
   }
 
   private schedule() {

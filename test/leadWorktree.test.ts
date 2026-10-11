@@ -7,7 +7,7 @@ import type { Chat, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { git, run } from '../src/main/services/exec'
 import { agentPrompt } from '../src/main/services/sessions'
-import { slugify } from '../src/main/services/worktrees'
+import { roomWorktreeRoot, slugify } from '../src/main/services/worktrees'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { setUp, tempRepo, trustRoom } from './helpers'
@@ -92,7 +92,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     const chat = await k.handlers()['lead.start']({ roomId: room.id, prompt: 'Plan wave 3 of the invoices work' })
     const ws = k.store.workspace(chat.workspaceId)!
     expect(ws).toMatchObject({ lead: true, threadId: chat.threadId, agentId: 'rowan', mode: 'worktree', branch: 'rowan/plan-wave-3-of-invoices', baseRef: 'origin/main', status: 'setup' })
-    expect(ws.path).toBe(join(where.home, 'wt', slugify(room.name), 'rowan-plan-wave-3-of-invoices'))
+    expect(ws.path).toBe(join(roomWorktreeRoot(join(where.home, 'wt'), room), 'rowan-plan-wave-3-of-invoices'))
     expect(await sha(ws.path, 'HEAD')).toBe(merged)
     expect(await branchOf(ws.path)).toBe(ws.branch)
     // The first message waits in the chat's queue, and nothing starts before setup passes.

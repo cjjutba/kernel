@@ -22,6 +22,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       if (room && !room.allow?.includes(rule)) k.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
     },
     onReply: (ws, chat) => void k.chats.nameChat(ws, chat),
+    // A reply proves the network works, so a failing DNS probe behind a proxy doesn't hold every send (KERNEL-231).
+    onReached: () => k.account.network?.reached(),
     onReset: (_ws, chat, trigger) => k.chats.resetName(chat, trigger),
     onTurnDone: (ws, chat, turn) => {
       void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
@@ -49,7 +51,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     },
     onFailure: (failure) => {
       if (failure === 'auth') k.account.signedOut()
-      else if (failure === 'network') void k.account.network?.check()
+      else if (failure === 'network') void k.account.network?.lost()
     },
     // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
     onExit: (ws, _chat, reason, midTurn, resumed) => {

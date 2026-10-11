@@ -118,6 +118,52 @@ describe('repo settings files', () => {
   })
 })
 
+describe('a settings file with a typo (KERNEL-231)', () => {
+  const broken = '[scripts]\nsetup = "pnpm install"\n[files\ncopy = [".env"]\n'
+
+  it('reads as defaults, and a save refuses rather than rewrite the file', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    await mkdir(join(repo, '.kernel'))
+    await writeFile(join(repo, '.kernel', 'settings.toml'), broken)
+    expect((await loadRepoSettings(repo)).scripts.setup).toBeUndefined()
+    await expect(saveRepoSettings(repo, { scripts: { run: 'pnpm dev' } }, true)).rejects.toThrow(/settings\.toml has a mistake on line 3: .*Kernel didn't save/)
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe(broken)
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), 'x = \n')
+    await expect(saveRepoSettings(repo, { scripts: { run: 'pnpm dev' } })).rejects.toThrow('settings.local.toml has a mistake on line 1')
+    expect(await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).toBe('x = \n')
+  })
+
+  it('warns in the room once, with the line, and again only when the mistake changes', async () => {
+    const repo = await tempRepo({ '.claude/agents/kai.md': '---\nname: kai\ndescription: Builds.\n---\nHi' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+    const k = new Kernel({ dataDir, home, claudeSettingsFile: join(home, 'claude-settings.json') })
+    await k.start()
+    const room = await k.addRoom(repo)
+    const pushes: PushEvent[] = []
+    const on = (e: PushEvent) => pushes.push(e)
+    bus.on('push', on)
+    await mkdir(join(repo, '.kernel'), { recursive: true })
+    await writeFile(join(repo, '.kernel', 'settings.toml'), broken)
+    await loadRepoSettings(repo)
+    await loadRepoSettings(repo)
+    const warned = () => pushes.flatMap((e) => (e.type === 'activity' && e.event.roomId === room.id && e.event.warn ? [e.event] : []))
+    expect(warned()).toHaveLength(1)
+    expect(warned()[0].text).toContain('.kernel/settings.toml has a mistake on line 3')
+    expect(pushes.filter((e) => e.type === 'toast')).toHaveLength(1)
+    // Fixed, then broken somewhere else: a new warning.
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "pnpm install"\n')
+    expect((await loadRepoSettings(repo)).scripts.setup).toBe('pnpm install')
+    await writeFile(join(repo, '.kernel', 'settings.toml'), 'oops\n')
+    await loadRepoSettings(repo)
+    expect(warned()).toHaveLength(2)
+    expect(warned()[1].text).toContain('on line 1')
+    bus.off('push', on)
+    await k.stop()
+  })
+})
+
 describe('the room remote (KERNEL-190)', () => {
   const kai = { 'README.md': '# demo\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nKai.' }
 

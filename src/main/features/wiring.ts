@@ -8,6 +8,7 @@ import type { LeadUpdateDeps } from '../services/leadUpdates'
 import type { OverlapDeps } from '../services/overlap'
 import { mergeBase } from '../services/worktrees'
 import { keepScript } from '../services/scripts'
+import type { SettingsError } from '../services/settings'
 
 // What Kernel hands the services it builds, and its listeners on the shared bus (KERNEL-324).
 
@@ -91,6 +92,8 @@ export function listen(k: Kernel): () => void {
       if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => k.autoArchive.archiveMerged(e.workspaceId)).catch(() => undefined)
     }
   }
-  bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
-  return () => { bus.off('activity', onActivity).off('hook', onHook).off('push', onPush) }
+  // A room's settings file that stopped parsing warns in the room (KERNEL-231).
+  const onSettingsError = (e: SettingsError) => k.config.settingsError(e)
+  bus.on('activity', onActivity).on('hook', onHook).on('push', onPush).on('settingsError', onSettingsError)
+  return () => { bus.off('activity', onActivity).off('hook', onHook).off('push', onPush).off('settingsError', onSettingsError) }
 }

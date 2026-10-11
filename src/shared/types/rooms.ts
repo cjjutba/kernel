@@ -29,6 +29,11 @@ export interface Room {
    * No icon means the letter. The image itself comes from `rooms.icon`, so room pushes stay small (KERNEL-241).
    */
   icon?: { kind: 'github' | 'image'; file: string; at: number }
+  /**
+   * The folder under the worktree root that the room's new worktrees go in: the room's id, so two rooms with the same name
+   * never share one. A room made before KERNEL-231 has none and keeps the slug of its name.
+   */
+  worktreeDir?: string
   createdAt: number
 }
 

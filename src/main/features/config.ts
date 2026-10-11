@@ -1,8 +1,9 @@
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import type { ClaudePlan, DeepPartial, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { kernelHooksPresent } from '../services/hooksInstaller'
-import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings } from '../services/settings'
+import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings, type SettingsError } from '../services/settings'
+import { bus } from '../bus'
 import { discoverMcp } from '../services/integrations'
 import { discoverSkills } from '../services/files'
 import { resolveFilesToCopy } from '../services/filesToCopy'
@@ -80,6 +81,19 @@ export class Config extends Feature {
   }
 
   remoteOfWs(ws: Workspace) { return this.remoteFor(this.mustRoom(ws.roomId).path) }
+
+  /**
+   * A room's settings file stopped parsing (KERNEL-231). The room runs on its other file and the app's defaults meanwhile, so
+   * the room's feed keeps a warning with the line, and a toast says so now. A save from Settings refuses until it's fixed.
+   */
+  settingsError({ file, problem }: SettingsError) {
+    const name = `.kernel/${basename(file)}`
+    const where = problem.line ? ` on line ${problem.line}` : ''
+    for (const room of this.store.rooms().filter((r) => join(r.path, '.kernel') === dirname(file))) {
+      bus.activity({ kind: 'note', roomId: room.id, actor: 'kernel', text: `uses the defaults in ${room.name} because ${name} has a mistake${where}:`, object: problem.what, warn: true })
+      bus.push({ type: 'toast', toast: { title: `${name} in ${room.name} has a mistake${where}`, sub: `${problem.what}. Kernel uses the defaults until you fix it.` } })
+    }
+  }
 
   handlers() {
     return {

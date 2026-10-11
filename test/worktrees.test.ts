@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { tempRepo } from './helpers'
-import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, listWorktrees, mergeBase, overlaps, removeWorktree, reviewBranch, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
+import { branchExists, branchName, branchType, capBranch, changedFiles, createWorktree, detachWorktree, freeBranch, githubRepoOf, listWorktrees, mergeBase, overlaps, remoteRepo, removeWorktree, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskToken } from '../src/main/services/worktrees'
 import { git } from '../src/main/services/exec'
 
 // Lets a test make the next N branch checks fail as if git couldn't start. Everything else runs for real.
@@ -36,6 +36,24 @@ describe('naming', () => {
     expect(branchName('feat/{slug}', { slug: 'invoice-table' })).toBe('feat/invoice-table')
     expect(branchName('feat/{task}-{slug}', { slug: 'invoice-table', task: 'T-14' })).toBe('feat/t-14-invoice-table')
     expect(branchName('feat/{task}-{slug}', { slug: 'x' })).toBe('feat/x')
+  })
+})
+
+describe('GitHub remotes and room folders (KERNEL-231)', () => {
+  it('reads owner/name from https and ssh remotes, dotted names, .git and a trailing slash included', async () => {
+    for (const url of ['https://github.com/vercel/next.js', 'git@github.com:vercel/next.js.git', 'https://github.com/vercel/next.js.git', 'https://github.com/vercel/next.js/', 'ssh://git@github.com/vercel/next.js.git', 'https://github.com/vercel/next.js.git/'])
+      expect(githubRepoOf(url), url).toBe('vercel/next.js')
+    expect(githubRepoOf('git@github.com:cjjutba/kernel.git')).toBe('cjjutba/kernel')
+    expect(githubRepoOf('https://gitlab.com/a/b')).toBeUndefined()
+    const repo = await tempRepo()
+    await git(repo, 'remote', 'add', 'origin', 'https://github.com/vercel/next.js')
+    expect(await remoteRepo(repo)).toBe('vercel/next.js')
+  })
+
+  it("puts a new room's worktrees in a folder named by its id, and an older room's where they always were", () => {
+    expect(roomWorktreeRoot('/wt', { name: 'app', worktreeDir: 'r1' })).toBe('/wt/r1')
+    expect(roomWorktreeRoot('/wt', { name: 'app', worktreeDir: 'r2' })).toBe('/wt/r2')
+    expect(roomWorktreeRoot('/wt', { name: 'My App' })).toBe('/wt/my-app')
   })
 })
 
