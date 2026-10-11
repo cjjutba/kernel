@@ -1,31 +1,25 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, Checkpoint, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, NewRoomRequest, RateLimit, Room, Workspace, ModelId, Effort } from '@shared/types'
-import { isKernelUpdate } from '@shared/teamUpdate'
-import { effortFor } from '@shared/effort'
+import type { DeletePreview, DeleteResult, DeleteSkip, Checkpoint, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentStatus, Chat, ClaudeAccount, PrState, NewRoomRequest, RateLimit, Room, Workspace, ModelId, Effort } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
-import { Store, newId } from './db'
+import { Store } from './db'
 import { bus } from './bus'
-import { saveAgent } from './services/agents'
-import { Approvals, parsePlanSteps } from './services/approvals'
+import { Approvals } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
-import { NUDGE_LIMIT, Nudges } from './services/nudges'
-import { reviewTools, type ReviewInput } from './services/reviewMcp'
-import { teammateTools } from './services/teammateMcp'
-import { SharedFiles, type ShareRequest } from './services/sharedFiles'
-import { sharedTools } from './services/sharedMcp'
+import { Nudges } from './services/nudges'
+import type { ReviewInput } from './services/reviewMcp'
+import { SharedFiles } from './services/sharedFiles'
 import { reviewRule } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { isNudge, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
-import { askTitle, titleText } from './services/titles'
+import { Sessions, type CutOffReason } from './services/sessions'
+import { askTitle } from './services/titles'
 import { Ptys } from './services/pty'
-import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
+import { reviewedByBase } from './services/kernelMcp'
 import { loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, type AppSettings } from './services/settings'
 import { branchState, currentBranch, branchExists, fetchOrigin, folderGone, freeBranch, listWorktrees, resolveBaseRef, stripRemote } from './services/worktrees'
 import { claudeSignedIn, readAccount } from './services/account'
@@ -40,7 +34,6 @@ import { unpushedCommits } from './services/archive'
 import type { KernelOptions } from './features/options'
 import { channels } from './features/channels'
 import * as records from './features/records'
-import { LEAD_CHAT, messageOf, NEW_CHAT } from './features/shared'
 import { App } from './features/app'
 import { Inbox } from './features/inbox'
 import { Checkpoints } from './features/checkpoints'
@@ -56,13 +49,12 @@ import { Env } from './features/env'
 import { Workspaces } from './features/workspaces'
 import { Archive } from './features/archive'
 import { Waits } from './features/waits'
+import { Chats } from './features/chats'
+import { Lead } from './features/lead'
+import { Tools } from './features/tools'
+import { Sharing } from './features/sharing'
 import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
 import { sessionDeps } from './features/sessionDeps'
-
-const COPY = 'fork:'
-
-/** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
-const RENAME_AT = [1, 3, 10, 30]
 
 /** What Delete in History does for one workspace (KERNEL-333). See `Kernel.deleteFacts`. */
 interface DeleteFacts { ws: Workspace; room: Room; branch: 'none' | 'keep' | 'unpushed' | 'delete'; sessions: Map<string, number> }
@@ -91,7 +83,7 @@ type Unbuilt = keyof typeof UNBUILT
 
 /** The channels of the features that have moved out of this file, so `coreHandlers` holds the rest and a channel in both fails typecheck. */
 type ChannelsOf<F> = F extends { handlers(): infer H } ? keyof H : never
-type Moved = ChannelsOf<App | Inbox | Checkpoints | Config | Hooks | Account | Integrations | Team | Rooms | Setup | Trust | Env | Workspaces | Archive>
+type Moved = ChannelsOf<App | Inbox | Checkpoints | Config | Hooks | Account | Integrations | Team | Rooms | Setup | Trust | Env | Workspaces | Archive | Chats | Lead | Sharing>
 
 /** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
 function unbuilt(): Pick<Handlers, Unbuilt> {
@@ -142,6 +134,10 @@ export class Kernel {
   readonly workspaces = new Workspaces(this)
   readonly archive = new Archive(this)
   readonly waits = new Waits(this)
+  readonly chats = new Chats(this)
+  readonly lead = new Lead(this)
+  readonly tools = new Tools(this)
+  readonly sharing = new Sharing(this)
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
   // (KERNEL-324).
@@ -168,8 +164,6 @@ export class Kernel {
   settings!: AppSettings
   private prTimer?: NodeJS.Timeout
   private unlisten: () => void = () => undefined
-  /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
-  private runningChats = new Set<string>()
 
   constructor(readonly o: KernelOptions) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
@@ -191,8 +185,6 @@ export class Kernel {
   }
 
   private get home() { return this.o.home ?? homedir() }
-  /** Whether agents get share_file. `experimental.sharing` in settings.json, on by default and with no page in Settings (KERNEL-308). */
-  private get sharing() { return this.settings?.experimental.sharing === true }
 
   async start() {
     // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
@@ -208,8 +200,8 @@ export class Kernel {
     // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-137).
     this.approvals.expireStale()
     this.notifications.attach()
-    this.backfillLeadChats()
-    void this.nameStuckChats().catch(() => undefined)
+    this.lead.backfillLeadChats()
+    void this.chats.nameStuckChats().catch(() => undefined)
     this.leadUpdates.attach()
     this.account.start()
     this.tasks.attach()
@@ -260,27 +252,8 @@ export class Kernel {
   /** The app calls it when the Mac wakes. */
   checkLimits(): Promise<void> { return this.account.checkLimits() }
 
-  /**
-   * Send now in a room a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
-   * the room stays paused; if it lifted, the answer's rate_limit_event lifts it in Kernel too.
-   */
-  private async sendNow(chatId: string, id: string) {
-    const ws = this.mustWs(this.mustChat(chatId).workspaceId)
-    // A brief held for a merge goes now, without waiting (KERNEL-259). One held because setup failed still waits for Run again.
-    if (ws.status === 'ready' && ws.waitsFor?.held) {
-      await this.sessions.sendNow(chatId, id)
-      await this.waits.releaseWait(ws.id, { now: true })
-      return this.sessions.queued(chatId)
-    }
-    const room = this.store.room(ws.roomId)
-    return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
-  }
-
   /** Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). */
-  workingAgents(): number {
-    const workspaces = [...this.runningChats].map((id) => this.store.chat(id)?.workspaceId).filter(Boolean)
-    return new Set(workspaces).size
-  }
+  workingAgents(): number { return this.chats.workingAgents() }
 
   /**
    * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
@@ -474,37 +447,11 @@ export class Kernel {
     return { deleted, skipped, keptBranches, freedBytes }
   }
 
-  /**
-   * A quick question to the room's Lead. It always gets a new Lead chat tab, so it never queues behind whatever the first tab
-   * is doing or lands in a tab with a brief being typed (KERNEL-145, D-133). The answer arrives there like any turn; the popover
-   * reads it from there.
-   */
-  async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
-    return { chatId: chat.id }
-  }
+  /** A quick question to the room's Lead, in a new Lead chat tab (KERNEL-145, D-133). */
+  askLead(roomId: string, text: string): Promise<{ chatId: string }> { return this.lead.askLead(roomId, text) }
 
-  /**
-   * "Let Rowan sort it": the Lead gets both workspaces and the file, and the card leaves the floor.
-   * The overlap itself clears on its own once the agents stop touching the same file.
-   */
-  async sortOverlap(overlapId: string): Promise<void> {
-    const o = this.overlaps.get(overlapId)
-    if (!o) throw new Error('That overlap is gone already.')
-    const agents = await this.agents(o.roomId)
-    const parts = o.parties.map((p) => `${agents.find((a) => a.id === p.agentId)?.name ?? p.agentId} in ${this.store.workspace(p.workspaceId)?.name ?? p.workspaceId} (${p.lines})`)
-    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other chats are involved.
-    const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
-    const chat = (owners.length ? this.leadUpdateTarget(o.roomId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.roomId)
-    const others = [...new Set(owners.map((w) => w.leadChatId).filter((id): id is string => !!id && id !== chat.id))].map((id) => this.store.chat(id)?.title).filter(Boolean)
-    const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
-    const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.${elsewhere}`
-    await this.sessions.send(chat.id, [{ type: 'text', text }])
-    this.overlaps.resolve(overlapId)
-    // A note, not a brief: a brief to the Lead would restart the briefing sequence on the floor.
-    const lead = agents.find((a) => a.id === this.store.workspace(chat.workspaceId)?.agentId)
-    bus.activity({ kind: 'note', roomId: o.roomId, workspaceId: chat.workspaceId, agentId: lead?.id, actor: 'you', text: `asked ${lead?.name ?? 'the Lead'} to sort out the overlap in`, object: o.path.split('/').pop(), quote: text })
-  }
+  /** "Let Rowan sort it": the Lead gets both workspaces and the file, and the card leaves the floor. */
+  sortOverlap(overlapId: string): Promise<void> { return this.lead.sortOverlap(overlapId) }
 
   /** The files a workspace changed. Their totals are saved on the workspace too, for the sidebar and Home (+412 -38). */
   changes(id: string): ReturnType<Workspaces['changes']> { return this.workspaces.changes(id) }
@@ -518,341 +465,24 @@ export class Kernel {
 
   chatTabs(workspaceId: string): Chat[] { return records.chatTabs(this.store, workspaceId) }
 
-  private mustChat(chatId: string): Chat { return records.mustChat(this.store, chatId) }
-
-  /** A name the user types is theirs: Kernel never changes it again (KERNEL-202). */
-  renameChat(chatId: string, title: string): Chat {
-    const t = title.trim()
-    if (!t) throw new Error('Give the chat a name.')
-    return this.saveChat({ ...this.mustChat(chatId), title: t, autoTitle: undefined })
-  }
-
-  /** When Kernel last looked for a session title, by chat, so a busy turn reads the transcript at most every few seconds. */
-  private titleChecked = new Map<string, number>()
-  /** Chats with a naming request in flight. One at a time per chat. */
-  private naming = new Set<string>()
-  /** The session a chat had when /clear emptied it. Its title belongs to the old conversation, so Kernel doesn't take it. */
-  private clearedSession = new Map<string, string>()
-  /** How many times /clear reset each chat's name, so an answer about the old conversation that arrives after one is dropped. */
-  private nameResets = new Map<string, number>()
-  /**
-   * Naming requests in a row that brought back no name, by chat. Each one starts a Claude Code process, and one that fails
-   * once (a provider without the Haiku id, no bundled CLI) tends to keep failing, so the retries stop (`nameChat`).
-   */
-  private nameMisses = new Map<string, number>()
   private stopped = false
 
-  /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
-  private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
-  /** An auto-named chat that has no real name yet. */
-  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && c.title === LEAD_CHAT) }
-
-  /**
-   * Names an auto-named chat (KERNEL-202, amends D-089). Until it has a name, it takes the title Claude Code writes into its
-   * transcript a few seconds after the first prompt. The SDK sends no event for it, so Kernel looks on replies, at most every
-   * few seconds, and at the end of each turn. At the end of a turn Kernel also asks Haiku for a name from the whole
-   * conversation when the chat still has none, or when its count of finished turns reaches 1, 3, 10 or 30. A name the user
-   * typed, even while a request is in flight, is never changed. A request that fails leaves the name. A refresh is tried once
-   * more at the next turn end, then waits for the next point on the schedule. A chat with no name tries at each turn end and
-   * stops after 3 misses in a row, until /clear or the next start.
-   */
-  private async nameChat(ws: Workspace, chat: Chat, turnEnded = false) {
-    if (!this.autoNamed(chat)) return
-    const resets = this.nameResets.get(chat.id) ?? 0
-    if (this.unnamed(chat) && chat.sessionId && chat.sessionId !== this.clearedSession.get(chat.id)) {
-      const last = this.titleChecked.get(chat.id) ?? 0
-      if (turnEnded || Date.now() - last >= 3000) {
-        this.titleChecked.set(chat.id, Date.now())
-        const title = (await this.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.customTitle?.trim().slice(0, 60)
-        if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
-        const now = this.store.chat(chat.id)
-        if (title && now && this.autoNamed(now) && this.unnamed(now)) {
-          this.titleChecked.delete(chat.id)
-          this.nameMisses.delete(chat.id)
-          this.saveChat({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
-        }
-      }
-    }
-    if (!turnEnded || this.naming.has(chat.id) || resets !== (this.nameResets.get(chat.id) ?? 0)) return
-    const before = this.store.chat(chat.id)
-    if (!before || before.closed || !this.autoNamed(before)) return
-    const unnamed = this.unnamed(before)
-    const done = before.autoTitle?.turns ?? 0
-    // A named chat past the last point on the schedule is settled. A "New chat" that missed 3 times waits for /clear or a restart.
-    if (unnamed ? (this.nameMisses.get(chat.id) ?? 0) >= 3 : done >= RENAME_AT[RENAME_AT.length - 1]) return
-    const items = this.store.items(chat.id)
-    const turns = items.filter((i) => i.kind === 'result').length
-    if (!turns || !(unnamed || RENAME_AT.some((at) => at > done && at <= turns))) return
-    this.naming.add(chat.id)
-    try {
-      const title = await this.titleFor(titleText(items), { cwd: ws.path, current: unnamed ? undefined : before.title }).catch(() => undefined)
-      if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
-      const now = this.store.chat(chat.id)
-      if (!now || !this.autoNamed(now) || now.title !== before.title) return
-      if (title) {
-        this.nameMisses.delete(chat.id)
-        this.saveChat({ ...now, title, autoTitle: { turns } })
-        return
-      }
-      const misses = (this.nameMisses.get(chat.id) ?? 0) + 1
-      // A refresh of a chat that has a name gets one retry, then waits for the next point on the schedule.
-      if (unnamed || misses < 2) { this.nameMisses.set(chat.id, misses); return }
-      this.nameMisses.delete(chat.id)
-      this.saveChat({ ...now, autoTitle: { turns } })
-    } finally {
-      this.naming.delete(chat.id)
-    }
-  }
-
-  /** /clear starts a new conversation, so an auto name goes back to "New chat" and the schedule starts over. Other resets keep it. */
-  private resetName(chat: Chat, trigger?: string) {
-    if (trigger && trigger !== 'clear') return
-    const now = this.store.chat(chat.id)
-    if (!now || !this.autoNamed(now)) return
-    if (now.sessionId) this.clearedSession.set(chat.id, now.sessionId)
-    this.nameResets.set(chat.id, (this.nameResets.get(chat.id) ?? 0) + 1)
-    this.nameMisses.delete(chat.id)
-    this.titleChecked.delete(chat.id)
-    this.saveChat({ ...now, title: NEW_CHAT, autoTitle: { turns: 0 } })
-  }
-
-  /** Open chats still called "New chat" after a finished turn, as /clear left them before KERNEL-202. Named one at a time. */
-  private async nameStuckChats() {
-    for (const ws of this.store.workspaces().filter((w) => w.status !== 'archived')) {
-      for (const chat of this.chatTabs(ws.id)) {
-        if (this.stopped) return
-        if (chat.kind === 'terminal' || chat.title !== NEW_CHAT || !chat.sessionId) continue
-        if (!this.store.items(chat.id).some((i) => i.kind === 'result')) continue
-        await this.nameChat(ws, chat, true).catch(() => undefined)
-      }
-    }
-  }
-
   /** The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab is replaced by a fresh chat. */
-  closeChat(chatId: string) {
-    const chat = this.mustChat(chatId)
-    this.sessions.stop(chatId)
-    this.ptys.kill(chatId)
-    this.saveChat({ ...chat, closed: true })
-    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
-  }
-
-  /**
-   * The effort of a chat the user opens: the one they last picked for its model, else the workspace agent's, else Settings, Models (D-130).
-   * The Lead's hand-offs and its first chat skip the memory, so they follow the agent file.
-   */
-  private openedEffort(workspaceId: string, model: ModelId): Effort {
-    const ws = this.mustWs(workspaceId)
-    const agent = this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)
-    return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? this.settings.models.effort)
-  }
-
-  private saveChat(chat: Chat): Chat { return records.saveChat(this.store, chat) }
-
-  /**
-   * A new chat that resumes from this one with the SDK's session fork. With `itemId` the fork ends at the nearest assistant message
-   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there.
-   */
-  async forkChat(chatId: string, itemId?: string): Promise<Chat> {
-    const chat = this.mustChat(chatId)
-    if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
-    const ws = this.mustWs(chat.workspaceId)
-    let items = this.store.items(chatId)
-    let upTo: string | undefined
-    if (itemId) {
-      const at = items.findIndex((i) => i.id === itemId)
-      if (at < 0) throw new Error('That message is not in this chat.')
-      const keep = items.slice(0, at + 1)
-      const anchor = [...keep].reverse().find((i) => i.kind !== 'user' && i.id.includes(':') && !i.id.startsWith(COPY))
-      if (keep.some((i) => i.id.startsWith(COPY)) && !anchor) throw new Error('Fork the original chat to branch from an earlier message.')
-      if (anchor) { items = items.slice(0, items.findIndex((i) => i.id === anchor.id) + 1); upTo = anchor.id.split(':')[0] } else items = []
-    }
-    let sessionId: string | undefined
-    if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
-    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
-    for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
-    return fork
-  }
+  closeChat(chatId: string): void { this.chats.closeChat(chatId) }
 
   /** Every variable a session, script or terminal in the workspace gets (KERNEL-247). */
   envFor(ws: Workspace, o: { script?: boolean } = {}): Record<string, string> { return this.env.envFor(ws, o) }
-
-  /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
-  private ensurePty(id: string, size?: { cols: number; rows: number }) {
-    if (this.ptys.has(id)) return
-    const plain = id.startsWith('shell:')
-    const chat = plain ? undefined : this.mustChat(id)
-    if (chat && (chat.kind !== 'terminal' || chat.closed)) throw new Error('That tab is not a terminal.')
-    const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
-    this.ptys.start(id, {
-      cwd: ws.path,
-      env: sessionEnv(this.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
-      command: (plain ? null : terminalCommand(chat!)) ?? undefined,
-      ...size
-    })
-  }
 
   /** A chat opened with a placeholder name ("New chat", the Lead's "Lead") is auto-named. A workspace's title or a fork's is not (KERNEL-202). */
   newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
     return records.newChat(this.store, workspaceId, title, o)
   }
 
-  /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
-  private async terminalFor(ws: Workspace, preset?: string) {
-    const t = this.settings.terminal
-    if (!t.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
-    return resolvePreset(await terminalPresets(t), t, ws.mode, preset)
-  }
-
-  /** The Lead lives in a room-level workspace on the main checkout, made the first time it is needed. */
-  private async leadWorkspace(roomId: string): Promise<{ ws: Workspace; lead: AgentDef }> {
-    const agents = await this.agents(roomId)
-    const lead = agents.find((a) => a.lead)
-    if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
-    let ws = this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
-    if (!ws) {
-      const room = this.mustRoom(roomId)
-      const branch = await currentBranch(room.path)
-      ws = await this.workspaces.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', branch, baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
-    }
-    return { ws, lead }
-  }
-
   /** The Lead's first open chat. Floor briefs go there. */
-  async leadChat(roomId: string): Promise<Chat> {
-    const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, LEAD_CHAT, { model: this.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
-  }
+  leadChat(roomId: string): Promise<Chat> { return this.lead.leadChat(roomId) }
 
-  /**
-   * A message to the Lead in a chat of its own (KERNEL-148). It always adds a tab, like the tab row's +: an unused tab may
-   * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). The first message names the chat.
-   */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
-    const { ws, lead } = await this.leadWorkspace(roomId)
-    const pick = { model: o.model ?? this.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
-    const chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
-    this.userSpoke(chat.id)
-    await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
-    return chat
-  }
-
-  private leadTools(roomId: string, lead: AgentDef, chat: Chat) {
-    return kernelMcpServer(this.leadToolDeps(roomId, lead, chat))
-  }
-
-  /** What the Lead's tools call, apart from the server so tests can run the tools against a real Kernel. */
-  private leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps {
-    return {
-      roomId, lead,
-      agents: () => this.agents(roomId),
-      workspaces: () => this.store.workspaces(roomId),
-      chatId: chat.id,
-      chatTitle: (id) => this.store.chat(id)?.title,
-      // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
-      planMode: () => !!this.store.chat(chat.id)?.plan,
-      createWorkspace: async ({ issue, ...o }) => {
-        // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
-        const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
-        // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
-        const linked = issue ? await this.integrations.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
-        const branch = o.branch
-        // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
-        const review = o.reviewOf ?? o.linkReviewOf
-        const ws = await this.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
-        if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
-        // Rowan named no wait, but Linear says the issue is blocked by one a teammate is building (KERNEL-263).
-        const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
-        if (ws.status !== 'failed') {
-          // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).
-          const out = blocked ?? ws
-          const brief = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-          const queued = brief && this.sessions.queueReason(brief.id)
-          return queued ? { ...out, queued } : out
-        }
-        const code = this.setup['setupFailures'].get(ws.id)
-        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
-      },
-      messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
-      askUser: async (o) => {
-        // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
-        const agents = await this.agents(roomId)
-        const { approval, decision } = this.approvals.request({
-          kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options,
-          steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
-        })
-        this.sessions.placeApproval(chat.id, approval.id)
-        // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125).
-        return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
-      },
-      archiveWorkspace: (id) => this.archiveWorkspace(id),
-      setWait: (id, on) => this.setWait(id, on),
-      refreshPr: (id) => this.refreshPr(id, { settle: true }),
-      isRunning: (id) => this.archive.working(id),
-      // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
-      // worktree whose folder is already gone (KERNEL-109).
-      unsaved: (id) => this.archive.unsavedOf(id),
-      planApproved: () => this.sessions.handoffs.approved(chat.id),
-      handedOff: () => this.sessions.handoffs.done(chat.id),
-      hireAgent: async (a) => {
-        const was = this.team['agentCache'].get(roomId) ?? await this.agents(roomId)
-        const file = await saveAgent(this.mustRoom(roomId).path, a)
-        this.team['announceTeam'](roomId, await this.agents(roomId), was)
-        return file
-      }
-    }
-  }
-
-  /**
-   * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this room that has its folder and
-   * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
-   * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
-   * runs goes after the brief.
-   */
-  private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
-    const refuse = (note: string) => ({ ok: false, sent: false, note })
-    const ws = this.store.workspace(workspaceId)
-    if (!ws || ws.roomId !== roomId) return refuse(`Not sent: there is no workspace ${workspaceId} in this room. Call list_workspaces for the ids.`)
-    if (ws.status === 'archived') return refuse(`Not sent: ${ws.name} is archived. Ask the user to restore it from History, or hand the work out again with create_workspace.`)
-    const agent = (await this.agents(roomId)).find((a) => a.id === ws.agentId)
-    if (agent?.lead) return refuse('Not sent: that is your own workspace.')
-    if (ws.mode === 'worktree' && await folderGone(ws.path).catch(() => false)) return refuse(`Not sent: ${ws.name}'s folder is gone. Ask the user to archive it, or hand the work out again with create_workspace.`)
-    const name = agent?.name ?? ws.agentId
-    // A request in a Lead turn Kernel started is automatic. After a few tries at one workspace, the user decides (KERNEL-125).
-    // The turn is keyed by the message that started it, so several messages in one turn are one try.
-    const auto = !!leadChatId && this.sessions.kernelTurn(leadChatId)
-    // A limit or restart nudge carries the turn on, so the turn is still the message before it.
-    const turn = auto ? [...this.store.items(leadChatId!)].reverse().find((i) => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))?.id : undefined
-    if (auto && this.nudges.spent(ws.id, turn)) return refuse(`Not sent: Kernel has passed ${NUDGE_LIMIT} automatic requests to ${name} on this workspace and it still needs help. Tell the user what keeps failing and ask how to go on.`)
-    if (auto) this.nudges.add(ws.id, turn)
-    const parts: ChatPart[] = [{ type: 'text', text }]
-    const held = this.setup['setups'].get(ws.id)
-    if (held) { held.later.push(parts); this.setup['saveSetups'](); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
-    let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-    const opened = !chat
-    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
-    const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
-    if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
-    const waiting = this.store.workspace(ws.id)
-    const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
-      : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this room's scripts, so the message waits behind the brief.`
-      : why === 'setup' && waiting?.status === 'ready' && waiting.waitsFor?.held ? `${name} waits for ${this.waits.waitLabelOf(waiting)} to merge, so this goes out after the brief. To start ${name} now, call wait_for_merge with an empty list.`
-      : why === 'setup' ? (this.setup['settingUp'].has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
-      // The same words as create_workspace's brief (KERNEL-272).
-      : queuedNote(why, { name }) ?? 'The message waits in the queue.'
-    return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }
-  }
-
-  /**
-   * Point the first unlinked step for this agent in the latest plan approved in `chatId` at the new workspace (the card's
-   * Open workspace link). Plans from the room's other Lead chats are left alone (KERNEL-105).
-   */
-  private linkPlanStep(roomId: string, agentId: string, workspaceId: string, chatId: string) {
-    const plan = this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && a.chatId === chatId && a.steps?.some((s) => s.agentId === agentId && !s.workspaceId)).sort((a, b) => b.createdAt - a.createdAt)[0]
-    if (!plan?.steps) return
-    const at = plan.steps.findIndex((s) => s.agentId === agentId && !s.workspaceId)
-    this.approvals.update(plan.id, { steps: plan.steps.map((s, i) => (i === at ? { ...s, workspaceId } : s)) })
-  }
+  /** A message to the Lead in a chat of its own (KERNEL-148). */
+  startLeadChat(roomId: string, o: Parameters<Lead['startLeadChat']>[1]): Promise<Chat> { return this.lead.startLeadChat(roomId, o) }
 
   // ---------- pull requests
 
@@ -1016,41 +646,11 @@ export class Kernel {
 
   // ---------- shared files (KERNEL-302)
 
-  /**
-   * The tools in an agent's `kernel` server: the Lead's, a reviewer's or a teammate's own, and share_file for all three
-   * while sharing is on.
-   */
-  toolsFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
-    const own = agent?.lead ? kernelTools(this.leadToolDeps(ws.roomId, agent, chat))
-      : ws.reviewOf ? reviewTools({ submit: (review) => this.submitReview(ws.id, review) })
-      : teammateTools(this.waits.teammateToolDeps(ws.id))
-    return this.sharing ? [...own, ...sharedTools({ share: (o) => this.shareFile(ws.id, chat.id, o) })] : own
-  }
-
-  /**
-   * share_file for a chat: keeps the version, puts its card in the chat, tells the room and the Lead, then asks for a
-   * thumbnail. A file with the same bytes as its newest version does none of that. Throws Refused.
-   */
-  async shareFile(workspaceId: string, chatId: string, o: ShareRequest) {
-    const ws = this.mustWs(workspaceId)
-    const r = await this.shared.share(ws, { ...o, chatId })
-    if (r.status === 'same') return r
-    this.sessions.placeShared(chatId, r.file.id, r.version.n)
-    bus.push({ type: 'shared', file: r.file })
-    this.leadUpdates.shared(ws, r.file, r.version)
-    void this.captureThumb(r.file, r.version.n).catch(() => undefined)
-    return r
-  }
-
-  private async captureThumb(file: SharedFile, n: number) {
-    const png = await this.o.capture?.thumbnail(file, n)
-    if (!png) return
-    const saved = await this.shared.saveThumb(file.id, n, png)
-    if (saved) bus.push({ type: 'shared', file: saved })
-  }
+  /** The tools in an agent's `kernel` server. */
+  toolsFor(ws: Workspace, agent: AgentDef | undefined, chat: Chat): ReturnType<Tools['toolsFor']> { return this.tools.toolsFor(ws, agent, chat) }
 
   /** A shared file's version and the path of Kernel's copy, for the preview host. Undefined when Kernel doesn't have it. */
-  sharedFile(id: string, version: number) { return this.shared.get(id, version) }
+  sharedFile(id: string, version: number): ReturnType<Sharing['sharedFile']> { return this.sharing.sharedFile(id, version) }
 
   // ---------- reviews (KERNEL-130)
 
@@ -1116,18 +716,6 @@ export class Kernel {
     }
   }
 
-  /**
-   * The user wrote in a chat, so the loop guard starts over (KERNEL-125): for that workspace, or, in a Lead chat, for every
-   * workspace whose updates that chat gets, a closed chat's work included.
-   */
-  private userSpoke(chatId: string) {
-    const chat = this.store.chat(chatId)
-    const ws = chat && this.store.workspace(chat.workspaceId)
-    if (!ws) return
-    if (!this.isLeadWorkspace(ws)) { this.nudges.reset(ws.id); return }
-    this.nudges.reset(...this.store.workspaces(ws.roomId).filter((w) => !this.isLeadWorkspace(w) && this.leadUpdateTarget(ws.roomId, w.leadChatId)?.chat.id === chatId).map((w) => w.id))
-  }
-
   /** `pr` is the PR state the note is about, which draws that state's icon before the text. */
   private note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') { return records.note(this.store, workspaceId, text, pr) }
 
@@ -1163,7 +751,7 @@ export class Kernel {
     const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.config.remoteOfWs(ws) })
     if (info) bus.push({ type: 'pr.info', info })
     const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
-    this.userSpoke(chat.id)
+    this.lead.userSpoke(chat.id)
     await this.sessions.send(chat.id, [{ type: 'file', name, text }])
     this.setPrState(ws, 'resolving')
   }
@@ -1314,52 +902,6 @@ export class Kernel {
     await this.waits.retryWaits()
   }
 
-  /** The room's Lead chat if the Lead has been briefed. Unlike `leadChat`, never creates one. */
-  private existingLeadChat(roomId: string): Chat | undefined {
-    const lead = this.agentsSync(roomId).find((a) => a.lead)
-    const ws = lead && this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
-    return ws ? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') : undefined
-  }
-
-  /** A chat tab still on the strip, in a workspace that isn't archived. */
-  private isOpenChat(chat: Chat) {
-    return !chat.closed && chat.kind !== 'terminal' && this.store.workspace(chat.workspaceId)?.status !== 'archived'
-  }
-
-  /**
-   * Where teammate updates about work handed off in `owner` go (KERNEL-105): that chat while it's open, else its newest
-   * open fork, else the room's first open Lead chat, with `closed` set so the update can say where the work came from.
-   * Work no Lead chat handed off goes to the first open Lead chat. Never creates a chat.
-   */
-  private leadUpdateTarget(roomId: string, owner?: string): { chat: Chat; closed?: Chat } | undefined {
-    const was = owner ? this.store.chat(owner) : undefined
-    if (was && this.isOpenChat(was)) return { chat: was }
-    const fork = was && this.store.chats(was.workspaceId).filter((c) => c.forkOf?.chatId === was.id && this.isOpenChat(c)).sort((a, b) => b.createdAt - a.createdAt)[0]
-    if (fork) return { chat: fork }
-    const first = this.existingLeadChat(roomId)
-    return first && { chat: first, closed: was }
-  }
-
-  /**
-   * Workspaces the Lead created before Kernel saved `leadChatId` (KERNEL-105). Only a Lead chat has the kernel tools, so
-   * each finished `create_workspace` in a chat ("Created <id> on <branch> ...") names a workspace that chat handed off.
-   * Runs once; a workspace it can't place reports to the room's first Lead chat, as before.
-   */
-  private backfillLeadChats() {
-    if (this.store.meta<boolean>('leadChatBackfill')) return
-    for (const lead of this.store.workspaces().filter((w) => w.mode === 'current')) {
-      for (const chat of this.store.chats(lead.id)) {
-        for (const item of this.store.items(chat.id)) {
-          if (item.kind !== 'tool' || item.name !== 'mcp__kernel__create_workspace' || item.status !== 'done') continue
-          const id = /^Created (\S+) on /.exec(item.output ?? '')?.[1]
-          const ws = id ? this.store.workspace(id) : undefined
-          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id })
-        }
-      }
-    }
-    this.store.saveMeta('leadChatBackfill', true)
-  }
-
   // ---------- helpers
 
   private saveWs(ws: Workspace) { return records.saveWs(this.store, ws) }
@@ -1383,76 +925,15 @@ export class Kernel {
   handlers(): Handlers {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
-      this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(), this.coreHandlers())
+      this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(), this.chats.handlers(), this.lead.handlers(),
+      this.sharing.handlers(), this.coreHandlers())
   }
 
   /** The channels of features still in this file. They move into their feature's `handlers()` (KERNEL-325 to KERNEL-330). */
   private coreHandlers(): Omit<Handlers, Unbuilt | Moved> {
     return {
-      'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
-      'rooms.overlaps': async ({ roomId }) => this.overlaps.check(roomId),
-      'rooms.resolveOverlap': async ({ overlapId }) => { await this.sortOverlap(overlapId); return { ok: true } },
-      'rooms.brief': async ({ roomId, text, parts, agentId }) => {
-        let chat: Chat
-        if (agentId) {
-          const ws = this.store.workspaces(roomId).find((w) => w.agentId === agentId && w.status !== 'archived')
-          if (!ws) throw new Error('That agent has no open workspace. Brief the Lead instead.')
-          const first = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
-          if (!first) throw new Error('That agent has no open chat. Open a new chat in its workspace, or brief the Lead instead.')
-          chat = first
-        } else chat = await this.leadChat(roomId)
-        const message = messageOf(text, parts)
-        this.userSpoke(chat.id)
-        await this.sessions.send(chat.id, message)
-        // The log line under the brief, and the start of the briefing sequence on the floor (FloorSent.png).
-        const to = this.store.workspace(chat.workspaceId)?.agentId
-        const name = (await this.agents(roomId)).find((a) => a.id === to)?.name ?? 'the Lead'
-        const quote = parts ? message.map((p) => (p.type === 'text' ? p.text : p.name)).join(' ').replace(/\s+/g, ' ').trim() : text
-        bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
-        return { chatId: chat.id, workspaceId: chat.workspaceId }
-      },
       'workspaces.deletePreview': async ({ workspaceIds }) => this.deletePreview(workspaceIds),
       'workspaces.delete': async ({ workspaceIds, deleteUnpushed }) => this.deleteWorkspaces(workspaceIds, { deleteUnpushed }),
-      'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
-      'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
-      'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),
-      'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
-      'chats.list': async ({ workspaceId }) => this.chatTabs(workspaceId),
-      'chats.rename': async ({ chatId, title }) => this.renameChat(chatId, title),
-      'chats.close': async ({ chatId }) => { this.closeChat(chatId); return { ok: true } },
-      'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
-      'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
-      'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
-      'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind, preset }) => {
-        const ws = this.mustWs(workspaceId)
-        const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
-        // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
-        if (!this.team['agentCache'].has(ws.roomId)) await this.agents(ws.roomId)
-        const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
-        return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind, terminal: term?.terminal })
-      },
-      'terminal.presets': async () => terminalPresets(this.settings.terminal),
-      'chats.items': async ({ chatId }) => this.store.items(chatId),
-      'commands.list': async () => this.sessions.commands(this.home),
-      'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
-      'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
-      'chats.live': async () => ({ running: this.sessions.runningIds(), retry: this.sessions.retries() }),
-      'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
-      'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
-      'chats.retry': async ({ chatId, itemId, now }) => {
-        // Sending their own message again is the user stepping in; a Kernel update sent again isn't.
-        const items = this.store.items(chatId)
-        const sent = items.slice(0, items.findIndex((i) => i.id === itemId) + 1).reverse().find((i) => i.kind === 'user')
-        if (sent?.kind === 'user' && !sent.from && !isKernelUpdate(sent)) this.userSpoke(chatId)
-        const copy = await this.sessions.retry(chatId, itemId)
-        // Retry now: the copy goes first and the running turn stops, past a limit's pause as Send now does.
-        if (now && copy) await this.sendNow(chatId, copy.id)
-        return { ok: true }
-      },
-      'chats.send': async ({ chatId, parts }) => { this.userSpoke(chatId); return this.sessions.send(chatId, parts) },
-      'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
-      'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
@@ -1460,23 +941,7 @@ export class Kernel {
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
-      'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
-      'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
-      'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
-      'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),
-      'shared.reveal': async ({ sharedId, version }) => {
-        const ws = this.store.workspace(this.store.sharedFile(sharedId)?.workspaceId ?? '')
-        this.o.reveal?.(await this.shared.revealPath(sharedId, version, ws))
-        return { ok: true }
-      },
-      // Only a PDF, from Kernel's own copy: opening an HTML file or a script by its default app would run it outside the lock.
-      'shared.open': async ({ sharedId, version }) => {
-        const got = this.shared.get(sharedId, version)
-        if (!got) throw new Error('That shared file or version is gone.')
-        if (got.file.kind !== 'pdf') throw new Error('Only a PDF opens in Preview.')
-        await this.o.openFile?.(got.path)
-        return { ok: true }
-      }
+      'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId)
     }
   }
 }

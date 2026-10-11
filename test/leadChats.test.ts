@@ -54,14 +54,14 @@ async function setup(files: Record<string, string> = {}) {
   const icons = k.newChat(first.workspaceId, 'Chat icons sizing', { model: first.model, effort: first.effort, plan: false })
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   const run = async (chat: Chat, name: string, args: Record<string, unknown>) => {
-    k['leadTools'](room.id, rowan, chat)
+    k.lead.leadTools(room.id, rowan, chat)
     const tool = kernelTools(wired!).find((t) => t.name === name)!
     const r = await tool.handler(args as never, {})
     return { text: (r.content[0] as { text: string }).text, isError: !!(r as { isError?: boolean }).isError }
   }
   const call = async (chat: Chat, name: string, args: Record<string, unknown>) => (await run(chat, name, args)).text
   const byTitle = (title: string) => k.store.workspaces(room.id).find((w) => w.title === title)!
-  const target = (owner?: string) => k['leadUpdateTarget'](room.id, owner) as { chat: Chat; closed?: Chat } | undefined
+  const target = (owner?: string) => k.lead.leadUpdateTarget(room.id, owner) as { chat: Chat; closed?: Chat } | undefined
   return { k, room, first, icons, call, run, byTitle, target, sent, answer, where, rowan }
 }
 
@@ -366,7 +366,7 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     onTestFinished(() => k2.stop())
     k2.sessions.send = async () => ({ queued: false })
     k2.sessions.kernelTurn = (id) => id === first.id
-    k2['leadTools'](room.id, rowan, first)
+    k2.lead.leadTools(room.id, rowan, first)
     const tool = kernelTools(wired!).find((t) => t.name === 'message_agent')!
     const r = await tool.handler({ workspace_id: ws.id, ...ASK } as never, {})
     expect((r as { isError?: boolean }).isError).toBe(true)

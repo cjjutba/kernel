@@ -30,7 +30,7 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
   return {
     store: k.store,
     enabled: () => k.settings.models.leadUpdates !== false,
-    target: (roomId, owner) => k['leadUpdateTarget'](roomId, owner),
+    target: (roomId, owner) => k.lead.leadUpdateTarget(roomId, owner),
     isLead: (ws) => !!k['agentsSync'](ws.roomId).find((a) => a.id === ws.agentId)?.lead,
     agentName: (roomId, agentId) => k['agentsSync'](roomId).find((a) => a.id === agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
@@ -70,10 +70,7 @@ export function listen(k: Kernel): () => void {
     keepScript(e)
     // A turn waiting on an approval or a question is still running, so its agent still counts as working.
     // No database read here: the count looks the chats up when the quit asks for it.
-    if (e.type === 'chat.running') {
-      if (e.running) k['runningChats'].add(e.chatId)
-      else k['runningChats'].delete(e.chatId)
-    }
+    if (e.type === 'chat.running') k.chats.onRunning(e)
     if (e.type === 'agent.status') k.team.onStatus(e)
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k['nudges'].reset(e.workspaceId, ...k['reviewsOf'](e.workspaceId))

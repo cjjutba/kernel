@@ -175,7 +175,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     k.sessions.isRunning = (chatId) => chatId === busyChat
     const lead = await k.leadChat(room.id)
     const agents = await k.agents(room.id)
-    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    k.lead.leadTools(room.id, agents.find((a) => a.lead)!, lead)
 
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
     const result = await tool.handler({ workspace_ids: [lead.workspaceId, busy.id, dirty.id, done.id] } as never, {})
@@ -214,7 +214,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     }
     const lead = await k.leadChat(room.id)
     const agents = await k.agents(room.id)
-    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    k.lead.leadTools(room.id, agents.find((a) => a.lead)!, lead)
 
     expect(await wired!.unsaved(gone.id)).toBe(false)
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
@@ -231,7 +231,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Invoice table' })
     const lead = await k.leadChat(room.id)
     const agents = await k.agents(room.id)
-    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    k.lead.leadTools(room.id, agents.find((a) => a.lead)!, lead)
     await chmod(dirname(ws.path), 0o000)
     onTestFinished(() => chmod(dirname(ws.path), 0o755))
     expect(await wired!.unsaved(ws.id)).toBe('unknown')
@@ -314,7 +314,7 @@ describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
     k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prState: 'merged', prNumber: 3 })
     const lead = await k.leadChat(room.id)
     const agents = await k.agents(room.id)
-    k['leadTools'](room.id, agents.find((a) => a.lead)!, lead)
+    k.lead.leadTools(room.id, agents.find((a) => a.lead)!, lead)
     // The PR merged on GitHub, but the "ready to merge" row never heard: the stale row this issue found.
     const s = seed(k, ws.id, room.id)
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!

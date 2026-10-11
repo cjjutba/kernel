@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, Decision, QueueReason, Workspace } from '@shared/types'
+import type { AgentDef, Decision, QueueReason, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
@@ -92,7 +92,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     const room = await k.addRoom(repo)
     const chat = await k.leadChat(room.id)
     const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const deps = (k as unknown as { leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps }).leadToolDeps(room.id, lead, chat)
+    const deps = k.lead.leadToolDeps(room.id, lead, chat)
     const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
     const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
 
