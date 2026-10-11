@@ -297,17 +297,17 @@ class Component extends DCLogic {
       // KERNEL-406: Claude Code and Codex side by side. Kernel already calls teammates agents, so the page is Providers.
       providers: { title: 'Providers', tabs: providerTabs(0), sections: [
         { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cjjutba@gmail.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
+          account('cj@example.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
           account('Work', 'cj@acme.dev \u00b7 Claude Team \u00b7 12% of the 5-hour limit used', false, ['Use', 'Sign out', 'Remove'])
         ] },
-        { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cjjutba@gmail.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
+        { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
         { title: 'Executable', rows: [path('Claude Code', 'Bundled with Kernel', 'Agents run on this copy of Claude Code', ['Choose', 'Use system Claude']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.claude/settings.json' })] }
       ] },
       'providers-codex': { title: 'Providers', nav: 'providers', tabs: providerTabs(1), sections: [
         { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
-          account('cjjutbaofficial@gmail.com', 'ChatGPT Plus \u00b7 Codex\u2019s own login \u00b7 7% of the 5-hour limit used', true, ['Sign out'])
+          account('cj@example.com', 'ChatGPT Plus \u00b7 Codex\u2019s own login \u00b7 7% of the 5-hour limit used', true, ['Sign out'])
         ] },
-        { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'ChatGPT'), val('Plan', 'ChatGPT Plus'), val('Email', 'cjjutbaofficial@gmail.com'), btn('Sign in again', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser, for the active account')] },
+        { title: 'Status', action: 'Refresh', rows: [val('Version', '0.153.4'), val('Login method', 'ChatGPT'), val('Plan', 'ChatGPT Plus'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens ChatGPT\u2019s sign-in in your browser, for the active account')] },
         { title: 'New chats', rows: [seg('personality', 'Codex personality for new chats', ['Pragmatic', 'Friendly', 'None'], 0, 'How Codex talks to you. It doesn\u2019t change what it can do.')] },
         { title: 'Executable', rows: [path('Codex', 'Bundled with Kernel', 'Agents run on this copy of Codex', ['Choose', 'Use system Codex']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.codex/config.toml' })] }
       ] },

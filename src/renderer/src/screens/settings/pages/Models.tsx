@@ -1,32 +1,53 @@
-import { EFFORTS, MODELS, type AppSettings, type Effort, type ModelId } from '@shared/types'
-import { SegmentedControl, Select, Toggle } from '../../../ui'
+import { EFFORT_LABELS, PROVIDERS, type AppSettings, type Provider, type Role, type RoleModel } from '@shared/types'
+import { Select, Toggle } from '../../../ui'
+import { effortsOf, fitEffort, modelLabelOf, useProviderModels } from '../../workspace/composer/providerModels'
 import { Page, Row, Section } from '../kit'
 import { patchSettings } from '../useSettings'
 
-const label = (id: ModelId) => MODELS.find((m) => m.id === id)?.label ?? id
-const pick = (ids: ModelId[], current: ModelId) => [...new Set([...ids, current])].map((id) => ({ value: id, label: label(id) }))
-const OPUS: ModelId = 'claude-opus-5-5', SONNET: ModelId = 'claude-sonnet-5-5', HAIKU: ModelId = 'claude-haiku-4-5-20251001', FABLE: ModelId = 'claude-fable-5-1'
+const ROLES: { key: Role; title: string }[] = [
+  { key: 'lead', title: 'Lead' },
+  { key: 'engineers', title: 'Frontend and Backend' },
+  { key: 'qa', title: 'QA' },
+  { key: 'reviewer', title: 'Reviewer' }
+]
+
+/**
+ * One role's provider, model and effort (KERNEL-406). Switching provider moves to that provider's default model, and the
+ * effort to one the model takes. Codex shows once its models are read.
+ */
+function RoleModels({ title, roleKey, current }: { title: string; roleKey: Role; current: RoleModel }) {
+  const claude = useProviderModels('claude')
+  const codex = useProviderModels('codex')
+  const listOf = (p: Provider) => (p === 'codex' ? codex : claude)
+  const models = listOf(current.provider)
+  const save = (next: RoleModel) => void patchSettings({ models: { roles: { [roleKey]: next } } })
+  const pickProvider = (p: Provider) => {
+    const list = listOf(p)
+    const model = (list.find((m) => m.isDefault) ?? list[0])?.id
+    if (model) save({ provider: p, model, effort: fitEffort(current.effort, model, list) })
+  }
+  const modelOptions = [...new Set([...models.map((m) => m.id), current.model])].map((id) => ({ value: id, label: modelLabelOf(id, models) }))
+  const efforts = [...new Set([...effortsOf(current.model, models), current.effort])]
+  return (
+    <Row label={title} className="set-role">
+      <span className="set-actions">
+        <Select label={`${title} provider`} value={current.provider} options={PROVIDERS.filter((p) => p.id === current.provider || listOf(p.id).length).map((p) => ({ value: p.id, label: p.label }))} onChange={(e) => pickProvider(e.target.value as Provider)} />
+        <Select label={`${title} model`} value={current.model} options={modelOptions} onChange={(e) => save({ ...current, model: e.target.value, effort: fitEffort(current.effort, e.target.value, models) })} />
+        <Select label={`${title} effort`} value={current.effort} options={efforts.map((e) => ({ value: e, label: EFFORT_LABELS[e] }))} onChange={(e) => save({ ...current, effort: e.target.value as RoleModel['effort'] })} />
+      </span>
+    </Row>
+  )
+}
 
 /** Settings > Models and effort (SettingsModels.png). The agent limit is enforced by the engine with a queue. */
 export function Models({ s }: { s: AppSettings }) {
   const m = s.models
-  const role = (key: 'lead' | 'engineers' | 'qa' | 'reviewer', title: string, ids: ModelId[]) => (
-    <Row label={title}>
-      <Select label={title} value={m.roles[key].model} options={pick(ids, m.roles[key].model as ModelId)} onChange={(e) => void patchSettings({ models: { roles: { [key]: { provider: 'claude', model: e.target.value } } } })} />
-    </Row>
-  )
   return (
     <Page title="Models and effort">
-      <Section title="Default model by role">
-        {role('lead', 'Lead', [OPUS, SONNET, FABLE])}
-        {role('engineers', 'Frontend and Backend', [SONNET, OPUS, HAIKU])}
-        {role('qa', 'QA', [SONNET, HAIKU])}
-        {role('reviewer', 'Reviewer', [OPUS, SONNET])}
+      <Section title="Default model by role" note="An agent file with its own model line keeps that model. Its profile shows the pin.">
+        {ROLES.map((r) => <RoleModels key={r.key} title={r.title} roleKey={r.key} current={m.roles[r.key]} />)}
       </Section>
       <Section title="Defaults">
-        <Row label="Effort">
-          <SegmentedControl label="Effort" value={m.roles.engineers.effort} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} onChange={(v) => void patchSettings({ models: { roles: Object.fromEntries((['lead', 'engineers', 'qa', 'reviewer'] as const).map((r) => [r, { effort: v as Effort }])) } })} />
-        </Row>
         <Row label="Start the Lead in plan mode"><Toggle label="Start the Lead in plan mode" checked={m.leadPlanMode} onChange={(v) => void patchSettings({ models: { leadPlanMode: v } })} /></Row>
         <Row label="Start new workspaces in plan mode" desc="For workspaces you start from New workspace. The Lead's hand-offs start without it, because the Lead already planned."><Toggle label="Start new workspaces in plan mode" checked={m.workspacePlanMode} onChange={(v) => void patchSettings({ models: { workspacePlanMode: v } })} /></Row>
         <Row label="Keep the Lead updated" desc="Kernel tells the Lead when a teammate needs it: a failed check, a review, a question or a finished plan. Each of those updates uses a Lead turn."><Toggle label="Keep the Lead updated" checked={m.leadUpdates} onChange={(v) => void patchSettings({ models: { leadUpdates: v } })} /></Row>

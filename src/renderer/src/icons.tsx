@@ -48,6 +48,7 @@ const P = {
   keyboard: 'M2 4.5h12v7H2ZM4.5 7h1M7.5 7h1M10.5 7h1M5 9.5h6',
   chip: 'M5 5h6v6H5ZM6.5 2.5V5M9.5 2.5V5M6.5 11v2.5M9.5 11v2.5M2.5 6.5H5M2.5 9.5H5M11 6.5h2.5M11 9.5h2.5',
   shield: 'M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z',
+  providers: 'M3 3.5h10v4H3ZM3 9.5h10v3H3ZM5 5.5h.01M5 11h.01',
   sparkle: 'M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z',
   // A clipboard with two lines: a plan waiting for review.
   plan: 'M10.5 3.5h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h1M6.5 2h3a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-3A.5.5 0 0 1 6 4.5v-2a.5.5 0 0 1 .5-.5ZM6 7.7h4M6 10.3h4',

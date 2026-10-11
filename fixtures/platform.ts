@@ -1,4 +1,4 @@
-import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
+import type { AccountProfile, AgentDef, AppSettings, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, Provider, ProviderModel, RateLimit, RoomSettings, RoomSettingsSection, ScriptLine, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
@@ -50,6 +50,39 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
 /** One of Client A's room pages (KERNEL-191). */
 const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section }, ...(menu ? { menu } : {}) } }))
+/** Settings with some roles moved, the rest as Kernel ships them (KERNEL-406). */
+const withRoles = (roles: Partial<AppSettings['models']['roles']>): AppSettings => {
+  const d = DEFAULT_SETTINGS('/Users/you')
+  return { ...d, models: { ...d.models, roles: { ...d.models.roles, ...roles } } }
+}
+/** Codex's models as its model/list answers for a ChatGPT Plus account. */
+const codexModels: ProviderModel[] = [
+  { provider: 'codex', id: 'gpt-6-astra', label: 'GPT-6-Astra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low', isDefault: true },
+  { provider: 'codex', id: 'gpt-5.6-sol', label: 'GPT-5.6-Sol', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'low' },
+  { provider: 'codex', id: 'gpt-5.6-terra', label: 'GPT-5.6-Terra', efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'], defaultEffort: 'medium' },
+  { provider: 'codex', id: 'gpt-5.6-luna', label: 'GPT-5.6-Luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' }
+]
+const claudeAccounts: AccountProfile[] = [
+  { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
+  { id: 'work', provider: 'claude', label: 'Work', email: 'cj@acme.dev', plan: 'Claude Team', cli: false, active: false, signedIn: true }
+]
+const codexAccounts: AccountProfile[] = [{ id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }]
+const providerStatus: Fixture['providerStatus'] = {
+  claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'Claude account', plan: 'Claude Max', email: 'cj@example.com', configFile: '/Users/you/.claude/settings.json' },
+  codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: true, loginMethod: 'ChatGPT', plan: 'ChatGPT Plus', email: 'cj@example.com', configFile: '/Users/you/.codex/config.toml' }
+}
+/** Settings, Providers on one tab, with each account's 5-hour window. */
+const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
+  accounts: [...claudeAccounts, ...codexAccounts],
+  providerStatus,
+  usage: [
+    { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
+    { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' },
+    { type: 'five_hour', status: 'allowed', utilization: 0.07, resetsAt: secs(next(15, 40)), provider: 'codex' }
+  ],
+  ...extra,
+  ui: { route: { name: 'settings', page: 'providers', tab } }
+}))
 const accountUsage: RateLimit[] = [
   { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
   { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
@@ -186,7 +219,12 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),
   SettingsShortcuts: settingsPage('shortcuts'),
-  SettingsModels: settingsPage('models'),
+  // KERNEL-406: Frontend and Backend run on Codex. The rest stay on Claude.
+  SettingsModels: settingsPage('models', { settings: withRoles({ engineers: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), models: { codex: codexModels } }),
+  // KERNEL-406: both providers' accounts and status, with Claude's own login active and a second Claude account added.
+  SettingsProviders: providersPage('claude'),
+  SettingsProvidersCodex: providersPage('codex'),
+  SettingsProvidersCodexSignedOut: providersPage('codex', { accounts: [...claudeAccounts, { id: 'cli', provider: 'codex', label: 'Codex\u2019s own login', cli: true, active: true, signedIn: false }], providerStatus: { codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: false, configFile: '/Users/you/.codex/config.toml' } } }),
   SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/you'), permissions: { ...DEFAULT_SETTINGS('/Users/you').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),

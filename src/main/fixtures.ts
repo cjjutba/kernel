@@ -1,5 +1,5 @@
-import { isRunName } from '@shared/types'
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
+import { EFFORTS, isRunName, MODELS } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Provider, ProviderStatus, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
@@ -54,6 +54,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
     return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
   }
+  /** A provider's status table: the fixture's, else Kernel's bundled copy, signed in (KERNEL-406). */
+  const status = (provider: Provider): ProviderStatus => f.providerStatus?.[provider] ?? { provider, source: 'bundled', signedIn: true, configFile: '' }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
@@ -240,18 +242,18 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'account.get': async () => account,
     'account.signIn': async () => account,
     'account.signOut': async () => ({ signedIn: false }),
-    'providers.status': async ({ provider }) => ({ provider, source: 'bundled', signedIn: true, configFile: '' }),
-    'providers.setPath': async ({ provider }) => ({ provider, source: 'bundled', signedIn: true, configFile: '' }),
-    'providers.signIn': async ({ provider }) => ({ provider, source: 'bundled', signedIn: true, configFile: '' }),
+    'providers.status': async ({ provider }) => status(provider),
+    'providers.setPath': async ({ provider }) => status(provider),
+    'providers.signIn': async ({ provider }) => status(provider),
     'providers.openConfig': async () => ok,
-    'accounts.list': async () => [],
+    'accounts.list': async () => f.accounts ?? [],
     'accounts.add': async () => { throw new Error('Adding an account needs the real app.') },
     'accounts.code': async () => ok,
     'accounts.cancelAdd': async () => ok,
-    'accounts.switch': async () => [],
-    'accounts.signOut': async () => [],
-    'accounts.remove': async () => [],
-    'models.list': async () => [],
+    'accounts.switch': async () => f.accounts ?? [],
+    'accounts.signOut': async () => f.accounts ?? [],
+    'accounts.remove': async () => f.accounts ?? [],
+    'models.list': async ({ provider }) => f.models?.[provider] ?? (provider === 'claude' ? MODELS.map((m) => ({ provider, id: m.id, label: m.label, efforts: EFFORTS.map((e) => e.id), defaultEffort: 'high' as const })) : []),
     'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),

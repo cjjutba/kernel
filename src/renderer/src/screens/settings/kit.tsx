@@ -39,9 +39,9 @@ export function Section({ title, action, note, children }: { title: string; acti
  * A label and optional description on the left, the control on the right. `full` puts the control on its own line.
  * `source` is the line under the label that says where a room's value came from, and `onReset` adds Reset, which sends `null` for the key.
  */
-export function Row({ label, source, desc, onReset, children, full }: { label: ReactNode; source?: ReactNode; desc?: ReactNode; onReset?: () => void; children?: ReactNode; full?: ReactNode }) {
+export function Row({ label, source, desc, onReset, children, full, className }: { label: ReactNode; source?: ReactNode; desc?: ReactNode; onReset?: () => void; children?: ReactNode; full?: ReactNode; className?: string }) {
   return (
-    <div className="set-row">
+    <div className={['set-row', className].filter(Boolean).join(' ')}>
       <div className="set-text">
         <span className="set-label">{label}</span>
         {source && <span className="set-desc">{source}</span>}
