@@ -195,22 +195,30 @@ export function revertTo(ws: CheckpointWorkspace, checkpointId: string, o: { now
     const backup = (await git(ws.path, ['commit-tree', now, ...(head ? ['-p', head] : [])], IDENTITY, `Backup of ${ws.name} before reverting to ${clock(target.checkpoint.ts)}\n`)).trim()
     const backupBranch = await freeBranch(ws.path, `kernel/backup/${ws.name}-${stamp(o.now ?? new Date())}`)
     await git(ws.path, ['branch', backupBranch, backup])
-
-    const wanted = `${target.sha}^{tree}`
-    const raw = await git(ws.path, ['diff-tree', '-r', '-z', '--no-renames', now, wanted])
-    const fields = raw.split('\0')
-    const write: string[] = []
-    const remove: string[] = []
-    for (let i = 0; i + 1 < fields.length; i += 2) {
-      const [srcMode, dstMode, , , status] = fields[i].replace(/^:/, '').split(' ')
-      const path = fields[i + 1]
-      if (!path || srcMode === GITLINK || dstMode === GITLINK) continue
-      if (status === 'D' || status === 'T') remove.push(path)
-      if (status !== 'D') write.push(path)
-    }
-    for (const path of remove) await removeFile(ws.path, path)
-    if (write.length) await withTempIndex(ws.path, { tree: wanted }, (env) => git(ws.path, ['checkout-index', '-f', '-z', '--stdin'], env, write.join('\0') + '\0'))
+    const { written, removed } = await writeTree(ws.path, now, `${target.sha}^{tree}`)
     await git(ws.path, ['update-ref', headRef(ws.id), target.sha])
-    return { checkpoint: { ...target.checkpoint, current: true }, backupBranch, restored: write, removed: remove.filter((p) => !write.includes(p)) }
+    return { checkpoint: { ...target.checkpoint, current: true }, backupBranch, restored: written, removed }
   })
+}
+
+/**
+ * Make the files of the worktree at `cwd`, which hold the tree `now`, hold `wanted`: only paths that differ are written or
+ * removed. HEAD, the real index, ignored files and submodules are left alone. Revert uses it, and so does Fork into new
+ * workspace, to give a new worktree the files its source has (KERNEL-346).
+ */
+export async function writeTree(cwd: string, now: string, wanted: string): Promise<{ written: string[]; removed: string[] }> {
+  const raw = await git(cwd, ['diff-tree', '-r', '-z', '--no-renames', now, wanted])
+  const fields = raw.split('\0')
+  const write: string[] = []
+  const remove: string[] = []
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    const [srcMode, dstMode, , , status] = fields[i].replace(/^:/, '').split(' ')
+    const path = fields[i + 1]
+    if (!path || srcMode === GITLINK || dstMode === GITLINK) continue
+    if (status === 'D' || status === 'T') remove.push(path)
+    if (status !== 'D') write.push(path)
+  }
+  for (const path of remove) await removeFile(cwd, path)
+  if (write.length) await withTempIndex(cwd, { tree: wanted }, (env) => git(cwd, ['checkout-index', '-f', '-z', '--stdin'], env, write.join('\0') + '\0'))
+  return { written: write, removed: remove.filter((p) => !write.includes(p)) }
 }

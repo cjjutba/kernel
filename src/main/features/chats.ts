@@ -169,9 +169,12 @@ export class Chats extends Feature {
 
   /**
    * A new chat that resumes from this one with the SDK's session fork. With `itemId` the fork ends at the nearest assistant message
-   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there.
+   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there. `into` makes the workspace the new
+   * chat goes in, for Fork into new workspace (KERNEL-346). It runs once the session has forked, so a fork that can't happen leaves
+   * no workspace behind, and the forked session goes if it throws. The forked session stays in the source worktree's project
+   * folder, where Claude Code finds it from the new worktree too, even once the source's folder is gone.
    */
-  private async forkChat(chatId: string, itemId?: string): Promise<Chat> {
+  async forkChat(chatId: string, itemId?: string, into?: () => Promise<string>): Promise<Chat> {
     const chat = this.mustChat(chatId)
     if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
     const ws = this.mustWs(chat.workspaceId)
@@ -187,7 +190,8 @@ export class Chats extends Feature {
     }
     let sessionId: string | undefined
     if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
-    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => undefined); throw e }) : chat.workspaceId
+    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
     for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
     return fork
   }

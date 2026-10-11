@@ -6,6 +6,11 @@ export type ThreadBlock =
   | { kind: 'group'; id: string; tools: Extract<ChatItem, { kind: 'tool' }>[]; messages: number; items: ChatItem[] }
   | { kind: 'files'; id: string; files: ChangedFile[] }
   | { kind: 'meta'; id: string; text: string }
+  /**
+   * A finished turn's reply with the end of its turn under it: the changed files, then one line with how long the turn took
+   * and when, and the reply's actions (KERNEL-346).
+   */
+  | { kind: 'reply'; id: string; item: Extract<ChatItem, { kind: 'text' }>; files?: ChangedFile[]; meta: string }
   /** A turn that ended badly. `output` is what the last failed tool printed. */
   | { kind: 'error'; id: string; message: string; output?: string }
 
@@ -27,6 +32,7 @@ const work = (i: ChatItem) => i.kind === 'tool' || i.kind === 'thinking' || i.ki
 /**
  * Split items into turns at each user message. A turn that finished well (it has an ok `result`) shows
  * its reply, the files it changed and how long it took, and folds everything before the reply into one group.
+ * When the reply is the turn's last row, those three are one `reply` block, so its actions share the time's line.
  * A turn still running, stopped or failed shows every item, so nothing is hidden while it matters.
  */
 export function buildThread(items: ChatItem[]): ThreadBlock[] {
@@ -57,9 +63,16 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
     const tools = folded.filter((i): i is Extract<ChatItem, { kind: 'tool' }> => i.kind === 'tool')
     if (tools.length) blocks.push({ kind: 'group', id: `group-${tools[0].id}`, tools, messages: folded.length - tools.length, items: folded })
     else for (const item of folded) blocks.push({ kind: 'item', item })
-    for (const item of rest) blocks.push({ kind: 'item', item })
-    if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })
-    blocks.push({ kind: 'meta', id: result.id, text: `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}` })
+    const meta = `${fmtDuration(result.durationMs)} · ${fmtClock(result.ts)}`
+    const reply = rest[rest.length - 1]
+    if (reply?.kind === 'text') {
+      for (const item of rest.slice(0, -1)) blocks.push({ kind: 'item', item })
+      blocks.push({ kind: 'reply', id: reply.id, item: reply, ...(result.files?.length ? { files: result.files } : {}), meta })
+    } else {
+      for (const item of rest) blocks.push({ kind: 'item', item })
+      if (result.files?.length) blocks.push({ kind: 'files', id: `files-${result.id}`, files: result.files })
+      blocks.push({ kind: 'meta', id: result.id, text: meta })
+    }
     for (const item of after) blocks.push({ kind: 'item', item })
     turn = []
   }
