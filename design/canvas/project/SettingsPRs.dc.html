@@ -97,7 +97,16 @@ details.dd>summary::-webkit-details-marker{display:none}
 </div>
 <sc-for list="{{ page.sections }}" as="sec" hint-placeholder-count="2">
 <section style="display: flex; flex-direction: column; gap: 10px">
-<div style="display: flex; align-items: center; gap: 16px"><h2 style="flex: 1; min-width: 0; margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2><sc-if value="{{ sec.hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" style="height: 28px; margin: -3px 0; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ sec.action }}</button></sc-if></div>
+<sc-if value="{{ sec.isBanner }}" hint-placeholder-val="{{ false }}"><div role="group" aria-label="{{ sec.banner.title }}" style="display: flex; gap: 12px; padding: 16px 18px; border-radius: 10px; border: 1px solid #26272b; background: #141517">
+<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#f2c55c" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; margin-top: 1px"><path d="M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1"></path></svg>
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+<div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 13.5px; font-weight: 500">{{ sec.banner.title }}</span><span style="font-size: 12.5px; color: #8a8f98">{{ sec.banner.detail }}</span></div>
+<div style="display: flex; flex-direction: column; border-top: 1px solid #1d1e22"><sc-for list="{{ sec.banner.files }}" as="f" hint-placeholder-count="2"><div style="display: flex; align-items: baseline; gap: 16px; padding: 8px 0; border-bottom: 1px solid #1d1e22"><span style="width: 132px; flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0">{{ f.name }}</span><span style="font-size: 12.5px; color: #8a8f98"><sc-for list="{{ f.why }}" as="w" hint-placeholder-count="2"><span style="{{ w.style }}">{{ w.t }}</span></sc-for></span></div></sc-for></div>
+<div style="display: flex; align-items: center; gap: 4px"><button type="button" style="height: 30px; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: transparent; color: #f7f8f8; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ sec.banner.primary }}</button><button type="button" style="height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ sec.banner.secondary }}</button></div>
+</div>
+</div></sc-if>
+<sc-if value="{{ sec.notBanner }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 16px"><h2 style="flex: 1; min-width: 0; margin: 0; padding-left: 2px; font-size: 15px; font-weight: 500">{{ sec.title }}</h2><sc-if value="{{ sec.hasAction }}" hint-placeholder-val="{{ false }}"><button type="button" style="display: inline-flex; align-items: center; gap: 8px; height: 28px; margin: -3px 0; padding: 0 12px; border: 1px solid #2a2b30; border-radius: 7px; background: {{ sec.actBg }}; color: {{ sec.actColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer"><sc-if value="{{ sec.busy }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>{{ sec.action }}</button></sc-if></div>
 <div style="border-radius: 10px; border: 1px solid #1f2024; background: #141516">
 <sc-for list="{{ sec.rows }}" as="r" hint-placeholder-count="3">
 <div style="display: flex; flex-wrap: {{ r.wrap }}; align-items: center; column-gap: 24px; row-gap: 10px; min-height: {{ r.minH }}; box-sizing: border-box; padding: {{ r.pad }}; border-top: {{ r.border }}">
@@ -141,7 +150,7 @@ details.dd>summary::-webkit-details-marker{display:none}
 </div></sc-if>
 <sc-if value="{{ r.isTracker }}" hint-placeholder-val="{{ false }}"><div style="position: relative; flex-shrink: 0">
 <button type="button" aria-haspopup="menu" aria-expanded="{{ r.menuOpen }}" aria-label="Issue tracker: {{ r.value }}" style="display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border: 1px solid {{ r.selBorder }}; border-radius: 7px; background: #18191a; color: #f7f8f8; font-family: inherit; font-size: 13px; cursor: pointer">{{ r.value }}<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4 5 6.5 7.5 4"></path></svg></button>
-<sc-if value="{{ r.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Issue tracker" style="position: absolute; top: 36px; right: 0; z-index: 60; width: 240px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
+<sc-if value="{{ r.menuShown }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Issue tracker" style="position: absolute; top: 36px; right: -19px; z-index: 60; width: 259px; box-sizing: border-box; padding: 6px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
 <sc-for list="{{ r.menuItems }}" as="m" hint-placeholder-count="3"><button type="button" role="menuitemradio" aria-checked="{{ m.checked }}" style="display: flex; align-items: center; gap: 10px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 6px; background: {{ m.bg }}; color: #f7f8f8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer">
 <span style="flex: 1">{{ m.label }}</span>
 <sc-if value="{{ m.detected }}" hint-placeholder-val="{{ false }}"><span style="font-size: 12px; color: #8a8f98">Detected</span></sc-if>
@@ -150,11 +159,15 @@ details.dd>summary::-webkit-details-marker{display:none}
 </div></sc-if>
 </div></sc-if>
 <sc-if value="{{ r.isPreview }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; position: relative; box-sizing: border-box; height: 148px; overflow-y: auto; padding: 10px 14px 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: #d0d6e0"><sc-for list="{{ r.files }}" as="f" hint-placeholder-count="6"><div style="white-space: pre">{{ f }}</div></sc-for></div></sc-if>
+<sc-if value="{{ r.hasStat }}" hint-placeholder-val="{{ false }}"><span style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: {{ r.statColor }}"><sc-if value="{{ r.statOk }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if><sc-if value="{{ r.statFail }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#eb5757" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"></circle><path d="m6 6 4 4M10 6l-4 4"></path></svg></sc-if><sc-if value="{{ r.statBusy }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 11px; height: 11px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>{{ r.stat }}</span></sc-if>
+<sc-if value="{{ r.hasOut }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 8px; border: 1px solid #23252a; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; line-height: 1.6; color: #b7bcc4; overflow-wrap: anywhere">{{ r.out }}</div></sc-if>
+<sc-if value="{{ r.hasFix }}" hint-placeholder-val="{{ false }}"><div style="flex-basis: 100%; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; background: #0a0b0c; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12.5px; color: #d0d6e0"><span style="flex: 1">{{ r.fixCmd }}</span><button type="button" style="flex-shrink: 0; height: 24px; padding: 0 8px; border: 1px solid #2a2b30; border-radius: 6px; background: transparent; color: #d0d6e0; font-family: 'Inter', -apple-system, system-ui, sans-serif; font-size: 12px; cursor: pointer">Copy</button></div></sc-if>
 <sc-if value="{{ r.hasHint }}" hint-placeholder-val="{{ false }}"><p style="flex-basis: 100%; margin: 0; font-size: 12.5px; color: #8a8f98"><sc-for list="{{ r.hint }}" as="h" hint-placeholder-count="3"><span style="{{ h.style }}">{{ h.t }}</span></sc-for></p></sc-if>
 </div>
 </sc-for>
 </div>
 <sc-if value="{{ sec.hasNote }}" hint-placeholder-val="{{ false }}"><p style="margin: 0; padding: 0 2px; font-size: 12.5px; color: #8a8f98">{{ sec.note }}</p></sc-if>
+</sc-if>
 </section>
 </sc-for>
 </div>
@@ -276,6 +289,27 @@ class Component extends DCLogic {
     var KERNEL_DESC = 'Set by Kernel in every chat, script and big terminal tab. You can\u2019t override them.';
     var kernelRows = function (id) { return [kdisc(id, KERNEL_DESC, id === 'rk'), kern('KERNEL_PORT', 'The first of this workspace\u2019s 10 ports', id), kern('KERNEL_WORKSPACE_ID', 'This workspace\u2019s id', id), kern('KERNEL_WORKSPACE', 'This workspace\u2019s folder', id), kern('KERNEL_ROOT_PATH', 'The room\u2019s repository folder', id), kern('PORT', 'The same as KERNEL_PORT', id)]; };
     var roomPage = function (title, intro, sections) { return { title: title, intro: intro, isRoom: true, sections: sections }; };
+    // KERNEL-437. Disk: what the room's worktrees take up, from a background `du` that is cached, so a first look can still be measuring.
+    var diskSection = function (measuring) {
+      var trash = 'Archived worktrees wait in Kernel\u2019s trash first.';
+      return { title: 'Disk', action: 'Measure again', busy: measuring ? 'Measuring' : '', rows: [
+        measuring ? { label: 'Worktrees', type: 'status', stat: ['Measuring', 'busy'], desc: '4 workspaces' } : val('Worktrees', '3.2 GB', '4 workspaces, measured 2 minutes ago'),
+        sel('r-trash', 'Empty trash after', ['7 days', '1 day', '3 days', '14 days', '30 days', 'Never'], measuring ? trash : trash + ' It holds 2 now, 1.1 GB.')
+      ] };
+    };
+    // KERNEL-437. Push access: git ls-remote and gh's permission, checked when the room opens. A row says its result in words, with an icon and no dot.
+    var pushSection = function (state) {
+      var reach = { label: 'Reach origin', type: 'status', desc: 'git ls-remote origin', stat: ['Reached', 'ok'] };
+      var perm = { label: 'Permission to push', type: 'status', desc: 'From gh, signed in as cjjutba', stat: ['Can push', 'ok'] };
+      if (state === 'failed') perm = { label: 'Permission to push', type: 'status', desc: 'gh is signed in as cjjutba, but git isn\u2019t using that login.', stat: ['Can\u2019t push', 'fail'], fixCmd: 'gh auth setup-git' };
+      if (state === 'unreachable') {
+        reach = { label: 'Reach origin', type: 'status', desc: 'git ls-remote origin', stat: ['Failed', 'fail'], out: 'fatal: unable to access \'https://github.com/cjjutba/client-a.git/\': Could not resolve host: github.com', hint: [['Check your connection or VPN, then check again.', 0]] };
+        perm = { label: 'Permission to push', type: 'status', desc: 'Needs a reachable remote', stat: ['Not checked', 'none'] };
+      }
+      return { title: 'Push access', action: 'Check again', note: state === 'unreachable' ? 'Last checked just now.' : 'Last checked 2 minutes ago.', rows: [reach, perm] };
+    };
+    // KERNEL-437. A copied .env that looks like production: the files and why, never the values. Don't copy adds them to the room's exclusions, Keep copying remembers the choice.
+    var prodBanner = { banner: { title: '2 files look like production', detail: 'Agents run commands in every worktree, so a migration or seed script there could reach a live database.', primary: 'Don\u2019t copy these files', secondary: 'Keep copying', files: [['.env', [['DATABASE_URL'], ' points to a remote database']], ['.env.production', [['STRIPE_SECRET_KEY'], ' is a live key']]] }, rows: [] };
     var ROOMS = {
       a: { letter: 'A', repo: 'cjjutba/client-a', path: '~/Projects/client-a', team: 'Lead, Frontend, Backend, QA, Reviewer' },
       b: { letter: 'B', repo: 'cjjutba/client-b', path: '~/Projects/client-b', team: 'Lead, Backend, Reviewer' },
@@ -286,11 +320,30 @@ class Component extends DCLogic {
       github: function (open) { return [tracker('GitHub Issues', 1, 'Detected from the github.com remote', open)]; },
       none: function (open) { return [tracker('None', 2, 'None detected. Choose one to list issues for this room.', open)]; }
     };
-    var generalSections = function (kind, open, room, trk, trkOpen) {
+    var generalSections = function (kind, open, measuring, room, trk, trkOpen) {
       var R = ROOMS[room || 'a'];
       return [
         { title: 'Room', rows: [iconrow(kind, open, R.letter), val('Repository', R.repo), val('Local path', R.path), val('Team', R.team)].concat(TRACKERS[trk || 'linear'](trkOpen)) },
+        diskSection(!!measuring),
         { title: 'Danger zone', rows: [btn('Archive room', 'Archive', 'Stops every agent and archives all workspaces. You can restore it later.')] }
+      ];
+    };
+    var gitSections = function (state) {
+      return [
+        { title: 'New workspaces', rows: [
+          seg('rg-mode', 'Default workspace type', ['Use default', 'New worktree', 'Current branch'], 0, 'The app default is New worktree'),
+          over(sel('rg-from', 'Branch new workspaces from', ['origin/dev', 'origin/main'])),
+          sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'The app default is origin')
+        ] },
+        pushSection(state),
+        { title: 'Cleanup', rows: [
+          seg('rg-delbranch', 'Delete branch on archive', ['Use default', 'On', 'Off'], 0, 'The app default is Off'),
+          Object.assign(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2), { source: 'Overriding settings.toml' })
+        ] },
+        // KERNEL-401: checks this room never counts, when GitHub requires none on the repo.
+        { title: 'Pull requests', rows: [
+          Object.assign(from(code('Optional checks', ['Vercel*', 'codecov/patch'])), { hint: [['One check name per line. ', 0], ['*', 1], [' matches anything, like ', 0], ['Vercel*', 1], ['. A check on this list that fails doesn\u2019t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.', 0]] })
+        ] }
       ];
     };
     var all = {
@@ -396,28 +449,16 @@ class Component extends DCLogic {
       ] },
       'r-general': roomPage('General', 'How Client A is set up in Kernel.', generalSections('letter', false)),
       'r-icon': roomPage('General', 'How Client A is set up in Kernel.', generalSections('avatar', true)),
-      'r-tracker': roomPage('General', 'How Client B is set up in Kernel.', generalSections('letter', false, 'b', 'github', true)),
-      'r-tracker-none': roomPage('General', 'How Portfolio is set up in Kernel.', generalSections('letter', false, 'p', 'none')),
+      'r-tracker': roomPage('General', 'How Client B is set up in Kernel.', generalSections('letter', false, false, 'b', 'github', true)),
+      'r-tracker-none': roomPage('General', 'How Portfolio is set up in Kernel.', generalSections('letter', false, false, 'p', 'none')),
       'r-env': roomPage('Environment', 'Variables for Client A. Changes apply to chats and scripts started afterwards.', [
         { title: 'Variables', action: 'Add variable', rows: [vr('rv1', 'DATABASE_URL'), vr('rv2', 'STRIPE_SECRET_KEY')] },
         { title: 'Env files', action: 'Add env file', note: 'Read in this order each time a chat or script starts. A later file wins, and a missing file is skipped.', rows: [envfile('.env'), envfile('src/backend/.env', true)] },
         { title: "Kernel's variables", rows: kernelRows('rk') }
       ]),
-      'r-git': roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', [
-        { title: 'New workspaces', rows: [
-          seg('rg-mode', 'Default workspace type', ['Use default', 'New worktree', 'Current branch'], 0, 'The app default is New worktree'),
-          over(sel('rg-from', 'Branch new workspaces from', ['origin/dev', 'origin/main'])),
-          sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'The app default is origin')
-        ] },
-        { title: 'Cleanup', rows: [
-          seg('rg-delbranch', 'Delete branch on archive', ['Use default', 'On', 'Off'], 0, 'The app default is Off'),
-          Object.assign(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2), { source: 'Overriding settings.toml' })
-        ] },
-        // KERNEL-401: checks this room never counts, when GitHub requires none on the repo.
-        { title: 'Pull requests', rows: [
-          Object.assign(from(code('Optional checks', ['Vercel*', 'codecov/patch'])), { hint: [['One check name per line. ', 0], ['*', 1], [' matches anything, like ', 0], ['Vercel*', 1], ['. A check on this list that fails doesn\u2019t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.', 0]] })
-        ] }
-      ]),
+      'r-git': roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', gitSections('ok')),
+      'r-git-push-failed': Object.assign(roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', gitSections('failed')), { nav: 'r-git' }),
+      'r-git-unreachable': Object.assign(roomPage('Git', 'Overrides for Client A. Anything else follows the app default.', gitSections('unreachable')), { nav: 'r-git' }),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
         { title: 'Run scripts', action: 'Add run script', note: 'Each workspace gets 10 ports, $KERNEL_PORT to $((KERNEL_PORT + 9)).', rows: [
           Object.assign(over(entry('run', 'pnpm dev --port $KERNEL_PORT')), { actions: ['Edit', 'Remove'] }),
@@ -469,6 +510,9 @@ class Component extends DCLogic {
     // The add form opens over the room's Environment page, and the icon picker is the General page with its menu open.
     all['r-env-add'] = Object.assign({}, all['r-env'], { nav: 'r-env', modal: { title: 'Add variable', intro: 'For Client A. It wins over the same name in Settings, Environment.', name: 'API_BASE_URL', value: 'http://localhost:4000', hint: 'Stored encrypted on your Mac, never in the repo. The list shows it as dots.', confirm: 'Add' } });
     all['r-icon'].nav = 'r-general';
+    // KERNEL-437: the room's Disk row on a first look, before the background measurement has an answer, and Files to copy with the production warning above its list.
+    all['r-general-measuring'] = Object.assign(roomPage('General', 'How Client A is set up in Kernel.', generalSections('letter', false, true)), { nav: 'r-general' });
+    all['r-files-production'] = Object.assign({}, all['r-files'], { nav: 'r-files', sections: [prodBanner].concat(all['r-files'].sections) });
     all['r-tracker'].nav = 'r-general'; all['r-tracker'].room = 'b';
     all['r-tracker-none'].nav = 'r-general'; all['r-tracker-none'].room = 'p';
     return all;
@@ -505,7 +549,10 @@ class Component extends DCLogic {
       // Kernel's variables: the lines under the disclosure row only show while it is open.
       var openOf = function (id) { var row = sec.rows.filter(function (x) { return x.id === id; })[0]; return s.vals[id] === undefined ? row.open : s.vals[id]; };
       var rows = sec.rows.filter(function (r) { return !r.under || openOf(r.under); });
-      return { title: sec.title, hasAction: !!sec.action, action: sec.action || '', hasNote: !!sec.note, note: sec.note || '', rows: rows.map(function (r, i) {
+      var MONO = "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0";
+      var banner = sec.banner ? { title: sec.banner.title, detail: sec.banner.detail, primary: sec.banner.primary, secondary: sec.banner.secondary, files: sec.banner.files.map(function (f) { return { name: f[0], why: f[1].map(function (w) { return typeof w === 'string' ? { t: w, style: '' } : { t: w[0], style: MONO }; }) }; }) } : {};
+      return { title: sec.title, hasAction: !!sec.action, action: sec.busy || sec.action || '', busy: !!sec.busy, actBg: sec.busy ? '#1c1d21' : 'transparent', actColor: sec.busy ? '#b7bcc4' : '#f7f8f8',
+        isBanner: !!sec.banner, notBanner: !sec.banner, banner: banner, hasNote: !!sec.note, note: sec.note || '', rows: rows.map(function (r, i) {
         var v = r.id && s.vals[r.id] !== undefined ? s.vals[r.id] : undefined;
         var o = {
           label: r.label, desc: r.desc || '', hasDesc: !!r.desc, source: r.source || '', hasSource: !!r.source, hasReset: !!r.reset, reset: function () {},
@@ -517,7 +564,10 @@ class Component extends DCLogic {
           value: r.value || '', lines: r.lines || [], keys: r.keys || [], segs: [], act: function () {},
           wrap: 'wrap', minH: '58px', pad: '12px 18px', basis: '300px', hasTail: !!r.tail, tail: r.tail || '', hasMono: !!r.mono, mono: r.mono || '', monoStyle: '',
           hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
-          isIcon: false, isTracker: false, isPreview: false, files: r.files || [], isMulti: false, sels: []
+          isIcon: false, isTracker: false, isPreview: false, files: r.files || [], isMulti: false, sels: [],
+          hasStat: !!r.stat, stat: r.stat ? r.stat[0] : '', statOk: !!r.stat && r.stat[1] === 'ok', statFail: !!r.stat && r.stat[1] === 'fail', statBusy: !!r.stat && r.stat[1] === 'busy',
+          statColor: r.stat ? { ok: '#d0d6e0', fail: '#f7f8f8', busy: '#b7bcc4', none: '#8a8f98' }[r.stat[1]] : '#d0d6e0',
+          hasOut: !!r.out, out: r.out || '', hasFix: !!r.fixCmd, fixCmd: r.fixCmd || ''
         };
         if (r.tag) { o.hasTag = true; o.tag = r.tag; }
         if (r.edit) { o.isButton = true; o.value = 'Edit'; }
