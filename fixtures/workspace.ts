@@ -244,6 +244,15 @@ const treeScene = (right: 'files' | 'changes', tab: string, changesView?: 'list'
   ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false, changesView }, tabs: { [ids.table]: { tab, files: tab.startsWith('file:') ? [tab.slice(5), 'package.json'] : [], diffs: tab.startsWith('diff:') ? [tab.slice(5)] : [] } } }
 }))
 
+const imageBefore = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABkCAIAAACO1KzYAAAA2klEQVR42u3coREAMAgEQapDpH+NSCXpIQIBO3MV/PqPqqvBhQkAC7AAC7AAC7AAAxZgARZgARZgAQYswAIswAIswAIswIAF+K/MsyrAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDlkt/ARZgARZgAQYswAIswAIswAIMWIAFWIAFWIAFGLAAC7AAq7cHvsLF6uuQAxcAAAAASUVORK5CYII='
+const imageAfter = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAABkCAIAAACO1KzYAAABM0lEQVR42u3dsQ3DQAwEwatEgatUpIoVuATHzhQJz/sBtgIOFNlP5jwvFRcjACzAAizAAizA+gO+76+KAwxYgAVYgAVYgAUYsAALsAC/33F8APdYPg9wp2u9dLh2S4dut3HQdjMHbTdz6HYbh263ceh2G4dut3HodhuHbrcxYMB0JxsDBkx3snHodhsDBgwY8M66ixsDBgwY8Oa6KxsDBgwYMGDAgAEDBgy4BHic7rLGvmBfMGDAgAEDBgwYMGDAgP0e7PdgwIABA/avSsCAAQP2Nomu14VeFwIGzNgLf8CAbdkBvLzxoInZdGfTHWO7Kjcxnjgo+6Lti96eefR83Gxws2FX446xuJvkbtIe0q1DcLuwPNdHAQuwAAuwAAuwAAMWYAEWYAEWYAEGLMACLMB6tR96o4AjuY6UBwAAAABJRU5ErkJggg=='
+const imageDiffScene = (status: 'A' | 'M') => scene((f) => ({
+  changes: { ...f.changes, [ids.table]: [{ path: 'public/logo.png', status, added: 0, removed: 0 }, ...(f.changes[ids.table] ?? [])] },
+  diffs: { ...f.diffs, [ids.table]: '' },
+  images: { [ids.table]: { 'worktree:public/logo.png': { dataUrl: imageAfter }, ...(status === 'M' ? { 'base:public/logo.png': { dataUrl: imageBefore } } : {}) } },
+  ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:public/logo.png', files: [], diffs: ['public/logo.png'] } } }
+}))
+
 /** What @inv finds, in the order the canvas lists it. */
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
@@ -920,6 +929,9 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceDiffTab: scene(() => ({
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }
   })),
+  // No PNG draws an image in a diff tab (KERNEL-410). Git only says a binary file differs, so the tab shows the pictures: an added one as it is in the worktree, a changed one as Before and After.
+  WorkspaceDiffImageAdded: imageDiffScene('A'),
+  WorkspaceDiffImageModified: imageDiffScene('M'),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
     ui: { ...open, sidebar: false, rightPanel: false, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }

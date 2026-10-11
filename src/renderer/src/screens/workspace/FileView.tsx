@@ -27,8 +27,71 @@ function DiffFileName({ path, status }: { path: string; status?: ChangedFile['st
   return <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="ellipsis" style={deco ? { color: deco.color, textDecoration: deco.struck ? 'line-through' : undefined } : undefined}>{path}</span></span>
 }
 
+const IMAGE_PATH = /\.(png|jpe?g|gif|webp|svg)$/i
+export const isImagePath = (path: string) => IMAGE_PATH.test(path)
+
+/** The picture at a path, from the worktree or from the base the diff is against. `undefined` while it loads, `null` when there is none. */
+function useImage(wsId: string, path: string, at: 'worktree' | 'base') {
+  const [url, setUrl] = useState<string | null | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    setUrl(undefined)
+    call('workspaces.readImage', { workspaceId: wsId, path, at }).then((r) => { if (live) setUrl(r?.dataUrl ?? null) }).catch(() => { if (live) setUrl(null) })
+    return () => { live = false }
+  }, [wsId, path, at])
+  return url
+}
+
+const sizeText = (s: { w: number; h: number } | null) => (s ? `${s.w}×${s.h}` : '')
+
+/** One picture of a file. With a `label` ("Before", "After") it carries a caption with its size, without one the parent shows the size through `onSize`. */
+function ImagePane({ wsId, path, at, label, onSize }: { wsId: string; path: string; at: 'worktree' | 'base'; label?: string; onSize?: (s: { w: number; h: number }) => void }) {
+  const url = useImage(wsId, path, at)
+  const [loaded, setLoaded] = useState<{ url: string; w: number; h: number } | null>(null)
+  const size = loaded && loaded.url === url ? loaded : null
+  return (
+    <figure className="image-pane">
+      {label && <figcaption className="muted" style={{ fontSize: 12 }}>{label}{size ? ` · ${sizeText(size)}` : ''}</figcaption>}
+      {url === null
+        ? <span className="muted" style={{ fontSize: 12 }}>Can't show this picture.</span>
+        : url && <img src={url} alt={label ? `${label}: ${path}` : path} onLoad={(e) => { const s = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }; setLoaded({ url, ...s }); onSize?.(s) }} />}
+    </figure>
+  )
+}
+
+/** The pictures of a changed image: the worktree's for an added one, the base's for a deleted one, and both for a changed one. */
+function ImageChange({ wsId, path, status, onSize, inline }: { wsId: string; path: string; status?: ChangedFile['status']; onSize?: (s: { w: number; h: number }) => void; inline?: boolean }) {
+  const both = status === 'M'
+  return (
+    <div className="image-view" data-inline={inline || undefined}>
+      {status === 'D'
+        ? <ImagePane wsId={wsId} path={path} at="base" onSize={onSize} />
+        : both
+          ? <div className="image-pair"><ImagePane wsId={wsId} path={path} at="base" label="Before" /><ImagePane wsId={wsId} path={path} at="worktree" label="After" /></div>
+          : <ImagePane wsId={wsId} path={path} at="worktree" onSize={onSize} />}
+    </div>
+  )
+}
+
 /** A file in the worktree, read only, with line numbers (WorkspaceFile.png). */
-export function FileView({ ws, path, editedBy, changed }: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
+export function FileView(props: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
+  return isImagePath(props.path) ? <ImageFile {...props} /> : <TextFile {...props} />
+}
+
+/** A picture in the worktree, from All files or a changed file. */
+function ImageFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  return (
+    <div className="col grow" style={{ minHeight: 0 }}>
+      <ViewHead path={path} trailing={<button type="button" className="open-editor" onClick={() => void call('system.openInEditor', { path: `${ws.path}/${path}` })}>Open in editor</button>}>
+        <span className="muted" style={{ fontSize: 12 }}>Read only{changed && editedBy ? ` · edited by ${editedBy}` : ''}{size ? ` · ${sizeText(size)}` : ''}</span>
+      </ViewHead>
+      <div className="image-view"><ImagePane wsId={ws.id} path={path} at="worktree" onSize={setSize} /></div>
+    </div>
+  )
+}
+
+function TextFile({ ws, path, editedBy, changed }: { ws: Workspace; path: string; editedBy?: string; changed: boolean }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -95,7 +158,23 @@ function sendHunk(path: string, lines: { mark: string; code: string; hunk?: bool
 }
 
 /** The diff of one file, or of every changed file when `path` is empty. It is a tab, so the tab's close button and Cmd+W close it. */
-export function DiffView({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+export function DiffView(props: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+  return isImagePath(props.path) ? <ImageDiff {...props} /> : <TextDiff {...props} />
+}
+
+/** The diff tab of one image: git only says the binary files differ, so it shows the pictures. */
+function ImageDiff({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  const status = changes.find((c) => c.path === path)?.status
+  return (
+    <div className="col grow" style={{ minHeight: 0 }}>
+      <ViewHead path={path} trailing={null}>{status !== 'M' && size && <span className="muted" style={{ fontSize: 12 }}>{sizeText(size)}</span>}</ViewHead>
+      <ImageChange wsId={ws.id} path={path} status={status} onSize={setSize} />
+    </div>
+  )
+}
+
+function TextDiff({ ws, path, changes }: { ws: Workspace; path: string; changes: ChangedFile[] }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -116,8 +195,9 @@ export function DiffView({ ws, path, changes }: { ws: Workspace; path: string; c
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (
           <div key={f.path}>
-            {!path && <div className="diff-file"><DiffFileName path={f.path} status={changes.find((c) => c.path === f.path)?.status} /><span><span className="add">+{f.added}</span> <span className="del">-{f.removed}</span></span></div>}
-            {f.lines.map((l, i) => (
+            {!path && <div className="diff-file"><DiffFileName path={f.path} status={changes.find((c) => c.path === f.path)?.status} />{!isImagePath(f.path) && <span><span className="add">+{f.added}</span> <span className="del">-{f.removed}</span></span>}</div>}
+            {isImagePath(f.path) && <ImageChange wsId={ws.id} path={f.path} status={changes.find((c) => c.path === f.path)?.status} inline />}
+            {!isImagePath(f.path) && f.lines.map((l, i) => (
               <div key={i} className="diff-line" data-mark={l.hunk ? 'hunk' : l.mark}>
                 <span className="ln">{l.a}</span><span className="ln">{l.b}</span>
                 <span className="mark">{l.hunk ? '' : l.mark === ' ' ? '' : l.mark}</span>
