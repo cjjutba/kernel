@@ -33,7 +33,7 @@ describe('the order', () => {
   })
 
   it('holds back a PR the reviewer rule blocks, as a Merge button would', () => {
-    const read = (id: string) => ({ [id]: { workspaceId: id, number: 1, checks: [], head: 'h' } as unknown as PrInfo })
+    const read = (id: string) => ({ [id]: { workspaceId: id, number: 1, state: 'ready', checks: [], head: 'h' } as unknown as PrInfo })
     const [row] = list([ws('blocked', { reviews: [verdict('approved', { sha: 'old' })] })], read('blocked'))
     expect(row.ready).toBe(false)
     expect(row.state?.label).toBe('Waiting for approval')
@@ -44,7 +44,7 @@ describe('the order', () => {
     const strict = { requireGreen: true, requireReviewer: false }
     const [unread] = leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: {}, rules: strict, agents })
     expect(unread.ready).toBe(false)
-    const info = { workspaceId: 'a', number: 1, checks: [{ name: 'lint', state: 'pass' }], head: 'h' } as PrInfo
+    const info = { workspaceId: 'a', number: 1, state: 'ready', checks: [{ name: 'lint', state: 'pass' }], head: 'h' } as PrInfo
     expect(leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: { a: info }, rules: strict, agents })[0].ready).toBe(true)
   })
 })
