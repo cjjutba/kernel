@@ -1,0 +1,74 @@
+/* Shared files (KERNEL-305): the card in a chat, the compact card in a Team update, the tab and the right panel's list. Tokens only. */
+
+/* the card in a chat (WorkspaceSharedCard.png) */
+.shcard { width: 320px; max-width: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+.shcard[data-layout='tile'] { flex-direction: row; align-items: center; }
+.shcard-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.shcard[data-layout='tile'] .shcard-text { gap: 1px; }
+.shcard-line { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.shcard-title { flex: 1; min-width: 0; font-weight: 500; color: var(--ink); }
+.shcard-meta { min-width: 0; font-size: 12.5px; color: var(--muted); }
+.shcard-open { flex-shrink: 0; font-weight: 500; }
+.shcard-tile, .shrow-tile { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; border: 1px solid var(--line-3); background: var(--surface-3); color: var(--ink-2); }
+.shcard-tile { width: 36px; height: 36px; border-radius: var(--r); }
+.shcard-thumb { position: relative; aspect-ratio: 296 / 185; box-sizing: border-box; overflow: hidden; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); }
+.shcard-thumb img, .shrow-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+
+/* under a teammate's row in a Team update (TeamUpdateShared.png) */
+.shrow { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 10px 8px 8px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--surface); }
+.shrow-thumb { position: relative; flex-shrink: 0; width: 64px; height: 40px; box-sizing: border-box; overflow: hidden; border-radius: var(--r-sm); border: 1px solid var(--line-3); background: var(--surface-3); }
+.shrow-tile { width: 40px; height: 40px; border-radius: var(--r-sm); }
+.shrow-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.shrow-title { font-size: 13px; font-weight: 500; color: var(--ink); }
+.shrow-meta { font-size: 12px; color: var(--muted); }
+.shrow-open { flex-shrink: 0; height: 24px; padding: 0 9px; font-weight: 500; }
+
+/* the tab (WorkspaceSharedHtml.png and the rest) */
+.shared-view { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.shared-title { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding: 0 16px; }
+.shared-title h2 { margin: 0; min-width: 0; font-size: 14px; font-weight: 500; }
+.shared-by { flex-shrink: 0; font-size: 12.5px; color: var(--muted); }
+.shared-tools { height: 40px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px 6px; border-bottom: 1px solid var(--line); }
+.shared-ver { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px 0 10px; border: 1px solid var(--line-3); border-radius: var(--r-sm); background: transparent; color: var(--ink); font: 12px var(--mono); }
+.shared-ver[aria-expanded='true'] { background: var(--surface-3); }
+.shared-ver svg { color: var(--muted); }
+.shared-menu-ver { font: 12.5px var(--mono); color: var(--ink); }
+.shared-width .segmented { padding: 2px; border-radius: 7px; background: transparent; border-color: var(--line-3); }
+.shared-width .segmented button { height: 20px; padding: 0 9px; border-radius: 5px; font-size: 12px; font-weight: 500; }
+.shared-tools .btn.small svg { color: var(--muted); }
+.shared-area { flex: 1; min-height: 0; box-sizing: border-box; display: flex; justify-content: center; padding: 16px; overflow: hidden; background: var(--aside); }
+.shared-area[data-kind='pdf'] { padding: 16px 16px 0; }
+.shared-area[data-kind='markdown'] { padding: 0; overflow-y: auto; align-items: flex-start; background: var(--panel); }
+.shared-area[data-kind='image'] { align-items: center; }
+.shared-area > img { display: block; min-width: 0; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--r-sm); border: 1px solid var(--line-3); }
+.shared-frame { width: 100%; max-width: 100%; box-sizing: border-box; position: relative; overflow: hidden; border-radius: var(--r); border: 1px solid var(--line-3); background: var(--surface-3); }
+.shared-frame[data-width='tablet'] { width: 768px; }
+.shared-frame[data-width='phone'] { width: 390px; }
+.shared-frame img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left; }
+.shared-page { flex-shrink: 0; align-self: flex-start; display: block; max-width: 100%; height: auto; border: 1px solid var(--line-3); }
+.shared-none { align-self: center; color: var(--muted); }
+.md.shared-md { width: 640px; max-width: 100%; box-sizing: border-box; flex-shrink: 0; padding: 32px 0; color: var(--ink-2); line-height: 1.7; }
+.md.shared-md > * { margin-bottom: 10px; }
+.md.shared-md > .md-h { margin-bottom: 8px; line-height: 1.25; }
+.md.shared-md > .md-h[data-level='1'] { margin-bottom: 12px; font-size: 24px; letter-spacing: -0.4px; }
+.md.shared-md > .md-h[data-level='2'] { font-size: 16px; font-weight: 500; }
+.md.shared-md > .md-h:not(:first-child) { margin-top: 0; }
+.md.shared-md > p:not(:last-child), .md.shared-md > ul, .md.shared-md > ol { margin-bottom: 20px; }
+.md.shared-md > p:last-child { margin-bottom: 0; }
+.md.shared-md ul, .md.shared-md ol { padding-left: 20px; }
+.md.shared-md li { padding-left: 4px; }
+.md.shared-md li + li { margin-top: 6px; }
+.md.shared-md > .codeblock { margin: 4px 0 16px; }
+/* The canvas draws no Copy button on a code block, so it waits for hover or focus. */
+.shared-md .codeblock .btn { opacity: 0; }
+.shared-md .codeblock:hover .btn, .shared-md .codeblock:focus-within .btn { opacity: 1; }
+.shared-outside { margin: 0; height: 32px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; padding: 0 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* the right panel's Shared tab (WorkspaceSharedPanel.png) */
+.shpanel { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 4px 8px; }
+.shpanel-row { display: flex; align-items: center; gap: 10px; flex-shrink: 0; min-height: 48px; box-sizing: border-box; padding: 6px 8px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
+.shpanel-row:hover, .shpanel-row:focus-visible { background: var(--hover); }
+.shpanel-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
+.shpanel-icon { display: inline-flex; flex-shrink: 0; color: var(--muted); }
+.shpanel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.shpanel-meta { font-size: 12px; color: var(--muted); }

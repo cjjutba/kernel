@@ -14,6 +14,7 @@ import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/C
 import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
+import { SharedView } from './shared/SharedView'
 import { PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -74,11 +75,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const filePath = tab?.startsWith('file:') ? tab.slice(5) : undefined
   // An empty path is the diff of every changed file, so test for undefined, never for truthiness.
   const diffPath = tab?.startsWith('diff:') ? tab.slice(5) : undefined
+  const sharedId = tab?.startsWith('shared:') ? tab.slice(7) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
-  const chat = filePath || diffPath !== undefined || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
+  const chat = filePath || diffPath !== undefined || sharedId || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = tabs?.files ?? NO_TABS
   const diffs = tabs?.diffs ?? NO_TABS
+  const shared = tabs?.shared ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
@@ -122,6 +125,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const closeDiff = (path: string) => {
     actions.ui.setTabs(workspaceId, { diffs: diffs.filter((x) => x !== path) })
     if (tab === diffTab(path)) select(chat?.id ?? '')
+  }
+  /** Closing drops the version picked in the tab too, so opening the file again follows the latest. */
+  const closeShared = (id: string) => {
+    const { [id]: _picked, ...picks } = tabs?.sharedVersion ?? {}
+    actions.ui.setTabs(workspaceId, { shared: shared.filter((x) => x !== id), sharedVersion: picks })
+    if (tab === `shared:${id}`) select(chat?.id ?? '')
   }
   /** The same image again selects its tab instead of opening a second one. */
   const openImage = (part: ImagePart) => {
@@ -167,10 +176,12 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} diffs={diffs} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
+              : sharedId
+                ? <SharedView workspaceId={workspaceId} sharedId={sharedId} />
               : filePath
                 ? <FileView ws={ws} path={filePath} changed={changed} editedBy={agent?.name} />
                 : image
