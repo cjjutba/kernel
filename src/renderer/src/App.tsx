@@ -198,8 +198,8 @@ export function App() {
       if (e.key === 'k') { e.preventDefault(); actions.ui.openModal({ name: 'search' }) }
       if (e.key === ',') { e.preventDefault(); actions.ui.openSettings() }
       if (e.key === '\\') { e.preventDefault(); toggleFocus() }
-      // Option turns B into ∫, so match the physical key.
-      if (e.code === 'KeyB' && !e.shiftKey) { e.preventDefault(); if (e.altKey) toggleRightPanel(); else toggleSidebar() }
+      // ⌘B is the sidebar; ⌘⌥B and ⌘⇧B are the right panel (KERNEL-425). Option turns B into ∫, so match the physical key.
+      if (e.code === 'KeyB' && !(e.shiftKey && e.altKey)) { e.preventDefault(); if (e.altKey || e.shiftKey) toggleRightPanel(); else toggleSidebar() }
       if (e.key.toLowerCase() === 'n' && e.shiftKey) { e.preventDefault(); actions.ui.openModal({ name: 'newWorkspace', roomId: currentRoom() }) }
       // ⌘N does the same, but not over a modal (it would reset the New chat prompt) or during onboarding.
       if (e.key === 'n' && !e.shiftKey && !e.altKey && !e.ctrlKey) {
