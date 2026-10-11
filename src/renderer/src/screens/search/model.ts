@@ -1,4 +1,4 @@
-import type { AgentDef, Approval, Room, Route, SettingsPage, SharedFile, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, Room, Route, SettingsPage, SharedFile, Thread, Workspace } from '@shared/types'
 
 import { isLeadWorkspace } from '../../lead'
 import { roomLetter } from '../rooms/roomInfo'
@@ -6,7 +6,7 @@ import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
 import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
-export type Section = 'Suggested' | 'Shared' | 'Go to' | 'Rooms' | 'Results'
+export type Section = 'Suggested' | 'Chats' | 'Shared' | 'Go to' | 'Rooms' | 'Results'
 
 export interface PaletteItem {
   id: string
@@ -18,8 +18,10 @@ export interface PaletteItem {
   keys?: string[]
   /** Lowercase extra words the fuzzy search also matches, so "preferences" finds Settings. */
   also?: string
-  /** Muted text on the right, in place of shortcut caps: what a shared file is and who shared it. */
+  /** Muted text on the right, in place of shortcut caps: what a shared file is and who shared it, or how many tabs a chat holds. */
   meta?: string
+  /** The heading of the group this item opens, when it isn't the section's name: "Chats in Client A". */
+  group?: string
   run: () => void
 }
 
@@ -72,6 +74,8 @@ export interface PaletteInput {
   shared: SharedFile[]
   /** By room id. */
   agents: Record<string, AgentDef[]>
+  /** The open Lead chats of the room in view, in sidebar order, each with its open tabs (KERNEL-339). */
+  chats?: { thread: Thread; tabs: Chat[] }[]
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
   terminal?: { enabled: boolean; preset?: string }
   act: {
@@ -80,7 +84,10 @@ export interface PaletteInput {
     newRoom: () => void
     whatsNew: () => void
     approve: (a: Approval) => void
+    /** A tab in the workspace you are in. In the Lead's workspace it joins the chat on screen. */
     newChat: (workspaceId: string, kind?: 'terminal') => void
+    /** A chat of the room, on the tab last shown in it. */
+    openChat: (roomId: string, thread: Thread, tabs: Chat[]) => void
     /** The room's Lead chat, made on first use (`lead.open`). */
     openLead: (roomId: string) => void
     /** Where a room opens: its Lead chat, or Team when it has no Lead (D-104). */
@@ -129,11 +136,16 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
     ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
-      item('new-chat', 'Suggested', '+', 'New chat tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
+      item('new-tab', 'Suggested', '+', 'New tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
       // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
       ...(i.terminal?.enabled ? [item('terminal', 'Suggested', '>', i.terminal?.preset ? `Big terminal tab: ${i.terminal.preset}` : 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell terminal' })] : [])
     ] : [])
   ]
+
+  // The room's open chats, each with its tab count. Typing searches them with everything else.
+  const chatItems: PaletteItem[] = room
+    ? (i.chats ?? []).map(({ thread, tabs }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(room.id, thread, tabs), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${room.name}`, also: 'chat tabs' }))
+    : []
 
   const shown = current ?? workspaces.filter((w) => live(w) && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
   const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}) => item(id, 'Go to', '◇', label, () => act.go(route), extra)
@@ -202,14 +214,19 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))
   ]
 
-  return { items: [...suggested, ...sharedNow, ...goDefault, ...roomItems], more }
+  return { items: [...suggested, ...chatItems, ...sharedNow, ...goDefault, ...roomItems], more }
 }
 
 /** What the list shows for a query. No query: the three sections. A query: one ranked list over everything. */
-export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string): { section: Section; list: PaletteItem[] }[] {
-  if (!query.trim()) return (['Suggested', 'Shared', 'Go to', 'Rooms'] as const).map((section) => ({ section, list: items.filter((x) => x.section === section) })).filter((g) => g.list.length)
+export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string): { section: Section; title: string; list: PaletteItem[] }[] {
+  if (!query.trim()) {
+    return (['Suggested', 'Chats', 'Shared', 'Go to', 'Rooms'] as const)
+      .map((section) => { const list = items.filter((x) => x.section === section); return { section, title: list[0]?.group ?? section, list } })
+      .filter((g) => g.list.length)
+  }
   const seen = new Set<string>()
-  const all = [...items, ...more].filter((x) => { const key = x.section === 'Shared' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
+  // Two chats or files can share a name, so those are told apart by id.
+  const all = [...items, ...more].filter((x) => { const key = x.section === 'Shared' || x.section === 'Chats' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
   const list = rank(all, query)
-  return list.length ? [{ section: 'Results', list }] : []
+  return list.length ? [{ section: 'Results', title: 'Results', list }] : []
 }

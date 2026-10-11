@@ -1,11 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import type { ActivityEvent, Workspace } from '@shared/types'
+import type { ActivityEvent, Chat, Thread, Workspace } from '@shared/types'
 import { Icon } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
-import { leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
+import { chatFoot, chatSince, chatWaits, waitLine } from './chatCard'
+import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
 const OPEN_MS = 450
 /** Right after a card closes the next one opens at once, so running the pointer down the list doesn't wait on every row. */
@@ -107,12 +108,12 @@ function lineOf(e: ActivityEvent, who: string | undefined): string {
   return `${actor} ${e.text}${e.object ? ` ${e.object}` : ''}`
 }
 
-function Card({ eyebrow, status, title, line, meta, when }: { eyebrow: ReactNode; status: ReactNode; title: string; line: string; meta?: ReactNode; when?: string }) {
+function Card({ eyebrow, status, title, line, wrap, meta, when }: { eyebrow: ReactNode; status: ReactNode; title: string; line: string; /** Lets the line run to a second row, for a question that doesn't fit on one. */ wrap?: boolean; meta?: ReactNode; when?: string }) {
   return (
     <>
       <div className="hc-head"><span className="grow ellipsis">{eyebrow}</span>{status}</div>
       <div className="hc-title ellipsis">{title}</div>
-      <div className="hc-line ellipsis">{line}</div>
+      <div className={`hc-line ${wrap ? 'hc-wrap' : 'ellipsis'}`}>{line}</div>
       <div className="hc-foot">{meta}{when && <span className="hc-when">{when}</span>}</div>
     </>
   )
@@ -169,6 +170,36 @@ export function LeadCard({ roomId, at, id }: { roomId: string; at: DOMRect; id: 
         line={last ? lineOf(last, lead.name) : 'No recent activity'}
         meta={<span className="grow ellipsis">{open ? `${open} open workspace${open === 1 ? '' : 's'}` : 'No open workspaces'}</span>}
         when={last && agoShort(last.ts)}
+      />
+    </HoverCard>
+  )
+}
+
+/**
+ * A chat row's card (KERNEL-339): the room and the Lead, the chat's title and its status, what waits on you, and the tab count. The line names
+ * the tab (or a workspace the chat started) that has waited longest and what it asks, from its pending approval. With nothing waiting it says so.
+ */
+export function ChatCard({ roomId, thread, tabs, owned, at, id }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; at: DOMRect; id: string }) {
+  const room = useStore((s) => s.rooms.find((r) => r.id === roomId)?.name)
+  const lead = useStore((s) => leadOf(s.agents, roomId)?.name)
+  const approvals = useStore((s) => s.approvals)
+  const working = useStore((s) => tabs.filter((c) => s.running[c.id]).length)
+  // The newest line in any tab. Tabs that haven't loaded their transcript add nothing.
+  const lastItem = useStore((s) => tabs.reduce((t, c) => Math.max(t, ...(s.items[c.id] ?? []).map((i) => i.ts)), 0))
+  const waits = useMemo(() => chatWaits({ tabs, owned, approvals }), [tabs, owned, approvals])
+  const g = chatGlyph({ waiting: waits.map((w) => w.approval), running: working > 0 })
+  const needing = new Set(waits.map((w) => w.key)).size
+  const when = chatSince(waits, lastItem, thread.createdAt)
+  return (
+    <HoverCard at={at} id={id}>
+      <Card
+        eyebrow={`${room ?? ''} · Chat with ${lead ?? 'the Lead'}`}
+        // A chat with nothing running or waiting shows no pill, since the row shows only the chat icon then.
+        status={waits.length || working ? <Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={g.icon === 'spin' ? undefined : g.icon} label={g.label} /> : null}
+        title={thread.title}
+        line={waits.length ? waitLine(waits[0], lead ?? 'The Lead') : 'Nothing is waiting on you.'} wrap
+        meta={<span className="grow ellipsis">{chatFoot(tabs.length, needing, working)}</span>}
+        when={agoShort(when).replace(' ago', '')}
       />
     </HoverCard>
   )

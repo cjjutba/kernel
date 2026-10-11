@@ -99,7 +99,15 @@ async function commentAt(page: Page, spot: { x: number; y: number }, note: strin
   }
 }
 
+// GroupedRowStatus is drawn with the pointer on the Client portal login row, once its card has opened.
+async function hoverRow(page: Page, row: string) {
+  await page.locator('.chat-row', { hasText: row }).hover()
+  await page.locator('.hover-card').waitFor()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
