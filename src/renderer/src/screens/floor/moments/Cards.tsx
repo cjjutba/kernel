@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { AgentDef, Approval, Decision, Overlap, Workspace } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, go } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { FloorCard } from '../FloorCard'
 import { NUMBERS, cap, fileName, names } from './moments'
 import './moments.css'
 
-const failed = (title: string) => (e: Error) => actions.ui.toast({ title, sub: e.message })
+const failed = (title: string) => (e: Error) => actions.ui.toast({ title, sub: cleanError(e) })
 const decide = (a: Approval, decision: Decision) => call('approvals.decide', { id: a.id, decision }).catch(failed('Could not send your answer'))
 
 /**

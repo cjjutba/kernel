@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { AgentDef, AppSettings } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, go, loadRoom, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { NoRoom, Row, RoomPage, Section, useRoomPage } from '../kit'
@@ -20,7 +20,7 @@ export function Team({ roomId, s }: { roomId?: string; s: AppSettings }) {
     try {
       const list = await call('agents.seed', { roomId, template: { kind: s.team.defaultTemplate } })
       actions.agents.set(roomId, list)
-    } catch (e) { actions.ui.toast({ title: 'Could not add the team', sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: 'Could not add the team', sub: cleanError(e) }) }
   })
   return (
     <RoomPage room={room} rs={rs} title="Agents" intro="Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.">

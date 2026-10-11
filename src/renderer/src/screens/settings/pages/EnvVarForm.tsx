@@ -1,6 +1,6 @@
 import { useId, useState, type FormEvent } from 'react'
 import { ENV_NAME, isClaudeVar, isKernelVar } from '@shared/kernelVars'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, Modal, useBusy } from '../../../ui'
 import { envChanged, useEnv } from '../env'
@@ -37,7 +37,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
   // Show asks for the saved value, and a second press hides it again. A value that can't be read (no Keychain) says why under the field.
   const reveal = () => run('show', async () => {
     setError(null)
-    try { setSaved(await call('env.reveal', { roomId, name })) } catch (e) { setError((e as Error).message) }
+    try { setSaved(await call('env.reveal', { roomId, name })) } catch (e) { setError(cleanError(e)) }
   })
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -50,7 +50,7 @@ export function EnvVarForm({ roomId, editName }: { roomId?: string; editName?: s
         void envChanged()
         actions.ui.closeModal()
       } catch (err) {
-        setError((err as Error).message)
+        setError(cleanError(err))
       }
     })
   }

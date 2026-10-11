@@ -17,6 +17,7 @@
 .ob-check + .ob-check { border-top: 1px solid var(--line); }
 .ob-ico { width: 15px; margin-top: 2px; flex-shrink: 0; display: inline-flex; color: var(--add); }
 .ob-check[data-ok="false"] .ob-ico { color: var(--del); }
+.ob-check[data-ok="false"][data-blocking="false"] .ob-ico { color: var(--needs); }
 .ob-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ob-name { font-weight: 500; }
 .ob-detail { font-size: 12.5px; color: var(--muted); }
@@ -38,6 +39,7 @@
 .ob-load-group { display: flex; flex-direction: column; gap: 12px; }
 .ob-load-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--panel); border: 1px solid var(--panel-line); border-radius: var(--r-md); }
 .ob-load-main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 48px 0; box-sizing: border-box; }
+.ob-load-error { max-width: 420px; padding: 0 16px; text-align: center; font-size: 12.5px; user-select: text; }
 .spin.ob-spin { width: 18px; height: 18px; border-width: 2px; }
 
 .hk-lede { margin: 0; padding: 0 18px 12px; color: var(--muted); line-height: 1.5; }

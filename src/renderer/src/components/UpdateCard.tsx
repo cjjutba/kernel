@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { call } from '../api'
+import { call, cleanError } from '../api'
 import { actions, useStore } from '../store'
 import { Button, Icon } from '../ui'
 
@@ -26,7 +26,7 @@ export function UpdateCard() {
     setBusy(true)
     void call('update.install', undefined).then((r) => { if (r.canceled) setBusy(false) }, (e: unknown) => {
       setBusy(false)
-      actions.ui.toast({ title: 'Could not restart to update', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not restart to update', sub: cleanError(e) })
     })
   }
   return (

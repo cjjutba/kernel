@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, Workspace } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { addToComposer } from './composer/bus'
 import { parseDiff } from './diff'
@@ -26,7 +26,7 @@ export function FileView({ ws, path, editedBy, changed }: { ws: Workspace; path:
   useEffect(() => {
     let live = true
     setText(null); setError(null)
-    call('workspaces.readFile', { workspaceId: ws.id, path }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(e.message) })
+    call('workspaces.readFile', { workspaceId: ws.id, path }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(cleanError(e)) })
     return () => { live = false }
   }, [ws.id, path])
   const lines = useMemo(() => (text ?? '').replace(/\n$/, '').split('\n'), [text])
@@ -93,7 +93,7 @@ export function DiffView({ ws, path, changes }: { ws: Workspace; path: string; c
   useEffect(() => {
     let live = true
     setText(null); setError(null)
-    call('workspaces.diff', { workspaceId: ws.id, file: path || undefined }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(e.message) })
+    call('workspaces.diff', { workspaceId: ws.id, file: path || undefined }).then((t) => { if (live) setText(t) }).catch((e: Error) => { if (live) setError(cleanError(e)) })
     return () => { live = false }
   }, [ws.id, path])
   const files = useMemo(() => parseDiff(text ?? ''), [text])

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { LinearIssue, LinearIssueDetail, Workspace } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, lastRoom, useStore } from '../../store'
 import { Button, Icon, Skeleton, useBusy } from '../../ui'
 import { IssuePriority, IssueState, PRIORITIES } from '../../icons'
@@ -43,7 +43,7 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
   useEffect(() => {
     let live = true
     setFailed(null)
-    call('linear.issue', { id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(e.message))
+    call('linear.issue', { id }).then((d) => live && setLoaded(d)).catch((e: Error) => live && setFailed(cleanError(e)))
     return () => { live = false }
   }, [id, tick])
   const issue: LinearIssue | undefined = loaded?.id === id ? loaded : summary
@@ -71,11 +71,11 @@ export function IssueDetail({ id, summary, tick, onPlanned }: { id: string; summ
       const { chatId } = await call('linear.plan', { id, roomId: room.id })
       onPlanned()
       await openLeadChat(room.id, chatId)
-    } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: `Could not plan with ${lead}`, sub: cleanError(e) }) }
   })
   const link = () => room && team && run('link', async () => {
     try { actions.settings.setRoom(room.id, await call('settings.setRoom', { roomId: room.id, patch: { linear: { team } } })) }
-    catch (e) { actions.ui.toast({ title: `Could not link ${team} to ${room.name}`, sub: (e as Error).message }) }
+    catch (e) { actions.ui.toast({ title: `Could not link ${team} to ${room.name}`, sub: cleanError(e) }) }
   })
   const newChat = () => issue && actions.ui.openModal({ name: 'newWorkspace', roomId: room?.id, source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url } })
 

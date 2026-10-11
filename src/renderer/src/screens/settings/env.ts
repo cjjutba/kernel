@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 
 /** What `env.get` returns: names only. A value only ever comes from `env.reveal`, and stays in the component that asked. */
 export interface EnvList { names: string[]; files: { path: string; missing: boolean }[] }
@@ -24,7 +24,7 @@ export function useEnv(roomId?: string) {
       const next = await call('env.get', { roomId })
       if (mine === latest.current) { setEnv(next); setError(null) }
     } catch (e) {
-      if (mine === latest.current) setError((e as Error).message)
+      if (mine === latest.current) setError(cleanError(e))
     }
   }, [roomId])
   useEffect(() => {

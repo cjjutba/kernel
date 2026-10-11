@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { Room } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go } from '../../store'
 import { Menu, MENU_SEPARATOR } from '../../ui'
 
@@ -30,7 +30,7 @@ export function RoomMenu({ room, anchorRef }: { room: Room; anchorRef: RefObject
   // Pause and Resume lived on the floor's header until D-104 hid the floor. A paused room offers Resume.
   const togglePause = () => call('rooms.setPaused', { roomId: room.id, paused: !room.paused })
     .then(actions.rooms.upsert)
-    .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: e.message }))
+    .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: cleanError(e) }))
   if (!at) return null
   return createPortal(
     <div ref={box} className="room-menu" style={{ left: at.left - 4, width: at.width + 8, ...(up ? { bottom: window.innerHeight - at.top + GAP } : { top: at.bottom + GAP }) }}>

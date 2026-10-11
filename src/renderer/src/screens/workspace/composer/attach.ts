@@ -1,6 +1,7 @@
 import type { ChatPart } from '@shared/types'
 import { actions } from '../../../store'
 import { isLongPaste, pasteLines } from './autocomplete'
+import { cleanError } from '../../../api'
 
 // Attachments for every composer: the workspace chat, the new workspace prompt and the floor brief.
 
@@ -36,7 +37,7 @@ export async function partOf(file: File): Promise<ChatPart> {
 /** Files as parts, in order. One that can't be attached gets a toast and the rest still go. */
 export async function attachFiles(files: File[], add: (part: ChatPart) => void) {
   for (const f of files) {
-    try { add(await partOf(f)) } catch (e) { actions.ui.toast({ title: 'Could not attach', sub: (e as Error).message }) }
+    try { add(await partOf(f)) } catch (e) { actions.ui.toast({ title: 'Could not attach', sub: cleanError(e) }) }
   }
 }
 

@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { KERNEL_VARS, SCRIPT_VARS } from '@shared/kernelVars'
 import type { Room, RoomSettings } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Icon, Modal, useBusy } from '../../../ui'
 import { NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
@@ -39,7 +39,7 @@ function Variables({ roomId, room, env, error }: { roomId?: string; room?: Room;
       await call('env.set', { roomId, name, value: null })
       await envChanged()
     } catch (e) {
-      actions.ui.toast({ title: `Could not delete ${name}`, sub: (e as Error).message })
+      actions.ui.toast({ title: `Could not delete ${name}`, sub: cleanError(e) })
     }
     setDeleting(null)
   })
@@ -77,7 +77,7 @@ function VariableRow({ roomId, name, onDelete }: { roomId?: string; name: string
       if (mine !== request.current) return
       setValue(v)
     } catch (e) {
-      if (mine === request.current) actions.ui.toast({ title: `Could not show ${name}`, sub: (e as Error).message })
+      if (mine === request.current) actions.ui.toast({ title: `Could not show ${name}`, sub: cleanError(e) })
     }
   }).then(() => row.current?.querySelector('button')?.focus())
   const shown = value !== null

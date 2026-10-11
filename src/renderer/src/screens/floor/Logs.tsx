@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ActivityEvent, AgentDef, AgentStatus, Approval, Workspace } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { Icon, useBusy } from '../../ui'
 import { actions, go, useStore } from '../../store'
 import { latestWarn } from '../../floor/layout'
@@ -28,7 +28,7 @@ export function ShowEverything({ on, onChange }: { on: boolean; onChange: (on: b
 
 const initials = (name?: string) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join('') || 'Y'
 
-const failed = (e: unknown) => actions.ui.toast({ title: 'That did not work', sub: (e as Error).message })
+const failed = (e: unknown) => actions.ui.toast({ title: 'That did not work', sub: cleanError(e) })
 
 /** An agent a hook stopped: what stopped it, and Attach output, which asks the agent to attach it. */
 function BlockedCard({ roomId, agent: a, ws, ev, saying }: { roomId: string; agent: AgentDef; ws?: Workspace; ev?: ActivityEvent; saying?: string }) {

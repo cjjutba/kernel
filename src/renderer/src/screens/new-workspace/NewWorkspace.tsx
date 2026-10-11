@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { MODELS } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, loadWorkspace, useStore } from '../../store'
 import { leadOf, openLeadChat } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
@@ -25,7 +25,6 @@ const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
   { id: 'current', label: 'Current branch', hint: 'Works in your checkout. Changes already there are kept and left out of the diff.' }
 ]
 
-const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /**
  * "What do you want to work on?" (NewWorkspace.png and its four popovers). Create opens a new chat with the room's Lead
@@ -114,7 +113,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     setError(null)
     let chat
     try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan }) }
-    catch (e) { setError({ message: reason(e) }); return }
+    catch (e) { setError({ message: cleanError(e) }); return }
     // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
     try {
       const ws = (await call('workspaces.list', { roomId: room })).find((w) => w.id === chat.workspaceId)

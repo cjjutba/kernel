@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { kernelHookMatcher } from '@shared/hookEntry'
 import type { AppSettings, HookStatus } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, Select, Toggle, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
@@ -38,7 +38,7 @@ export function Hooks({ s }: { s: AppSettings }) {
       if (r && typeof r === 'object' && 'events' in r && 'port' in r) actions.system.setHooks(r as HookStatus)
       else actions.system.setHooks(await call('hooks.status', undefined))
       actions.ui.toast({ title: done })
-    } catch (e) { actions.ui.toast({ title: 'Hooks did not change', sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: 'Hooks did not change', sub: cleanError(e) }) }
   })
   const installed = !!status?.installed
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
@@ -47,7 +47,7 @@ export function Hooks({ s }: { s: AppSettings }) {
     try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); actions.ui.toast({ title: 'Copied the hooks snippet' }) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Select the snippet and copy it by hand.' }) }
   }
   const openFile = () => track('open', async () => {
-    try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'open ~/.claude/settings.json' }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: (e as Error).message }) }
+    try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'open ~/.claude/settings.json' }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
   })
   const newPort = Number(port)
   return (

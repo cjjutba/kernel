@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { shortFile } from './model'
@@ -24,7 +24,7 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
       if (route.name === 'agent' && route.agentId === agentId) actions.ui.go({ name: 'team', roomId })
       else actions.ui.closeModal()
       actions.ui.toast({ title: `${agent.name} retired`, sub: 'The file is in .claude/retired-agents' })
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+    } catch (e) { setError(cleanError(e)) }
   })
   const handoff = open === 0 ? 'No open workspaces' : `${open} open ${open === 1 ? 'workspace goes' : 'workspaces go'} to ${lead?.name ?? 'the Lead'}`
 

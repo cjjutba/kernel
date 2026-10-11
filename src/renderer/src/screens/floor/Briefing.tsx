@@ -1,6 +1,6 @@
 import { useState, type CSSProperties } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { Icon, useBusy } from '../../ui'
 import { actions, go } from '../../store'
 import { pct } from '../../floor/layout'
@@ -11,7 +11,7 @@ import { FloorCard } from './FloorCard'
 // and the cards in Logs for a plan, a permission and PRs ready to merge.
 
 const decide = (a: Approval, decision: Decision) =>
-  call('approvals.decide', { id: a.id, decision }).catch((e: Error) => actions.ui.toast({ title: 'Could not send your answer', sub: e.message }))
+  call('approvals.decide', { id: a.id, decision }).catch((e: Error) => actions.ui.toast({ title: 'Could not send your answer', sub: cleanError(e) }))
 
 /** A line someone said out loud, over their head, with an optional link under it (FloorTalk.png). Follows them while they walk. */
 export function Bubble({ text, at, lift, link }: { text: string; at: [number, number]; /** Pixels to stand above its place so it clears the tags under it. */ lift?: number; link?: { label: string; onClick: () => void } }) {

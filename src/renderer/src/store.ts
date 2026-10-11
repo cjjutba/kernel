@@ -586,7 +586,6 @@ let listening = false
 
 export async function boot() {
   if (!listening) { listening = true; onPush(apply) }
-  actions.ui.setStartError(undefined)
   try { await start() } catch (e) { actions.ui.setStartError(cleanError(e)) }
 }
 
@@ -599,6 +598,8 @@ async function start() {
     call('shared.list', {}).catch((): SharedFile[] => [])
   ])
   fixtureMode = !!fixture
+  // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
+  actions.ui.setStartError(undefined)
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])) })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { LinearScope } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Select, useBusy } from '../../../ui'
 import { sourceOf } from '../../rooms/roomInfo'
@@ -33,7 +33,7 @@ export function Room({ roomId }: { roomId?: string }) {
       await call('rooms.update', { roomId, patch: { archived: true } })
       actions.ui.toast({ title: `Archived ${room.name}`, sub: 'Restore it from Rooms, Archived.' })
       go({ name: 'rooms' })
-    } catch (e) { actions.ui.toast({ title: 'Could not archive the room', sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: 'Could not archive the room', sub: cleanError(e) }) }
   })
   return (
     <RoomPage room={room} rs={rs} title="General" intro={`How ${room.name} is set up in Kernel.`}>

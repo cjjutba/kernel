@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RepoSummary } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, Icon, Modal } from '../../ui'
 import { agoShort } from './roomInfo'
@@ -27,7 +27,7 @@ export function ConnectRepo() {
     const t = setTimeout(() => {
       call('github.repos', { query: query.trim() || undefined })
         .then((r) => { if (mine === seq.current) { setRepos(r); setError(null); setPicked((p) => p || (query ? '' : r[0]?.fullName ?? '')) } })
-        .catch((e: Error) => { if (mine === seq.current) { setRepos([]); setError(e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) } })
+        .catch((e: Error) => { if (mine === seq.current) { setRepos([]); setError(cleanError(e)) } })
     }, query ? 200 : 0)
     return () => clearTimeout(t)
   }, [query])

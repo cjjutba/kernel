@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { AgentDef } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { Icon, IconButton, Menu } from '../../ui'
 import { actions, useStore } from '../../store'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
@@ -38,7 +38,7 @@ export function Brief({ roomId, agents }: { roomId: string; agents: AgentDef[] }
     d.reset()
     try { await call('rooms.brief', { roomId, text, parts, agentId: picked || undefined }) } catch (e) {
       d.reset(kept)
-      actions.ui.toast({ title: 'Could not send that', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not send that', sub: cleanError(e) })
     }
   }
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
