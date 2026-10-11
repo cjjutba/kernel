@@ -17,7 +17,7 @@ To redraw the PNGs after editing an artboard, run `node design/redesign/render.m
 
 There is one composer. `Composer` is its spec, and the composers on the other screens draw the same design by hand. Where they differ by a pixel or a grey, `Composer` wins.
 
-- The box sits recessed on `--input-bg`, with padding 12/12/10. One line of text comes to 90px.
+- The box sits recessed on `--input-bg`, with padding 12/12/10. With one line of text it is 92px tall, border included.
 - The agent is its name and role in a pill (`--line-3`, 999px), with no divider after it.
 - Send is a 28px circle: grey when empty, ink when ready, blue when ready in plan mode, and ink again while a plan waits. While the agent works and the box is empty, it's a stop circle with a hairline.
 - The role and the placeholder are `--muted`. `--faint` is about 3.4:1 on `--input-bg`.
