@@ -825,7 +825,7 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
 
     // A pull changes setup while it waits. When the merge would rerun setup, the new text waits for trust instead.
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed > ran.txt"\n')
-    const held = await (k as unknown as { startBrief: (...a: unknown[]) => Promise<{ status: string }> }).startBrief(k.store.workspace(waiter.id)!, room, chat, { setup: true, released: k.store.workspace(waiter.id)?.waitsFor })
+    const held = await k.setup['startBrief'](k.store.workspace(waiter.id)!, room, chat, { setup: true, released: k.store.workspace(waiter.id)?.waitsFor })
     expect(held.status).toBe('trust')
     expect(await readFile(join(waiter.path, 'ran.txt'), 'utf8')).toBe('first\n')
     expect(released).not.toContain(chat.id)
