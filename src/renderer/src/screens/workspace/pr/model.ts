@@ -53,6 +53,8 @@ export function headerView(state: PrState, changed = true): PrHeaderView {
 export const busyLabel: Record<PrAction, string> = { create: 'Creating PR', resolve: 'Sending', merge: 'Merging', ready: 'Marking ready', reopen: 'Reopening' }
 /** The toast title when an action's call fails. */
 export const failTitle: Record<PrAction, string> = { create: 'Could not create the PR', resolve: 'Could not send to the agent', merge: 'Could not merge', ready: 'Could not mark it ready', reopen: 'Could not reopen' }
+/** The letter that runs an action with ⌘⇧ while its button shows (KERNEL-341). Reopen has none. */
+export const actionKey: Partial<Record<PrAction, string>> = { create: 'p', ready: 'p', merge: 'm', resolve: 'f' }
 
 /** The PR instruction files Kernel sends (create, resolve conflicts, fix checks, address review). They show as a "sent" card. */
 export const PR_FILES = ['create-pr.md', 'resolve-conflicts.md', 'fix-checks.md', 'address-review.md']
