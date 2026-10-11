@@ -246,6 +246,17 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     expect(t.of('user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: PLAN_APPROVED }] })
   })
 
+  it("asks once when the Lead already asked with request_plan_approval in the same turn", async () => {
+    const t = track(await setup({ agent: rowan, chat: { plan: true } }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(
+      ...item({ type: 'dynamicToolCall', id: 'd1', namespace: null, tool: 'kernel_request_plan_approval', arguments: {}, status: 'completed', contentItems: [{ type: 'inputText', text: 'approved' }], success: true }),
+      { notify: 'item/completed', params: { item: { type: 'plan', id: 'p1', text: '1. Hand off' } } }
+    ) }])
+    await t.idle()
+    await new Promise((r) => setTimeout(r, 100))
+    expect(t.store.approvals({})).toEqual([])
+  })
+
   it('sends requested changes back as the next plan-mode turn', async () => {
     const t = track(await setup({ chat: { plan: true } }))
     await t.sessions.send('chat', [{ type: 'text', text: planTurn }])

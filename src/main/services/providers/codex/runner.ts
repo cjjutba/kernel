@@ -126,6 +126,8 @@ export class CodexRunner implements Runner {
   private gitDir?: string
   /** The running turn's plan, from its `plan` item. A plan-mode turn that ends with one asks for approval. */
   private planText?: string
+  /** The turn already asked for approval with Kernel's request_plan_approval, so its plan item asks nothing more. */
+  private planAsked = false
   /** Tool rows by Codex item id, so each one's end updates its start. */
   private readonly rows = new Map<string, ChatItem & { kind: 'tool' }>()
   /** File changes by item id, which their approval request names only by id. */
@@ -233,6 +235,7 @@ export class CodexRunner implements Runner {
     // The thread is up: the chat resumes it by this id from now on, and the turn shows as working.
     this.host.sessionStarted(threadId)
     this.planText = undefined
+    this.planAsked = false
     const effort = this.effort
     const r = await this.rpc!.request<TurnStartResponse>('turn/start', {
       threadId, input: toCodexInput(parts), model: this.model, effort, summary: 'auto', approvalPolicy: 'untrusted', sandboxPolicy: this.sandbox(),
@@ -317,7 +320,9 @@ export class CodexRunner implements Runner {
       case 'commandExecution': return this.finish(item.id, item.status === 'completed', item.aggregatedOutput ?? '')
       case 'fileChange': return this.finish(item.id, item.status === 'completed', item.changes.map((c) => c.diff).join('\n'))
       case 'mcpToolCall': return this.finish(item.id, item.status === 'completed', item.error ? item.error.message : (item.result?.content ?? []).map((c: any) => (typeof c?.text === 'string' ? c.text : '')).join('\n'))
-      case 'dynamicToolCall': return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))
+      case 'dynamicToolCall':
+        if (item.tool === `${CODEX_TOOL_PREFIX}request_plan_approval`) this.planAsked = true
+        return this.finish(item.id, item.success !== false && item.status === 'completed', toolOutput(item.contentItems))
       default:
         if ((item as { type: string }).type === 'webSearch') this.finish(item.id, true, '')
     }
@@ -343,7 +348,7 @@ export class CodexRunner implements Runner {
     else if (info === 'unauthorized') this.host.failed('auth', { notify: true })
     else if (info && typeof info === 'object' && ('httpConnectionFailed' in info || 'responseStreamConnectionFailed' in info || 'responseStreamDisconnected' in info)) this.host.failed('network', { notify: true })
     if (!ok && turn.status === 'failed' && turn.error?.message) this.host.item({ kind: 'note', id: `${turn.id}-error`, ts: Date.now(), text: turn.error.message })
-    const plan = ok && this.plan ? this.planText : undefined
+    const plan = ok && this.plan && !this.planAsked ? this.planText : undefined
     this.planText = undefined
     this.host.turnEnded({ id: `${turn.id}-result`, ok, durationMs: turn.durationMs ?? undefined, error: ok ? undefined : turn.status === 'interrupted' ? 'interrupted' : 'error_during_execution' })
     // A plan-mode turn that ended with a plan: the user approves it as Claude's ExitPlanMode would, and the agent goes on.
