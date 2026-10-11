@@ -13,7 +13,7 @@ describe('appShortcut', () => {
   it('forwards the app shortcuts to Kernel', () => {
     const forwarded = [
       key('KeyK', meta), key('KeyN', meta), key('KeyN', { meta: true, shift: true }), key('KeyT', meta), key('KeyT', { meta: true, shift: true }),
-      key('KeyW', meta), key('KeyB', meta), key('KeyB', { meta: true, alt: true }), key('Backslash', meta), key('Comma', meta),
+      key('KeyW', meta), key('KeyB', meta), key('KeyB', { meta: true, alt: true }), key('KeyB', { meta: true, shift: true }), key('Backslash', meta), key('Comma', meta),
       key('BracketLeft', meta), key('BracketRight', meta), key('KeyL', { meta: true, shift: true }), key('KeyP', { meta: true, shift: true }),
       key('KeyL', meta), key('Slash', { meta: true, shift: true }), key('KeyM', { meta: true, shift: true }), key('KeyF', { meta: true, shift: true }),
       key('KeyA', { meta: true, shift: true }),
