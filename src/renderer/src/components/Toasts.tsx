@@ -19,7 +19,7 @@ export function Toasts() {
           <Toast
             key={t.id} title={t.title} sub={t.sub} onDismiss={() => actions.ui.dismissToast(t.id)}
             // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
-            action={t.action && { label: t.action.label, onClick: () => {
+            action={t.action && { label: t.action.label, boxed: !!t.action.tab, onClick: () => {
               const { href, tab } = t.action ?? {}
               if (href) void call('system.openExternal', { url: href })
               if (tab) actions.ui.openTab(tab.workspaceId, tab.id)

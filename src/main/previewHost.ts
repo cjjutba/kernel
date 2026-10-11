@@ -244,7 +244,7 @@ export function previewFixture(f: Fixture): PreviewHandlers {
       const inside = (f.sharedHits ?? []).filter((a) => a.element && x >= a.element.rect.x && x <= a.element.rect.x + a.element.rect.width && y >= a.element.rect.y && y <= a.element.rect.y + a.element.rect.height)
       const area = (a: SharedAnchor) => (a.element?.rect.width ?? 0) * (a.element?.rect.height ?? 0)
       const best = inside.sort((a, b) => area(a) - area(b))[0]
-      return best ? { ...best, x, y } : null
+      return best ?? null
     },
     'system.preview.crop': async () => null,
     'system.preview.scroll': async () => null,

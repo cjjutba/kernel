@@ -89,7 +89,7 @@ export interface Fixture {
   sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string; still?: string }>>
   /** Comments on shared files, every version (KERNEL-310). `shared.comments` filters them by shared id. */
   sharedComments?: SharedComment[]
-  /** What `system.preview.hit` answers in a fixture run, which has no live page: the innermost anchor whose element box holds the point (KERNEL-311). */
+  /** What `system.preview.hit` answers in a fixture run, which has no live page: the innermost anchor whose element box holds the point, as it is written (KERNEL-311). */
   sharedHits?: SharedAnchor[]
   ui: ForcedUi
   /**

@@ -1,9 +1,9 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ScriptTrust, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
-import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown } from './sharedStills'
+import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
 
@@ -445,6 +445,81 @@ const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
   }
 }))
 
+// Comment mode on a shared file (KERNEL-311). The canvas comments on a pricing page Noor shared, so these shots swap it in for the invoice layout.
+// A fixture run has no live page: `sharedHits` is what `system.preview.hit` finds, and the pins come from `sharedComments`.
+const pricingFile = (latest = 2): SharedFile => sharedFile('sh-pricing', 'noor', ids.table, 'Pricing page draft', 'html', '.kernel/shared/pricing.html', [
+  sharedVersion(1, 14, 20, 'text/html'), sharedVersion(2, 15, 7, 'text/html', { note: 'Prices are placeholders' }), sharedVersion(3, 15, 32, 'text/html', { note: 'Added the Team plan' })
+].slice(0, latest), HOUR)
+const commentFiles = (latest = 2): SharedFile[] => [pricingFile(latest), ...sharedFiles().filter((x) => x.id !== 'sh-html')]
+const commentData: NonNullable<Fixture['sharedData']> = {
+  ...sharedStills,
+  'sh-pricing': { 1: { text: '', thumb: pricingStill }, 2: { text: '', thumb: pricingStill }, 3: { text: '', thumb: pricingStill } }
+}
+const WINDOW = { width: 1280, height: 800, scrollY: 0 }
+const pricingHits: SharedAnchor[] = [
+  { x: 412, y: 188, viewport: WINDOW, element: { selector: 'section.hero > div.actions > button.cta', tag: 'button', text: 'Start free trial', rect: { x: 40, y: 160, width: 120, height: 36 } } },
+  { x: 880, y: 300, viewport: WINDOW, element: { selector: 'section.plans > div.plan:nth-of-type(3)', tag: 'div', text: 'Team $49 per month Five seats Shared client list', rect: { x: 501, y: 225, width: 216, height: 149 } } }
+]
+const comment = (id: string, sharedId: string, version: number, note: string, anchor: SharedAnchor): SharedComment =>
+  ({ id, sharedId, version, at: at(15, 8), note, anchor, chatId: ids.tableChat, itemId: `${id}-item` })
+const commentNotes: SharedComment[] = [
+  comment('cm-1', 'sh-pricing', 2, 'Tighten this headline.', { x: 503, y: 88, viewport: WINDOW, element: { selector: 'section.hero > h1', tag: 'h1', text: 'Invoicing that gets out of the way', rect: { x: 40, y: 68, width: 520, height: 36 } } }),
+  comment('cm-2', 'sh-pricing', 2, 'Make this one an outline.', { x: 256, y: 157, viewport: WINDOW, element: { selector: 'section.hero > div.actions > button:nth-of-type(2)', tag: 'button', text: 'See plans', rect: { x: 170, y: 160, width: 100, height: 36 } } }),
+  comment('cm-3', 'sh-image', 1, 'This weight looks too light.', { x: 449, y: 234, viewport: { width: 616, height: 385, scrollY: 0 } }),
+  comment('cm-4', 'sh-image', 1, 'The digits need more space.', { x: 481, y: 342, viewport: { width: 616, height: 385, scrollY: 0 } })
+]
+
+/** Noor's workspace with one of the two files open in a tab, in comment shots. `latest` is how many versions the page has. */
+const commentTab = (file: 'sh-pricing' | 'sh-image', latest = 2, picked?: number) => scene((f) => ({
+  ...renderer(f),
+  shared: commentFiles(latest).filter((x) => x.workspaceId === ids.table),
+  sharedData: commentData,
+  sharedComments: commentNotes,
+  sharedHits: pricingHits,
+  ui: {
+    ...open,
+    workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+    tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file], ...(picked ? { sharedVersion: { [file]: picked } } : {}) } }
+  }
+}))
+
+/** The comment as the agent got it, in the chat after Send (WorkspaceSharedCommentSent). */
+const commentSent = scene((f) => ({
+  ...renderer(f),
+  items: { [ids.tableChat]: [
+    userMsg('cs-u', 'Draft the pricing page so I can click through it.'),
+    { kind: 'text' as const, id: 'cs-t', ts: at(15, 7), text: 'Here is the pricing page draft. The prices are placeholders.' },
+    {
+      kind: 'user' as const, id: 'cs-c', ts: at(15, 9), parts: [
+        { type: 'text' as const, text: 'Comment on "Pricing page draft" v2 (.kernel/shared/pricing.html).\nWhere: the <button> "Start free trial" (section.hero > div.actions > button.cta), at 412, 188 in a 1280 px wide window.\n> Make this button the same blue as the header.' },
+        { type: 'image' as const, name: 'pricing-page-draft-v2-comment.png', width: 320, height: 200 }
+      ]
+    }
+  ] },
+  shared: commentFiles().filter((x) => x.workspaceId === ids.table),
+  sharedData: commentData,
+  ui: {
+    ...open,
+    workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+    tabs: { [ids.table]: { tab: ids.tableChat, lastChat: ids.tableChat, files: [], diffs: [], shared: ['sh-pricing'] } },
+    toasts: [{ id: 'cs-toast', title: 'Sent to Noor', action: { label: 'Open chat', tab: { workspaceId: ids.table, id: ids.tableChat } } }]
+  }
+}))
+
+/** Rowan's workspace, with the page Noor shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
+const commentArchived = (f: Fixture): Partial<Fixture> => {
+  const p = sharedPanel(f)
+  return {
+    ...p,
+    workspaces: (p.workspaces ?? f.workspaces).map((w) => (w.id === ids.table ? { ...w, status: 'archived' as const } : w)),
+    shared: commentFiles(),
+    sharedData: commentData,
+    sharedComments: commentNotes,
+    sharedHits: pricingHits,
+    ui: { ...p.ui, tabs: { [ids.lead]: { tab: 'shared:sh-pricing', lastChat: ids.leadChat, files: [], diffs: [], shared: ['sh-pricing'] } } }
+  }
+}
+
 /** Rowan's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
 const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
@@ -682,6 +757,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
   WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
+  // Comment mode (KERNEL-311). The shots click Comment and the spot (scripts/shots.ts); the state they reach is not a fixture's to force.
+  WorkspaceSharedComment: commentTab('sh-pricing'),
+  WorkspaceSharedCommentImage: commentTab('sh-image'),
+  WorkspaceSharedCommentSent: commentSent,
+  WorkspaceSharedCommentArchived: scene((f) => commentArchived(f)),
+  WorkspaceSharedCommentOlder: commentTab('sh-pricing', 3, 2),
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({
     settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
