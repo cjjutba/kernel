@@ -9,7 +9,7 @@ const refOf = (w: Workspace, agents: AgentDef[]): NoteRef => ({ text: waitLabel(
 const line = (refs: NoteRef[], one: string, many: string, wrap: (names: string, verb: string) => string): WaitLine | undefined =>
   refs.length ? { text: wrap(joinLabels(refs.map((r) => r.text)), refs.length > 1 ? many : one), refs } : undefined
 
-/** "Queued. Sends when PR #164 by Noor merges.": what a held brief still waits for. Nothing once all of it merged. */
+/** "Queued. Sends when PR 164 by Noor merges.": what a held brief still waits for. Nothing once all of it merged. */
 export function heldLine(ws: Workspace, workspaces: Workspace[], agents: AgentDef[]): WaitLine | undefined {
   return line(waitingOn(ws, workspaces).map((t) => refOf(t, agents)), 'merges', 'merge', (names, verb) => `Queued. Sends when ${names} ${verb}.`)
 }
