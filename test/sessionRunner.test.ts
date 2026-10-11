@@ -117,10 +117,10 @@ describe('questions to the user', () => {
     expect(options).not.toHaveProperty('skills')
   })
 
-  it('adds no settings when the room switched nothing off, and compacts a long chat near 200k (KERNEL-226)', async () => {
+  it("adds no settings when the room switched nothing off, and leaves the compact window to the model (context-window-follows-model)", async () => {
     const { options } = await setup('acceptEdits', { disabledFor: () => ({ skills: [], mcp: [] }) })
     expect(options).not.toHaveProperty('settings')
-    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
   })
 
   it('leaves plan mode once the plan is approved', async () => {
