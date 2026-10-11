@@ -207,6 +207,8 @@ export class Setup extends Feature {
       const unsent = ws.status === 'ready' && !!hold?.brief && !!chat && !this.store.items(chat.id).some((i) => i.kind === 'user')
       if (ws.status !== 'setup' && !unsent) continue
       if (chat && hold?.brief) this.sessions.hold(chat.id, hold.brief, hold.from ? { from: hold.from } : {})
+      // A forked workspace has no brief, and its chat still waits for Run again (KERNEL-346).
+      else if (chat) this.sessions.hold(chat.id)
       if (chat) for (const m of hold?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
       this.updateWs(ws.id, { status: 'failed' })
       this.note(ws.id, 'Setup stopped when Kernel quit. Click Run again.')

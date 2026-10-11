@@ -137,6 +137,8 @@ export class Trust extends Feature {
       const ws = this.store.chat(chatId) && this.store.workspace(this.store.chat(chatId)!.workspaceId)
       const waiting = ws?.status === 'trust' || (ws?.status === 'setup' && !setups[ws.id])
       if (!waiting || !Array.isArray(queue)) continue
+      // A forked workspace's chat waits with nothing in its queue (KERNEL-346).
+      if (!queue.length) this.sessions.hold(chatId)
       for (const m of queue) this.sessions.hold(chatId, m.parts, { ...(m.from ? { from: m.from } : {}), ...(m.update ? { update: m.update } : {}) })
     }
   }
