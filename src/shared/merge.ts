@@ -1,4 +1,4 @@
-import type { AppSettings, PrCheck, PrInfo, PrState, ReviewVerdict, Workspace } from './types'
+import type { AppSettings, PrBlocked, PrCheck, PrInfo, PrState, ReviewVerdict, Workspace } from './types'
 
 /**
  * Whether a PR may merge, one rule for every Merge button and the Lead's tools (KERNEL-115). Pure, so main and the
@@ -10,6 +10,16 @@ export const mergeableState = (state: PrState): state is 'ready' | 'open' => sta
 
 /** Every check passed or was skipped. A PR with no checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
+
+/** The checks that decide a PR: all but the optional ones, which the repo doesn't require or the room lists (KERNEL-388). */
+export const gatingChecks = (checks: PrCheck[]) => checks.filter((c) => !c.optional)
+
+/** Why GitHub won't merge a PR whose checks passed, as Merge PR and the Lead say it. `base` is the branch it merges into. */
+export function blockedText(blocked: PrBlocked, base: string): string {
+  if (blocked === 'review') return 'GitHub needs an approving review before this pull request can merge.'
+  if (blocked === 'behind') return `This branch is behind ${base || 'its base'}, and GitHub needs it up to date before it can merge.`
+  return "GitHub's branch rules block this merge."
+}
 
 /** Verdicts on the workspace's PR, and those of them on its head commit, as far as either is known. */
 export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prHead'>): { verdicts: ReviewVerdict[]; current: ReviewVerdict[] } {
@@ -29,14 +39,17 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
 /**
  * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now: it has to be
  * ready or open, and settled on whether it conflicts, which GitHub works out again each time the base moves (KERNEL-376).
- * Its head commit wins over the one the last poll saw. With "require Reviewer approval" on, a PR a reviewer looked at
- * needs an approval of its head commit and no blockers on it; one nobody reviewed merges as before. `name` turns an agent
- * id into the reviewer's name.
+ * Only the checks that decide the PR count, and GitHub's own branch rules hold it too (KERNEL-388). Its head commit wins
+ * over the one the last poll saw. With "require Reviewer approval" on, a PR a reviewer looked at needs an approval of its
+ * head commit and no blockers on it; one nobody reviewed merges as before. `name` turns an agent id into the reviewer's name.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id): string | undefined {
   if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
-  if (rules.requireGreen && pr && !allGreen(pr.checks)) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
+  if (rules.requireGreen && pr && !allGreen(gatingChecks(pr.checks))) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
+  // GitHub's own rules hold the merge even when Kernel's would let it through. With no read, the last poll's word (KERNEL-388).
+  const blocked = pr ? pr.blocked : ws.prBlocked
+  if (blocked) return blockedText(blocked, pr?.baseRef ?? '')
   if (pr && (pr.conflictsUnknown || !mergeableState(pr.state))) return 'This pull request is not ready to merge.'
   if (!rules.requireReviewer) return undefined
   const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })

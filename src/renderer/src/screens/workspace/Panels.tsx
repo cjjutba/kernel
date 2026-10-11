@@ -93,6 +93,16 @@ function CheckIcon({ state }: { state: CheckState }) {
   return <span style={{ color, display: 'inline-flex' }}><Icon name={icon} size={14} /></span>
 }
 
+/**
+ * One CI row. A check that doesn't decide the PR says so, and its failure shows the muted warning instead of the red x,
+ * since the PR can still merge (KERNEL-388).
+ */
+export function checkRow(c: PrCheck): CheckRow {
+  const word = c.state === 'running' || c.state === 'queued' ? 'running' : c.state === 'fail' ? 'failed' : c.meta
+  if (!c.optional) return { state: ciState[c.state], label: c.name, meta: word }
+  return { state: c.state === 'fail' ? 'warn' : ciState[c.state], label: c.name, meta: word ? `${word}, optional` : 'optional' }
+}
+
 /** `remote` is the room's git remote, which a base ref like `origin/main` names. */
 export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, remote = 'origin'): { title: string; rows: CheckRow[] }[] {
   const hasPr = !!ws.prNumber
@@ -108,7 +118,7 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, 
   const ci: CheckRow[] = !hasPr
     ? [{ state: 'idle', label: 'Runs after the PR opens', dim: true }]
     : pr?.checks.length
-      ? pr.checks.map((c) => ({ state: ciState[c.state], label: c.name, meta: c.state === 'running' || c.state === 'queued' ? 'running' : c.state === 'fail' ? 'failed' : c.meta }))
+      ? pr.checks.map(checkRow)
       : [{ state: ws.prState === 'checks' ? 'run' : 'idle', label: ws.prState === 'checks' ? 'Checks running' : 'No checks reported', dim: ws.prState !== 'checks' }]
   const groups = [{ title: 'Git', rows: [git] }, { title: 'Pull request', rows: [prRow] }, { title: 'CI', rows: ci }]
   const todos = (pr?.comments ?? []).map((c): CheckRow => ({ state: c.resolved ? 'ok' : 'idle', label: c.body, meta: c.resolved ? '' : 'from review', dim: !c.resolved }))

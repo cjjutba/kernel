@@ -6,6 +6,11 @@ export interface PrCheck {
   /** Duration or a word like "ready" (Vercel preview). */
   meta?: string
   url?: string
+  /**
+   * The check doesn't decide the PR: the repo requires other checks but not this one, or the repo requires none and the
+   * room's `[pr] optionalChecks` lists it. Its failure leaves the PR ready (KERNEL-388).
+   */
+  optional?: true
 }
 
 export interface ReviewComment {
@@ -34,7 +39,14 @@ export interface PrInfo {
   head?: string
   /** GitHub is still working out whether the open PR conflicts with its base (mergeable UNKNOWN), as after the base moved. */
   conflictsUnknown?: boolean
+  /** Why GitHub won't merge a PR whose checks passed yet: a required review, a branch behind its base, or other branch rules (KERNEL-388). */
+  blocked?: PrBlocked
+  /** When GitHub last saw the PR change: a push, a review, a comment. */
+  updatedAt?: string
 }
+
+/** GitHub's mergeStateStatus on a ready PR: BLOCKED with a review required, BEHIND, or BLOCKED for another rule (KERNEL-388). */
+export type PrBlocked = 'review' | 'behind' | 'rules'
 
 /** A PR the new workspace modal can start from. */
 export interface PrSummary {

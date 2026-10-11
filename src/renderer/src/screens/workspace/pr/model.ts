@@ -27,15 +27,16 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 
 /**
  * `changed` is false when the workspace has nothing to put in a PR, which hides Create PR and its menu. Merge PR shows in
- * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349).
+ * exactly the states `mergeBlock` lets through, so the header and every other Merge button agree (KERNEL-349). `blocked`
+ * is a ready PR GitHub won't merge yet, which reads Open as PrOpen.png draws it; Merge PR then says why (KERNEL-388).
  */
-export function headerView(state: PrState, changed = true): PrHeaderView {
+export function headerView(state: PrState, changed = true, blocked = false): PrHeaderView {
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
   const conflicts = { label: 'Merge conflicts', tone: 'fail', glyph: 'pr' } as const
   const mergeable = { label: 'Ready to merge', tone: 'ready', glyph: 'pr' } as const
   if (mergeableState(state)) {
-    return { ...base, state: state === 'ready' ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
+    return { ...base, state: state === 'ready' && !blocked ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
   }
   switch (state) {
     case 'none':
