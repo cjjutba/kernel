@@ -11,8 +11,7 @@ import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
-import { chatTrusts, chatWaits } from './chatCard'
-import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
+import { chatTrusts, chatWaits } from './chatWaits'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
@@ -58,11 +57,11 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-function NavItem({ route, icon, label, right, sub, nested, describedBy, slot, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; describedBy?: string; slot?: RowKey; /** In place of going to `route`. */ onOpen?: () => void }) {
+function NavItem({ route, icon, label, right, sub, nested, slot, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; slot?: RowKey; /** In place of going to `route`. */ onOpen?: () => void }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
   const current = useStore((s) => same(s.ui.route, route) || (route.name === 'issues' && s.ui.route.name === 'issues'))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {slot?.hint ? <KeyHint n={slot.n} /> : right}
@@ -81,24 +80,22 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
 
 /**
  * The room's Lead, shown only while it has no open chat to list. It opens the Lead's chat, and works before the first brief too:
- * `lead.open` makes the workspace. Its icon shows the Lead's floor status, and hovering it shows the Lead's card.
+ * `lead.open` makes the workspace. Its icon shows the Lead's floor status.
  */
 function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
   const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
   const waiting = useLeadWaiting(roomId)
-  const card = useHoverCard()
   if (!lead) return null
   const g = leadGlyph(status, waiting)
   return (
-    <div {...card.bind}>
-      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} aria-describedby={card.at ? card.id : undefined} onClick={() => openRow(roomId, { kind: 'lead' })}>
+    <div>
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'lead' })}>
         <Glyph g={g} />
         <span className="grow ellipsis">{lead.name}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : <span className="muted" style={{ fontSize: 12 }}>Lead</span>}
       </button>
-      {card.at && <LeadCard roomId={roomId} at={card.at} id={card.id} />}
     </div>
   )
 }
@@ -106,15 +103,14 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
 /**
  * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
  * needs you in any tab wins, then a running turn in any tab, else the chat icon. They read the same approvals and `running` flags as the tabs.
- * It opens the Lead's workspace on the tab last shown in the chat, and hovering or focusing it shows the chat's card with the full title. A chat that handed off workspaces folds
+ * It opens the Lead's workspace on the tab last shown in the chat, A chat that handed off workspaces folds
  * like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a hidden workspace needs
  * from you, so nothing waits out of sight.
  */
 function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
-  // The card follows the same rule, and always counts the chat's workspaces: an unfolded one shows its own icon in its own row.
+  // A folded chat counts its workspaces: an unfolded one shows its own icon in its own row.
   const waiting = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }).map((w) => w.approval), [approvals, tabs, folded, owned])
-  const card = useHoverCard()
   const running = useStore((s) => tabs.some((c) => s.running[c.id]))
   // The chat the Lead's workspace shows, which stays the one you were on while a file or diff tab is open there.
   const current = useStore((s) => {
@@ -124,9 +120,9 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
   // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
   const g = chatGlyph({ waiting, running, trust: folded && chatTrusts(owned).length > 0 })
   return (
-    <div {...card.bind} className="hv chat-row">
+    <div className="hv chat-row">
       <button
-        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title} aria-describedby={card.at ? card.id : undefined}
+        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
@@ -134,11 +130,10 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
       {owned.length > 0 && (
-        <button className="chat-chev" data-card-off aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
+        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
           <Icon name="right" size={14} />
         </button>
       )}
-      {card.at && <ChatCard roomId={roomId} thread={thread} tabs={tabs} owned={owned} at={card.at} id={card.id} />}
     </div>
   )
 }
@@ -161,30 +156,28 @@ async function archiveFromSidebar(ws: Workspace) {
 
 /**
  * A workspace row: its state icon (needs you, working, then the PR), its name, and its diff totals. Hover swaps the totals
- * for Archive and, after a moment, shows the workspace's card.
+ * for Archive.
  */
 function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nested?: boolean }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(() => approvals.filter((a) => a.workspaceId === ws.id && a.status === 'pending'), [approvals, ws.id])
   const running = useStore((s) => (s.chats[ws.id] ?? []).some((c) => s.running[c.id]))
   const [busy, run] = useBusy()
-  const card = useHoverCard()
   const g = workspaceGlyph(ws, { waiting, running })
   const archive = () => void run('archive', () => archiveFromSidebar(ws))
   return (
-    <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
+    <div className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
-        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined} slot={slot}
+        sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} slot={slot}
         onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}
       />
-      <div className="more ws-archive" data-card-off>
+      <div className="more ws-archive">
         {/* Just the icon, with no spinner or word (DESIGN.md, Busy buttons). useBusy still ignores a second click. */}
         <IconButton icon="archive" size={14} label={`Archive ${ws.name}`} style={{ width: 24, height: 24 }} disabled={!!busy} onClick={archive} />
       </div>
-      {card.at && <WorkspaceCard ws={ws} at={card.at} id={card.id} />}
     </div>
   )
 }

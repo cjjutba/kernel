@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { chatGlyph, leadGlyph, workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
-import { chatLine, chatTrusts, chatWaits } from '../src/renderer/src/components/sidebar/chatCard'
 import { leadWaiting } from '../src/renderer/src/lead'
-import type { Approval, Chat, Workspace } from '../src/shared/types'
+import type { Approval, Workspace } from '../src/shared/types'
 
 const approval = (kind: Approval['kind'], extra: Partial<Approval> = {}): Approval =>
   ({ id: `a-${kind}`, kind, source: 'sdk', title: kind, status: 'pending', createdAt: 0, ...extra })
@@ -61,13 +60,5 @@ describe('glyphs for a workspace held for script trust (KERNEL-342)', () => {
     expect(chatGlyph({ ...idle, trust: true })).toEqual({ icon: 'question', tone: 'needs', label: 'Trust scripts' })
     expect(chatGlyph({ ...idle, trust: false })).toMatchObject({ icon: 'chat', tone: 'muted' })
     expect(chatGlyph({ waiting: [bash], running: true, trust: true })).toMatchObject({ label: 'Needs you' })
-  })
-
-  it('counts on the chat card as one wait, with a line naming the workspace', () => {
-    const tabs = [{ id: 'c1', workspaceId: 'home', title: 'Org invites', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1 }] as Chat[]
-    const owned = [held('trust'), { ...held('ready'), id: 'w2', name: 'w2' }]
-    expect(chatTrusts(owned).map((w) => w.id)).toEqual(['w'])
-    expect(chatLine(chatWaits({ tabs, owned, approvals: [] }), undefined, chatTrusts(owned))).toBe('w: waiting for you to trust the scripts.')
-    expect(chatLine([], undefined, chatTrusts([held('ready')]))).toBe('Nothing is waiting on you.')
   })
 })
