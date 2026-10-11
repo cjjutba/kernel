@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { AskedQuestion, ChatItem } from '../src/shared/types'
-import { allAnswered, answerDecision, answeredList, emptyPick, isStepList, isStepped, nextUnanswered, noteFromParts, outcome, pickReady, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
+import { allAnswered, answerDecision, answeredList, emptyPick, isStepList, isStepped, nextUnanswered, noteFromParts, outcome, pickReady, planSteps, planText, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
+import { planCopyText } from '../src/renderer/src/screens/workspace/cards/plan'
 import { buildThread } from '../src/renderer/src/screens/workspace/thread'
 
 describe('turn cards', () => {
@@ -110,6 +111,26 @@ describe('Lead requests', () => {
 
   it('reads a plan from ExitPlanMode input when there is no detail', () => {
     expect(planSteps({ input: { plan: '1. One\n2. Two' } }).map((s) => s.title)).toEqual(['One', 'Two'])
+  })
+
+  it('shows the Lead write-up next to its steps, and an older plan tasks once', () => {
+    const steps = [{ title: 'Build it', agentId: 'kai' }, { title: 'Test it', agentId: 'ivy' }]
+    const agents = [{ id: 'kai', name: 'Kai' }, { id: 'ivy', name: 'Ivy' }] as never[]
+    const write = { title: 'Plan for T-1', steps, detail: '# Ship it\n\nTwo tasks.\n\n1. Build it\n2. Test it\n3. Mention it' }
+    expect(planText(write)).toBe(write.detail)
+    expect(planTitle(write)).toBe('Ship it')
+    expect(isStepList(write)).toBe(false)
+    expect(planCopyText({ ...write, id: 'a', kind: 'plan' } as never, agents)).toBe(`${write.detail}\n\n1. Build it · Kai\n2. Test it · Ivy`)
+    // Before KERNEL-373, `detail` was only the numbered steps, which the rows already show.
+    const older = { title: 'Plan for T-1', steps, detail: '1. Build it\n2. Test it' }
+    expect(planText(older)).toBe('')
+    expect(isStepList(older)).toBe(true)
+    expect(planTitle(older)).toBe('Plan for T-1')
+    expect(planCopyText({ ...older, id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\n1. Build it · Kai\n2. Test it · Ivy')
+    // A write-up with its own title but no heading is kept and titled by the approval.
+    expect(planCopyText({ title: 'Plan for T-1', steps, detail: 'Two tasks, in order.', id: 'a', kind: 'plan' } as never, agents)).toBe('# Plan for T-1\n\nTwo tasks, in order.\n\n1. Build it · Kai\n2. Test it · Ivy')
+    // ExitPlanMode has no steps and reads as before.
+    expect(planText({ input: { plan: '# Plan\n\n- a' } })).toBe('# Plan\n\n- a')
   })
 
   it('shows a plan with sections as a document, titled by its heading, and one list as rows', () => {
