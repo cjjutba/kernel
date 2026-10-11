@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import { bashVerdict, IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, Sessions, type CutOffReason, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
@@ -185,7 +185,7 @@ describe('idle stop (KERNEL-183)', () => {
     store.saveChat({ ...chat, id: 'other', title: 'Other' })
     const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
     const exits: string[] = []
-    const cutOff: string[][] = []
+    const cutOff: Record<string, CutOffReason>[] = []
     const sessions = new Sessions({
       store, approvals: new Approvals(store), settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined,
       roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, c) => { exits.push(c.id) }, onCutOff: (ids) => { cutOff.push(ids) }
@@ -352,7 +352,7 @@ describe('idle stop (KERNEL-183)', () => {
     call.feed({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: Math.floor(Date.now() / 1000) + 86_400 } })
     call.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r-limit', duration_ms: 5 })
     await flush()
-    expect(cutOff.at(-1)).toEqual(['chat'])
+    expect(cutOff.at(-1)).toEqual({ chat: 'limit' })
     await vi.advanceTimersByTimeAsync(3 * IDLE_STOP_MS)
     expect(stopped(call)).toBe(false)
   })

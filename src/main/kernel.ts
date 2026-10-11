@@ -25,7 +25,7 @@ import { LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from './services/handoff
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv } from './services/sessions'
+import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
@@ -38,7 +38,7 @@ import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
-import { readAccount, signOut } from './services/account'
+import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
@@ -355,6 +355,9 @@ export class Kernel {
   private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   async start() {
+    // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
+    const clean = this.store.meta<boolean>('cleanExit') === true
+    this.store.saveMeta('cleanExit', false)
     this.settings = await loadAppSettings(this.settingsFile, this.home)
     await saveAppSettings(this.settingsFile, this.settings)
     this.o.onSettings?.(this.settings)
@@ -376,13 +379,35 @@ export class Kernel {
     }
     this.tasks.attach()
     for (const r of this.store.rooms()) void this.remoteFor(r.path)
+    // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.
+    await this.sessions.endLeftovers()
+    // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
+    await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.agents(r.id).catch(() => undefined)))
     // Before any session restarts, so a trusted room's env files reach it (KERNEL-247).
     await Promise.all(this.store.rooms().map((r) => this.untrusted(r).catch(() => null)))
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
-    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on.
+    // a limit pause: one that reset while Kernel was closed lifts now, and the chats the limit stopped carry on. So do the
+    // chats that were working when Kernel quit or closed, after what was queued for them (KERNEL-215).
     for (const r of this.store.rooms()) if (r.paused) this.sessions.pause(r.id)
+    const cutOff = this.store.meta<string[] | Record<string, CutOffReason>>('cutOff') ?? {}
+    // Offline or signed out, what carries on must wait instead of spending its turn on the failure, and nothing has run yet
+    // to notice either. The chats that carry on wait while the network probe and a sign-in read run in the background, so
+    // the window, the rest of start, ordinary sends and other queues don't wait for them.
+    if (this.sessions.wasWorking() || Object.keys(cutOff).length) {
+      this.sessions.holdCarryOn()
+      void (async () => {
+        try {
+          await this.network?.check()
+          const signedIn = await this.signedInReader().catch(() => true)
+          if (!signedIn && !this.stopped) this.signedOut()
+        } finally {
+          // A stopped Kernel's database is closed, and releasing would send what waited.
+          if (!this.stopped) this.sessions.releaseCarryOn()
+        }
+      })()
+    }
     const held = this.store.meta<Record<string, QueuedMessage[]>>('held') ?? {}
-    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], this.store.meta<string[]>('cutOff') ?? [], held)
+    this.sessions.restore(this.store.meta<RateLimit[]>('limits') ?? [], cutOff, held, { clean })
     this.recoverTrust(held)
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
@@ -480,6 +505,8 @@ export class Kernel {
 
   /** Reads `claude auth status`. Tests swap it for a stub. */
   accountReader: () => Promise<ClaudeAccount> = readAccount
+  /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
+  signedInReader: () => Promise<boolean> = claudeSignedIn
   private authTimer?: NodeJS.Timeout
 
   /**
@@ -621,8 +648,20 @@ export class Kernel {
     return new Set(workspaces).size
   }
 
-  /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window. */
-  async stop() {
+  /**
+   * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
+   * Their queues are saved, and they carry on at the next start (KERNEL-215).
+   */
+  stop(o: { budgetMs?: number } = {}): Promise<void> {
+    // Restart to update and before-quit can both ask (KERNEL-214). Each waits for the same stop to finish.
+    this.stopping ??= this.doStop(o)
+    return this.stopping
+  }
+
+  private stopping?: Promise<void>
+
+  /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window (KERNEL-214). */
+  private async doStop(o: { budgetMs?: number }) {
     this.stopped = true
     this.unlisten()
     this.notifications.detach()
@@ -637,10 +676,20 @@ export class Kernel {
     this.limitCheck = undefined
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
-    this.sessions.stopAll()
+    await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
-    await new Promise<void>((r) => (this.hookServer ? this.hookServer.close(() => r()) : r()))
+    // The next start tells a quit from a crash by this. It goes before the hook server closes, the one step left that can
+    // wait, so a quit capped by KERNEL-214 still counts as a quit. Nothing after it changes what carries on.
+    this.store.saveMeta('cleanExit', true)
+    // Nobody can answer an approval once Kernel quits, and the next start would expire it anyway (D-137). It ends now,
+    // while the database is open: a dropped hook connection aborts its approval a tick after close() returns, which
+    // would reach a closed database. An outside session's hook gets its fallback answer before the connections end.
+    this.approvals.expirePending()
+    await new Promise((r) => setImmediate(r))
+    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
+    // waits for it, so whatever is still open ends first.
+    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
     this.store.db.close()
   }
 
