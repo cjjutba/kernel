@@ -12,7 +12,7 @@ import { Feature } from './feature'
 /** The app's settings, each room's settings file, and the git remote they name (KERNEL-325). */
 export class Config extends Feature {
   /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
-  readonly roomRemotes = new Map<string, string | undefined>()
+  private readonly roomRemotes = new Map<string, string | undefined>()
 
   get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 

@@ -18,8 +18,8 @@ export abstract class Feature {
   protected get tasks() { return this.k.tasks }
   protected get settings() { return this.k.settings }
   protected get o() { return this.k.o }
-  protected get home() { return this.k.home }
-  protected get stopped() { return this.k.stopped }
+  protected get home() { return this.k['home'] }
+  protected get stopped() { return this.k['stopped'] }
 
   protected mustRoom(id: string) { return records.mustRoom(this.k.store, id) }
   protected mustWs(id: string) { return records.mustWs(this.k.store, id) }

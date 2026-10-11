@@ -229,7 +229,7 @@ export class Kernel {
     this.unlisten = listen(this)
   }
 
-  get home(): string { return this.o.home ?? homedir() }
+  private get home() { return this.o.home ?? homedir() }
   /** Whether agents get share_file. `experimental.sharing` in settings.json, with no page in Settings until KERNEL-308. */
   private get sharing() { return this.settings?.experimental.sharing === true }
 
@@ -344,12 +344,10 @@ export class Kernel {
   }
 
   private stopping?: Promise<void>
-  private hasStopped = false
-  get stopped(): boolean { return this.hasStopped }
 
   /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window (KERNEL-214). */
   private async doStop(o: { budgetMs?: number }) {
-    this.hasStopped = true
+    this.stopped = true
     this.unlisten()
     this.notifications.detach()
     this.leadUpdates.detach()
@@ -1286,7 +1284,7 @@ export class Kernel {
     for (const [roomId, list] of byRoom) {
       const room = this.mustRoom(roomId)
       const remote = await this.config.remoteFor(room.path)
-      const trees =await listWorktrees(room.path).then((l) => l, () => undefined)
+      const trees = await listWorktrees(room.path).then((l) => l, () => undefined)
       const current = await currentBranch(room.path).catch(() => undefined)
       facts.push(...await inPool(list, 8, async (ws): Promise<DeleteFacts> => {
         const branchKey = `${roomId}\0${ws.branch}`
@@ -1437,6 +1435,7 @@ export class Kernel {
    * once (a provider without the Haiku id, no bundled CLI) tends to keep failing, so the retries stop (`nameChat`).
    */
   private nameMisses = new Map<string, number>()
+  private stopped = false
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
   private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
@@ -2200,7 +2199,7 @@ export class Kernel {
     // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
     // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
     const room = this.store.room(ws.roomId)
-    const remote = remoteOf({ workspace: { remote: room && this.config.roomRemotes.get(room.path) } }, this.settings)
+    const remote = remoteOf({ workspace: { remote: room && this.config['roomRemotes'].get(room.path) } }, this.settings)
     const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
     return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}) }, remote)
   }
