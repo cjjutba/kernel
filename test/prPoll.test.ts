@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, PrState, Workspace } from '@shared/types'
@@ -8,6 +8,8 @@ import { bus } from '../src/main/bus'
 import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { NetworkMonitor } from '../src/main/services/health'
+import { GhReadError, type RateLimit } from '../src/main/services/github'
+import { git } from '../src/main/services/exec'
 
 // KERNEL-216: the PR poll runs one at a time, reads nothing offline, backs off a PR whose reads fail, and reads a PR
 // that has only waited on someone for a day every 5 minutes.
@@ -246,5 +248,173 @@ describe('the PR poll (KERNEL-216)', () => {
       expect((await k.prs.refreshPr(id)).prTitle).toBe('feat: invoice table')
       expect(pushed.filter((e) => e.type === 'workspace')).toHaveLength(1)
     } finally { bus.off('push', on) }
+  })
+})
+
+/**
+ * GitHub with a batch read (KERNEL-388): `prs[workspaceId]` answers both reads, the batch by the PR's number. Each batch's
+ * numbers and each full read's workspace are kept, with the options they were given.
+ */
+function batched(k: Kernel, prs: Record<string, PrInfo | null>) {
+  const calls = { batches: [] as number[][], infos: [] as string[], options: [] as unknown[] }
+  const rate: { value?: RateLimit } = {}
+  k.github = {
+    ...k.github,
+    info: async (_cwd, _ref, id, o) => { calls.infos.push(id); calls.options.push(o); return prs[id] ?? null },
+    prs: async (_cwd, numbers, o) => {
+      calls.batches.push([...numbers].sort())
+      calls.options.push(o)
+      const byNumber = new Map(Object.values(prs).flatMap((p) => (p ? [[p.number, p] as const] : [])))
+      return { infos: new Map(numbers.flatMap((n) => (byNumber.has(n) ? [[n, byNumber.get(n)!] as const] : []))), ...(rate.value ? { rate: rate.value } : {}) }
+    },
+    rateLimit: async () => undefined
+  }
+  return { calls, rate }
+}
+
+describe('the batch read (KERNEL-388)', () => {
+  it("reads a room's open PRs in one batch, and in full only the PR that changed", async () => {
+    const { k, ws, prs } = await setup(3)
+    const [a, b, c] = ws.map((w) => w.id)
+    prs[a] = info(a, 'checks', { number: 41, checks: [{ name: 'Test', state: 'running' }] })
+    prs[b] = info(b, 'ready', { number: 42 })
+    prs[c] = info(c, 'ready', { number: 43 })
+    const { calls } = batched(k, prs)
+    for (const w of ws) await k.prs.refreshPr(w.id)
+    calls.infos.length = 0
+    await k.prs.pollPrs()
+    expect(calls.batches).toEqual([[41, 42, 43]])
+    expect(calls.infos).toEqual([])
+    // Test passes on A: the batch sees it, and only A gets the full read that moves its header.
+    prs[a] = info(a, 'ready', { number: 41, checks: [{ name: 'Test', state: 'pass' }] })
+    await k.prs.pollPrs()
+    expect(calls.batches).toHaveLength(2)
+    expect(calls.infos).toEqual([a])
+    expect(k.store.workspace(a)?.prState).toBe('ready')
+    await k.prs.pollPrs()
+    expect(calls.infos).toEqual([a])
+  })
+
+  it("leaves a PR as it was when GitHub can't be read, and a finished Creating goes back after three failed reads", async () => {
+    const { k, ws, prs } = await setup(2)
+    const [a, b] = ws.map((w) => w.id)
+    prs[a] = info(a, 'cifail', { number: 41 })
+    await k.prs.refreshPr(a)
+    k.store.saveWorkspace({ ...k.store.workspace(b)!, prState: 'creating', prNumber: undefined })
+    k.github = { ...k.github, info: async () => { throw new GhReadError('error connecting to api.github.com') } }
+    const events: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'pr') events.push(e) }
+    bus.on('push', on)
+    try {
+      expect((await k.prs.refreshPr(a)).prState).toBe('cifail')
+      expect(events).toEqual([])
+      expect((await k.prs.refreshPr(b, { settle: true })).prState).toBe('creating')
+      expect((await k.prs.refreshPr(b, { settle: true })).prState).toBe('creating')
+      expect((await k.prs.refreshPr(b, { settle: true })).prState).toBe('none')
+    } finally { bus.off('push', on) }
+  })
+
+  it('stops reading near the rate limit until it resets, while opening a PR still reads it', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    const { calls, rate } = batched(k, prs)
+    await k.prs.refreshPr(id)
+    rate.value = { remaining: 100, limit: 5000, resetAt: Date.now() + 10 * 60_000 }
+    await k.prs.pollPrs()
+    await k.prs.pollPrs()
+    expect(calls.batches).toHaveLength(1)
+    expect(k.prs.cadence.resumesAt()).toBe(rate.value.resetAt)
+    calls.infos.length = 0
+    k.prs.infoMs = 0
+    prs[id] = info(id, 'ready', { number: 42 })
+    expect(await k.prs['getPr'](id)).toMatchObject({ state: 'ready' })
+    expect(calls.infos).toEqual([id])
+    expect(k.store.workspace(id)?.prState).toBe('ready')
+  })
+
+  it('pauses until the reset when GitHub refuses the batch for its rate limit', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    batched(k, prs)
+    await k.prs.refreshPr(id)
+    const resetAt = Date.now() + 30 * 60_000
+    k.github = { ...k.github, prs: async () => { throw new GhReadError("GitHub's rate limit is used up.", true) }, rateLimit: async () => ({ remaining: 0, limit: 5000, resetAt }) }
+    await k.prs.pollPrs()
+    expect(k.prs.cadence.paused()).toBe(true)
+    expect(k.prs.cadence.resumesAt()).toBe(resetAt)
+    expect(k.store.workspace(id)?.prState).toBe('checks')
+  })
+
+  it("passes the room's optional_checks to both reads", async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    const room = k.store.room(ws[0].roomId)!
+    await mkdir(join(room.path, '.kernel'), { recursive: true })
+    await writeFile(join(room.path, '.kernel', 'settings.toml'), '[pr]\noptional_checks = ["Vercel*"]\n')
+    prs[id] = info(id, 'checks', { number: 42 })
+    const { calls } = batched(k, prs)
+    await k.prs.refreshPr(id)
+    await k.prs.pollPrs()
+    expect(calls.options).toEqual([expect.objectContaining({ optional: ['Vercel*'] }), { optional: ['Vercel*'] }])
+  })
+
+  it("keeps GitHub's merge block on a ready PR, and Merge PR says why", async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'ready', { number: 42, blocked: 'review' })
+    await k.prs.refreshPr(id)
+    expect(k.store.workspace(id)).toMatchObject({ prState: 'ready', prBlocked: 'review' })
+    await expect(k.prs.mergePr(id)).rejects.toThrow('GitHub needs an approving review before this pull request can merge.')
+    prs[id] = info(id, 'ready', { number: 42 })
+    await k.prs.refreshPr(id)
+    expect(k.store.workspace(id)?.prBlocked).toBeUndefined()
+  })
+
+  it('moves the header with what opening the PR reads, and reuses a read from the last 10 seconds', async () => {
+    const { k, ws, prs, reads } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    await k.prs.refreshPr(id)
+    prs[id] = info(id, 'ready', { number: 42 })
+    reads.length = 0
+    expect(await k.prs['getPr'](id)).toMatchObject({ state: 'checks' })
+    expect(reads).toEqual([])
+    k.prs.infoMs = 0
+    expect(await k.prs['getPr'](id)).toMatchObject({ state: 'ready' })
+    expect(k.store.workspace(id)?.prState).toBe('ready')
+    expect(reads).toEqual([id])
+  })
+
+  it('polls soon on request once started, and never before start or after stop', async () => {
+    const idle = new Kernel({ dataDir: await mkdtemp(join(tmpdir(), 'kernel-data-')), home: await mkdtemp(join(tmpdir(), 'kernel-home-')) })
+    idle.prs.pollSoon()
+    expect(idle.prs['timer']).toBeUndefined()
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    const { calls } = batched(k, prs)
+    await k.prs.refreshPr(id)
+    k.prs.cadence.c = { ...k.prs.cadence.c, soonMs: 5, minGapMs: 0, fastMs: 60_000, calmMs: 60_000 }
+    k.prs.pollSoon()
+    await vi.waitFor(() => expect(calls.batches).toHaveLength(1))
+    k.prs.stop()
+    k.prs.pollSoon()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(calls.batches).toHaveLength(1)
+  })
+
+  it('follows a branch switched by hand on a batch poll', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    batched(k, prs)
+    await k.prs.refreshPr(id)
+    await git(ws[0].path, 'checkout', '-q', '-b', 'feat/other')
+    prs[id] = null
+    await k.prs.pollPrs()
+    expect(k.store.workspace(id)).toMatchObject({ branch: 'feat/other', prState: 'none' })
+    expect(k.store.workspace(id)?.prNumber).toBeUndefined()
   })
 })
