@@ -6,6 +6,7 @@ import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, ty
 import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
+import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import type { Store } from '../db'
@@ -53,8 +54,8 @@ interface Live {
   tasks: Set<string>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
-  /** An api_retry is counting down. The next reply or result clears the banner. */
-  retrying?: boolean
+  /** An api_retry is counting down. The next reply or result clears the banner. Kept for a window that loads meanwhile (KERNEL-340). */
+  retry?: Retry
   /** Claude Code answered this turn with a usage limit, so the turn ended early. */
   limited?: boolean
   /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
@@ -370,6 +371,10 @@ export class Sessions {
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
   isManaged(sessionId: string) { return this.managedIds.has(sessionId) }
   isRunning(chatId: string) { return this.live.get(chatId)?.running ?? false }
+  /** The chats with a turn running, for a window that loads while they work (KERNEL-340). */
+  runningIds(): string[] { return [...this.live].filter(([, l]) => l.running).map(([id]) => id) }
+  /** The chats whose session is retrying an overloaded API, with the countdown their banner shows (KERNEL-340). */
+  retries(): Record<string, Retry> { return Object.fromEntries([...this.live].flatMap(([id, l]) => (l.retry ? [[id, l.retry]] : []))) }
   /** apiKeySource from the chat's init message. 'none' means the Claude plan pays. */
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
@@ -861,9 +866,11 @@ export class Sessions {
   /**
    * Starts Claude Code the way the SDK's own spawn does, and records its pid until it exits, so a launch after a crash can
    * end it (`endLeftovers`). The SDK reads no stderr from a custom spawn, so Kernel keeps the end of it for the error note.
+   * Each process leads its own process group. In Kernel's group, a Ctrl+C or a closed tab in the terminal that ran `pnpm dev`
+   * reached every agent at once and ended its turn before the quit could save it to carry on (KERNEL-340).
    */
   private spawn(o: SpawnOptions, proc: Proc): SpawnedProcess {
-    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: true })
     proc.child = child
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (d: string) => { proc.stderr = (proc.stderr + d).slice(-STDERR_KEPT) })
@@ -1031,7 +1038,7 @@ export class Sessions {
           const failure = failureOf(msg.error, msg.error_status)
           // A connection error is the network's banner, not the overloaded one.
           if (failure === 'network' || failure === 'auth') { live.failed = failure; this.d.onFailure?.(failure, ws) }
-          else { live.retrying = true; bus.push({ type: 'retry', chatId, retry: { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms } }) }
+          else { live.retry = { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms }; bus.push({ type: 'retry', chatId, retry: live.retry }) }
         }
         if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
         // Most commands answer with an assistant message; some print here instead.
@@ -1229,8 +1236,8 @@ export class Sessions {
   }
 
   private clearRetry(chatId: string, live: Live) {
-    if (!live.retrying) return
-    live.retrying = false
+    if (!live.retry) return
+    live.retry = undefined
     bus.push({ type: 'retry', chatId, retry: null })
   }
 

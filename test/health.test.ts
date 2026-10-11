@@ -156,6 +156,25 @@ describe('sessions under failure', () => {
     off()
   })
 
+  it('lists a working chat and its retry for a window that loads meanwhile, and drops them as they end (KERNEL-340)', async () => {
+    const { sessions, chat } = await runner()
+    await sessions.send(chat.id, [{ type: 'text', text: 'Shorten the copy' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    await flush()
+    expect(sessions.runningIds()).toEqual([chat.id])
+    expect(sessions.retries()).toEqual({})
+    call.feed({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 5, retry_delay_ms: 12_000, error_status: 529, error: 'overloaded', uuid: 'a', session_id: 's' })
+    await flush()
+    expect(sessions.retries()).toEqual({ [chat.id]: { attempt: 2, of: 5, nextAt: expect.any(Number) } })
+    call.feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Shortened it.' }] }, session_id: 's' })
+    await flush()
+    expect(sessions.retries()).toEqual({})
+    expect(sessions.runningIds()).toEqual([chat.id])
+    call.feed(result())
+    await flush()
+    expect(sessions.runningIds()).toEqual([])
+  })
+
   it('reports an auth error and a dropped connection instead of a retry banner', async () => {
     const failures: string[] = []
     const { sessions, chat } = await runner({ onFailure: (f) => failures.push(f) })

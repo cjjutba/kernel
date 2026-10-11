@@ -2,13 +2,15 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
-import type { PushEvent } from '@shared/ipc'
+import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
+import { keepLine, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
+export { scriptKey }
 
 /**
  * The renderer's state: one top-level key per domain, plus `ui`. Keys stay flat so selectors read `s.rooms`, `s.items[chatId]`.
@@ -19,6 +21,8 @@ export interface State {
   rooms: Room[]
   /** By room id. Progress of a room being set up (RoomSetup.png). */
   roomSetup: Record<string, RoomSetupStep[]>
+  /** By room id. The scripts and files.copy list a room waits on the user to trust. A room with nothing to trust has no entry (KERNEL-218). */
+  scriptTrust: Record<string, ScriptTrust>
   /** By room id. */
   overlaps: Record<string, Overlap[]>
   // agents
@@ -51,8 +55,10 @@ export interface State {
   queueWhy: Record<string, QueueReason>
   /** By chat id. Raw pty output for terminal chats. */
   terminal: Record<string, string>
+  /** By chat id. How many times main's copy replaced `terminal`, so an open terminal knows to draw it again from the top (KERNEL-340). */
+  terminalReplays: Record<string, number>
   /** By chat id. Set while Claude is overloaded and the session retries. */
-  retry: Record<string, { attempt: number; of: number; nextAt: number }>
+  retry: Record<string, Retry>
   // approvals, tasks, activity, notifications
   approvals: Approval[]
   /** By room id. */
@@ -103,10 +109,10 @@ function keepFoldedChats(ids: string[]) {
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
-  rooms: [], roomSetup: {}, overlaps: {},
+  rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
-  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
+  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
@@ -143,19 +149,6 @@ export function useStore<T>(select: (s: State) => T): T {
     last.current = { value }
     return value
   })
-}
-
-/** Lines kept for each script. */
-const SCRIPT_LINES = 400
-/** A run script's name, `run` for the default one. Setup and archive have none. */
-const runName = (kind: ScriptKind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
-/**
- * Where a script's exit code lives in `scriptExit`: `setup`, `archive`, `run` for the default run script and `run:<name>` for the rest.
- * A run script may be named `setup`, so its key can't be the bare name.
- */
-export const scriptKey = (kind: ScriptKind, name?: string) => {
-  const n = runName(kind, name)
-  return n && n !== 'run' ? `run:${n}` : kind
 }
 
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
@@ -409,6 +402,10 @@ export const actions = {
       ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
     })),
     setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
+    setTrust: (roomId: string, trust: ScriptTrust | null) => setState((s) => {
+      const { [roomId]: _, ...rest } = s.scriptTrust
+      return { scriptTrust: trust ? { ...rest, [roomId]: trust } : rest }
+    }),
     setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
   },
@@ -434,17 +431,13 @@ export const actions = {
         ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
       }
     }),
-    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
-      const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
-      const next = [...(s.scripts[workspaceId] ?? []), named]
-      // A chatty script drops its own oldest line, so it can't push another script's output out. The lines that stay are the
-      // same objects, so the log's rows keep their keys and only new lines are drawn (KERNEL-211).
-      if (next.length > SCRIPT_LINES) {
-        const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
-        if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
-      }
-      return { scripts: { ...s.scripts, [workspaceId]: next } }
-    }),
+    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: keepLine(s.scripts[workspaceId] ?? [], line) } })),
+    /** Main's copy of the workspace's scripts, in place of the window's: a window that just loaded missed what came before (KERNEL-340). */
+    setScripts: (workspaceId: string, lines: ScriptLine[], exit: Record<string, number | null>, url: Record<string, string>) => setState((s) => ({
+      scripts: { ...s.scripts, [workspaceId]: lines },
+      scriptExit: { ...s.scriptExit, [workspaceId]: exit },
+      scriptUrl: { ...s.scriptUrl, [workspaceId]: url }
+    })),
     scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
     /** The URL a run script printed, or null when the push says the run started again or exited. */
     setScriptUrl: (workspaceId: string, name: string, url: string | null) => setState((s) => {
@@ -474,7 +467,12 @@ export const actions = {
       return { queue: { ...s.queue, [chatId]: list }, queueWhy }
     }),
     setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
-    appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-200_000) } })),
+    appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-TERMINAL_KEEP) } })),
+    /** Main's copy of a terminal's output, in place of the window's (KERNEL-340). */
+    replaceTerminal: (chatId: string, data: string) => setState((s) => ({
+      terminal: { ...s.terminal, [chatId]: data.slice(-TERMINAL_KEEP) },
+      terminalReplays: { ...s.terminalReplays, [chatId]: (s.terminalReplays[chatId] ?? 0) + 1 }
+    })),
     setRetry: (chatId: string, retry: State['retry'][string] | null) => setState((s) => {
       const next = { ...s.retry }
       if (retry) next[chatId] = retry
@@ -549,13 +547,14 @@ export function apply(e: PushEvent) {
     case 'chat': return actions.chats.upsert(e.chat)
     case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
-    case 'chat.running': return actions.chats.setRunning(e.chatId, e.running)
+    case 'chat.running': pushedLive?.running.add(e.chatId); return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
-    case 'terminal.data': return actions.chats.appendTerminal(e.chatId, e.data)
-    case 'retry': return actions.chats.setRetry(e.chatId, e.retry)
+    case 'terminal.data': return e.replace ? actions.chats.replaceTerminal(e.chatId, e.data) : actions.chats.appendTerminal(e.chatId, e.data)
+    case 'retry': pushedLive?.retry.add(e.chatId); return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)
     case 'room': return actions.rooms.upsert(e.room)
     case 'room.setup': return actions.rooms.setSetup(e.roomId, e.steps)
+    case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
     case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
@@ -563,6 +562,7 @@ export function apply(e: PushEvent) {
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
+    case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
@@ -591,6 +591,10 @@ export async function boot() {
 
 /** Loads what the first screen needs and picks it. A failure here leaves `booted` unset and lands in `boot`'s catch, which Loading shows. */
 async function start() {
+  // Which chats are working, asked once. Pushes only report changes, so without it every agent working while the window
+  // loaded would look stopped until its turn ended (KERNEL-340). An older main (a dev build mid-pull) has no such channel.
+  pushedLive = { running: new Set(), retry: new Set() }
+  void call('chats.live', undefined).then(applyLive, () => applyLive(null))
   const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
@@ -630,6 +634,19 @@ async function start() {
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.
   void update.then((u) => { if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u }) })
+}
+
+/** Chats a `chat.running` or `retry` push reached while `chats.live` was out. The push came later, so it wins. */
+let pushedLive: { running: Set<string>; retry: Set<string> } | undefined
+
+function applyLive(live: KernelApi['chats.live']['res'] | null) {
+  const pushed = pushedLive
+  pushedLive = undefined
+  if (!live || !pushed) return
+  setState((s) => ({
+    running: { ...Object.fromEntries(live.running.filter((id) => !pushed.running.has(id)).map((id) => [id, true])), ...s.running },
+    retry: { ...Object.fromEntries(Object.entries(live.retry).filter(([id]) => !pushed.retry.has(id))), ...s.retry }
+  }))
 }
 
 /**
@@ -673,9 +690,29 @@ export async function loadRoom(roomId: string) {
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
+  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `room.trust` clears it (KERNEL-218).
+  void call('rooms.scriptTrust', { roomId }).then((trust) => { if (trust) actions.rooms.setTrust(roomId, trust) }).catch(() => undefined)
+}
+
+/**
+ * Workspaces and terminals whose output this window has asked main for. Once is enough: from then on every line reaches
+ * the store as it is printed, open or not (KERNEL-340).
+ */
+const replayedScripts = new Set<string>()
+const replayedTerminals = new Set<string>()
+
+/** Asks main for the terminal's output so far, the first time this window shows it. Its answer arrives as a `terminal.data` push. */
+export function replayTerminal(id: string) {
+  if (replayedTerminals.has(id)) return
+  replayedTerminals.add(id)
+  void call('terminal.replay', { chatId: id }).catch(() => { replayedTerminals.delete(id) })
 }
 
 export async function loadWorkspace(workspaceId: string) {
+  if (!replayedScripts.has(workspaceId)) {
+    replayedScripts.add(workspaceId)
+    void call('scripts.replay', { workspaceId }).catch(() => { replayedScripts.delete(workspaceId) })
+  }
   const chats = await call('chats.list', { workspaceId })
   actions.chats.set(workspaceId, chats)
   for (const c of chats) actions.chats.setItems(c.id, await call('chats.items', { chatId: c.id }))

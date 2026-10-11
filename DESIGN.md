@@ -91,7 +91,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
 - Each level under a room steps in 12px: chat icons sit 20px in and nested workspace icons 32px in. A chat that started workspaces folds like a room and shows the question icon when a hidden workspace needs you.
 - Sidebar hover cards: a workspace or Lead row shows a card after a short hover or on keyboard focus. Surface-2, 1px line-3 border, 10px radius, no shadow. The status word sits on a pill filled with its `--tint-*` token, at 4.5:1 or better, the one place status takes color beyond the diff and merged colors (D-084).
-- Banners for failures: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner). Never red backgrounds.
+- Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner, trust/shield: the room's scripts wait for you to trust them). Never red backgrounds.
 - Toasts: bottom right, auto-dismiss after 2.6s.
 - Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.
 - Danger: red only on the final confirm button, never on the trigger.

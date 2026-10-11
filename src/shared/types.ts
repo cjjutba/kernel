@@ -1031,7 +1031,7 @@ export type Route =
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
-export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire'
+export type ConfirmKind = 'archive' | 'discard' | 'removeRoom' | 'retire' | 'trust'
 
 /** The one modal shell's contents. At most one modal is open. */
 export type Modal =
@@ -1051,6 +1051,8 @@ export type Modal =
   /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
   | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
   | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
+  /** Run this repo's scripts? The room's scripts and files.copy list waiting in `scriptTrust` (KERNEL-218). */
+  | { name: 'confirm'; kind: 'trust'; roomId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
 
@@ -1065,7 +1067,7 @@ export type MenuId =
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
-export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
+export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
 
 export interface Banner {
   kind: BannerKind
