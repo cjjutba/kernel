@@ -34,6 +34,18 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 - Send changes color in 0.16s. Nothing on a button loops.
 - With reduced motion, nothing moves and the glow holds at 90%.
 
+## Setup wait (KERNEL-430)
+
+A new chat whose setup is still running, failed or was stopped. Canvas: https://claude.ai/artifact/DQK7CYXcuiQqAtpeGtqYDE
+
+- The message you sent shows as a bubble where it will land, at lower contrast, with "Queued, sends after setup", Edit and Cancel under it. There's no skeleton, no note above the composer and no queue row.
+- The chat has one line for setup: spinner, "Running setup", the command, and the time since setup started. The log lives only in the Setup tab. The line adds "Show log" only while the right panel is hidden.
+- The composer stays usable and reads "Add a follow up". What you type queues behind the first message.
+- A failed or stopped setup is one card above the composer: what happened and when, then Run again (solid), Send anyway and Edit script. The setup banner doesn't draw it a second time.
+- While setup runs or has failed, the right panel opens on the Setup tab with the files pane folded to its header. After setup it goes back.
+- No status tags in the sidebar, on tabs or on the bubble.
+- Setup passing leaves one faint line, "Setup finished in M:SS". Send anyway leaves "Setup failed, sent anyway".
+
 ## Screens
 
 | PNG | Shows | App surface |
@@ -54,6 +66,14 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `LeadPrsMergeAllStopped` | Merge all stopped: where and why above the lists (KERNEL-411) | `pr/LeadPrs.tsx` |
 | `AskRowan` | Ask Rowan popover, empty | `components/footer/QuickAsk.tsx` |
 | `NewChat` | New chat empty state | `screens/workspace/Transcript.tsx` |
+| `SetupRunning` | New chat while setup runs: the queued bubble, the setup line, the Setup tab with Stop (KERNEL-430) | `screens/workspace/SetupWait.tsx`, `Panels.tsx` |
+| `SetupFollowUp` | A follow-up typed while setup runs joins the queued bubble (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupEditQueued` | Edit pulls the queued message back into the composer (KERNEL-430) | `composer/Composer.tsx` |
+| `SetupPanelHidden` | Setup running with the right panel hidden: the line adds Show log (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupFailed` | Setup failed: the card with Run again, Send anyway and Edit script (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupStopped` | Setup stopped from the Setup tab (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupSentAnyway` | Sent anyway after a failed setup (KERNEL-430) | `screens/workspace/SetupWait.tsx` |
+| `SetupDone` | Setup passed and the message went out; the panel is back on the Run tab (KERNEL-430) | `screens/workspace/Transcript.tsx`, `Panels.tsx` |
 | `Composer` | Every composer state: normal, working, plan mode and plan waiting, each empty and typing | `screens/workspace/composer/` |
 | `PlanStates` | Plan mode and plan waiting, empty and typing | `composer/composer.css`, `cards/plan.tsx` |
 | `PlanMotion` (no PNG) | The plan mode motion on a loop | `composer/composer.css`, `new-workspace/newWorkspace.css` |
