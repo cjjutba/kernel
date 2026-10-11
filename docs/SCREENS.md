@@ -191,6 +191,6 @@ Every Floor row, plus Board, BoardEmpty and TaskDetail, is hidden (D-104). For S
 
 TeamUpdateShared, TeamUpdateMerge, LeadPrs and LeadPrsEmpty are drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and their PNGs are also copied to `design/screens/` so `pnpm shots:compare` can find them.
 
-The Lead's workspace screens (WorkspaceLead and the Grouped set, except GroupedCloseLastTab) show the Lead after KERNEL-354 and KERNEL-355 (KERNEL-356): the header reads `lead` with "latest main" and has no Create PR button, and the right panel opens on the PRs tab under the "2 ready to merge" band from LeadPrs. The Client A rows in that tab are fixture content in LeadPrs's row layout. LeadPrs itself still draws `current branch · main` in its header; "latest main" is the spec (KERNEL-355).
+The Lead's workspace screens (WorkspaceLead and the Grouped set, except GroupedCloseLastTab) show the Lead after KERNEL-354 and KERNEL-355 (KERNEL-356): the header reads `lead` with "latest main" and has no Create PR button, and the right panel opens on the PRs tab under the "2 ready to merge" band from LeadPrs. The Client A rows in that tab are fixture content in LeadPrs's row layout. LeadPrs and LeadPrsEmpty read the same way (KERNEL-356).
 
 Fixtures for screens the canvas doesn't draw are listed in `noCanvas` in `test/fixtures.test.ts`, each with a comment saying what it shows.
