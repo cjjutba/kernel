@@ -26,3 +26,6 @@ export function chatWaits({ tabs, owned, approvals }: ChatWaitsInput): Wait[] {
   }
   return waits.sort((x, y) => x.approval.createdAt - y.approval.createdAt)
 }
+
+/** The workspaces this chat started that are held until the room's scripts are trusted. They wait on you like an approval, and clear when the status changes (KERNEL-342). */
+export const chatTrusts = (owned: Workspace[]): Workspace[] => owned.filter((w) => w.status === 'trust')
