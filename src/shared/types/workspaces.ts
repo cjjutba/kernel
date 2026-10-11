@@ -36,6 +36,8 @@ export interface Workspace {
   path: string
   mode: WorkspaceMode
   agentId: string
+  /** The Lead's own workspace, the one its chats live in (KERNEL-353). Read it through `isLeadWorkspace`. */
+  lead?: true
   port: number
   status: WorkspaceStatus
   /** For current-branch workspaces: the commit that captures pre-existing changes. */

@@ -3,6 +3,7 @@ import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, 
 import type { Fixture } from '../../fixtures'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
+import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
@@ -38,10 +39,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
-  /** The Lead's own workspace on the main checkout, the one `Kernel.leadChat` finds. */
+  /** The Lead's own workspace, the one `Kernel.leadChat` finds. */
   const leadWs = (roomId: string) => {
     const lead = f.agents[roomId]?.find((a) => a.lead)
-    return f.workspaces.find((w) => w.roomId === roomId && w.agentId === lead?.id && w.mode === 'current' && w.status !== 'archived')
+    return f.workspaces.find((w) => w.roomId === roomId && isLeadWorkspace(w, lead?.id))
   }
   let settings = f.settings ?? DEFAULT_SETTINGS('/Users/you')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }

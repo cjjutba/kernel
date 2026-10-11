@@ -15,7 +15,7 @@ function seed() {
   setState({
     rooms: [room('r1'), room('r2')],
     agents: { r1: [lead] },
-    workspaces: [ws('lead', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', mode: 'current' })],
+    workspaces: [ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', mode: 'current', lead: true })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {} } }))
@@ -179,7 +179,7 @@ describe('stillThere and nearest', () => {
     expect(nearest(at('other'), getState())).toEqual(at('lead'))
   })
   it('sends an archived Lead workspace to the room’s Team page', () => {
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan', status: 'archived' }))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan', status: 'archived' }))
     expect(nearest(at('lead'), getState())).toEqual({ name: 'team', roomId: 'r1' })
   })
   it('sends a removed room, and a hidden or archived one, Home', () => {
@@ -359,8 +359,8 @@ describe('launchRoute, which Continue on the checks screen goes to', () => {
   })
   it('opens the nearest place that is still there when the saved workspace was archived', () => {
     openTo('lastPlace')
-    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan', status: 'archived' }))
-    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan' }))
+    actions.workspaces.upsert(ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan', status: 'archived' }))
+    actions.workspaces.upsert(ws('lead2', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }))
     continueFromChecks()
     expect(route()).toEqual(at('lead2'))
   })

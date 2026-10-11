@@ -179,7 +179,6 @@ export class Kernel {
     // replays pending ones, and the inbox drops archived workspaces' rows and week-old settled ones (D-137).
     this.approvals.expireStale()
     this.notifications.attach()
-    this.lead.backfillLeadChats()
     void this.chats.nameStuckChats().catch(() => undefined)
     this.leadUpdates.attach()
     this.account.start()
@@ -189,6 +188,7 @@ export class Kernel {
     await this.sessions.endLeftovers()
     // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
     await Promise.all(this.store.rooms().filter((r) => !r.archived).map((r) => this.team.agents(r.id).catch(() => undefined)))
+    this.lead.backfill()
     // Before any session restarts, so a trusted room's env files reach it (KERNEL-247).
     await Promise.all(this.store.rooms().map((r) => this.trust.untrusted(r).catch(() => null)))
     // A room paused before the app quit is still paused: its agents wait and its sends are held. The saved limits decide
