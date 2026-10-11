@@ -63,7 +63,7 @@ intro: One or two sentences.
 
 `image` and `imageAlt` (a 1440x900 PNG in `public/images`) and `intro` are optional. Quote a value in double quotes when it contains `: `. Sections are free text: compiled releases use New, Improved and Fixed. An item may end with its PR, `(#41)`.
 
-`content/changelog.ts` reads the files at build time and checks them with the schema in `lib/schema.ts`, so a bad file fails the build. A minor version is its own entry; its patches show inside it as "New in x.y.z". The newest entry gets the Latest badge and the newest version sets the "Kernel 0.1 is here" pill on the landing page. Update `content/upNext.ts` when plans change.
+`content/changelog.ts` reads the files at build time and checks them with the schema in `lib/schema.ts`, so a bad file fails the build. Every release is its own entry, patches included, newest first. The newest gets the Latest badge and sets the pill on the landing page: "Kernel 0.2 is here" for a minor, "Kernel 0.2.1 is here" for a patch. Update `content/upNext.ts` when plans change.
 
 ## Deploy (Vercel)
 

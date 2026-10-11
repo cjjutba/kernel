@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { groupReleases, loadReleases } from '@/lib/releases'
+import { loadReleases } from '@/lib/releases'
 import { Changelog } from '@/lib/schema'
 import { upNext } from './upNext'
 
@@ -13,9 +13,9 @@ const fixture = process.env.CHANGELOG_FIXTURE
 const releases = loadReleases(join(fixture ?? join(process.cwd(), 'content'), 'releases'))
 
 export const changelog = Changelog.parse({
-  releases: groupReleases(releases),
+  releases,
   upNext: fixture ? JSON.parse(readFileSync(join(fixture, 'upNext.json'), 'utf8')) : upNext
 })
 
-/** The newest version, patches included. It sets the hero pill on the landing page and the sitemap date. */
+/** The newest version, a patch or a minor. It sets the hero pill on the landing page and the sitemap date. */
 export const latestRelease = releases[0]!

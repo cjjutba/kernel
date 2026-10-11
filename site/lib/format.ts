@@ -12,7 +12,7 @@ export function formatDate(isoDate: string): string {
   return dateFormat.format(new Date(`${isoDate}T00:00:00Z`))
 }
 
-/** "0.1.0" becomes "0.1". */
+/** "0.1.0" becomes "0.1". A patch keeps its number: "0.2.1". */
 export function latestVersionLabel(version: string): string {
-  return version.split('.').slice(0, 2).join('.')
+  return version.replace(/\.0$/, '')
 }

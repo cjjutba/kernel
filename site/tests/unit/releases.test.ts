@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { groupReleases, loadReleases } from '@/lib/releases'
+import { loadReleases } from '@/lib/releases'
 import { formatReleaseFile, parseReleaseFile, PLACEHOLDER_TITLE, type Release } from '@/lib/schema'
 
 const release = (version: string, date: string, extra: Partial<Release> = {}): Release => ({
@@ -49,24 +49,15 @@ describe('release files', () => {
 })
 
 describe('the changelog', () => {
-  it('folds patches into their minor, oldest patch first, entries newest first', () => {
-    const entries = groupReleases([
-      release('0.1.0', '2026-10-08'),
-      release('0.2.1', '2026-11-05'),
-      release('0.1.2', '2026-10-25'),
-      release('0.2.0', '2026-11-01'),
-      release('0.1.1', '2026-10-20')
-    ])
-    expect(entries.map((e) => [e.version, e.patches.map((p) => p.version)])).toEqual([
-      ['0.2.0', ['0.2.1']],
-      ['0.1.0', ['0.1.1', '0.1.2']]
-    ])
-  })
-
-  it('fails when a patch has no minor to show under', () => {
-    expect(() => groupReleases([release('0.1.0', '2026-10-08'), release('0.2.1', '2026-11-05')])).toThrow(
-      '0.2.1 has no 0.2.0 release'
+  it('gives every release its own entry, patches included, newest first', () => {
+    const dir = dirWith(
+      Object.fromEntries(
+        [release('0.1.0', '2026-10-08'), release('0.2.1', '2026-11-05'), release('0.1.2', '2026-10-25'), release('0.2.0', '2026-11-01')].map(
+          (r) => [`${r.version}.md`, formatReleaseFile(r)]
+        )
+      )
     )
+    expect(loadReleases(dir).map((r) => r.version)).toEqual(['0.2.1', '0.2.0', '0.1.2', '0.1.0'])
   })
 
   it('loads newest first and checks each file is named after its version', () => {
