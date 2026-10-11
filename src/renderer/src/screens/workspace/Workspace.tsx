@@ -9,6 +9,8 @@ import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
+import { leadHasNoChat } from './leadNoChat'
+import { NewLeadChat } from './NewLeadChat'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
@@ -55,7 +57,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
   const threadId = useStore((s) => (isLead ? currentThread(s, workspaceId) : undefined))
   const chats = useMemo(
-    () => (isLead && threadId ? everyChat.filter((c) => !c.closed && (c.kind === 'terminal' || threadIdOf(c) === threadId)) : everyChat),
+    // With no chat open (threadId unset) a closed chat's tab stays out of the row too, so only a terminal is left (KERNEL-366).
+    () => (isLead ? everyChat.filter((c) => !c.closed && (!threadId || c.kind === 'terminal' || threadIdOf(c) === threadId)) : everyChat),
     [everyChat, isLead, threadId]
   )
   const view = useStore((s) => s.ui.workspace)
@@ -85,6 +88,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const sharedId = tab?.startsWith('shared:') ? tab.slice(7) : undefined
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
+  // A room whose last chat was closed has no chat to show: New chat with Rowan is drawn instead, and the first message starts the chat (KERNEL-366).
+  // A terminal tab is shown while it is the one open.
+  const noChat = leadHasNoChat(isLead, everyChat) && !chats.some((c) => c.id === tab)
   const chat = filePath || diffPath !== undefined || sharedId || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = tabs?.files ?? NO_TABS
   const diffs = tabs?.diffs ?? NO_TABS
@@ -183,7 +189,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
@@ -200,6 +206,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
+                  : noChat
+                    ? <NewLeadChat workspaceId={workspaceId} roomId={ws.roomId} />
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat

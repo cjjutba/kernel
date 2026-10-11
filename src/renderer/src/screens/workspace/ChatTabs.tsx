@@ -8,7 +8,8 @@ import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
 import { kindIcon, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
-import { focusComposerWhenOpen } from './composer/bus'
+import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
+import { newChatTab } from './leadNoChat'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -21,8 +22,9 @@ const base = (path: string) => path.split('/').pop() ?? path
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
-  workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+export function ChatTabs({ workspaceId, threadId, noChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
+  /** The Lead's workspace shows New chat with Rowan, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
@@ -38,6 +40,12 @@ export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, i
   const terminalOn = terminal?.enabled === true
   const presets = useTerminalPresets(menu === 'newTab')
   const closeMenu = () => actions.ui.closeMenu()
+
+  /** With no chat on screen, + and ⌘T put the caret in the New chat box. A file or diff tab open meanwhile gives way to it. */
+  const newTab = () => {
+    closeMenu()
+    return newChatTab(!!noChat, () => { actions.ui.setTabs(workspaceId, { tab: undefined }); focusComposerIn(workspaceId) }, () => create('chat'))
+  }
 
   /** `preset` is a menu row's id. ⌘⇧T sends none, so main opens the settings' preset, or Claude when that one is gone. */
   const create = (kind: 'chat' | 'terminal', preset?: string) => attempt('Could not open a tab', async () => {
@@ -76,8 +84,8 @@ export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, i
 
   // Cmd+T new tab, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
-  const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn })
-  latest.current = { create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn }
+  const latest = useRef({ create, newTab, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn })
+  latest.current = { create, newTab, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn }
   useEffect(() => {
     const closeActive = () => {
       const { active: a, chats: cs, close: c, onCloseFile: f, onCloseDiff: dif, onCloseShared: shr, onCloseImage: img, onCloseText: txt } = latest.current
@@ -94,7 +102,7 @@ export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, i
       const k = e.key.toLowerCase()
       if (k === 't') {
         e.preventDefault()
-        if (!e.shiftKey) void latest.current.create('chat')
+        if (!e.shiftKey) void latest.current.newTab()
         else if (latest.current.terminalOn) void latest.current.create('terminal')
       }
       else if (k === 'w' && !e.shiftKey) { e.preventDefault(); closeActive() }
@@ -173,7 +181,7 @@ export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, i
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
           <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 282 }} items={[
-            { id: 'chat', label: 'New tab', shortcut: '⌘T', onSelect: () => void create('chat') },
+            { id: 'chat', label: 'New tab', shortcut: '⌘T', onSelect: () => void newTab() },
             ...(terminalOn && presets && terminal ? [MENU_SEPARATOR, ...presets.map((p) => ({ id: `preset:${p.id}`, label: p.name, shortcut: p.id === selectedPreset(presets, terminal)?.id ? '⌘⇧T' : undefined, onSelect: () => void create('terminal', p.id) }))] : [])
           ]} />
         )}
