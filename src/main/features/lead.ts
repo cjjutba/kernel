@@ -148,22 +148,30 @@ export class Lead extends Feature {
    * starts from the latest base anyway.
    */
   async syncLead(roomId: string, o: { fetch?: boolean } = {}): Promise<void> {
+    const failed = (e: unknown) => { if (!this.k.stopped) console.warn("[lead] could not update the Lead's worktree", e) }
     // The fetch runs outside the queue, so a new chat's sync never waits on the network behind it.
-    const room = this.store.room(roomId)
-    if (o.fetch && room) await fetchOrigin(room.path, await this.k.config.remoteFor(room.path), { fresh: true }).catch(() => undefined)
-    const next = (this.syncing.get(roomId) ?? Promise.resolve()).then(() => this.syncNow(roomId)).catch((e) => console.warn("[lead] could not update the Lead's worktree", e))
+    if (o.fetch) {
+      const room = this.k.stopped ? undefined : this.store.room(roomId)
+      if (!room) return
+      const fetched = await this.k.config.remoteFor(room.path).then((remote) => fetchOrigin(room.path, remote, { fresh: true })).then(() => true, (e) => { failed(e); return false })
+      if (!fetched) return
+    }
+    const next = (this.syncing.get(roomId) ?? Promise.resolve()).then(() => this.syncNow(roomId)).catch(failed)
     this.syncing.set(roomId, next)
     void next.finally(() => { if (this.syncing.get(roomId) === next) this.syncing.delete(roomId) })
     return next
   }
 
   private async syncNow(roomId: string) {
+    // A stopped Kernel's database is closed, so a sync still in flight reads nothing more from it and logs nothing.
+    if (this.k.stopped) return
     const room = this.store.room(roomId)
     const lead = this.agentsSync(roomId).find((a) => a.lead)
     const ws = lead && this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
     if (!room || room.archived || !lead || !ws || ws.mode !== 'worktree') return
-    const busy = () => this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
-    if (busy() || await folderGone(ws.path).catch(() => true)) return
+    // Read again after each step that waits on git: a turn can start while git runs, and the files mustn't move under it.
+    const held = () => this.k.stopped || this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
+    if (held() || await folderGone(ws.path).catch(() => true)) return
     const target = await leadBase(room.path, await this.k.config.remoteFor(room.path))
     if (!target) return
     const count = async (range: string) => Number((await git(ws.path, 'rev-list', '--count', range)).trim())
@@ -172,7 +180,9 @@ export class Lead extends Feature {
     const sha = (await git(room.path, 'rev-parse', target)).trim()
     const own = await count(`${target}..HEAD`)
     const changed = !own && (await git(ws.path, 'status', '--porcelain', '--untracked-files=no')).trim() !== ''
+    if (held()) return
     const why = own ? `it has ${own === 1 ? 'a commit' : `${own} commits`} of its own` : changed ? 'tracked files have changes' : !(await fastForward(ws.path, target)) ? 'git refused the fast-forward' : undefined
+    if (this.k.stopped) return
     if (why) {
       if (this.refused.get(roomId) === `${sha} ${why}`) return
       this.refused.set(roomId, `${sha} ${why}`)

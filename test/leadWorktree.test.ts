@@ -301,8 +301,11 @@ describe("keeping the Lead's worktree on the latest main (KERNEL-181)", () => {
     const { k, bare, room, ws } = await syncedRoom()
     const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     const merged = await pushElsewhere(bare, 'merged')
+    const sync = vi.spyOn(k.lead, 'syncLead')
     bus.push({ type: 'pr', workspaceId: kai.id, state: 'merged' })
-    await vi.waitFor(async () => expect(await sha(ws.path, 'HEAD')).toBe(merged), { timeout: 10000 })
+    expect(sync).toHaveBeenCalledWith(room.id, { fetch: true })
+    await Promise.all(sync.mock.results.map((r) => r.value))
+    expect(await sha(ws.path, 'HEAD')).toBe(merged)
   })
 
   it('moves nothing while a Lead chat is running or has messages queued, and catches up when the last Lead turn ends', async () => {
@@ -318,11 +321,21 @@ describe("keeping the Lead's worktree on the latest main (KERNEL-181)", () => {
     k.sessions.queued = (id) => (id === chat.id ? [{ id: 'q', chatId: id, parts: [{ type: 'text', text: 'next' }], ts: Date.now() }] : queued(id))
     await k.lead.syncLead(room.id)
     expect(await sha(ws.path, 'HEAD')).toBe(was)
-    expect(syncNotes(k, room.id)).toEqual([])
+    // A turn that starts while the sync's git runs: the check before the fast-forward sees it.
     k.sessions.queued = queued
-    // The turn ends: Sessions calls back with the chat idle.
+    let reads = 0
+    k.sessions.isRunning = (id) => (id === chat.id ? ++reads > 1 : isRunning(id))
+    await k.lead.syncLead(room.id)
+    expect(reads).toBe(2)
+    expect(await sha(ws.path, 'HEAD')).toBe(was)
+    expect(syncNotes(k, room.id)).toEqual([])
+    k.sessions.isRunning = isRunning
+    // The turn ends: Sessions calls back with the chat idle, and the sync that starts catches up.
+    const sync = vi.spyOn(k.lead, 'syncLead')
     ;(k.sessions as unknown as { d: { onTurnDone: (...a: unknown[]) => void } }).d.onTurnDone(ws, chat, { ok: true, interrupted: false, by: 'user' })
-    await vi.waitFor(async () => expect(await sha(ws.path, 'HEAD')).toBe(await sha(repo, 'origin/main')))
+    expect(sync).toHaveBeenCalledWith(room.id)
+    await Promise.all(sync.mock.results.map((r) => r.value))
+    expect(await sha(ws.path, 'HEAD')).toBe(await sha(repo, 'origin/main'))
   })
 
   it('moves nothing when tracked files have changes, and logs that once per origin/main sha', async () => {
