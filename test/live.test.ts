@@ -71,7 +71,7 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live round trip', () => {
       const ws = await h['workspaces.create']({ roomId: room.id, agentId: agent.id, prompt: 'Check the working tree. First think it through: which is larger, 2^10 or 10^3, and by how much? Then run exactly `git status --short` with the Bash tool and reply in two short sentences. Run nothing else.' })
       wsId = ws.id
       const chat = (await h['chats.list']({ workspaceId: ws.id }))[0]
-      const setup = pushes.flatMap((e) => (e.type === 'script.output' && e.workspaceId === ws.id && e.kind === 'setup' ? [e.line] : []))
+      const setup = pushes.flatMap((e) => (e.type === 'script.output' && e.workspaceId === ws.id && e.kind === 'setup' ? e.lines.map((l) => l.line) : []))
       const setupExit = pushes.find((e) => e.type === 'script.exit' && e.workspaceId === ws.id && e.kind === 'setup')
       evidence.workspace = { branch: ws.branch, path: ws.path, status: ws.status, port: ws.port, setup, setupExit }
       expect(ws).toMatchObject({ status: 'ready', mode: 'worktree' })
@@ -322,7 +322,8 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
       const items = () => k.store.items(chat.id)
       await waitFor('the first turn', () => items().some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
       const session = k.store.chat(chat.id)?.sessionId
-      evidence.before = { session, cwd: repo }
+      evidence.before = { session, cwd: k.store.workspace(made.id)?.path }
+      expect(k.store.workspace(made.id)?.path).toBe(repo)
       expect(session).toBeTruthy()
       await k.stop()
 

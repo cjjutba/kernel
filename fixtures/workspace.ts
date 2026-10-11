@@ -50,7 +50,7 @@ function runScripts(): Fixture {
     // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
     push: [
       ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', line, stream: 'stdout' }))
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] }))
     ]
   }
 }
@@ -74,7 +74,7 @@ function preview(): Fixture {
     } },
     push: [
       ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', line, stream: 'stdout' }))
+      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
     ],
     ui: { ...open.ui, menu: 'preview' }
   }
@@ -1075,12 +1075,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' })
     return {
       workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
-      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.' }] },
+      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.', refs: [{ text: 'PR #43 by Noor', workspaceId: ids.schema }] }] },
       queue: { [ids.tableChat]: queue },
       // A held brief has no run script and no changes yet (KERNEL-259).
       changes: { ...f.changes, [ids.table]: [] },
       push: [...f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'), { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'merge' }],
       ui: open
+    }
+  }),
+  /** Noor's PR #43 with Kai's T-14 brief held until it merges: the line above the box names Kai's workspace and opens it. */
+  WorkspaceWaitedOn: scene((f) => {
+    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open', prTitle: 'feat(invoices): schema and migrations' })
+    return {
+      workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, source: { kind: 'issue', id: 'T-14', title: 'Invoice table' }, waitsFor: { on: [ids.schema], held: true } }),
+      ui: { route: { name: 'workspace', workspaceId: ids.schema } }
     }
   }),
   WorkspaceHunks: scene((f) => ({

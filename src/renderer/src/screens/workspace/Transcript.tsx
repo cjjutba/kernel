@@ -5,6 +5,7 @@ import { Icon, Skeleton, Spinner, type IconName } from '../../ui'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { floorRoomId, noteLinkTarget } from './noteLink'
+import { NoteText } from './NoteText'
 import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
@@ -264,7 +265,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
     case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} />
     case 'thinking': return <ThinkingRow item={item} />
     case 'tool': return <ToolRow item={item} />
-    case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text">{item.text}</span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
+    case 'note': return <div className="note inline" data-pr={item.pr}>{item.pr && <Icon name={NOTE_GLYPH[item.pr]} size={14} />}<span className="note-text"><NoteText text={item.text} refs={item.refs} /></span><span className="note-rule" aria-hidden="true" />{item.link && <NoteLink link={item.link} />}</div>
     case 'interrupted': return <span className="interrupted">INTERRUPTED BY YOU</span>
     case 'approval': return <ApprovalRow id={item.approvalId} />
     case 'shared': return <SharedCard sharedId={item.sharedId} version={item.version} />
@@ -339,8 +340,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     await loadWorkspace(workspaceId)
     forked.current(next.id)
   }), [chatId, workspaceId])
-  // Only a workspace with its own worktree forks into a new one. The new workspace opens while its setup runs.
-  const worktree = ws?.mode === 'worktree'
+  // Only a workspace with its own worktree forks into a new one, and not the Lead's, which is on no branch (KERNEL-355). The new
+  // workspace opens while its setup runs.
+  const worktree = ws?.mode === 'worktree' && !ws.lead
   const forkWorkspace = useCallback((itemId: string) => attempt('Could not fork into a new workspace', async () => {
     const next = await call('workspaces.fork', { chatId, itemId })
     actions.workspaces.upsert(next)

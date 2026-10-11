@@ -1,6 +1,6 @@
 import { mkdir, realpath, rename, stat } from 'node:fs/promises'
 import { basename, dirname, join, resolve } from 'node:path'
-import { exec, git } from './exec'
+import { exec, git, gitSlow } from './exec'
 import type { ChangedFile } from '@shared/types'
 
 /** "Export invoices as PDF" -> "export-invoices-as-pdf" (max 48 chars, no trailing dash). */
@@ -231,10 +231,10 @@ export async function freeWorktreePath(repo: string, root: string, branch: strin
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
   const path = o.path ?? await freeWorktreePath(o.repo, o.root, o.branch)
-  if (o.detach) { await git(o.repo, 'worktree', 'add', '--detach', path, o.baseRef); return path }
+  if (o.detach) { await gitSlow(o.repo, 'worktree', 'add', '--detach', path, o.baseRef); return path }
   const wasMissing = (await branchState(o.repo, o.branch)) === 'missing'
   try {
-    await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+    await gitSlow(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
   } catch (e) {
     if (wasMissing && (await branchState(o.repo, o.branch)) === 'exists') await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
     throw e
@@ -249,10 +249,10 @@ export async function createWorktree(o: CreateWorktree): Promise<string> {
 export async function restoreWorktree(o: { repo: string; path: string; branch: string; remote?: string }): Promise<void> {
   const remote = o.remote ?? 'origin'
   await mkdir(dirname(o.path), { recursive: true })
-  if (await branchExists(o.repo, o.branch)) { await git(o.repo, 'worktree', 'add', o.path, o.branch); return }
+  if (await branchExists(o.repo, o.branch)) { await gitSlow(o.repo, 'worktree', 'add', o.path, o.branch); return }
   const copy = await exec('git', ['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${o.branch}`])
   if (copy.code !== 0) throw new Error(`The branch ${o.branch} no longer exists, so there is nothing to restore.`)
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `${remote}/${o.branch}`)
+  await gitSlow(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `${remote}/${o.branch}`)
 }
 
 /**
@@ -313,8 +313,12 @@ export async function detachWorktree(repo: string, path: string, opts: { deleteB
   return moved
 }
 
-/** Whether `path` is one of `repo`'s worktrees, not the repo itself. git may list it by its real path. */
+/**
+ * Whether `path` is one of `repo`'s worktrees, not the repo itself, with its folder there. git keeps listing a worktree whose
+ * folder was deleted until a prune, so that one doesn't count. git may list it by its real path.
+ */
 export async function isWorktreeOf(repo: string, path: string): Promise<boolean> {
+  if (await folderGone(path).catch(() => false)) return false
   const real = await realpath(path).catch(() => path)
   return (await listWorktrees(repo)).slice(1).some((w) => w.path === path || w.path === real)
 }

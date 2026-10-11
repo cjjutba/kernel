@@ -1,4 +1,4 @@
-import { exec, run } from './exec'
+import { exec, run, SLOW_MS } from './exec'
 import type { IssueSummary, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 import { stripRemote } from './worktrees'
 
@@ -147,7 +147,7 @@ export async function prInfo(cwd: string, ref: string, workspaceId: string, o: {
 }
 
 export async function prCreate(cwd: string, o: { title: string; body: string; base: string; draft?: boolean }, remote = 'origin'): Promise<PrView | null> {
-  await run('git', ['-C', cwd, 'push', '-u', remote, 'HEAD'])
+  await run('git', ['-C', cwd, 'push', '-u', remote, 'HEAD'], { timeoutMs: SLOW_MS })
   await run('gh', ['pr', 'create', '--title', o.title, '--body', o.body, '--base', stripRemote(o.base, remote), ...(o.draft ? ['--draft'] : [])], { cwd, timeoutMs: 60000 })
   return prView(cwd)
 }

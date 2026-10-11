@@ -333,6 +333,7 @@ export type PushEvent =
    * Output from a terminal. With `replace` it is everything main kept, which takes the place of what the window has. A replay
    * goes out on this same stream, after every chunk it already holds and before the next one (KERNEL-340).
    */
+  /** A terminal's output from the last 50 ms as one string, so `pnpm install` is about 20 pushes a second (KERNEL-216). */
   | { type: 'terminal.data'; chatId: string; data: string; replace?: true }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }
@@ -344,7 +345,8 @@ export type PushEvent =
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
   /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
-  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; line: string; stream: 'stdout' | 'stderr' }
+  /** A script's lines from the last 50 ms, in order, so a chatty script is about 20 pushes a second (KERNEL-216). */
+  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; lines: Pick<ScriptLine, 'line' | 'stream'>[] }
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
   /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
   | { type: 'script.url'; workspaceId: string; name: string; url: string | null }

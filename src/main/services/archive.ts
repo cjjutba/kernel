@@ -1,5 +1,5 @@
 import type { WorkspaceGitStatus } from '@shared/types'
-import { exec, git } from './exec'
+import { exec, git, gitSlow } from './exec'
 import { changedFiles } from './worktrees'
 
 // Git facts and actions behind the archive and discard confirmations (ConfirmArchive.png, ConfirmDiscard.png).
@@ -42,7 +42,7 @@ export async function unpushedCommits(repo: string, branch: string, baseRef: str
 
 /** Push the branch to the room's remote and track it. Throws with git's own words when it can't. */
 export async function pushBranch(path: string, branch: string, remote = 'origin'): Promise<void> {
-  await git(path, 'push', '-u', remote, branch)
+  await gitSlow(path, 'push', '-u', remote, branch)
 }
 
 /**

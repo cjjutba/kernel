@@ -152,6 +152,8 @@ describe('a hand-off that waits for a merge', () => {
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
     expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.')
+    // "PR #164 by Noor" in the note opens Noor's workspace.
+    expect(k.store.items(chat.id).find((i) => i.kind === 'note' && i.text.startsWith('Waiting for'))).toMatchObject({ refs: [{ text: 'PR #164 by Noor', workspaceId: noor.id }] })
     expect(callsIn(w)).toEqual([])
     expect(existsSync(join(w.path, 'ran.txt'))).toBe(false)
     expect(await listCheckpoints(w)).toEqual([])
@@ -439,6 +441,39 @@ describe('across a restart', () => {
     await released(k2, w)
     expect(users(k2, chat)[0]).toEqual(['Build T-15', 'lead'])
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
+    await k2.stop()
+  })
+
+  it("doesn't hold up the PR poll while the brief it released is still setting up (KERNEL-216)", async () => {
+    const { k, room, lead, target, again, origin, gh } = await setup()
+    const noor = await target(k, 164)
+    const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+    await k.stop()
+    await land(origin, 'pr-164.txt')
+    gh.prs.set(noor.branch, { ...gh.prs.get(noor.branch)!, state: 'merged' })
+    const k2 = await again()
+    await flush()
+    // Setup reruns for the released brief, and can take up to the script timeout.
+    let finish!: () => void
+    const slow = new Promise<void>((r) => { finish = r })
+    const startBrief = k2.setup.startBrief.bind(k2.setup)
+    let briefs = 0
+    k2.setup.startBrief = async (...a) => { briefs++; await slow; return startBrief(...a) }
+    const inTime = (p: Promise<void>) => Promise.race([p.then(() => 'done'), new Promise((r) => setTimeout(() => r('stuck'), 2_000))])
+    expect(await inTime(k2.prs.pollPrs())).toBe('done')
+    await vi.waitFor(() => expect(briefs).toBe(1), SLOW)
+    // The next poll runs and reads its PRs while the brief still waits, and doesn't start the release again.
+    const reads: string[] = []
+    const info = k2.github.info
+    k2.github = { ...k2.github, info: async (...a) => { reads.push(a[2]); return info(...a) } }
+    const other = await target(k2, 170)
+    reads.length = 0
+    expect(await inTime(k2.prs.pollPrs())).toBe('done')
+    expect(reads).toEqual([other.id])
+    expect(briefs).toBe(1)
+    finish()
+    await released(k2, w)
+    expect(users(k2, chatOf(k2, w))[0]).toEqual(['Build T-15', 'lead'])
     await k2.stop()
   })
 

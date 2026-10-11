@@ -1,4 +1,8 @@
 import type { WaitsFor, Workspace, WorkspaceMode } from '@shared/types'
+import { isMerged } from '@shared/waits'
+
+// Moved to shared so the window names waits as the engine does. Imported from here as before.
+export { isMerged, joinLabels, waitLabel } from '@shared/waits'
 
 /**
  * A workspace that waits for other workspaces' PRs to merge (KERNEL-259). Kernel holds its brief, or tells its teammate
@@ -26,9 +30,6 @@ export function waitTargets(workspaces: Workspace[], refs: string[]): Workspace[
   return [...out.values()]
 }
 
-/** A target's work merged. Only its PR state counts: Continue keeps `mergedAt` from the PR before. */
-export const isMerged = (w: Workspace | undefined) => w?.prState === 'merged'
-
 /** A target that will never merge now: its PR closed without merging, it was archived without merging, or it is gone. */
 export const isBroken = (w: Workspace | undefined) => !w || w.prState === 'closed' || (w.status === 'archived' && w.prState !== 'merged')
 
@@ -40,16 +41,6 @@ export function waitMet(wait: WaitsFor, workspaces: Workspace[]): boolean {
 /** The id of a target that will never merge, or nothing while each one still can. */
 export function waitBroken(wait: WaitsFor, workspaces: Workspace[]): string | undefined {
   return wait.on.find((id) => isBroken(workspaces.find((w) => w.id === id)))
-}
-
-/** "PR #164 by Noor", or "Noor's work" before it has a PR. */
-export function waitLabel(target: Workspace, name: string): string {
-  return target.prNumber ? `PR #${target.prNumber} by ${name}` : `${name}'s work`
-}
-
-/** Labels joined for a sentence: "PR #164 by Noor and PR #170 by Ivy". */
-export function joinLabels(labels: string[]): string {
-  return labels.length <= 2 ? labels.join(' and ') : `${labels.slice(0, -1).join(', ')} and ${labels.at(-1)}`
 }
 
 export interface WaitCheck {

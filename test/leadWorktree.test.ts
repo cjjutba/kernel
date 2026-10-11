@@ -143,6 +143,51 @@ describe("the Lead's worktree (KERNEL-355)", () => {
     expect((await k.lead.leadChat(room.id)).id).toBe(chat.id)
   })
 
+  it("makes the Lead's worktree again where it was when its folder is deleted, on the next call and at startup", async () => {
+    const repo = await tempRepo(REPO)
+    const where = await dirs()
+    let k = await boot(where)
+    const room = await k.addRoom(repo)
+    const chat = await k.lead.leadChat(room.id)
+    const ws = k.store.workspace(chat.workspaceId)!
+    // Deleted outside Kernel: git still lists it until a prune.
+    await rm(ws.path, { recursive: true, force: true })
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).toContain('prunable')
+    expect((await k.lead.leadChat(room.id)).id).toBe(chat.id)
+    expect(k.store.workspace(ws.id)).toMatchObject({ mode: 'worktree', path: ws.path, branch: 'HEAD', baseRef: 'main' })
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('HEAD')
+    expect(await git(repo, 'worktree', 'list', '--porcelain')).not.toContain('prunable')
+
+    await rm(ws.path, { recursive: true, force: true })
+    await k.stop()
+    k = await boot(where)
+    expect(existsSync(join(ws.path, 'README.md'))).toBe(true)
+    expect(k.store.workspace(ws.id)).toMatchObject({ mode: 'worktree', path: ws.path })
+    expect((await git(repo, 'worktree', 'list', '--porcelain')).match(/^worktree /gm)).toHaveLength(2)
+  })
+
+  it("uses lead-2 again after a move cut short there, instead of making lead-3, when another room's folder has lead", async () => {
+    const repo = await tempRepo(REPO)
+    const where = await dirs()
+    let k = await boot(where)
+    const room = await k.addRoom(repo)
+    // Another room with the same name has the `lead` folder.
+    const root = join(where.home, 'wt', slugify(room.name))
+    await mkdir(join(root, 'lead'), { recursive: true })
+    await writeFile(join(root, 'lead', 'theirs.txt'), 'another room\n')
+    const made = k.store.workspace((await k.lead.leadChat(room.id)).workspaceId)!
+    expect(made.path).toBe(join(root, 'lead-2'))
+    // The move made the worktree and stopped before it saved the record.
+    k.store.saveWorkspace({ ...made, mode: 'current', path: repo, branch: 'main', baseRef: 'main' })
+    await k.stop()
+
+    k = await boot(where)
+    expect(k.store.workspace(made.id)).toMatchObject({ mode: 'worktree', path: join(root, 'lead-2') })
+    expect(existsSync(join(root, 'lead-3'))).toBe(false)
+    expect(await readFile(join(root, 'lead', 'theirs.txt'), 'utf8')).toBe('another room\n')
+    expect((await git(repo, 'worktree', 'list', '--porcelain')).match(/^worktree /gm)).toHaveLength(2)
+  })
+
   it('refuses to archive the Lead, and removing the room deletes no branch', async () => {
     const repo = await tempRepo(REPO)
     const k = await boot(await dirs())

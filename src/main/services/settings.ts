@@ -22,7 +22,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   notifications: { permission: true, plan: true, merge: true, checkFailed: true, finished: true, idle: false, sound: 'subtle', quietHours: null },
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: 'origin/main', remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true },
-  scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true },
+  scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
   models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
@@ -77,6 +77,7 @@ export function applySettingsPatch(current: AppSettings, patch: DeepPartial<AppS
   const whole = (n: unknown, min: number, max: number, fallback: number) => (Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n as number))) : fallback)
   next.models.agentLimit = whole(next.models.agentLimit, 0, 12, current.models.agentLimit)
   next.permissions.approvalTimeoutSec = whole(next.permissions.approvalTimeoutSec, 10, 3600, current.permissions.approvalTimeoutSec)
+  next.scripts.timeoutMinutes = whole(next.scripts.timeoutMinutes, 1, 240, current.scripts.timeoutMinutes)
   next.models.effortByModel = effortMemory(next.models.effortByModel)
   next.terminal = terminalSettingsOf(next.terminal, current.terminal)
   return next

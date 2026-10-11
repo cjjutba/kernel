@@ -2,7 +2,7 @@ import { copyFile, mkdtemp, readdir, rm, rmdir, stat, utimes } from 'node:fs/pro
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { Checkpoint, DiffStat } from '@shared/types'
-import { exec, run } from './exec'
+import { exec, run, SLOW_MS } from './exec'
 import { freeBranch } from './worktrees'
 
 /**
@@ -26,7 +26,8 @@ const IDENTITY = { GIT_AUTHOR_NAME: 'Kernel', GIT_AUTHOR_EMAIL: 'kernel@localhos
 export const checkpointRef = (workspaceId: string, turn: number) => `refs/kernel/checkpoints/${workspaceId}/${turn}`
 const headRef = (workspaceId: string) => `refs/kernel/checkpoint-head/${workspaceId}`
 
-const git = (cwd: string, args: string[], env?: NodeJS.ProcessEnv, input?: string) => run('git', ['-C', cwd, ...args], { env, input })
+/** A checkpoint hashes every file in the worktree, which in a big one takes longer than `exec`'s minute. */
+const git = (cwd: string, args: string[], env?: NodeJS.ProcessEnv, input?: string) => run('git', ['-C', cwd, ...args], { env, input, timeoutMs: SLOW_MS })
 
 /** One git operation at a time per workspace, so two chats ending together do not race for the same turn number. */
 const locks = new Map<string, Promise<unknown>>()

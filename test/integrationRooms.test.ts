@@ -67,10 +67,10 @@ describe('two rooms keep their own scripts', () => {
     const wsB = await k.createWorkspace(b.id, { prompt: 'b', agentId: 'kai', title: 'B' })
     await h['scripts.run']({ workspaceId: wsA.id, kind: 'run' })
     await h['scripts.run']({ workspaceId: wsB.id, kind: 'run' })
-    const said = (id: string, line: string) => events.some((e) => e.type === 'script.output' && e.workspaceId === id && e.line === line)
+    const said = (id: string, line: string) => events.some((e) => e.type === 'script.output' && e.workspaceId === id && e.lines.some((l) => l.line === line))
     await until(() => said(wsA.id, 'mine-a') && said(wsB.id, `room-b-${wsB.port}`), 'both rooms to print their own line')
-    expect(events.some((e) => e.type === 'script.output' && e.workspaceId === wsA.id && e.line.startsWith('room-b'))).toBe(false)
-    expect(events.some((e) => e.type === 'script.output' && e.workspaceId === wsB.id && e.line === 'mine-a')).toBe(false)
+    expect(events.some((e) => e.type === 'script.output' && e.workspaceId === wsA.id && e.lines.some((l) => l.line.startsWith('room-b')))).toBe(false)
+    expect(events.some((e) => e.type === 'script.output' && e.workspaceId === wsB.id && e.lines.some((l) => l.line === 'mine-a'))).toBe(false)
   })
 })
 

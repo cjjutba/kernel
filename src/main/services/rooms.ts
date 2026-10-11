@@ -2,7 +2,7 @@ import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, RepoSummary } from '@shared/types'
-import { exec, git, run } from './exec'
+import { exec, git, gitSlow, run } from './exec'
 
 // Everything a new room needs from the outside world: reading folders, GitHub through `gh`, the starter team and settings.toml.
 
@@ -88,7 +88,7 @@ export async function copyTemplate(fullName: string, dest: string) {
 /** `git init` plus a first commit, so worktrees have something to branch from. Works without a git identity. */
 export async function initGit(path: string) {
   await git(path, 'init', '-q', '-b', 'main')
-  await git(path, 'add', '-A')
+  await gitSlow(path, 'add', '-A')
   await git(path, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')
 }
 
