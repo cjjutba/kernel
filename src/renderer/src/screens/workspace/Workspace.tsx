@@ -20,6 +20,7 @@ import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
+import { LocalMergeInfo } from './pr/LocalMerge'
 import { hasChanges } from './pr/model'
 import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
@@ -277,6 +278,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
           </div>
+          {ownPr && <LocalMergeInfo ws={ws} />}
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>

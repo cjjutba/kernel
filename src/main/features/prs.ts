@@ -111,6 +111,24 @@ export class Prs extends Feature {
     this.setPrState(ws, 'resolving')
   }
 
+  /**
+   * Update branch, for a branch that merges on this Mac and has fallen behind its base (KERNEL-478): asks the agent to rebase
+   * onto it and re-run the tests. GitHub has its own button for a PR, so a room on GitHub refuses. Nothing changes state, so the
+   * band keeps reading Behind until the next read finds the branch caught up.
+   */
+  async updateBranch(id: string) {
+    const ws = this.mustWs(id)
+    if (!this.isLocal(ws)) throw new Error('Only a branch that merges on this Mac updates this way. GitHub updates a pull request.')
+    const chat = this.prChat(id)
+    if (!chat) throw new Error('This workspace has no chat.')
+    const info = await this.read(ws, ws.path, ws.branch)
+    const behind = info?.local?.behind ?? 0
+    const base = info?.baseRef ?? ws.baseRef
+    if (!behind) throw new Error(`This branch is up to date with ${base}.`)
+    this.k.lead.userSpoke(chat.id)
+    await this.sessions.send(chat.id, [{ type: 'text', text: `${base} has ${behind} new ${behind === 1 ? 'commit' : 'commits'} that this branch doesn't have. Commit your work, rebase onto ${base}, resolve any conflicts and re-run the tests. Then say what you changed.` }])
+  }
+
   /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */
   private infos = new Map<string, { info: PrInfo; at: number }>()
   infoMs = 10_000
@@ -687,6 +705,7 @@ export class Prs extends Feature {
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
       'pr.mergeAll': async ({ roomId, workspaceIds }) => this.mergeAll(roomId, workspaceIds),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
+      'pr.update': async ({ workspaceId }) => { await this.updateBranch(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
       'github.status': async () => this.cadence.status(),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),

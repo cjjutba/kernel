@@ -362,4 +362,34 @@ describe('a local merge through the PR feature', () => {
     // The merged push archives the workspace, as a merge on GitHub does.
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('archived'), { timeout: 10_000, interval: 20 })
   })
+
+  it('asks the agent to rebase a branch that fell behind its base, and only then (KERNEL-478)', async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    kernels.push(k)
+    await k.start()
+    const sent: unknown[] = []
+    k.sessions.send = async (_chat, parts) => { sent.push(parts); return { queued: false } }
+    const repo = await tempRepo({ 'README.md': '# shop\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const room = await k.addRoom(repo)
+    const ws = await setUp(k, (await k.workspaces.createWorkspace(room.id, { prompt: 'Build the cart', agentId: 'kai', title: 'Cart' })).id)
+    await commit(ws.path, { 'cart.ts': 'export const cart = []\n' }, 'feat: cart')
+    // The brief the workspace started with went through the same stand-in.
+    sent.length = 0
+
+    // A room on GitHub has its own Update branch.
+    await expect(k.prs.updateBranch(ws.id)).rejects.toThrow('Only a branch that merges on this Mac')
+    k.store.saveRoom({ ...room, host: 'local' })
+    await expect(k.prs.updateBranch(ws.id)).rejects.toThrow('This branch is up to date with main.')
+    expect(sent).toEqual([])
+
+    await commit(repo, { 'b.txt': 'two\n' }, 'fix: b')
+    await commit(repo, { 'c.txt': 'three\n' }, 'fix: c')
+    await k.prs.updateBranch(ws.id)
+    expect(sent).toEqual([[{ type: 'text', text: "main has 2 new commits that this branch doesn't have. Commit your work, rebase onto main, resolve any conflicts and re-run the tests. Then say what you changed." }]])
+    // The state stays ready: the band reads Behind from the read, and nothing claims the agent is resolving.
+    expect(k.store.workspace(ws.id)?.prState).not.toBe('resolving')
+  })
 })
