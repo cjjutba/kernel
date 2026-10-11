@@ -31,7 +31,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('crash
       g.dialogs = []
       g.copied = []
       dialog.showErrorBox = (title: string) => { g.dialogs.push(title) }
-      clipboard.writeText = (text: string) => { g.copied.push(text) }
+      clipboard.writeText = async (text: string) => { g.copied.push(text) }
     })
   }, 120_000)
 
