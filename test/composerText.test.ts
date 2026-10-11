@@ -5,11 +5,11 @@ import { nextEffort } from '../src/renderer/src/screens/workspace/composer/model
 import { toUserMessage } from '../src/main/services/sessions'
 
 describe('composer text rules', () => {
-  it('turns a paste into a chip over 4 lines or 280 characters', () => {
-    expect(isLongPaste('a\nb\nc\nd')).toBe(false)
-    expect(isLongPaste('a\nb\nc\nd\ne')).toBe(true)
-    expect(isLongPaste('x'.repeat(280))).toBe(false)
-    expect(isLongPaste('x'.repeat(281))).toBe(true)
+  it('turns a paste into a chip over 10 lines or 1,000 characters', () => {
+    expect(isLongPaste(Array(10).fill('a').join('\n'))).toBe(false)
+    expect(isLongPaste(Array(11).fill('a').join('\n'))).toBe(true)
+    expect(isLongPaste('x'.repeat(1000))).toBe(false)
+    expect(isLongPaste('x'.repeat(1001))).toBe(true)
   })
 
   it('finds the @ word before the caret and a leading slash', () => {

@@ -69,6 +69,6 @@ export function runsOnEnter(row: SlashRow, query: string): boolean {
 export const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1)
 export const dirName = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
 
-/** The line count a pasted text chip shows, and whether the paste is long enough to become one (over 4 lines or 280 characters). */
+/** The line count a pasted text chip shows, and whether the paste is long enough to become one (over 10 lines or 1,000 characters, paste-chip-limit). */
 export function pasteLines(text: string) { return text.split('\n').length }
-export function isLongPaste(text: string) { return text.length > 280 || pasteLines(text) > 4 }
+export function isLongPaste(text: string) { return text.length > 1000 || pasteLines(text) > 10 }
