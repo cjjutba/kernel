@@ -7,8 +7,9 @@ import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { PAUSE_KEEPS } from '../services/sessions'
 import { KERNEL_HOOK_EVENTS } from '../services/hooksInstaller'
-import { loadRepoSettings, localSettingsOwn } from '../services/settings'
-import { defaultBranch, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
+import { DEFAULT_BASE_REF, loadRepoSettings, localSettingsOwn } from '../services/settings'
+import { defaultBranch, onRemote, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
+import { scanInstructions } from '../services/instructionConflicts'
 import { exec } from '../services/exec'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
@@ -106,6 +107,8 @@ export class Rooms extends Feature {
       if (inited) return { detail: `Git initialized in ${tildify(room.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
+    // Not a step of its own: reading two files can't fail setup, and Room setup lists what it found under the team.
+    await this.findInstructionConflicts(room.id).catch(() => undefined)
 
     await step('worktrees', async () => {
       await mkdir(worktrees, { recursive: true })
@@ -148,6 +151,24 @@ export class Rooms extends Feature {
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
       return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}) }
     })
+  }
+
+  /**
+   * Reads the repo's CLAUDE.md, .claude/CLAUDE.md and AGENTS.md for rules that fight Kernel's workflow and keeps them on the
+   * room (KERNEL-452). The branches are the ones Kernel's agents never commit or push to, and the base is where teammates'
+   * worktrees start, as `createWorkspace` picks it. The files are never written.
+   */
+  async findInstructionConflicts(roomId: string): Promise<Room> {
+    const room = this.mustRoom(roomId)
+    const repo = await loadRepoSettings(room.path)
+    const remote = await this.k.config.remoteFor(room.path, repo)
+    const set = repo.workspace.baseRef ?? (this.settings.workspace.baseRef === DEFAULT_BASE_REF ? undefined : this.settings.workspace.baseRef)
+    const base = onRemote(set ?? `${remote}/${room.defaultBranch}`, remote)
+    const instructionConflicts = await scanInstructions(room.path, { branches: [room.defaultBranch, ...this.settings.permissions.protectedBranches], base })
+    // Read again after the scan, so a change that landed meanwhile stays.
+    const next = this.store.saveRoom({ ...this.mustRoom(roomId), instructionConflicts })
+    bus.push({ type: 'room', room: next })
+    return next
   }
 
   /**
