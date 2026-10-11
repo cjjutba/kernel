@@ -8,6 +8,7 @@ import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
 import { LeadPrs } from './pr/LeadPrs'
+import { OUTSIDE_THE_REPO } from './pr/model'
 import { useLeadPrs } from './pr/leadPrList'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
@@ -142,7 +143,7 @@ export function checkGroups(ws: Workspace, changes: ChangedFile[], pr?: PrInfo, 
       ? pr.checks.map(checkRow)
       : [{ state: ws.prState === 'checks' ? 'run' : 'idle', label: ws.prState === 'checks' ? 'Checks running' : 'No checks reported', dim: ws.prState !== 'checks' }]
   const groups = [{ title: 'Git', rows: [git] }, { title: 'Pull request', rows: [prRow] }, { title: 'CI', rows: ci }]
-  const todos = (pr?.comments ?? []).map((c): CheckRow => ({ state: c.resolved ? 'ok' : 'idle', label: c.body, meta: c.resolved ? '' : 'from review', dim: !c.resolved }))
+  const todos = (pr?.comments ?? []).map((c): CheckRow => ({ state: c.resolved ? 'ok' : 'idle', label: c.body, meta: c.resolved ? '' : c.association === 'outside' ? OUTSIDE_THE_REPO : 'from review', dim: !c.resolved }))
   return todos.length ? [...groups, { title: 'Todos', rows: todos }] : groups
 }
 

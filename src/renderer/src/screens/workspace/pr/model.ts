@@ -75,10 +75,13 @@ export function instructionOf(item: ChatItem): Extract<ChatPart, { type: 'file' 
 /** "table.tsx:42" for a review comment, or "review" for a review's own text. */
 export const commentPlace = (c: ReviewComment) => (c.path ? `${c.path.split('/').pop()}${c.line ? `:${c.line}` : ''}` : 'review')
 
-/** The rows of the review card's code block, places padded so the comments line up. */
+/** The meta of a comment from someone outside the repo, which Address review leaves out (KERNEL-222). */
+export const OUTSIDE_THE_REPO = 'outside the repo'
+
+/** The rows of the review card's code block, places padded so the comments line up. A comment from outside the repo says so. */
 export function reviewLines(comments: ReviewComment[]): string[] {
   const width = Math.max(0, ...comments.map((c) => commentPlace(c).length)) + 3
-  return comments.map((c) => `${commentPlace(c).padEnd(width)}${c.body.replace(/\s+/g, ' ')}`)
+  return comments.map((c) => `${commentPlace(c).padEnd(width)}${c.body.replace(/\s+/g, ' ')}${c.association === 'outside' ? ` (${OUTSIDE_THE_REPO})` : ''}`)
 }
 
 /** Unresolved review comments, for the "requested changes" card. */

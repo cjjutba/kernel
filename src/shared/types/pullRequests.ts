@@ -22,7 +22,7 @@ export interface ReviewComment {
   resolved: boolean
   /**
    * Whether GitHub counts the author as part of the repo: OWNER, MEMBER and COLLABORATOR are `trusted`, anyone else, bots
-   * included, is `outside`. Only trusted comments reach the agent (KERNEL-222). Left out when GitHub didn't say.
+   * included, is `outside`. Only trusted comments reach the agent (KERNEL-222), so a comment without it counts as outside.
    */
   association?: 'trusted' | 'outside'
 }
