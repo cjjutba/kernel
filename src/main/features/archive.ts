@@ -2,7 +2,7 @@ import { basename, dirname } from 'node:path'
 import { rm, stat } from 'node:fs/promises'
 import type { Workspace } from '@shared/types'
 import { bus } from '../bus'
-import { loadRepoSettings } from '../services/settings'
+import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { detachWorktree, folderGone, restoreWorktree } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, stopRuns, stopScript } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
@@ -63,7 +63,8 @@ export class Archive extends Feature {
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
-    const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
+    // The caller's choice wins, then the room's own value, then the app's (KERNEL-370).
+    const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive'))
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).
