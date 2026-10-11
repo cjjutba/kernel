@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
-  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
+  permissions: { mode: 'auto', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
@@ -195,9 +195,10 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
 /**
  * The permission modes took Claude Code's names (KERNEL-432): `ask` is `default`, and `bypassInWorktrees` is
  * `bypassPermissions` with Only in worktrees on. A file with no mode, or one Kernel doesn't know, is pinned to Accept edits,
- * the default it ran on until now. settings.json keeps only what the user chose, and the default changes once
- * onboarding asks for a mode, so an unpinned file would move to it unasked. This runs on every load, not once, so a file
- * written later without a mode is pinned too. Only a file that exists gets here: a new install reads the default.
+ * the default it ran on before Auto became the default for new installs (KERNEL-457). settings.json keeps only what the
+ * user chose, so an unpinned file would move to Auto unasked. This runs on every load, not once, so a file written later
+ * without a mode is pinned too. Only a file that exists gets here: a new install, with no file, reads the default, and
+ * `effectiveMode` runs it in Accept edits where Auto isn't available.
  */
 function migratePermissions(saved: DeepPartial<AppSettings>) {
   const own = saved.permissions as Record<string, unknown> | undefined
