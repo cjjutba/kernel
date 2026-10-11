@@ -8,7 +8,7 @@ import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type Pr
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 
-// The shapes live in src/shared/types.ts so the Settings screens can read them (KERNEL-8).
+// The shapes live in src/shared/types/settings.ts so the Settings screens can read them (KERNEL-8).
 export type { AppSettings }
 /** Per-repo settings in .kernel/settings.toml, with personal overrides in .kernel/settings.local.toml. */
 export type RepoSettings = RoomSettings

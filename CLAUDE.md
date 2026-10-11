@@ -19,7 +19,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 - `src/main/` main process: `kernel.ts` (wiring: builds the services and features, starts and stops them, joins their IPC handler maps), `features/` (one file per feature: its state, logic and IPC channels; moving out of `kernel.ts` in KERNEL-324 to KERNEL-331), `db.ts` (SQLite), `bus.ts` (events), `services/` (sessions, hooks, approvals, worktrees, scripts, github, agents, settings, preflight, kernelMcp)
 - `src/preload/` the `window.kernel` bridge
-- `src/shared/` contracts used by every process: `types.ts`, `ipc.ts`, `hookSchemas.ts`
+- `src/shared/` contracts used by every process: `types/` (one file per area, all exported from `types/index.ts`, so `@shared/types` imports everything), `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
 - `design/screens/` one PNG per canvas screen (the target). `design/canvas/` the canvas markup with exact values
 - `docs/` PRODUCT, ARCHITECTURE, HOOKS, DECISIONS (D-001 to D-140), SCREENS (screen to issue map), ROADMAP. `docs/decisions/` holds newer decisions, one file each
