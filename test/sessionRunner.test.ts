@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, symlink } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
@@ -1275,6 +1275,25 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(sameBinary.exitCode).toBeNull()
       expect(s.store.meta('claudePids')).toEqual([])
     } finally { left.kill('SIGKILL'); other.kill('SIGKILL'); sameBinary.kill('SIGKILL') }
+  })
+})
+
+describe('a terminal that ends Kernel (KERNEL-340)', () => {
+  it("starts each Claude Code process in a process group of its own, out of reach of the terminal's Ctrl+C", async () => {
+    const s = await setup()
+    const abort = new AbortController()
+    const proc = s.options.spawnClaudeCodeProcess!({ command: '/bin/sleep', args: ['30'], env: process.env, signal: abort.signal })
+    proc.on('error', () => undefined)
+    const pid = (proc as unknown as { pid: number }).pid
+    const group = (p: number) => Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(p)], { encoding: 'utf8' }).trim())
+    try {
+      expect(group(pid)).toBe(pid)
+      expect(group(pid)).not.toBe(group(process.pid))
+    } finally {
+      const exited = new Promise((r) => proc.once('exit', r))
+      abort.abort()
+      await exited
+    }
   })
 })
 

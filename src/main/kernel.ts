@@ -32,7 +32,7 @@ import { KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount } from './services/account'
-import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
+import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, replayScripts, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
@@ -2655,6 +2655,7 @@ export class Kernel {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset }) => {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
@@ -2676,6 +2677,7 @@ export class Kernel {
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
+      'chats.live': async () => ({ running: this.sessions.runningIds(), retry: this.sessions.retries() }),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {
@@ -2714,6 +2716,7 @@ export class Kernel {
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
+      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
       'rooms.trust': async ({ roomId, hash }) => { await this.trustRoom(roomId, hash); return { ok: true } },
       'env.get': async ({ roomId }) => {

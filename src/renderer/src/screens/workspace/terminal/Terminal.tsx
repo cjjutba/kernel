@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
 import { call } from '../../../api'
 import { appended } from './buffer'
-import { getState, useStore } from '../../../store'
+import { getState, replayTerminal, useStore } from '../../../store'
 
 const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 /** The terminal palette, read from the tokens of the theme in force (tokens.css). Bright colours reuse the normal ones so contrast holds in both themes. */
@@ -25,7 +25,8 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
   const host = useRef<HTMLDivElement>(null)
   const theme = useStore((s) => s.ui.theme)
   const buffer = useStore((s) => s.terminal[id] ?? '')
-  const live = useRef<{ term: Xterm; seen: string } | undefined>(undefined)
+  const replays = useStore((s) => s.terminalReplays[id] ?? 0)
+  const live = useRef<{ term: Xterm; seen: string; replays: number } | undefined>(undefined)
   useEffect(() => {
     const el = host.current
     if (!el) return
@@ -52,7 +53,9 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
     }
     const seen = getState().terminal[id] ?? ''
     if (seen) term.write(seen)
-    live.current = { term, seen }
+    live.current = { term, seen, replays: getState().terminalReplays[id] ?? 0 }
+    // A window that just loaded has none of what the terminal printed before. Main's copy comes back as a push (KERNEL-340).
+    replayTerminal(id)
     term.onData((data) => void call('terminal.write', { chatId: id, data }).catch(() => undefined))
     // Copy needs the selection; paste arrives as the browser paste event on xterm's textarea.
     term.attachCustomKeyEventHandler((e) => {
@@ -76,13 +79,22 @@ export function TerminalView({ id, label, compact }: { id: string; label: string
     const l = live.current
     if (l) l.term.options.theme = xtermTheme()
   }, [theme])
-  // New output goes to the open terminal. The store keeps the buffer, so a remount replays it above.
+  // New output goes to the open terminal. The store keeps the buffer, so a remount replays it above. Main's copy takes the
+  // buffer's place when it arrives, so the terminal is drawn again from the top (KERNEL-340).
   useEffect(() => {
     const l = live.current
-    if (!l || l.seen === buffer) return
+    if (!l) return
+    if (l.replays !== replays) {
+      l.term.reset()
+      l.term.write(buffer)
+      l.seen = buffer
+      l.replays = replays
+      return
+    }
+    if (l.seen === buffer) return
     l.term.write(appended(l.seen, buffer))
     l.seen = buffer
-  }, [buffer])
+  }, [buffer, replays])
   return (
     <div className={compact ? 'term term-compact' : 'term'} role="group" aria-label={label} data-theme-key={theme}>
       <div ref={host} className="term-host" />
