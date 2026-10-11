@@ -10,19 +10,19 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 
 | Token | Value | Use |
 |---|---|---|
-| canvas | #08090a | window background |
-| panel | #0f1011 | main panel |
-| surface | #141516 | inputs, cards |
-| surface-2 | #18191b | menus, modals |
-| surface-3 | #1c1d21 | selected rows, hover fills |
-| hover | #232428 | menu item hover |
-| line | #1a1b1e | dividers |
-| line-2 | #23252a | input borders |
-| line-3 | #2a2b30 | buttons, menus |
-| ink | #f7f8f8 | primary text |
-| ink-2 | #d0d6e0 | secondary text |
-| muted | #8a8f98 | labels, meta |
-| faint | #62666d | tertiary |
+| canvas | #070707 | window background |
+| panel | #0f0f0f | main panel |
+| surface | #141414 | inputs, cards |
+| surface-2 | #181818 | menus, modals |
+| surface-3 | #1e1e1e | selected rows, hover fills |
+| hover | #242424 | menu item hover |
+| line | #1c1c1c | dividers |
+| line-2 | #262626 | input borders |
+| line-3 | #2e2e2e | buttons, menus |
+| ink | #f5f5f5 | primary text |
+| ink-2 | #e0e0e0 | secondary text |
+| muted | #9c9c9c | labels, meta |
+| faint | #7a7a7a | tertiary |
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
 | mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
@@ -30,13 +30,13 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
-| aside | #0c0d0e | the workspace's right panel, one step below panel |
+| aside | #0b0b0b | the workspace's right panel, one step below panel |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
 | pr-merged-* | band #2a2140, line #3c2f5c, soft #372b55, edge #64509c, fg #d4c2ff, text #b88fff, solid #8b45f5 | PR header band: merged |
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
+The neutrals are pure grey, with equal red, green and blue, so no surface or text leans blue or violet (KERNEL-431). There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
