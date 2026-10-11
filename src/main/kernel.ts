@@ -37,7 +37,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refre
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
@@ -102,6 +102,14 @@ function unbuilt(): Pick<Handlers, Unbuilt> {
   const out: Record<string, () => Promise<never>> = {}
   for (const [channel, issue] of Object.entries(UNBUILT as Record<string, string>)) out[channel] = async () => { throw new NotImplemented(channel as Channel, issue) }
   return out as unknown as Pick<Handlers, Unbuilt>
+}
+
+/** When origin was last fetched, for a workspace that started from it after a fetch failed: "Oct 10, 2:05 PM (3 hours ago)". */
+export function fetchedAt(ts: number, now = Date.now()): string {
+  const min = Math.max(0, Math.round((now - ts) / 60000))
+  const [n, unit] = min < 60 ? [min, 'minute'] : min < 60 * 48 ? [Math.round(min / 60), 'hour'] : [Math.round(min / 1440), 'day']
+  const ago = n === 0 ? 'just now' : `${n} ${unit}${n === 1 ? '' : 's'} ago`
+  return `${new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${ago})`
 }
 
 export class Kernel {
@@ -1044,8 +1052,15 @@ export class Kernel {
     const remote = await this.remoteFor(room.path, repo)
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
     const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    const want = o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote)
+    // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
+    // without that remote has nothing to fetch, so it says nothing.
+    const fetched = !reviewed && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
+      ? await fetchOrigin(room.path, remote) : undefined
     const baseRef = reviewed ? await this.reviewBase(room.path, reviewed.branch, remote)
-      : await resolveBaseRef(room.path, o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote), { fetch: mode === 'worktree', strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
+      : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || o.source?.kind === 'branch', remote })
+    // A local branch the base fell back to wasn't fetched, so a failed fetch says nothing about it.
+    const stale = fetched?.ok === false && baseRef.startsWith(`${remote}/`) ? { error: fetched.error, when: fetched.lastFetch === undefined ? undefined : fetchedAt(fetched.lastFetch) } : undefined
     // The ports come first, so running out of them leaves no worktree or branch behind (KERNEL-244).
     const ws: Workspace = await this.withPort(async (port) => {
       let path: string, branch: string, baselineRef: string | undefined
@@ -1072,7 +1087,7 @@ export class Kernel {
       // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105). A review
       // the Lead started with base_ref keeps the Lead's base and branch, and is only linked (KERNEL-299).
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
-      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })
@@ -1080,6 +1095,7 @@ export class Kernel {
     this.setSetup(ws.id, { later: [] })
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
+    if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
     // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
     if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.startIssue(ws, o.source.id)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
@@ -1087,6 +1103,7 @@ export class Kernel {
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
     const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    if (stale) this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     const from = o.leadChatId ? 'lead' as const : undefined
@@ -2238,7 +2255,7 @@ export class Kernel {
     let forwarded = true
     if (!now && ws.mode === 'worktree') {
       // A failed fetch leaves the remote's copy where it was, and a fast-forward to it would claim a merge it doesn't have.
-      const fetched = await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30_000 }).then((r) => r.code === 0, () => false)
+      const fetched = (await fetchOrigin(room.path, remote, { fresh: true })).ok
       forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
     }
     const after = await this.head(ws.path)
@@ -2667,7 +2684,7 @@ export class Kernel {
     if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
     const room = this.mustRoom(ws.roomId)
     const remote = await this.remoteFor(room.path)
-    if (ws.baseRef.startsWith(`${remote}/`)) await exec('git', ['-C', ws.path, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
+    if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
     const branch = await freeBranch(room.path, stem !== ws.branch && await branchExists(room.path, stem) ? stem : ws.branch)

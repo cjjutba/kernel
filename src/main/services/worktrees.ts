@@ -1,5 +1,5 @@
 import { mkdir, realpath, rename, stat } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
 
@@ -102,14 +102,44 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
 }
 
 /**
+ * `git fetch <remote>`, with a 30 second limit. On failure: git's first line of stderr, or the timeout, and when the
+ * room last fetched (FETCH_HEAD's mtime), so a caller can say how old `<remote>/<branch>` is (KERNEL-179). Git empties
+ * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
+ * failed) gives no time. Fetch from the room's folder, not a worktree: each worktree keeps its own FETCH_HEAD.
+ */
+export function fetchOrigin(repo: string, remote = 'origin', o: { fresh?: boolean } = {}): Promise<Fetched> {
+  // Fetches that overlap share one. Two at once race for the remote's ref locks, and the loser fails. A `fresh` caller
+  // needs what merged a moment ago, which a fetch already running may have missed, so it fetches again after that one.
+  const key = `${repo}\n${remote}`
+  const running = fetching.get(key)
+  if (running && !o.fresh) return running
+  const next: Promise<Fetched> = (running ?? Promise.resolve()).catch(() => undefined).then(() => fetchNow(repo, remote))
+    .finally(() => { if (fetching.get(key) === next) fetching.delete(key) })
+  fetching.set(key, next)
+  return next
+}
+type Fetched = { ok: true } | { ok: false; error: string; lastFetch?: number }
+const fetching = new Map<string, Promise<Fetched>>()
+
+async function fetchNow(repo: string, remote: string): Promise<Fetched> {
+  const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
+  const lastFetch = head.code === 0 ? await stat(resolve(repo, head.stdout.trim())).then((s) => s.size > 0 ? s.mtimeMs : undefined, () => undefined) : undefined
+  const r = await exec('git', ['-C', repo, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
+  if (r.code === 0) return { ok: true }
+  const error = r.timedOut ? 'timed out after 30 seconds' : r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? `git fetch exited with code ${r.code}`
+  return { ok: false, error, ...(lastFetch === undefined ? {} : { lastFetch }) }
+}
+
+/**
  * The ref a workspace starts from: `wanted` when it exists, else the same branch without `<remote>/` locally,
  * else the default branch, `<remote>/<default>` when the remote has it. A folder with no remote and only
- * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, a `<remote>/` ref fetches first.
+ * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, a `<remote>/` ref fetches first,
+ * through `fetchOrigin`.
  * `strict` is for a base the user picked (a PR or a branch): it throws rather than start somewhere else.
  */
 export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean; remote?: string } = {}): Promise<string> {
   const remote = o.remote ?? 'origin'
-  if (o.fetch && wanted.startsWith(`${remote}/`)) await exec('git', ['-C', repo, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
+  if (o.fetch && wanted.startsWith(`${remote}/`)) await fetchOrigin(repo, remote)
   const name = stripRemote(wanted, remote)
   for (const ref of new Set([wanted, name])) if (await refExists(repo, ref)) return ref
   if (o.strict) throw new Error(`${name} is not on ${remote} or in this repo, so there is nothing to start from.`)
