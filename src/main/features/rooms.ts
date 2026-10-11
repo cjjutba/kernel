@@ -12,7 +12,7 @@ import { defaultBranch, remoteRepo, roomWorktreeRoot, slugify } from '../service
 import { exec } from '../services/exec'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installRunsRepoCode, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
@@ -112,13 +112,16 @@ export class Rooms extends Feature {
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
       // The install command runs the repo's own install scripts, though, and those still wait for the user (KERNEL-260, D-078).
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length) await this.k.trust.trustCurrent(room)
+      // So does an install that runs the repo's own code, as `bundle install` runs the Gemfile (KERNEL-444).
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length && !(await installRunsRepoCode(room.path))) await this.k.trust.trustCurrent(room)
     })
     await step('install', async () => {
-      const { command, reason } = await installCommand(room.path)
+      const { command, reason, runsRepoCode } = await installCommand(room.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
-      // The install would run the repo's install scripts. Trusting them runs it (KERNEL-260).
-      if (await this.k.trust.holdInstall(room)) return { detail: "Skipped until you trust this repo's install scripts" }
+      // A repo whose settings have nothing to trust never asks, so an install that runs its code is left to the user (KERNEL-444).
+      if (runsRepoCode && !(await this.k.trust.trustState(room)).subject) return { detail: `Skipped: ${command} runs this repo's code, so run it yourself if you trust it` }
+      // The install would run the repo's install scripts, or its own code. Trusting them runs it (KERNEL-260).
+      if (await this.k.trust.holdInstall(room, runsRepoCode)) return { detail: runsRepoCode ? "Skipped until you trust this repo's scripts" : "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
