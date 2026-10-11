@@ -18,7 +18,7 @@ const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
 
 const AGENTS = {
   '.claude/agents/architect.md': '---\nname: architect\ndescription: >-\n  Designs the system.\n  Writes no code.\ntools: Read, Grep, Glob\n---\nYou design.',
-  '.claude/agents/api.md': '---\nname: api\ndescription: Backend engineer. Builds the API.\n---\nYou build the API.',
+  '.claude/agents/api.md': '---\nname: api\ndescription: Backend engineer. Builds the API.\n---\nYou build the API and open a PR.',
   '.claude/agents/web.md': '---\nname: web\ndescription: Frontend engineer.\ntools: Read, Edit, Write, Bash, Grep, Glob\n---\nYou build the UI.'
 }
 
@@ -173,7 +173,8 @@ describe("a repo's own agents (KERNEL-397)", () => {
     await writeFile(join(repo, '.claude', 'agents', 'rowan.md'), rowan.replace('lead: true\n', ''))
     const team = await k.agents(room.id)
     expect(team.map((a) => [a.id, a.name, a.lead])).toEqual([['kernel-lead', 'Lead', true], ['rowan', 'Rowan', false], ['kernel-reviewer', 'Theo', false], ['web', 'Web', false]])
-    expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-lead' }])
+    // Its prompt has no pull request workflow either, so it starts as a helper (KERNEL-465).
+    expect(team.find((a) => a.id === 'rowan')?.warnings).toEqual([{ kind: 'looks-like-subagent' }, { kind: 'looks-like-lead' }])
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     expect((await k.leadChat(room.id)).id).toBe(chat.id)
     await rm(join(repo, '.claude', 'agents', 'rowan.md'))

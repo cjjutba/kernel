@@ -134,6 +134,7 @@ export class Rooms extends Feature {
     })
     // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
     // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
+    // A repo with more agents than one team needs asks who joins (KERNEL-465, RoomSetupRoster.png).
     await step('agents', async () => {
       const brought = (await agentFiles(room.path)).length
       if (!brought) {
@@ -143,10 +144,12 @@ export class Rooms extends Feature {
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: list })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
+      const roster = brought ? await this.k.team.rosterOf(room.id) : undefined
+      if (roster?.needed) return { detail: `${roster.agents} agents found in .claude/agents`, brought, roster }
       const own = list.filter((a) => !a.builtIn).map((a) => a.name)
       const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
       const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
-      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}) }
+      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought, roster } : {}) }
     })
   }
 

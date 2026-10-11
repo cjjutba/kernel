@@ -1,8 +1,14 @@
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished } from 'vitest'
+import type { PushEvent } from '@shared/ipc'
+import type { RoomSetupStep } from '@shared/types'
+import { bus } from '../src/main/bus'
+import { Kernel } from '../src/main/kernel'
+import { draftAgent } from '../src/main/services/agents'
 import { loadRepoSettings, saveTeamSettings, upsertTomlTable } from '../src/main/services/settings'
+import { tempRepo } from './helpers'
 
 // KERNEL-397: `[team]` goes in the settings.toml the repo commits, so Kernel changes only that table and keeps the rest as written.
 describe('[team] in .kernel/settings.toml', () => {
@@ -58,5 +64,70 @@ setup = "pnpm install"
     expect(shared).toContain('# Our own reviewer.\nlead = "architect"\n')
     expect(shared).toContain('# Kernel settings for this repo.')
     expect((await saveTeamSettings(await mkdtemp(join(tmpdir(), 'team-settings-')), { lead: 'kernel-lead' })).team).toEqual({ lead: 'kernel-lead' })
+  })
+})
+
+// KERNEL-465: a repo with more agents than one team needs. Room setup asks who joins, and `[team] roster` keeps the pick.
+describe('[team] roster', () => {
+  const STARTERS = join(__dirname, '..', 'docs', 'starter-agents')
+  const agent = (id: string, head = '', body = 'Open a pull request when the task is done.'): [string, string] =>
+    [`.claude/agents/${id}.md`, `---\nname: ${id}\ndescription: Engineer.\n${head}---\n${body}\n`]
+  const DEVS = Array.from({ length: 11 }, (_, i) => `dev${i + 10}`)
+
+  /** A room made from a repo with these agent files, once Room setup is done. */
+  async function setUp(files: [string, string][]) {
+    const repo = await tempRepo({ 'README.md': '# shop\n', ...Object.fromEntries(files) })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, starterDir: STARTERS, claudeSettingsFile: join(home, 'claude-settings.json') })
+    onTestFinished(() => k.stop())
+    await k.start()
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.rooms.createRoom({ source: 'folder', name: 'Shop', from: repo, team: [], autostart: false })
+    const steps = await new Promise<RoomSetupStep[]>((resolve) => {
+      const on = (e: PushEvent) => {
+        if (e.type !== 'room.setup' || e.roomId !== room.id || e.steps.some((s) => s.state === 'wait' || s.state === 'run')) return
+        bus.off('push', on)
+        resolve(e.steps)
+      }
+      bus.on('push', on)
+    })
+    return { k, h: k.handlers(), repo, room, seat: steps.find((s) => s.id === 'agents')!, settings: () => readFile(join(repo, '.kernel', 'settings.toml'), 'utf8') }
+  }
+
+  it('asks Room setup for a roster past 12 agents, and keeps the team to the agents picked', async () => {
+    const { k, h, room, seat, settings } = await setUp([...DEVS.map((id) => agent(id)), agent('architect', '', 'You design.'), agent('scout', 'tools: Read\n')])
+    expect(seat).toMatchObject({ state: 'ok', detail: '13 agents found in .claude/agents', brought: 13, roster: { agents: 13, needed: true, suggested: DEVS } })
+
+    // Ids that name nobody, and repeats, aren't kept.
+    let team = await h['agents.setTeam']({ roomId: room.id, team: { roster: ['dev10', 'dev11', 'dev11', 'ghost'] }, from: 'setup' })
+    expect(team.map((a) => a.id)).toEqual(['kernel-lead', 'dev10', 'dev11', 'kernel-reviewer'])
+    expect(await settings()).toContain('\n[team]\nroster = ["dev10", "dev11"]\n')
+    expect(await k.team.rosterOf(room.id)).toEqual({ agents: 13, needed: false, suggested: DEVS })
+
+    // A new hire joins the roster instead of landing off the team.
+    await h['agents.create']({ roomId: room.id, draft: draftAgent({ description: 'Builds the billing service.', name: 'billing' }) })
+    expect((await k.team.agents(room.id)).map((a) => a.id)).toContain('billing')
+    expect(await settings()).toContain('roster = ["dev10", "dev11", "billing"]\n')
+
+    // An agent with open work stays on the team until the work is archived.
+    await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'dev10', title: 'Cart' })
+    await expect(h['agents.setTeam']({ roomId: room.id, team: { roster: ['dev11'] } })).rejects.toThrow('Dev10 has open work. Archive it first, or keep Dev10 on the team.')
+
+    // No roster is every agent again.
+    team = await h['agents.setTeam']({ roomId: room.id, team: { roster: null } })
+    expect(team).toHaveLength(16)
+    expect(await settings()).not.toContain('[team]')
+  })
+
+  it("doesn't ask with 12 agents or fewer, and keeps a subagent the user makes a teammate", async () => {
+    const { h, room, seat, settings } = await setUp([agent('api'), agent('web', 'tools: Read, Edit, Write, Bash\n', 'You build the UI.'), agent('architect', '', 'You design.')])
+    expect(seat).toMatchObject({ detail: 'Api, Architect, Web from .claude/agents, Rowan and Theo from Kernel', brought: 3, roster: { agents: 3, needed: false, suggested: ['api', 'web'] } })
+    const team = await h['agents.setTeam']({ roomId: room.id, team: { members: ['api', 'web', 'architect'] } })
+    expect(team.find((a) => a.id === 'architect')).toMatchObject({ member: true })
+    expect(team.find((a) => a.id === 'architect')?.warnings).toBeUndefined()
+    // Only the exception goes to the file: Api and Web take tasks anyway.
+    expect(await settings()).toContain('\n[team]\nmembers = ["architect"]\n')
   })
 })
