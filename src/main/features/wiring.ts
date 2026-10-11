@@ -7,6 +7,7 @@ import type { Notifications } from '../services/notifications'
 import type { LeadUpdateDeps } from '../services/leadUpdates'
 import type { OverlapDeps } from '../services/overlap'
 import { mergeBase } from '../services/worktrees'
+import { keepScript } from '../services/scripts'
 
 // What Kernel hands the services it builds, and its listeners on the shared bus (KERNEL-324). Members still private to
 // Kernel are read with `k['name']` until their feature moves out of kernel.ts.
@@ -65,6 +66,8 @@ export function listen(k: Kernel): () => void {
   const onActivity = (e: Parameters<Store['saveActivity']>[0]) => k.store.saveActivity(e)
   const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => k.hooks.onHook(e, ctx)
   const onPush = (e: PushEvent) => {
+    // Script lines only go out as pushes, so Kernel keeps them for a window that loads later (KERNEL-340).
+    keepScript(e)
     // A turn waiting on an approval or a question is still running, so its agent still counts as working.
     // No database read here: the count looks the chats up when the quit asks for it.
     if (e.type === 'chat.running') {

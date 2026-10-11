@@ -2,11 +2,14 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
 type Ok = { ok: true }
+
+/** Claude is overloaded and the session is retrying: which attempt, out of how many, and when the next one goes. */
+export interface Retry { attempt: number; of: number; nextAt: number }
 
 /**
  * Request/response pairs for ipcRenderer.invoke. One place to see everything the UI can ask for, built or not.
@@ -126,11 +129,18 @@ export interface KernelApi {
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
+  /**
+   * The chats with a turn running and the ones retrying, which `chat.running` and `retry` only report as they change. A window
+   * that loads while agents work reads them here, or every working agent would look stopped (KERNEL-340).
+   */
+  'chats.live': { req: void; res: { running: string[]; retry: Record<string, Retry> } }
   'skills.list': { req: { roomId: string }; res: Skill[] }
   /** Claude Code's own slash commands for the / menu. The same in every room, so it is read once. */
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
+  'terminal.replay': { req: { chatId: string }; res: Ok }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
   'terminal.presets': { req: void; res: TerminalPreset[] }
 
@@ -175,6 +185,8 @@ export interface KernelApi {
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
   'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
+  /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
+  'scripts.replay': { req: { workspaceId: string }; res: Ok }
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
@@ -276,7 +288,11 @@ export type PushEvent =
    * and is absent once it is empty (KERNEL-271).
    */
   | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
-  | { type: 'terminal.data'; chatId: string; data: string }
+  /**
+   * Output from a terminal. With `replace` it is everything main kept, which takes the place of what the window has. A replay
+   * goes out on this same stream, after every chunk it already holds and before the next one (KERNEL-340).
+   */
+  | { type: 'terminal.data'; chatId: string; data: string; replace?: true }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
@@ -291,6 +307,12 @@ export type PushEvent =
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
   /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
   | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
+  /**
+   * Everything main kept of a workspace's scripts, in place of what the window has: the lines, each script's exit code by
+   * `scriptKey` (absent while it runs), and each running run script's URL by name. Sent on the push stream like the lines
+   * themselves, so none is shown twice or missed (KERNEL-340).
+   */
+  | { type: 'script.state'; workspaceId: string; lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string> }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
@@ -305,7 +327,7 @@ export type PushEvent =
   /** Network reachability as main sees it (WorkspaceOffline.png). */
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */
-  | { type: 'retry'; chatId: string; retry: { attempt: number; of: number; nextAt: number } | null }
+  | { type: 'retry'; chatId: string; retry: Retry | null }
   /** A file was shared, or got a new version (KERNEL-302). */
   | { type: 'shared'; file: SharedFile }
   /**

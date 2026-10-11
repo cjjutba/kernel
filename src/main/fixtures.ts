@@ -163,12 +163,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    // A fixture's running chats, retries, script lines and terminal output come from its push events.
+    'chats.live': async () => ({ running: [], retry: {} }),
     'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
     'commands.list': async () => [],
     'terminal.write': async () => ok,
     'terminal.resize': async () => ok,
+    'terminal.replay': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
     'approvals.list': async ({ roomId }) => f.approvals.filter((a) => !roomId || a.roomId === roomId).sort((a, b) => b.createdAt - a.createdAt),
@@ -208,6 +211,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.continue': async ({ workspaceId }) => ({ ...workspace(workspaceId), prState: 'none', prNumber: undefined, prUrl: undefined }),
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
+    'scripts.replay': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
