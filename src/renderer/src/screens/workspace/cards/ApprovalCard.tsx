@@ -32,6 +32,7 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
       <h3>{title}</h3>
       {a.detail && <span className="sub">{a.detail}</span>}
       {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
+      {a.reason && <p className="reason"><Icon name="info" size={14} />{a.reason}</p>}
       {a.status === 'pending' ? (
         <div className="acts">
           <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>

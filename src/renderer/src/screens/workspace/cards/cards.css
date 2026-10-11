@@ -3,6 +3,8 @@
 .tcard h3 .err { color: var(--del); display: inline-flex; }
 .tcard .sub { color: var(--ink-3); font-size: 13px; line-height: 1.5; }
 .tcard .code { font-size: 12px; line-height: 19.5px; padding: 10px 11px; max-height: 220px; overflow: auto; }
+.tcard .reason { margin: 0; display: flex; align-items: flex-start; gap: 7px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+.tcard .reason svg { flex-shrink: 0; margin-top: 2px; color: var(--muted); }
 .tcard .acts { display: flex; flex-wrap: wrap; gap: 8px; }
 .tcard .acts .btn { height: 30px; }
 .tcard .grow-input { flex: 1; min-width: 0; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); background: var(--code-bg); color: var(--ink); font-size: 13px; }

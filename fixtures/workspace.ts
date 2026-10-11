@@ -146,6 +146,9 @@ const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
 
+/** Codex's model list as `model/list` returns it, for a shot whose chat runs on Codex. */
+const codexModels = ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 }))
+
 const userMsg = (id: string, text: string, plan = false): ChatItem =>
   ({ kind: 'user', id, ts: at(10, 27), parts: [{ type: 'text', text }, ...(plan ? [{ type: 'file' as const, name: 'plan.md', path: 'docs/plan.md', lines: 42 }] : [])] })
 
@@ -1033,6 +1036,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })),
+  // KERNEL-459: an approval says why it asked, on one line under the command: the classifier's reason on Claude in Auto, the sandbox's on Codex.
+  WorkspacePermReason: scene((f) => scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+    userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+    ...folded('p', 11, 2),
+    { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works and the fonts are embedded. I want to save a few sample PDFs where you can open them.' },
+    { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+  ], {
+    approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm pdf:export --out ~/Documents/invoices' }, title: 'Run pnpm pdf:export --out ~/Documents/invoices', detail: 'Saves three sample invoices as PDF.', reason: 'The classifier wants you to decide: writes outside the workspace' }), ...f.approvals]
+  }, { mode: 'auto' })),
+  WorkspacePermReasonCodex: scene((f) => ({
+    ...scene2(f, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor' }, 'PDF renderer', [
+      userMsg('p1', 'T-15a: PDF renderer with embedded fonts. Store generated files in the invoices bucket.', true),
+      ...folded('p', 11, 2),
+      { kind: 'text', id: 'p-reply', ts: at(10, 29), text: 'The renderer works. The embedded font comes from a package I have not installed yet.' },
+      { kind: 'result', id: 'p-res', ts: at(10, 29), durationMs: 90_000, ok: true }
+    ], {
+      approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm add @fontsource/inter' }, title: 'Run pnpm add @fontsource/inter', detail: 'Installs the font package the renderer embeds.', reason: 'Codex runs it outside its sandbox' }), ...f.approvals]
+    }, { provider: 'codex', model: 'gpt-6-astra', effort: 'medium', mode: 'acceptEdits' }),
+    models: { codex: codexModels }
+  })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApproved: scene(planApproved),
   WorkspacePlanExit: scene(planExit),
@@ -1372,7 +1395,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return {
       settings: { ...d, models: { ...d.models, roles: { ...d.models.roles, qa: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } } } },
       chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, sessionId: 'session-kai' } : c)),
-      models: { codex: ['GPT-6-Astra', 'GPT-5.6-Sol', 'GPT-5.6-Terra', 'GPT-5.6-Luna'].map((label, i) => ({ provider: 'codex' as const, id: label.toLowerCase(), label, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as Effort[], defaultEffort: 'medium' as Effort, isDefault: i === 0 })) },
+      models: { codex: codexModels },
       ui: { ...open, menu: 'model' }
     }
   }),
