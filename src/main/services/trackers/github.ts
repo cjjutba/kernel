@@ -11,7 +11,7 @@ export function githubKey(key: string): string | undefined {
 }
 
 /** What gh said when it failed, in a sentence the From popover can show. */
-function ghFailed(r: ExecResult): Error {
+export function ghFailed(r: ExecResult): Error {
   if (r.code === 127) return new Error('Install the GitHub CLI (gh) to read GitHub issues.')
   if (r.timedOut) return new Error('GitHub took too long to answer. Try again.')
   const said = r.stderr.trim().split('\n')[0] || r.stdout.trim().split('\n')[0]

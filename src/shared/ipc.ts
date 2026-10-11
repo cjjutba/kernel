@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  GithubIssue, GithubIssueDetail, Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, RoomTracker, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -118,6 +118,12 @@ export interface KernelApi {
   /** + > Link issue, GitHub tab: the room's open issues through gh. */
   'github.issues': { req: { roomId: string; query?: string }; res: IssueSummary[] }
   'issues.list': { req: { roomId: string; query?: string }; res: IssueSummary[] }
+  /** The room's issue tracker, which the Issues screen, the From popover and Link issue read to know whose issues to list (KERNEL-471). */
+  'issues.tracker': { req: { roomId: string }; res: RoomTracker }
+  /** The room's open GitHub issues with the fields the Issues screen shows, up to 100, through gh. */
+  'github.issueList': { req: { roomId: string; query?: string }; res: GithubIssue[] }
+  /** One GitHub issue by key (`#41`), with its description and comments. */
+  'github.issue': { req: { roomId: string; id: string }; res: GithubIssueDetail }
 
   // Linear issues (KERNEL-159)
   /** Open issues, newest first, up to 100. */

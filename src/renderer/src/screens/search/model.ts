@@ -152,7 +152,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const goto = (id: string, label: string, route: Route, extra: Partial<PaletteItem> = {}) => item(id, 'Go to', '◇', label, () => act.go(route), extra)
   const goDefault: PaletteItem[] = [
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
-    goto('go-issues', 'Issues', { name: 'issues' }, { also: 'linear tickets' }),
+    goto('go-issues', 'Issues', room ? { name: 'issues', roomId: room.id } : { name: 'issues' }, { also: 'linear github tickets' }),
     ...(shown ? [goto('go-ws', `${shown.name} workspace`, { name: 'workspace', workspaceId: shown.id })] : []),
     goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
     ...(room ? [goto('go-team', 'Team', { name: 'team', roomId: room.id }, { also: 'agents' })] : []),

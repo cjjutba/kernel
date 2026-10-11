@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { githubIssueUrl } from '../src/renderer/src/screens/workspace/issueKey'
+import { githubIssueUrl, issueTracker } from '../src/renderer/src/screens/workspace/issueKey'
 
 const issue = (id: string, url?: string) => ({ kind: 'issue' as const, id, title: 'Invoice table', url })
 
@@ -16,5 +16,16 @@ describe('githubIssueUrl', () => {
     expect(githubIssueUrl(issue('#12'), { kind: 'scratch', repo: 'kernel/starter' })).toBeUndefined()
     expect(githubIssueUrl(issue('#12'))).toBeUndefined()
     expect(githubIssueUrl(issue('#abc'), { kind: 'repo', repo: 'a/b' })).toBeUndefined()
+  })
+})
+
+describe('issueTracker', () => {
+  it('takes the tracker the source carries', () => {
+    expect(issueTracker({ ...issue('PROJ-7'), tracker: 'jira' })).toBe('jira')
+    expect(issueTracker({ ...issue('#12'), tracker: 'github' })).toBe('github')
+  })
+  it('reads a source saved before the tag from its key: # is GitHub, anything else Linear', () => {
+    expect(issueTracker(issue('#12'))).toBe('github')
+    expect(issueTracker(issue('KERNEL-12'))).toBe('linear')
   })
 })
