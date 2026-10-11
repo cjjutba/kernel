@@ -90,6 +90,11 @@ export interface Rules {
   permissions: Permissions
   /** The mode the step runs in (`effectiveMode`). */
   mode: RunMode
+  /**
+   * Claude Code may run the step in Bypass permissions whatever `mode` says: its process can take bypass, so a switch out of
+   * it may be pending or refused, and a subagent may run in it. Bypass's denials hold then too, on top of `mode`'s asks.
+   */
+  mayBypass?: boolean
   /** The room's Always allow rules, read only when a command needs them. */
   roomAllow: () => string[]
   /** The workspace's branch, which the refusal of a push in Bypass permissions names as the one to push. */
@@ -105,15 +110,15 @@ const ALLOW: Verdict = { behavior: 'allow' }
 
 /**
  * Kernel's lists on one command: Never allow and protected-branch pushes deny, a room's Always allow rule allows, Always ask
- * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them (KERNEL-447).
+ * asks. In Bypass permissions only the denials hold, and a push that might reach a protected branch is one of them. That
+ * denial also holds wherever Claude Code may still run in bypass (`mayBypass`), since nothing would ask there (KERNEL-447).
  */
 export function guardVerdict(command: string, rules: Rules): Verdict {
+  const bypass = rules.mode === 'bypassPermissions'
+  const branches = rules.permissions.protectedBranches ?? []
+  if ((bypass || rules.mayBypass) && pushMightReach(command, branches)) return { behavior: 'deny', message: pushOwnBranch(branches, rules.branch) }
   const v = bashVerdict(command, rules.permissions, rules.roomAllow())
-  if (rules.mode === 'bypassPermissions') {
-    const branches = rules.permissions.protectedBranches ?? []
-    if (pushMightReach(command, branches)) return { behavior: 'deny', message: pushOwnBranch(branches, rules.branch) }
-    return v === 'deny' ? { behavior: 'deny', message: neverAllowed(command) } : undefined
-  }
+  if (bypass) return v === 'deny' ? { behavior: 'deny', message: neverAllowed(command) } : undefined
   if (v === 'deny') return { behavior: 'deny', message: neverAllowed(command) }
   if (v === 'allow') return ALLOW
   if (v === 'ask') return { behavior: 'ask', reason: ALWAYS_ASK }

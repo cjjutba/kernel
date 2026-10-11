@@ -10,7 +10,7 @@ import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { IMAGE_DATA_URL } from '../plans'
-import { decide, guardVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type RunMode, type Verdict } from '../permissions'
+import { decide, guardVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type Rules, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
@@ -75,10 +75,19 @@ export class ClaudeRunner implements Runner {
   private readonly commands = new Map<string, string>()
   /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
   private resume?: string
-  /** The mode the CLI runs in: the start's, then each one `setPermissionMode` took (KERNEL-447). */
+  /** The mode Kernel last put the CLI in: the start's, then each one `setPermissionMode` took (KERNEL-447). */
   private applied: RunMode
+  /** The mode Claude Code last said it runs in, from its init and status messages. A message can lag a switch. */
+  private reported?: RunMode
+  /** Modes a switch asked for that Claude Code hasn't answered yet. */
+  private readonly switchingTo: RunMode[] = []
   /** Mode switches, one after another, so the last one asked for is the one that holds. */
   private switching: Promise<void> = Promise.resolve()
+  /**
+   * The process started with `allowDangerouslySkipPermissions`, so Claude Code, or a subagent with its own bypass, may run a
+   * step in Bypass permissions whatever mode Kernel last asked for, until the process ends.
+   */
+  private readonly bypassable: boolean
 
   constructor(private readonly host: RunnerHost, o: ClaudeStart) {
     const chat = host.chat()
@@ -92,6 +101,7 @@ export class ClaudeRunner implements Runner {
     const tools = toolPolicy(agent?.tools)
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
     this.applied = o.mode
+    this.bypassable = o.bypass
     const options: Options = {
       cwd: ws.path,
       // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
@@ -138,6 +148,8 @@ export class ClaudeRunner implements Runner {
   async setModel(model: string) { await this.query.setModel(model).catch(() => undefined) }
   async setEffort(effort: Effort) { await this.query.applyFlagSettings({ effortLevel: claudeEffort(effort) }).catch(() => undefined) }
   setMode(mode: RunMode): Promise<void> {
+    // Counted at once, so a hook that fires before the switch goes out already checks against it.
+    this.switchingTo.push(mode)
     this.switching = this.switching.then(() => this.switchTo(mode))
     return this.switching
   }
@@ -176,21 +188,33 @@ export class ClaudeRunner implements Runner {
   async models(): Promise<ModelInfo[]> { return (await withTimeout(this.query.initializationResult(), 15_000)).models ?? [] }
 
   private async switchTo(mode: RunMode) {
-    if (mode === this.applied || this.closed) return
     try {
+      if (mode === this.applied || this.closed) return
       await this.query.setPermissionMode(mode)
       this.applied = mode
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e)
       this.host.item({ kind: 'note', id: randomUUID(), ts: Date.now(), text: `Claude Code didn't switch this chat to ${MODE_NAMES[mode]} (${why}), so it stays in ${MODE_NAMES[this.applied]}.` })
+    } finally {
+      this.switchingTo.splice(this.switchingTo.indexOf(mode), 1)
     }
   }
 
+  /** What an init or status message says Claude Code runs in. Kernel never asks for `dontAsk`, which asks no one, so it reads as Manual. */
+  private report(mode: NonNullable<Options['permissionMode']> | undefined) {
+    if (mode) this.reported = mode === 'dontAsk' ? 'default' : mode
+  }
+
   /**
-   * The rules Kernel's own checks use: the stricter of the mode the CLI runs in and the mode the chat should run in. While a
-   * switch is under way, or after one the CLI refused, Kernel never gives a step less than either mode would (KERNEL-447).
+   * The rules Kernel's own checks use (KERNEL-447). Asks follow the strictest mode Claude Code might run the step in: the one
+   * Kernel last set, the ones a switch is still asking for, the one Claude Code last reported and the one the chat should be
+   * in. So Always ask has no opinion only when every one of them is Bypass permissions. Bypass's own denials hold for the whole
+   * life of a process that can take it, since a switch out of it can be pending or refused and a subagent can run in it anyway.
    */
-  private rules() { return rulesOf(this.host, stricter(this.applied, this.host.mode())) }
+  private rules(): Rules {
+    const mode = [this.host.mode(), ...this.switchingTo, ...(this.reported ? [this.reported] : [])].reduce<RunMode>(stricter, this.applied)
+    return { ...rulesOf(this.host, mode), mayBypass: this.bypassable }
+  }
 
   /**
    * Always ask, from the Bash guard: the user answers inside the hook, in every mode it applies in, so no classifier and no
@@ -232,6 +256,7 @@ export class ClaudeRunner implements Runner {
       case 'system': {
         // The CLI sends init at the start of every turn, including queued follow-ups after an interrupt.
         if (msg.subtype === 'init') {
+          this.report(msg.permissionMode)
           this.resume = undefined
           // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init.
           host.sessionStarted(msg.session_id, { billedBy: msg.apiKeySource, mcpServers: (msg.mcp_servers ?? []).map((s) => s.name) })
@@ -245,6 +270,7 @@ export class ClaudeRunner implements Runner {
           if (failure === 'network' || failure === 'auth') host.failed(failure, { notify: true })
           else host.retrying({ attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms })
         }
+        if (msg.subtype === 'status') this.report(msg.permissionMode)
         // Auto mode's classifier refused a step without asking anyone, so the chat says what and why (KERNEL-447).
         if (msg.subtype === 'permission_denied' && msg.decision_reason_type === 'classifier') {
           const row = this.toolItems.get(msg.tool_use_id)

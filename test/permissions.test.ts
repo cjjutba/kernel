@@ -48,6 +48,17 @@ describe('guardVerdict', () => {
     expect(guardVerdict('git push origin "$BRANCH"', rules())).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
   })
 
+  it("keeps Bypass permissions' push denials on top of a stricter mode's asks while Claude Code may still run in bypass", () => {
+    const leaving = { ...rules({ roomAllow: ['git push:*'] }), mayBypass: true }
+    const own = { behavior: 'deny', message: pushOwnBranch(['main'], 'feat/invoice-schema') }
+    for (const push of ['git push', 'git push -u origin HEAD', 'git push origin "$BRANCH"', toMain]) expect(guardVerdict(push, leaving), push).toEqual(own)
+    // The stricter mode's asks and denials still hold.
+    expect(guardVerdict('pnpm drizzle-kit push', leaving)).toEqual({ behavior: 'ask', reason: ALWAYS_ASK })
+    expect(guardVerdict('rm -rf /', leaving)).toEqual({ behavior: 'deny', message: neverAllowed('rm -rf /') })
+    expect(guardVerdict('git push -u origin feat/invoice-schema', leaving)).toEqual({ behavior: 'allow' })
+    expect(guardVerdict('ls', leaving)).toBeUndefined()
+  })
+
   it('names the protected branches, and the push that works when the workspace has its own branch', () => {
     expect(pushOwnBranch(['main'], 'feat/x')).toBe('Kernel blocks pushes that might reach main in Bypass permissions. Push your own branch by name: git push origin feat/x.')
     expect(pushOwnBranch(['main', 'dev', 'release'], 'feat/x')).toContain('might reach main, dev or release')

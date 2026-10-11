@@ -21,8 +21,9 @@ import type { AppSettings } from '../src/main/services/settings'
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // After an abort it yields what was already fed, then throws, as the real one does. A `late` session keeps its stream
 // open after the abort until the test ends it, as a real process does while it exits.
-// It records every setPermissionMode call, and refuses them while `refuseModes` is set (KERNEL-447).
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[]; late: boolean; modes: string[]; refuseModes?: Error; models: unknown[] }[] }))
+// It records every setPermissionMode call, holds the answer while `modeGate` is set, and refuses them while `refuseModes` is
+// set (KERNEL-447).
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[]; late: boolean; modes: string[]; refuseModes?: Error; modeGate?: Promise<void>; models: unknown[] }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ prompt, options }: { prompt: AsyncIterable<unknown>; options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
@@ -35,7 +36,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     let ended = false
     let failed: Error | undefined
     const call = {
-      options, prompt, interrupts: 0, flags: [] as unknown[], late: false, modes: [] as string[], refuseModes: undefined as Error | undefined, models: [] as unknown[],
+      options, prompt, interrupts: 0, flags: [] as unknown[], late: false, modes: [] as string[], refuseModes: undefined as Error | undefined, modeGate: undefined as Promise<void> | undefined, models: [] as unknown[],
       feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
       end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) },
       fail: (e: Error) => { failed = e; for (const w of waiters.splice(0)) w.reject(e) }
@@ -49,7 +50,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
       }),
       interrupt: async () => { call.interrupts++ },
       setModel: async () => {},
-      setPermissionMode: async (mode: string) => { if (call.refuseModes) throw call.refuseModes; call.modes.push(mode) },
+      setPermissionMode: async (mode: string) => { await call.modeGate; if (call.refuseModes) throw call.refuseModes; call.modes.push(mode) },
       initializationResult: async () => ({ models: call.models }),
       applyFlagSettings: async (s: unknown) => { call.flags.push(s) }
     }
@@ -1008,6 +1009,80 @@ describe('permission modes on Claude (KERNEL-447)', () => {
     expect(t.store.approvals({ pendingOnly: true })).toHaveLength(1)
     t.approvals.decide(t.store.approvals({ pendingOnly: true })[0].id, { behavior: 'deny' })
     expect(await asked).toEqual(denied('Denied in Kernel.'))
+  })
+
+  // A chat leaving Bypass permissions while its turn runs. Claude Code runs in bypass until it takes the switch, and its process
+  // can take bypass until it ends, so a push that might reach main stays denied all along.
+  const leaving = async () => {
+    const t = await setup('bypassPermissions', { permissions: { protectedBranches: ['main'] } })
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'bypassPermissions' })
+    await flush()
+    return t
+  }
+  const own = () => denied(pushOwnBranch(['main'], 'feat/invoice-schema'))
+  const askedOnce = async (t: Awaited<ReturnType<typeof setup>>, id: string) => {
+    const asked = t.runGuard(id, 'pnpm drizzle-kit push')
+    await flush()
+    const card = t.store.approvals({ pendingOnly: true })[0]
+    expect(card, 'Always ask should ask in the stricter mode').toMatchObject({ toolName: 'Bash', reason: ALWAYS_ASK })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    expect(await asked).toEqual(denied('Denied in Kernel.'))
+  }
+
+  it('denies a push that might reach main while a switch out of Bypass permissions is pending, and asks about Always ask', async () => {
+    const t = await leaving()
+    let answer!: () => void
+    t.call.modeGate = new Promise((resolve) => { answer = resolve })
+    const switched = t.sessions.configure('chat', { mode: 'acceptEdits' })
+    await flush()
+    expect(t.call.modes).toEqual([])
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    expect(await t.runGuard('t2', 'git push origin main')).toEqual(own())
+    expect(await t.runGuard('t3', 'git push -u origin HEAD')).toEqual(own())
+    await askedOnce(t, 't4')
+    answer()
+    await switched
+    expect(t.call.modes).toEqual(['acceptEdits'])
+  })
+
+  it('keeps denying it after Claude Code refuses the switch', async () => {
+    const t = await leaving()
+    t.call.refuseModes = new Error('not now')
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(notes(t.store)).toEqual(["Claude Code didn't switch this chat to Accept edits (not now), so it stays in Bypass permissions."])
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    expect(await t.runGuard('t2', 'git push origin "$BRANCH"')).toEqual(own())
+    await askedOnce(t, 't3')
+  })
+
+  it('keeps denying it after the switch lands mid-turn, until the process that could bypass ends with the turn', async () => {
+    const t = await leaving()
+    await t.sessions.configure('chat', { mode: 'acceptEdits' })
+    expect(t.call.modes).toEqual(['acceptEdits'])
+    t.call.feed({ type: 'system', subtype: 'status', status: null, permissionMode: 'acceptEdits', uuid: 's1', session_id: 's' })
+    await flush()
+    // A subagent with its own bypass could still push from this process.
+    expect(await t.runGuard('t1', 'git push')).toEqual(own())
+    await askedOnce(t, 't2')
+    t.call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 1 })
+    await flush()
+    await t.sessions.send('chat', [{ type: 'text', text: 'Push it' }])
+    const next = sdk.calls[sdk.calls.length - 1]
+    expect(next).not.toBe(t.call)
+    expect(next.options).toMatchObject({ permissionMode: 'acceptEdits' })
+    expect(next.options).not.toHaveProperty('allowDangerouslySkipPermissions')
+    // Accept edits leaves a bare push to the user's own settings, as it always has.
+    expect(await run(next.options, 'Bash', 'Bash', { command: 'git push' })).toEqual({})
+  })
+
+  it('asks about Always ask while Claude Code reports a stricter mode than Bypass permissions, until it reports bypass again', async () => {
+    const t = await setup('bypassPermissions')
+    t.call.feed({ type: 'system', subtype: 'init', session_id: t.options.sessionId, apiKeySource: 'none', permissionMode: 'default' })
+    await flush()
+    await askedOnce(t, 't1')
+    t.call.feed({ type: 'system', subtype: 'status', status: null, permissionMode: 'bypassPermissions', uuid: 's1', session_id: 's' })
+    await flush()
+    expect(await t.runGuard('t2', 'pnpm drizzle-kit push')).toEqual({})
   })
 
   it('moves into Bypass permissions by restarting a process that started without it, and out of it by switching first', async () => {
