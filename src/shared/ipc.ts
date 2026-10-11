@@ -227,6 +227,8 @@ export interface KernelApi {
   'shared.thumb': { req: { sharedId: string; version: number }; res: string | null }
   /** Show in Finder: the source file while it still matches that version, else Kernel's copy. */
   'shared.reveal': { req: { sharedId: string; version: number }; res: Ok }
+  /** Open in Preview: Kernel's copy of a PDF version in the Mac's default PDF app. Refused for any other kind, which Kernel never hands to the system to open. */
+  'shared.open': { req: { sharedId: string; version: number }; res: Ok }
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
@@ -307,7 +309,7 @@ export type PushEvent =
    * still is worth taking.
    */
   | { type: 'preview'; viewId: string; state: 'loading' | 'ready' | 'settled' | 'crashed' | 'unresponsive' }
-  /** An app shortcut typed inside a preview. Main has moved focus back to the app, which runs the shortcut. */
+  /** An app shortcut typed inside a preview, or F6 (code `F6`), which only asks the tab to focus its frame. Main has moved focus back to the app, which runs the shortcut. */
   | { type: 'preview.key'; key: string; code: string; meta: boolean; shift: boolean; alt: boolean; ctrl: boolean }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */

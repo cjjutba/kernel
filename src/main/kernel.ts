@@ -3054,6 +3054,14 @@ export class Kernel {
         this.o.reveal?.(await this.shared.revealPath(sharedId, version, ws))
         return { ok: true }
       },
+      // Only a PDF, from Kernel's own copy: opening an HTML file or a script by its default app would run it outside the lock.
+      'shared.open': async ({ sharedId, version }) => {
+        const got = this.shared.get(sharedId, version)
+        if (!got) throw new Error('That shared file or version is gone.')
+        if (got.file.kind !== 'pdf') throw new Error('Only a PDF opens in Preview.')
+        await this.o.openFile?.(got.path)
+        return { ok: true }
+      },
       'integrations.list': async () => this.integrations(),
       'integrations.connect': async ({ id, token }) => {
         if (id === 'linear') {

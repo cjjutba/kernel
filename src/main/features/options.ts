@@ -29,6 +29,8 @@ export interface KernelOptions {
   capture?: { thumbnail(f: SharedFile, version: number): Promise<Buffer | null> }
   /** Shows a file in Finder, for a shared file's Show in Finder. Left out, it does nothing. */
   reveal?: (path: string) => void
+  /** Opens a file in the Mac's default app, for a shared PDF's Open in Preview. Rejects with the reason when it can't. Left out, it does nothing. */
+  openFile?: (path: string) => Promise<void>
   /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
   cipher?: Cipher
 }

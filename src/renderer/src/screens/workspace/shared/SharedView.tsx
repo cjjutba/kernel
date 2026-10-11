@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { SharedFile, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import { Button, Icon, Menu, SegmentedControl, type MenuEntry } from '../../../ui'
+import { Button, Icon, Menu, SegmentedControl, useBusy, type MenuEntry } from '../../../ui'
 import { Markdown } from '../markdown'
 import { attempt } from '../MessageActions'
 import { PreviewSurface, type PreviewWidth } from './PreviewSurface'
@@ -13,8 +13,9 @@ const WIDTHS: { value: PreviewWidth; label: string }[] = [{ value: 'desktop', la
 
 /**
  * A shared file in its `shared:<id>` tab: its title and who shared it, the version picker, Desktop, Tablet and Phone widths for a page, Reload
- * for a page or PDF and Show in Finder, then the file (WorkspaceSharedHtml.png and the others). The tab follows the latest version until an older
- * one is picked. A page and a PDF run in `PreviewSurface`; an image and Markdown are drawn here.
+ * for a page, Open in Preview for a PDF and Show in Finder, then the file (WorkspaceSharedHtml.png and the others). The tab follows the latest
+ * version until an older one is picked. A page and a PDF go in `PreviewSurface`; an image and Markdown are drawn here. A PDF has no live view
+ * and so nothing to reload (KERNEL-306): Open in Preview takes the place of Reload on the canvas.
  */
 export function SharedView({ workspaceId, sharedId }: { workspaceId: string; sharedId: string }) {
   const file = useStore((s) => s.shared[sharedId])
@@ -31,14 +32,16 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
   const [again, setAgain] = useState(0)
   const [versions, setVersions] = useState(false)
   const anchor = useRef<HTMLSpanElement>(null)
+  const [busy, run] = useBusy<'open'>()
   const page = file.kind === 'html'
-  const live = page || file.kind === 'pdf'
+  const pdf = file.kind === 'pdf'
   const read = useRead(file, file.kind === 'image' || file.kind === 'markdown' ? version : undefined)
 
   const entries: MenuEntry[] = [...file.versions].sort((a, b) => b.n - a.n).map((v) => ({
     id: `v${v.n}`, leading: <span className="shared-menu-ver">v{v.n}</span>, label: v.note ? `${clock(v)} · ${v.note}` : clock(v), checked: v.n === version.n,
     onSelect: () => actions.ui.openShared(workspaceId, file.id, v.n)
   }))
+  const openInPreview = () => run('open', () => attempt('Could not open it in Preview', () => call('shared.open', { sharedId: file.id, version: version.n })))
   const reveal = () => void attempt('Could not show it in Finder', () => call('shared.reveal', { sharedId: file.id, version: version.n }))
 
   return (
@@ -53,11 +56,12 @@ function Loaded({ workspaceId, file, version }: { workspaceId: string; file: Sha
         </span>
         {page && <span className="shared-width"><SegmentedControl label="Preview width" value={width} onChange={(w) => setWidth(w as PreviewWidth)} options={WIDTHS} /></span>}
         <span className="grow" />
-        {live && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
+        {page && <Button className="small" icon="refresh" onClick={() => setAgain(again + 1)}>Reload</Button>}
+        {pdf && <Button className="small" icon="ext" busy={busy === 'open'} busyLabel="Opening" onClick={() => void openInPreview()}>Open in Preview</Button>}
         <Button className="small" icon="folder" onClick={reveal}>Show in Finder</Button>
       </div>
       <div className="shared-area" data-kind={file.kind}>
-        {live && <PreviewSurface file={file} version={version} width={width} again={again} />}
+        {(page || pdf) && <PreviewSurface workspaceId={workspaceId} file={file} version={version} width={width} again={again} />}
         {file.kind === 'image' && read.dataUrl && <img src={read.dataUrl} alt={file.title} />}
         {file.kind === 'markdown' && read.text !== undefined && <Markdown className="md-doc shared-md selectable" text={read.text} />}
         {(file.kind === 'image' || file.kind === 'markdown') && read.failed && <p className="shared-none">Can't show this file</p>}

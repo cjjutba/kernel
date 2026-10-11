@@ -353,7 +353,7 @@ const sharedFile = (id: string, agentId: string, workspaceId: string, title: str
  * on v3 unless a shot draws the chat card, which says v2 because that is the newest version the file has there. Times in the
  * panel are relative to now, so they read 2h to 1d on any day, and the clocks in the tab are fixed.
  */
-const sharedFiles = (htmlLatest = 3): SharedFile[] => [
+export const sharedFiles = (htmlLatest = 3): SharedFile[] => [
   sharedFile('sh-html', 'noor', ids.table, 'Invoice layout options', 'html', '.kernel/shared/invoice-layout.html', [
     sharedVersion(1, 13, 12, 'text/html', { outside: 1 }), sharedVersion(2, 13, 58, 'text/html', { note: 'Totals moved under the table', outside: 1 }),
     sharedVersion(3, 14, 41, 'text/html', { note: 'Added the detailed layout', outside: 1 })
@@ -365,7 +365,7 @@ const sharedFiles = (htmlLatest = 3): SharedFile[] => [
   ], 5 * HOUR),
   sharedFile('sh-flow', 'kai', ids.invites, 'Download button flow', 'markdown', '.kernel/shared/download-flow.md', [sharedVersion(1, 9, 12, 'text/markdown', { thumb: false })], 24 * HOUR)
 ]
-const sharedStills: NonNullable<Fixture['sharedData']> = {
+export const sharedStills: NonNullable<Fixture['sharedData']> = {
   'sh-html': { 1: { text: '', thumb: invoiceLayoutStill }, 2: { text: '', thumb: invoiceLayoutStill }, 3: { text: '', thumb: invoiceLayoutStill } },
   'sh-image': { 1: { dataUrl: fontsCheckImage, thumb: fontsCheckImage } },
   'sh-pdf': { 1: { dataUrl: invoicePdfStill, thumb: invoicePdfStill } },
@@ -610,13 +610,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
-  // width or version menu, is the shot's: WorkspaceSharedPhone and WorkspaceSharedVersions need a click (scripts/shots.ts).
+  // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
   WorkspaceSharedMarkdown: sharedTab('sh-md'),
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
+  WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({
