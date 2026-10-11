@@ -49,12 +49,12 @@ export type Modal =
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
 
 /**
- * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu.
+ * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu, and `reply:<id>` the "..." menu under a reply.
  * Composer and new workspace menus share names because only one of the two is on screen.
  */
 export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
-  | 'pr' | 'tab' | 'newTab'
+  | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
