@@ -79,7 +79,10 @@ const P = {
   warning: 'M8 2.5 14 13H2ZM8 6.5v3M8 11.2v.1',
   // The composer's + menu and model picker (D-093).
   clip: 'M10.5 4.6 5.8 9.3a1.3 1.3 0 0 0 1.8 1.8l5-5a2.6 2.6 0 0 0-3.7-3.7l-5 5a3.9 3.9 0 0 0 5.5 5.5l4.1-4.1',
-  book: 'M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.5c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.5'
+  book: 'M8 4.2C6.6 3.2 4.7 2.8 2.5 3v9.5c2.2-.2 4.1.2 5.5 1.2 1.4-1 3.3-1.4 5.5-1.2V3c-2.2-.2-4.1.2-5.5 1.2ZM8 4.2v9.5',
+  // The file trees' buttons, after VS Code's collapse-all and list-tree (KERNEL-399).
+  collapse: 'M5.5 5.5h8v8h-8ZM2.5 10.5v-8h8M7.5 9.5h4',
+  listTree: 'M2.5 3.5h4M4 3.5v8.5h2.5M4 7.8h2.5M8.5 7.8h5M8.5 12h5'
 } satisfies Record<string, string>
 
 /** Icons the canvas draws as solid shapes. */

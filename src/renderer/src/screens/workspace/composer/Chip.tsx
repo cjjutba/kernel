@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ButtonHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import type { ChatPart } from '@shared/types'
+import { FileIcon } from '../../../components/FileIcon'
 import { Icon, Modal, type IconName } from '../../../ui'
 
 /** A short label under a chip: lines of a pasted text, the size of an image, or a linked issue's title. */
@@ -13,6 +14,11 @@ function chipMeta(p: ChatPart): string {
 
 /** The icon for a chip's kind: an image, a linked issue or workspace, else a file. */
 export const chipIcon = (p: ChatPart): IconName => (p.type === 'image' ? 'image' : p.type === 'issue' ? 'link' : p.type === 'workspace' ? 'branch' : 'doc')
+
+/** A chip's icon. A file from the repo (an @ file, a picked file or a hunk) shows its VS Code icon, the rest the glyph for their kind (KERNEL-399). */
+export function ChipIcon({ part }: { part: ChatPart }) {
+  return part.type === 'file' && part.path ? <FileIcon path={part.path} size={14} /> : <Icon name={chipIcon(part)} size={12} />
+}
 
 export type ImagePart = Extract<ChatPart, { type: 'image' }> & { dataUrl: string }
 
@@ -111,7 +117,7 @@ export function ComposerChip({ part, onRemove }: { part: ChatPart; onRemove: () 
   const meta = chipMeta(part)
   const body = (
     <>
-      <Icon name={chipIcon(part)} size={12} />
+      <ChipIcon part={part} />
       <span className="ellipsis" style={{ maxWidth: 220 }}>{label}</span>
       {meta && <span className="chip-meta ellipsis" style={{ maxWidth: 220 }}>{meta}</span>}
     </>

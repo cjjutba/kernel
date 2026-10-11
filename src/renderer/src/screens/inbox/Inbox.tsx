@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { AgentDef, Approval, Decision, Overlap } from '@shared/types'
 import { call } from '../../api'
+import { FileLabel } from '../../components/FileIcon'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, Pill, useBusy } from '../../ui'
 import { ApprovalCard } from '../workspace/cards/ApprovalCard'
@@ -45,7 +46,7 @@ function OverlapDetail({ overlap: o }: { overlap: Overlap }) {
     <>
       <p className="ib-body">{names(rows.map((r) => r.name))} edited {fileName(o.path)} in different worktrees. Merging {rows.length > 2 ? 'them all' : 'both'} later will conflict.</p>
       <dl className="ib-facts">
-        <dt>File</dt><dd className="mono">{o.path}</dd>
+        <dt>File</dt><dd className="mono"><FileLabel path={o.path} /></dd>
         {rows.map((r) => (
           <Fragment key={r.workspaceId}>
             <dt>{r.name}</dt>
@@ -67,7 +68,8 @@ function Detail({ item }: { item: InboxItem }) {
   const [busy, run] = useBusy<'deny' | 'always' | 'approve'>()
   const agent = agentOf(n, agents)
   const input = (a?.input ?? {}) as Record<string, unknown>
-  const code = a?.toolName === 'Bash' ? `$ ${String(input.command ?? '')}` : String(input.file_path ?? input.path ?? '') || (a?.input ? JSON.stringify(a.input, null, 2) : '')
+  const path = a?.toolName === 'Bash' ? '' : String(input.file_path ?? input.path ?? '')
+  const code = a?.toolName === 'Bash' ? `$ ${String(input.command ?? '')}` : path || (a?.input ? JSON.stringify(a.input, null, 2) : '')
   const heading = n.heading ?? n.title
   const pending = a ? a.status === 'pending' : n.needsYou
   const result = a && a.status !== 'pending' ? (n.resolved ?? outcome(a)) : n.resolved
@@ -85,7 +87,7 @@ function Detail({ item }: { item: InboxItem }) {
       {item.overlap && <OverlapDetail overlap={item.overlap} />}
       {a && pending && isTool(a) && (
         <>
-          {code && <div className="ib-code mono">{code}</div>}
+          {code && <div className="ib-code mono">{path ? <FileLabel path={path} /> : code}</div>}
           <dl className="ib-facts">
             {a.detail && <><dt>Why</dt><dd>{a.detail}</dd></>}
             {ws && <><dt>Workspace</dt><dd className="mono">{ws.branch}</dd></>}

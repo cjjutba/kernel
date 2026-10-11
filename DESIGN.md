@@ -25,6 +25,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | faint | #62666d | tertiary |
 | add | #4cb782 | diff additions, passing checks |
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
+| mod | #e2c08d | a modified file's name and letter (KERNEL-399) |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #7cb2ff | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #f2c55c | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
@@ -35,7 +36,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347).
+There is no brand accent. Primary buttons are ink on canvas. The one brand color is `--claude`, the fill of the Claude mark on the model picker's rows, because it is Claude's logo (claude-mark-in-model-picker). `working` has no use now that sidebar rows show no hover card (remove-sidebar-hover-card). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header, the Merge button on a Team update row, and the header, Merge button and state words on the Lead's PRs tab (KERNEL-347). Files are the other exception (KERNEL-399): a file or folder's icon comes in color from Material Icon Theme, and a changed file's name and letter take VS Code's git colors, `mod` for modified, `add` for added, untracked and renamed, `del` for deleted.
 
 ## Color (light)
 
@@ -58,6 +59,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | faint | #636770 | tertiary (4.5:1, so close to muted) |
 | add | #166a45 | diff additions, passing checks |
 | del | #b32e2e | diff deletions, errors, the context ring from 90% |
+| mod | #895503 | a modified file's name and letter (KERNEL-399) |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #1a56b0 | unused since sidebar rows lost their hover card (remove-sidebar-hover-card) |
 | needs | #7a4f00 | waiting on you: the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
@@ -72,7 +74,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 
 ## Type
 
-- Inter for UI (13px base, 14px in chat and composer, 12px meta), Geist Mono for code, branches, paths, shortcuts
+- Inter for UI (13px base, 14px in chat and composer, 12px meta), Geist Mono for code, branches, paths, shortcuts. File names in the All files tree and the Changes tab are Inter 13px, as in VS Code's explorer (KERNEL-399)
 - Weights 400 and 500; 600 only for page titles and names on cards
 - Sentence case everywhere. Plain words. No em dashes.
 
@@ -87,6 +89,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - No status dots, anywhere. Status is a word ("working", "needs you"), sometimes with a ring on floor tags (the floor is hidden, D-104).
 - One modal shell: a blur scrim over the whole window (sidebar included) at z-index 40, the modal at 50, 14px radius, 1px border.
 - Settings lists of things you add (variables, env files, presets, run scripts, preview URLs): each row ends in borderless text actions (Edit, Remove), and the section's Add button is a bordered 28px button at the right of its heading. The Permissions rules are the exception and keep a bordered Remove. A masked value is a fixed run of dots. A missing item says "Missing" in a pill. The selected preset in a list is a filled ring with a check. Avatars are grayscale (KERNEL-255).
+- File names (KERNEL-399): wherever a repo file shows (file trees, the Changes list, file and diff tabs, view headers, the @ menu, file chips, Read, Edit and Write rows, approvals, the Inbox, Settings file lists), its Material icon sits in front, drawn by `FileIcon` or `FileLabel`. Pasted text, attached images and folders on disk keep their stroke glyphs. A tree row is 24px with 12px steps, a 16px chevron, the icon, the name and the status letter (M, A, U, R, D) at the right. 1px indent guides in `line-2` run down each open folder, the one beside the focused row in `line-4`. A folder with changes inside takes its strongest child's color, modified over deleted over the rest, with no dot. Folders that hold only one folder share a row (`src/renderer/src`). The open file's row is selected in `surface-3`. A tree is one tab stop: arrows move, open and close, Home and End jump.
 - Hover actions: message actions (copy, retry, edit, and a reply's `...` menu with its forks) and sidebar `...` menus appear on hover and on keyboard focus. A finished turn's reply ends in one line: the turn's time (`4m 12s · 10:31`), always shown, then those actions (KERNEL-346).
 - Sidebar rows sit 3px apart, so hover and selected fills never touch.
 - Each level under a room steps in 12px: chat icons sit 20px in and nested workspace icons 32px in. A chat that started workspaces folds like a room and shows the question icon when a hidden workspace needs you.

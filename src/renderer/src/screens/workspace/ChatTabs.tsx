@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { Chat } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
+import { FileIcon } from '../../components/FileIcon'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
 import { closeChats, closesThread } from './ConfirmCloseChats'
-import { kindIcon, sharedTab } from './shared/shared'
+import { kindFile, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
 import { newChatTab, tabStop } from './leadNoChat'
@@ -122,11 +123,11 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
     onSelect(next.id)
     requestAnimationFrame(() => document.getElementById(`ws-tab-${next.id}`)?.focus())
   }
-  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName }[] = [
+  const tabs: { id: string; title: string; kind: 'chat' | 'file' | 'diff' | 'shared' | 'image' | 'text' | 'terminal'; path?: string; icon?: IconName; file?: string }[] = [
     ...chats.map((c) => ({ id: c.id, title: c.title, kind: c.kind === 'terminal' ? 'terminal' as const : 'chat' as const })),
-    ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p })),
-    ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p })),
-    ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, icon: kindIcon[sharedFiles[id]?.kind ?? 'markdown'] })),
+    ...files.map((p) => ({ id: fileTab(p), title: base(p), kind: 'file' as const, path: p, file: p })),
+    ...diffs.map((p) => ({ id: diffTab(p), title: p ? base(p) : 'All changes', kind: 'diff' as const, path: p, file: p || undefined })),
+    ...shared.map((id) => ({ id: sharedTab(id), title: sharedFiles[id]?.title ?? 'Shared file', kind: 'shared' as const, file: kindFile[sharedFiles[id]?.kind ?? 'markdown'] })),
     ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const })),
     ...texts.map((t) => ({ id: t.id, title: t.name, kind: 'text' as const }))
   ]
@@ -153,7 +154,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onDoubleClick={() => (t.kind === 'chat' || t.kind === 'terminal') && setRenaming(t.id)}>
                   {/* A fixed slot, so a truncated title can't shrink the icon and every tab lines up. */}
                   <span className="tab-glyph" data-tone={g?.tone} data-tip={g?.label || undefined} aria-hidden="true">
-                    {g?.icon === 'spin' ? <span className="spin" /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
+                    {g?.icon === 'spin' ? <span className="spin" /> : !g && t.file ? <FileIcon path={t.file} size={14} /> : <Icon name={g?.icon ?? t.icon ?? (t.kind === 'terminal' ? 'term' : t.kind === 'file' || t.kind === 'diff' || t.kind === 'text' ? 'doc' : t.kind === 'image' ? 'image' : 'chat')} size={14} />}
                   </span>
                   <span className="ellipsis">{t.title}</span>
                 </button>

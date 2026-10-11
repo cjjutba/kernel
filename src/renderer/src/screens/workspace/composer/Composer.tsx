@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call, cleanError } from '../../../api'
+import { FileIcon } from '../../../components/FileIcon'
 import { actions, getState, loadWorkspace, useStore } from '../../../store'
 import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
@@ -229,7 +230,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
               {mention
                 ? <><p>Files</p>{files.map((f, i) => (
                   <button key={f.path} type="button" role="option" aria-selected={i === at} className="cmp-ac-row" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onMouseEnter={() => setAt(i)} onClick={() => pickRow(i, true)}>
-                    <span className="mono">{baseName(f.path)}</span><span className="sub ellipsis">{dirName(f.path)}</span>
+                    <FileIcon path={f.path} /><span className="mono">{baseName(f.path)}</span><span className="sub ellipsis">{dirName(f.path)}</span>
                   </button>
                 ))}</>
                 : groups.map((g) => (

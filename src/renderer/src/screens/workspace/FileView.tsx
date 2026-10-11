@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ChangedFile, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
+import { FileIcon } from '../../components/FileIcon'
 import { actions } from '../../store'
 import { addToComposer } from './composer/bus'
 import { parseDiff } from './diff'
+import { gitDecoration } from './gitStatus'
 
 const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i + 1), name: path.slice(i + 1) } }
 
@@ -11,12 +13,18 @@ function ViewHead({ path, children, trailing }: { path: string; children?: React
   const { dir, name } = split(path)
   return (
     <div className="view-head">
-      <span className="mono" style={{ fontSize: 12.5 }}><span className="muted">{dir}</span>{name}</span>
+      <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="mono ellipsis" style={{ fontSize: 12.5 }}><span className="muted">{dir}</span>{name}</span></span>
       {children}
       <span className="grow" />
       {trailing}
     </div>
   )
+}
+
+/** A file's name over its diff in All changes: its icon, and its git color as the Changes tab shows it (KERNEL-399). */
+function DiffFileName({ path, status }: { path: string; status?: ChangedFile['status'] }) {
+  const deco = gitDecoration(status)
+  return <span className="row" style={{ minWidth: 0 }}><FileIcon path={path} /><span className="ellipsis" style={deco ? { color: deco.color, textDecoration: deco.struck ? 'line-through' : undefined } : undefined}>{path}</span></span>
 }
 
 /** A file in the worktree, read only, with line numbers (WorkspaceFile.png). */
@@ -108,7 +116,7 @@ export function DiffView({ ws, path, changes }: { ws: Workspace; path: string; c
         {text !== null && !files.length && !error && <div className="panel-empty"><span>No changes to show.</span></div>}
         {files.map((f) => (
           <div key={f.path}>
-            {!path && <div className="diff-file"><span>{f.path}</span><span><span className="add">+{f.added}</span> <span className="del">-{f.removed}</span></span></div>}
+            {!path && <div className="diff-file"><DiffFileName path={f.path} status={changes.find((c) => c.path === f.path)?.status} /><span><span className="add">+{f.added}</span> <span className="del">-{f.removed}</span></span></div>}
             {f.lines.map((l, i) => (
               <div key={i} className="diff-line" data-mark={l.hunk ? 'hunk' : l.mark}>
                 <span className="ln">{l.a}</span><span className="ln">{l.b}</span>

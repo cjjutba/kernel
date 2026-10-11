@@ -49,6 +49,7 @@
     "electron": "^38.1.0",
     "electron-builder": "^26.0.12",
     "electron-vite": "^4.0.0",
+    "material-icon-theme": "5.39.0",
     "playwright-core": "^1.63.0",
     "pngjs": "^7.0.0",
     "react": "^19.1.1",

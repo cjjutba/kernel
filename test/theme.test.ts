@@ -29,7 +29,7 @@ const lum = (h: string) => 0.2126 * channel(h, 1) + 0.7152 * channel(h, 3) + 0.0
 const contrast = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)]; return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
 
 const SURFACES = ['canvas', 'panel', 'surface', 'surface-2', 'surface-3', 'hover', 'card-bg', 'code-bg', 'input-bg', 'aside']
-const TEXT = ['ink', 'ink-2', 'ink-3', 'muted', 'add', 'del', 'merged', 'working', 'needs']
+const TEXT = ['ink', 'ink-2', 'ink-3', 'muted', 'add', 'del', 'mod', 'merged', 'working', 'needs']
 const TERM = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'].map((n) => `term-${n}`)
 
 describe('theme contrast', () => {

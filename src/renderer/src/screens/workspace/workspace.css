@@ -136,6 +136,7 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .group-list { display: flex; flex-direction: column; margin-left: 5px; padding-left: 14px; border-left: 1px solid var(--line-2); }
 .group-item { display: flex; flex-direction: column; gap: 4px; padding: 6px 0; }
 .group-item .tool-out { margin: 0; padding: 8px 10px; border-radius: var(--r-sm); font-size: 11.5px; }
+.step-glyph { display: inline-flex; flex-shrink: 0; }
 .file-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line-2); font: 11.5px var(--mono); color: var(--ink-2); }
 .meta { font-size: 12px; color: var(--muted); }
 .running { display: inline-flex; align-items: center; gap: 8px; font: 12.5px var(--mono); color: var(--muted); }
@@ -166,11 +167,24 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .panel-tabs[data-lead] .tab-count { color: var(--faint); font-size: 11.5px; }
 .panel-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
 .panel-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 20px; color: var(--muted); text-align: center; }
-.tree-row { display: flex; align-items: center; gap: 6px; flex-shrink: 0; width: 100%; height: 26px; padding-right: 8px; border: 0; border-radius: var(--r-sm); background: transparent; font: 12.5px var(--mono); text-align: left; }
+/* File trees (All files, the Changes tree) and the Changes list, drawn like VS Code's explorer (KERNEL-399). */
+.tree-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 6px; flex-shrink: 0; height: 32px; padding: 0 0 0 8px; background: var(--aside); color: var(--muted); font-size: 12px; font-weight: 500; }
+.file-tree { display: flex; flex-direction: column; }
+.tree-row { position: relative; display: flex; align-items: center; gap: 4px; flex-shrink: 0; width: 100%; height: 24px; padding-right: 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink-2); font-size: 13px; text-align: left; }
 .tree-row:hover { background: var(--nav-hover); }
-.tree-chev { width: 10px; color: var(--muted); font-size: 9px; }
-.change-row { display: flex; align-items: center; gap: 10px; flex-shrink: 0; height: 32px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink); font: 12.5px var(--mono); font-variant-numeric: tabular-nums; text-align: left; }
-.change-row:hover { background: var(--nav-hover); }
+.tree-row[aria-selected='true'], .tree-row[aria-current='true'] { background: var(--surface-3); color: var(--ink); }
+.tree-row .file-icon { flex-shrink: 0; margin-right: 2px; }
+.tree-chev { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; color: var(--muted); }
+.tree-chev svg { transition: transform 0.12s; }
+.tree-chev[data-open] svg { transform: rotate(90deg); }
+.tree-guide { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line-2); pointer-events: none; }
+.tree-guide[data-lit] { background: var(--line-4); }
+.tree-name { flex: 1; min-width: 0; }
+.tree-name [data-struck], .tree-name[data-struck] { text-decoration: line-through; }
+.tree-counts { display: inline-flex; flex-shrink: 0; gap: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.tree-letter { flex-shrink: 0; width: 14px; text-align: center; font: 500 11.5px var(--mono); }
+.change-row { gap: 6px; padding-left: 6px; }
+.change-dir { margin-left: 8px; color: var(--muted); font-size: 12px; }
 /* "4 files changed", its totals and Review all, with a hairline under it before the files (KERNEL-274). */
 .changes-head { display: flex; align-items: center; gap: 8px; flex-shrink: 0; height: 40px; margin: 0 -10px 6px; padding: 0 16px; border-bottom: 1px solid var(--line); }
 .changes-count { font-size: 13px; color: var(--ink-2); }

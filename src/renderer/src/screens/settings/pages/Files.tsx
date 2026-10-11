@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FileToCopy, Room } from '@shared/types'
 import { call } from '../../../api'
+import { FileLabel } from '../../../components/FileIcon'
 import { Button, Toggle, useBusy } from '../../../ui'
 import { isOverride, LinesField, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
@@ -35,7 +36,7 @@ function Preview({ room, copy, files, failed, reload }: { room: Room; copy: stri
   const label = files === null ? (failed ? 'Could not read the files in' : 'Looking in') : none ? 'No files will be copied from' : `${files.length} ${files.length === 1 ? 'file' : 'files'} will be copied from`
   const desc = failed ? 'Check that the folder is still there, then refresh.' : none ? (copy.length ? 'Nothing in the checkout matches the list. Patterns only match files git ignores.' : 'The list is empty.') : undefined
   return (
-    <Row label={<>{label} {from}</>} desc={desc} full={files?.length ? <ul className="set-preview" tabIndex={0} aria-label="Files that will be copied">{files.map((f) => <li key={f.path}>{f.path}</li>)}</ul> : undefined}>
+    <Row label={<>{label} {from}</>} desc={desc} full={files?.length ? <ul className="set-preview" tabIndex={0} aria-label="Files that will be copied">{files.map((f) => <li key={f.path}><FileLabel path={f.path} /></li>)}</ul> : undefined}>
       <Button busy={busy === 'refresh'} busyLabel="Refreshing" onClick={() => void run('refresh', reload)}>Refresh</Button>
     </Row>
   )

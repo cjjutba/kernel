@@ -2,6 +2,7 @@ import { useId, useRef, useState, type FormEvent } from 'react'
 import { KERNEL_VARS, SCRIPT_VARS } from '@shared/kernelVars'
 import type { Room, RoomSettings } from '@shared/types'
 import { call, cleanError } from '../../../api'
+import { FileLabel } from '../../../components/FileIcon'
 import { actions, getState } from '../../../store'
 import { Button, ConfirmDialog, Icon, Modal, useBusy } from '../../../ui'
 import { NoRoom, Page, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
@@ -123,7 +124,7 @@ function EnvFiles({ roomId, rs, env }: { roomId: string; rs: RoomSettings | null
         {files.map((f, i) => (
           // The list is one value, so its source shows on the first row. Reset only shows for a list that overrides settings.toml:
           // a list that lives only in the personal file can be emptied with Remove, so Reset adds nothing there.
-          <Row key={f.path} label={<span className="set-mono">{f.path}</span>} source={i === 0 ? sourceLine(rs, path) : undefined}>
+          <Row key={f.path} label={<span className="set-mono"><FileLabel path={f.path} /></span>} source={i === 0 ? sourceLine(rs, path) : undefined}>
             {f.missing && <span className="set-tag">Missing</span>}
             <div className="set-entry-actions">
               {i === 0 && rs?.sources?.[path] === 'override' && <Button variant="ghost" aria-label="Reset env files" busy={busy === 'reset'} busyLabel="Resetting" disabled={busy !== null} onClick={() => void save('reset', () => null)}>Reset</Button>}

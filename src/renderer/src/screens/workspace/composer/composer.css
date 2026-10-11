@@ -52,6 +52,7 @@
 .cmp-ac-row + p { margin-top: 10px; }
 .cmp-ac-row { display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font-size: 13px; text-align: left; }
 .cmp-ac-row[aria-selected='true'] { background: var(--hover); }
+.cmp-ac-row .file-icon { flex-shrink: 0; margin-right: -4px; }
 .cmp-ac-row .mono { font-size: 12.5px; flex-shrink: 0; }
 .cmp-ac-row .sub { flex: 1; min-width: 0; color: var(--muted); }
 .cmp-pop { left: 0; bottom: calc(100% + 8px); }
