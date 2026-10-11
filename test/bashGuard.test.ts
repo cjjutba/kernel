@@ -461,6 +461,7 @@ describe('room rules', () => {
       'npm test && sh -c "rm -rf dist"',
       'bash -c "npm test"',
       'bash -lc "npm test"',
+      'bash --rcfile x -c "npm test"',
       'zsh -c "npm test"',
       'sudo bash -c "npm test"',
       'env sh -c "npm test"',

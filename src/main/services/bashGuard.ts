@@ -811,7 +811,8 @@ function coverable(s: Simple, piped: boolean): string[] | undefined {
   if (!isPlain(s)) return undefined
   const [run, ...more] = unwrap(s)
   if (run.unknown || more.length) return undefined
-  if (s.words.some((w, k) => SHELLS.has(base(w)) && shellScript(s.words.slice(k)) !== undefined)) return undefined
+  // Any `-c` after a shell's name, so an option that takes a value (`bash --rcfile x -c …`) can't hide it.
+  if (s.words.some((w, k) => SHELLS.has(base(w)) && s.words.slice(k + 1).some((x) => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(x)))) return undefined
   if (piped && RUNS_INPUT.has(base(run.words[0] ?? ''))) return undefined
   let k = 0
   while (k < s.words.length && KEYWORDS.has(s.words[k])) k++
