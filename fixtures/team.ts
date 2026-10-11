@@ -494,7 +494,12 @@ export const teamFixtures: Record<string, Fixture> = {
   GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
   // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
-  AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
+  // KERNEL-406: an added Claude account and Codex signed in, so the menu names each provider's active account.
+  AccountMenu: scene((f) => ({ ...homeScene(f), accounts: [
+    { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
+    { id: 'work', provider: 'claude', label: 'Work', email: 'sam@acme.dev', plan: 'Claude Team', cli: false, active: false, signedIn: true },
+    { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }
+  ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
   // No PNG: the popover reopened after a question, with Rowan's answer in (KERNEL-146).
   QuickAskAnswered: scene((f) => ({

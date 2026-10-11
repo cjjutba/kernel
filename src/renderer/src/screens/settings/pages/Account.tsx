@@ -1,4 +1,6 @@
+import { useMemo } from 'react'
 import { MODELS, type RateLimit } from '@shared/types'
+import { limitProvider } from '@shared/providers'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Meter, Toggle, useBusy } from '../../../ui'
@@ -30,7 +32,10 @@ export function usageNote(l: RateLimit | undefined, now: number): string {
 
 /** Settings > Account and usage (SettingsAccount.png). The meters are white from 85%. */
 export function Account() {
-  const usage = useStore((s) => s.usage)
+  // Claude's windows on the account Claude runs on now. Codex's have their own line on Settings, Providers (KERNEL-406).
+  const active = useStore((s) => s.accounts.find((a) => a.provider === 'claude' && a.active)?.id ?? 'cli')
+  const all = useStore((s) => s.usage)
+  const usage = useMemo(() => all.filter((l) => limitProvider(l) === 'claude' && (l.accountId ?? 'cli') === active), [all, active])
   const account = useStore((s) => s.account)
   const s = useSettings()
   const [busy, run] = useBusy<'signOut' | 'usage'>()

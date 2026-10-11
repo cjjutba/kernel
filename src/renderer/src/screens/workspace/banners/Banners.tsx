@@ -10,6 +10,8 @@ import { Banner, Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
 import { bannerFor, setupCommand, type BannerAction, type BannerView } from './model'
+import { chatProvider } from '@shared/providers'
+import { useCodexInUse } from '../composer/providerModels'
 import './banners.css'
 
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
@@ -22,6 +24,8 @@ const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
 export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean): BannerView | null {
   const usage = useStore((s) => s.usage)
   const account = useStore((s) => s.account)
+  const accounts = useStore((s) => s.accounts)
+  const codexInUse = useCodexInUse(chat ? chatProvider(chat) : undefined)
   const online = useStore((s) => s.system.online)
   const hooks = useStore((s) => s.system.hooks)
   const retry = useStore((s) => (chat ? s.retry[chat.id] : undefined))
@@ -43,7 +47,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -97,6 +101,8 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       })
       case 'terminal': return run(id, 'Could not open Terminal', () => call('app.openTerminal', { cwd: ws.path, command: 'claude /login' }))
       case 'signIn': return run(id, 'Could not sign in', async () => actions.account.set(await call('account.signIn', undefined)))
+      case 'switchAccount': return view.switchAccount && run(id, 'Could not switch accounts', async () => actions.accounts.set(await call('accounts.switch', { provider: view.switchAccount!.provider, accountId: view.switchAccount!.accountId })))
+      case 'providers': return go({ name: 'settings', page: 'providers', tab: 'codex' })
       case 'editScript': return go({ name: 'settings', page: 'room', roomId: ws.roomId, section: 'scripts' })
       case 'runAgain': return run(id, 'Could not run setup', async () => {
         actions.ui.setWorkspaceView({ bottom: 'setup' })

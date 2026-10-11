@@ -16,7 +16,7 @@ export const useDefaultEffort = (agentEffort?: Effort): Effort => useStore((s) =
 
 export const rememberEffort = (model: string, effort: Effort) => void patchSettings({ models: { effortByModel: { [model]: effort } } })
 
-/** The effort after `effort`, wrapping from Extra high back to Low (⌘⇧/). */
-export const nextEffort = (effort: Effort): Effort => EFFORTS[(EFFORTS.findIndex((x) => x.id === effort) + 1) % EFFORTS.length].id
+/** The effort after `effort` among the model's levels, Claude's four by default, wrapping back to the first (⌘⇧/). */
+export const nextEffort = (effort: Effort, efforts: Effort[] = EFFORTS.map((x) => x.id)): Effort => efforts[(efforts.indexOf(effort) + 1) % efforts.length] ?? effort
 
 export const effortLabel = (effort: Effort) => EFFORT_LABELS[effort] ?? effort

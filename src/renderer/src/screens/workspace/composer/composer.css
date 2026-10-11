@@ -190,3 +190,7 @@
 .ctx-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--line-2); }
 .ctx-foot p { margin: 0; flex: 1; min-width: 0; }
 .ctx-foot .btn { flex-shrink: 0; }
+
+/* KERNEL-406: the picker's provider headings */
+.pick-group { margin: 0; padding: 10px 8px 4px; font-size: 12px; color: var(--muted); }
+.pick-list > div:first-child .pick-group { padding-top: 4px; }

@@ -1,5 +1,6 @@
-import type { BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, RateLimit, ScriptLine, Workspace } from '@shared/types'
-import { MODELS } from '@shared/types'
+import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, Provider, RateLimit, ScriptLine, Workspace } from '@shared/types'
+import { MODELS, PROVIDERS } from '@shared/types'
+import { chatProvider, limitProvider } from '@shared/providers'
 import { clock, nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 
 export { clock, resetPhrase }
@@ -10,7 +11,7 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
 
 export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'long' | 'hooks'
 
@@ -26,6 +27,8 @@ export interface BannerView {
   limit?: RateLimit['type']
   /** The model "Switch to" moves the chat to. */
   switchTo?: ModelId
+  /** The account "Switch to" moves the provider to (KERNEL-406). Switching is always the user's click. */
+  switchAccount?: { provider: Provider; accountId: string; label: string }
 }
 
 export interface BannerInput {
@@ -47,6 +50,10 @@ export interface BannerInput {
   leadName?: string
   /** Settings, Account. A switch left out counts as on, which is the default. */
   usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
+  /** Both providers' accounts (KERNEL-406). Without them every limit counts as the Claude login's, as before. */
+  accounts?: AccountProfile[]
+  /** A role or this chat runs on Codex, so the banners name the provider (KERNEL-406). */
+  codexInUse?: boolean
   now: number
 }
 
@@ -92,6 +99,19 @@ export function setupCommand(lines: ScriptLine[] = []): string | undefined {
 /** The one banner this workspace shows, most pressing first, or null. */
 export function bannerFor(i: BannerInput): BannerView | null {
   const { ws, chat, agentName: name, now } = i
+  // KERNEL-406: a chat hears only its own provider's limits, on the account that provider runs on now.
+  const provider: Provider = chat ? chatProvider(chat) : 'claude'
+  const providerName = PROVIDERS.find((p) => p.id === provider)!.label
+  const otherName = PROVIDERS.find((p) => p.id !== provider)!.label
+  const accounts = (i.accounts ?? []).filter((a) => a.provider === provider)
+  const active = accounts.find((a) => a.active)?.id ?? 'cli'
+  const usage = i.usage.filter((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === active)
+  const named = (what: string) => (i.codexInUse ? `${providerName} ${what}` : what)
+  // Another signed-in account of this provider with no rejected window takes over with one click.
+  const alt = accounts.find((a) => !a.active && a.signedIn && !i.usage.some((l) => limitProvider(l) === provider && (l.accountId ?? 'cli') === a.id && rejected(l, now) && (l.type === 'five_hour' || l.type === 'seven_day')))
+  const switchAccount = alt ? { provider, accountId: alt.id, label: alt.label } : undefined
+  const switchAction = alt ? [{ id: 'switchAccount' as const, label: `Switch to ${alt.label}`, primary: true }] : []
+  const keepGoing = i.codexInUse ? ` Agents on ${otherName} keep working.` : ''
 
   // A worktree deleted outside Kernel has nowhere to run anything, so it says so first, like a failed setup (KERNEL-291).
   if (ws.folderGone) return {
@@ -100,7 +120,13 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'archive', label: 'Archive', primary: true }], blocks: true
   }
 
-  if (i.account && !i.account.signedIn) return {
+  const codexOut = provider === 'codex' && accounts.find((a) => a.active && !a.signedIn)
+  if (codexOut) return {
+    id: 'signedOut', kind: 'auth', title: 'Codex is signed out', sub: 'Agents on Codex cannot run until you sign in. Workspaces and chats are safe.',
+    actions: [{ id: 'providers', label: 'Sign in', primary: true }], blocks: true
+  }
+
+  if (provider === 'claude' && i.account && !i.account.signedIn) return {
     id: 'signedOut', kind: 'auth', title: 'Claude Code is signed out', sub: 'Agents cannot run until you sign in. Workspaces and chats are safe.',
     actions: [{ id: 'terminal', label: 'Open terminal' }, { id: 'signIn', label: 'Sign in', primary: true }], blocks: true
   }
@@ -128,26 +154,35 @@ export function bannerFor(i: BannerInput): BannerView | null {
   }
 
   // Fable's own weekly limit (`seven_day_overage_included`) is a model limit, shown below.
-  const weekly = i.usage.find((l) => l.type === 'seven_day' && rejected(l, now))
-  if (weekly) return {
-    id: 'weekly', kind: 'limit', title: "You've used your weekly limit",
-    sub: weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. Every room is paused.` : 'Every room is paused until it resets.',
-    actions: [{ id: 'usage', label: 'Open /usage' }, { id: 'notify', label: 'Notify me', primary: true }], blocks: true, limit: weekly.type
-  }
-
-  const session = i.usage.find((l) => l.type === 'five_hour' && rejected(l, now))
-  if (session) {
-    const after = i.running ? `${name} finishes this step, then waits.` : `${name} finished this turn and stopped.`
+  // "Notify me" knows the Claude login's windows, so a Codex window or an added account's offers its other actions.
+  const notify = provider === 'claude' && active === 'cli'
+  const weekly = usage.find((l) => l.type === 'seven_day' && rejected(l, now))
+  if (weekly) {
+    const held = i.codexInUse ? `Agents on ${providerName} wait until it resets.` : 'Every room is paused.'
     return {
-      id: 'session', kind: 'limit', title: "You've hit your 5-hour limit",
-      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}`,
-      actions: [{ id: 'queue', label: 'Queue message' }, { id: 'notify', label: 'Notify me', primary: true }], blocks: false, limit: 'five_hour'
+      id: 'weekly', kind: 'limit', title: `You've used your ${named('weekly limit')}`,
+      sub: weekly.resetsAt ? `Resets ${resetPhrase(weekly.resetsAt, now)}. ${held}${i.codexInUse ? keepGoing : ''}` : i.codexInUse ? `${held}${keepGoing}` : 'Every room is paused until it resets.',
+      actions: [...(provider === 'claude' ? [{ id: 'usage' as const, label: 'Open /usage' }] : []), ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: !alt }] : []), ...switchAction],
+      blocks: !alt, limit: weekly.type, switchAccount
     }
   }
 
-  const own = chat && i.usage.find((l) => l.model === chat.model && rejected(l, now))
+  const session = usage.find((l) => l.type === 'five_hour' && rejected(l, now))
+  if (session) {
+    const after = i.running ? `${name} finishes this step, then waits.` : `${name} finished this turn and stopped.`
+    return {
+      id: 'session', kind: 'limit', title: `You've hit your ${named('5-hour limit')}`,
+      sub: `${session.resetsAt ? `Resets ${resetPhrase(session.resetsAt, now)}. ` : ''}${after}${keepGoing}`,
+      actions: alt
+        ? [...(notify ? [{ id: 'notify' as const, label: 'Notify me' }] : [{ id: 'queue' as const, label: 'Queue message' }]), ...switchAction]
+        : [{ id: 'queue', label: 'Queue message' }, ...(notify ? [{ id: 'notify' as const, label: 'Notify me', primary: true }] : [])],
+      blocks: false, limit: 'five_hour', switchAccount
+    }
+  }
+
+  const own = chat && usage.find((l) => l.model === chat.model && rejected(l, now))
   if (chat && own) {
-    const to = fallbackModel(chat.model, i.usage, now)
+    const to = fallbackModel(chat.model, usage, now)
     const when = own.resetsAt ? `It resets ${resetIn(own.resetsAt, now)}.` : 'It resets on its own.'
     return {
       id: 'model', kind: 'limit', title: `You've reached your ${modelLabel(chat.model)} limit`,
@@ -158,17 +193,19 @@ export function bannerFor(i: BannerInput): BannerView | null {
   }
 
   // A window close to its limit holds teammates' new work (KERNEL-220). Nothing is blocked: turns that run go on, and the Lead can still answer.
-  const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? nearLimit(i.usage, now) : undefined
+  // Only this chat's provider counts, as in the engine (KERNEL-406).
+  const usageAction = provider === 'claude' ? [{ id: 'usage' as const, label: 'Open /usage' }] : []
+  const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? nearLimit(usage, now) : undefined
   if (held?.resetsAt) return {
-    id: 'nearLimit', kind: 'limit', title: `Close to your ${held.type === 'five_hour' ? '5-hour' : 'weekly'} limit`,
+    id: 'nearLimit', kind: 'limit', title: `Close to your ${named(held.type === 'five_hour' ? '5-hour limit' : 'weekly limit')}`,
     sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Rowan'} can still answer you.`,
-    actions: [{ id: 'usage', label: 'Open /usage' }], blocks: false
+    actions: usageAction, blocks: false
   }
 
-  const week = i.usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
+  const week = usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
   if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false) return {
-    id: 'weeklyWarn', kind: 'limit', title: `You've used ${Math.round((week.utilization ?? WEEKLY_WARN) * 100)}% of this week's limit`,
-    sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: [{ id: 'usage', label: 'Open /usage' }], blocks: false
+    id: 'weeklyWarn', kind: 'limit', title: `You've used ${Math.round((week.utilization ?? WEEKLY_WARN) * 100)}% of this week's ${named('limit')}`,
+    sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: usageAction, blocks: false
   }
 
   if (i.retry) {

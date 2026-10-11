@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type Effort, type Provider, type ProviderModel } from '@shared/types'
 import { call } from '../../../api'
+import { useStore } from '../../../store'
 
 // Each provider's models for the pickers (KERNEL-406). Claude's are Kernel's own list, so they show at once. Codex's come
 // from its model/list, read once per launch in main and once per window here.
@@ -20,6 +21,12 @@ export function useProviderModels(provider: Provider): ProviderModel[] {
   }, [provider])
   return models
 }
+
+/**
+ * Codex is in use: a role runs on it, or this chat does. Only then do the pickers group models by provider, so a setup that
+ * runs only Claude sees the picker it always had (KERNEL-406).
+ */
+export const useCodexInUse = (chatProvider?: Provider) => useStore((s) => chatProvider === 'codex' || Object.values(s.settings?.models.roles ?? {}).some((r) => r.provider === 'codex'))
 
 export const providerLabel = (p: Provider) => PROVIDERS.find((x) => x.id === p)?.label ?? p
 

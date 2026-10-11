@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, AgentEdit, Effort } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
+import { isReviewer } from '@shared/team'
 import { call, cleanError } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { openRoom } from '../../lead'
@@ -22,6 +23,19 @@ const slash = (s: string) => (s.startsWith('/') ? s : `/${s}`)
  * the agent file. AgentProfileBuiltIn.png: Kernel's own Rowan or Theo, shown as it runs, with Customize to copy it into
  * .claude/agents (KERNEL-397).
  */
+/** Settings, Models and effort's name for the role an agent takes its default from. */
+const roleTitle = (a: AgentDef) => (a.lead ? 'Lead' : isReviewer(a) ? 'Reviewer' : /qa/i.test(a.role) ? 'QA' : 'Frontend and Backend')
+
+/**
+ * Whether the agent follows Settings or its file pins a model (KERNEL-406), with Use Settings to clear the pin. Saved with
+ * the rest of the profile.
+ */
+function PinHint({ agent, model, onClear }: { agent: AgentDef; model: string; onClear: () => void }) {
+  if (!model || model === 'inherit') return <span className="hint">Uses Settings ({roleTitle(agent)} default)</span>
+  const label = MODELS.find((m) => sameModel(model, m.id))?.label ?? model
+  return <span className="hint">Pinned to {label}{agent.provider === 'codex' || !MODELS.some((m) => sameModel(model, m.id)) ? ' on Codex' : ''}. <button type="button" className="ap-unpin" onClick={onClear}>Use Settings</button></span>
+}
+
 export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId] ?? NO_AGENTS)
@@ -81,7 +95,8 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const save = () => run('save', async () => {
     setError(null)
     const patch: AgentEdit = {
-      description: form.description.trim(), model: form.model || undefined, effort: form.effort, tools: form.tools, skills: form.skills.map(slash), prompt: form.prompt
+      // An empty model clears the pin, so the agent follows its role's default in Settings again (KERNEL-406).
+      description: form.description.trim(), model: form.model, effort: form.effort, tools: form.tools, skills: form.skills.map(slash), prompt: form.prompt
     }
     try {
       const def = await call('agents.save', { roomId, agentId: agent.id, patch })
@@ -167,7 +182,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
               <div className="ap-field">
                 <span className="ap-label" id="ap-model">Model</span>
                 <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
-                {builtIn && <span className="hint">From Settings, Models</span>}
+                {builtIn ? <span className="hint">From Settings, Models</span> : <PinHint agent={agent} model={form.model} onClear={() => set({ model: '' })} />}
               </div>
               <div className="ap-field">
                 <span className="ap-label">Effort</span>
