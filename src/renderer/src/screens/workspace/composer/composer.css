@@ -123,11 +123,11 @@
    edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
    top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
    glow and the caret; its border is the modal shell's.
-   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises over 2.4s, fades over 1.6s, and
+   It moves slowly (KERNEL-322, design/redesign/canvas/PlanMotion.dc.html): the glow rises and fades over 1s each way (KERNEL-418), and
    breathes every 8s while the box waits for input. Focus settles it. The strip opens over 1.2s and one light crosses it.
    Only the glow's opacity loops, so the loop costs a compositor layer and nothing else. Reduced motion stops all of it. */
 .cmp, .nw { --ease-plan: cubic-bezier(0.33, 0, 0.2, 1); }
-.cmp { transition: border-color 1.6s ease-in-out; }
+.cmp { transition: border-color 1s ease-in-out; }
 .cmp:focus-within { transition: border-color 0.6s ease-out; }
 .nw { position: relative; }
 .nw > * { position: relative; }
@@ -135,19 +135,19 @@
   content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
   opacity: 0; transform: scaleY(0.85); transform-origin: 50% 100%;
-  transition: opacity 1.6s ease-in-out, transform 1.6s ease-in-out;
+  transition: opacity 1s ease-in-out, transform 1s ease-in-out;
 }
 /* The modal shell rounds its corners and lets the pickers overflow, so the glow rounds its own bottom corners. */
 .nw::before { border-radius: 0 0 calc(var(--r-xl) - 1px) calc(var(--r-xl) - 1px); }
 .cmp[data-plan='true']::before, .nw[data-plan]::before {
   opacity: 0.9; transform: none;
-  transition: opacity 2.4s var(--ease-plan), transform 2.4s var(--ease-plan);
-  animation: plan-breathe 8s ease-in-out 2.4s infinite;
+  transition: opacity 1s var(--ease-plan), transform 1s var(--ease-plan);
+  animation: plan-breathe 8s ease-in-out 1s infinite;
 }
 .cmp[data-plan='true']:focus-within::before, .nw[data-plan]:focus-within::before { opacity: 1; animation: none; transition: opacity 1s ease-out; }
 .cmp[data-blocked]::before { animation: none; }
 @keyframes plan-breathe { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.62; } }
-.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--input-bg)); transition: border-color 2.4s var(--ease-plan); }
+.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--input-bg)); transition: border-color 1s var(--ease-plan); }
 .cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--input-bg)); transition: border-color 0.6s ease-out; }
 .cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
 .cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
