@@ -363,7 +363,7 @@ export class Lead extends Feature {
         const agents = await this.k.team.agents(roomId)
         const reuse = o.kind === 'plan' ? revisedPlanFile(this.store.approvals({ roomId }), chat.id) : undefined
         const { approval, decision } = this.approvals.request({
-          kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options,
+          kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options, questions: o.questions,
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
         })
         this.sessions.placeApproval(chat.id, approval.id)

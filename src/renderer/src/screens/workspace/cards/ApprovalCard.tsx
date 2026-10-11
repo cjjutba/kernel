@@ -108,9 +108,15 @@ function OneQuestion({ a, who }: { a: Approval; who: string }) {
       <span className="sub">{a.title}</span>
       {a.status === 'pending' ? (
         <div ref={rows} className="opts">
-          {(a.options ?? []).map((o, i) => (
-            <button key={o} type="button" className="opt" disabled={busy !== null} aria-busy={busy === String(i) || undefined} onClick={() => answer(String(i), o)}>{busy === String(i) ? <span className="spin" aria-hidden="true" /> : <span className="n mono">{i + 1}</span>}{o}</button>
-          ))}
+          {(a.options ?? []).map((o, i) => {
+            const desc = a.questions?.[0]?.options[i]?.description
+            return (
+              <button key={o} type="button" className="opt" data-desc={!!desc} disabled={busy !== null} aria-busy={busy === String(i) || undefined} onClick={() => answer(String(i), o)}>
+                {busy === String(i) ? <span className="spin" aria-hidden="true" /> : <span className="n mono">{i + 1}</span>}
+                <span className="qtext"><span>{o}</span>{desc && <span className="qdesc">{desc}</span>}</span>
+              </button>
+            )
+          })}
           {other ? (
             <div className="qother-line">
               <AnswerRow mark={<span className="n mono">{n}</span>} value={text} disabled={busy !== null} onChange={setText} onEnter={send} onEscape={close} />

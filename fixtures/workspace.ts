@@ -942,6 +942,22 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
+  // A long answer wraps with its number on the first line, and ask_user options show their descriptions (KERNEL-407).
+  WorkspaceQuestionLong: scene((f) => {
+    const options = [
+      { label: 'Kernel runs claude setup-token, opens the sign-in in my browser, shows a paste field if it asks for a code, and saves the token' },
+      { label: 'Guided sign-in', description: 'Kernel runs claude setup-token and opens the sign-in in your browser. Recommended.' },
+      { label: 'Paste a token', description: 'You make the token in a terminal and paste it into Kernel.' }
+    ]
+    const question = 'How should adding a Claude account in Settings, Providers work?'
+    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+      userMsg('ql1', 'Build T-15b from the approved plan.', true),
+      ...folded('ql', 6, 0),
+      { kind: 'result', id: 'ql-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+    ], {
+      approvals: [pending('question', 'kai', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+    })
+  }),
   WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('qs1', 'Build T-15b from the approved plan.', true),
     ...folded('qs', 6, 0),

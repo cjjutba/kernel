@@ -477,6 +477,29 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
   })
 })
 
+describe("the Lead's ask_user options (KERNEL-407)", () => {
+  const waiting = async (k: Kernel) => vi.waitFor(() => { const p = k.store.approvals({ pendingOnly: true })[0]; if (!p) throw new Error('not yet'); return p })
+
+  it('keeps each option\'s description for the card and sends back the label that was picked', async () => {
+    const { k, first, call } = await setup()
+    const options = [{ label: 'Guided sign-in', description: 'Kernel opens the sign-in in your browser. Recommended.' }, { label: 'Paste a token' }]
+    const asking = call(first, 'ask_user', { question: 'How should adding a Claude account work?', options })
+    const p = await waiting(k)
+    expect(p).toMatchObject({ kind: 'question', options: ['Guided sign-in', 'Paste a token'], questions: [{ question: 'How should adding a Claude account work?', options }] })
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'Guided sign-in' })
+    expect(await asking).toBe('Guided sign-in')
+  })
+
+  it('still takes plain string options', async () => {
+    const { k, first, call } = await setup()
+    const asking = call(first, 'ask_user', { question: 'Skip the snapshot test?', options: ['Yes', 'No'] })
+    const p = await waiting(k)
+    expect(p).toMatchObject({ options: ['Yes', 'No'], questions: [{ options: [{ label: 'Yes' }, { label: 'No' }] }] })
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'No' })
+    expect(await asking).toBe('No')
+  })
+})
+
 describe('Ask Rowan (KERNEL-145)', () => {
   it('opens a new Lead chat tab for each question, past a busy first tab, and gives it the Lead tools', async () => {
     const { k, room, first, icons, sent, rowan } = await setup()
