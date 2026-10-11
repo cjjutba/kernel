@@ -51,7 +51,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 10px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: 1px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip[data-kind='image'] svg { color: var(--add); }

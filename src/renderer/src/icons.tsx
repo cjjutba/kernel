@@ -60,6 +60,8 @@ const P = {
   info: 'M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1',
   burst: 'M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3M4.3 4.3l1.9 1.9M9.8 9.8l1.9 1.9M11.7 4.3 9.8 6.2M6.2 9.8l-1.9 1.9',
   archive: 'M2.5 3.5h11v3h-11ZM3.5 6.5v6h9v-6M6.5 9h3',
+  // A comment bubble with a plus, from the Comment button in WorkspaceSharedComment.dc.html (KERNEL-311).
+  comment: 'M2.5 3.5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v6.2a1 1 0 0 1-1 1H7.3L4.6 13v-2.3H3.5a1 1 0 0 1-1-1ZM8 4.9v3.2M6.4 6.5h3.2',
   chat: 'M2.5 4a1.5 1.5 0 0 1 1.5-1.5h8A1.5 1.5 0 0 1 13.5 4v5.5A1.5 1.5 0 0 1 12 11H7l-3 2.5V11A1.5 1.5 0 0 1 2.5 9.5Z',
   chevrons: 'm5 6 3-3 3 3M5 10l3 3 3-3',
   forward: 'm3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5',

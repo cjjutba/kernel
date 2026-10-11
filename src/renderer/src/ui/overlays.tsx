@@ -169,7 +169,7 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
 /** How long a toast stays (DESIGN.md). */
 export const TOAST_MS = 2600
 
-export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void }; onDismiss?: () => void }
+export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void; /** A bordered button, for an action that opens something in the app, not a link. */ boxed?: boolean }; onDismiss?: () => void }
 
 /** One toast (WorkspaceToast.png). It calls `onDismiss` after 2.6s, and stays while hovered or focused. */
 export function Toast({ title, sub, action, onDismiss }: ToastProps) {
@@ -189,7 +189,7 @@ export function Toast({ title, sub, action, onDismiss }: ToastProps) {
       {action && (action.href
         // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
         ? <a className="toast-action" href={action.href} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); action.onClick?.() }}>{action.label}</a>
-        : <button type="button" className="toast-action" onClick={action.onClick}>{action.label}</button>)}
+        : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} onClick={action.onClick}>{action.label}</button>)}
       <button type="button" className="toast-x" aria-label="Dismiss" onClick={onDismiss}><Icon name="close" size={10} stroke={2} /></button>
     </div>
   )
