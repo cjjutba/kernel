@@ -2,4 +2,4 @@
 type: fixed
 issue: KERNEL-220
 ---
-Fixed Settings, Account's pause near the limit and weekly warning doing nothing.
+Fixed the pause near the limit and the weekly warning in Settings, Account doing nothing.
