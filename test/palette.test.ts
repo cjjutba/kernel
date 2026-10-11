@@ -192,7 +192,7 @@ describe('history', () => {
 
 describe('command palette chats (KERNEL-339)', () => {
   const rooms = [room('a', 'Client A'), room('b', 'Client B')]
-  const lead = ws('lead', { name: 'lead', agentId: 'rowan', mode: 'current' })
+  const lead = ws('lead', { name: 'lead', agentId: 'rowan', mode: 'current', lead: true })
   const tab = (id: string, threadId: string): Chat => ({ id, workspaceId: 'lead', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: 1 })
   const thread = (id: string, title: string): Thread => ({ id, roomId: 'a', title, createdAt: 1 })
   const chats = [
