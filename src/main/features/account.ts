@@ -97,8 +97,8 @@ export class Account extends Feature {
     const now = Date.now()
     this.store.saveMeta('limits', limits)
     const rooms = this.store.rooms().filter((r) => !r.archived)
-    if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.k.pauseRoom(r.id, 'limit') }
-    else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.k.resumeRoom(r.id, 'limit')
+    if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.k.rooms.pauseRoom(r.id, 'limit') }
+    else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.k.rooms.resumeRoom(r.id, 'limit')
     for (const l of limits) {
       const at = l.resetsAt ? l.resetsAt * 1000 : undefined
       const held = this.limitTimers.get(l.type)

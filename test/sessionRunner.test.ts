@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, symlink } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
@@ -117,20 +117,26 @@ describe('questions to the user', () => {
     expect(options).not.toHaveProperty('skills')
   })
 
-  it('adds no settings when the room switched nothing off, and compacts a long chat near 200k (KERNEL-226)', async () => {
+  it("adds no settings when the room switched nothing off, and leaves the compact window to the model (context-window-follows-model)", async () => {
     const { options } = await setup('acceptEdits', { disabledFor: () => ({ skills: [], mcp: [] }) })
     expect(options).not.toHaveProperty('settings')
-    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
   })
 
-  it('leaves plan mode once the plan is approved', async () => {
+  it('leaves plan mode once the plan is approved, and tells the composer', async () => {
     const { options, approvals, store } = await setup()
     store.saveChat({ ...store.chat('chat')!, plan: true })
+    const pushed: Chat[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat') pushed.push(e.chat) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
     const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Go' }, { signal: new AbortController().signal, toolUseID: 'p2', requestId: 'r3' })
     await flush()
     approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
     await answer
     expect(store.chat('chat')?.plan).toBe(false)
+    // Without it the box stays blue until the workspace reloads.
+    expect(pushed.at(-1)).toMatchObject({ id: 'chat', plan: false })
   })
 
   const asked = {
@@ -1275,6 +1281,25 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(sameBinary.exitCode).toBeNull()
       expect(s.store.meta('claudePids')).toEqual([])
     } finally { left.kill('SIGKILL'); other.kill('SIGKILL'); sameBinary.kill('SIGKILL') }
+  })
+})
+
+describe('a terminal that ends Kernel (KERNEL-340)', () => {
+  it("starts each Claude Code process in a process group of its own, out of reach of the terminal's Ctrl+C", async () => {
+    const s = await setup()
+    const abort = new AbortController()
+    const proc = s.options.spawnClaudeCodeProcess!({ command: '/bin/sleep', args: ['30'], env: process.env, signal: abort.signal })
+    proc.on('error', () => undefined)
+    const pid = (proc as unknown as { pid: number }).pid
+    const group = (p: number) => Number(execFileSync('ps', ['-o', 'pgid=', '-p', String(p)], { encoding: 'utf8' }).trim())
+    try {
+      expect(group(pid)).toBe(pid)
+      expect(group(pid)).not.toBe(group(process.pid))
+    } finally {
+      const exited = new Promise((r) => proc.once('exit', r))
+      abort.abort()
+      await exited
+    }
   })
 })
 

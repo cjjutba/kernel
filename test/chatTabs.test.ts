@@ -9,6 +9,7 @@ import { Ptys } from '../src/main/services/pty'
 import { hookToken } from '../src/main/services/hookToken'
 import { appended } from '../src/renderer/src/screens/workspace/terminal/buffer'
 import type { ChatItem } from '../src/shared/types'
+import type { PushEvent } from '../src/shared/ipc'
 
 const until = async (ok: () => boolean, ms = 8000) => { const t = Date.now(); while (!ok()) { if (Date.now() - t > ms) throw new Error('timed out'); await new Promise((r) => setTimeout(r, 25)) } }
 
@@ -27,6 +28,33 @@ describe('ptys', () => {
     ptys.kill('t1')
     expect(ptys.has('t1')).toBe(false)
     bus.off('push', on)
+  })
+})
+
+describe('a window that loads while a terminal runs (KERNEL-340)', () => {
+  it('gets back everything the terminal printed in one replacing push, and nothing once it is killed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-pty-'))
+    const ptys = new Ptys()
+    const seen: { data: string; replace?: true }[] = []
+    const on = (e: PushEvent) => { if (e.type === 'terminal.data' && e.chatId === 't2') seen.push(e.replace ? { data: e.data, replace: true } : { data: e.data }) }
+    bus.on('push', on)
+    try {
+      ptys.replay('t2')
+      expect(seen).toEqual([])
+      ptys.start('t2', { cwd: dir, env: process.env as Record<string, string> })
+      ptys.write('t2', 'echo kept-$((40+2))\r')
+      await until(() => seen.map((x) => x.data).join('').includes('kept-42'))
+      const printed = seen.map((x) => x.data).join('')
+      ptys.replay('t2')
+      expect(seen.at(-1)).toEqual({ data: printed, replace: true })
+      ptys.kill('t2')
+      const before = seen.length
+      ptys.replay('t2')
+      expect(seen.slice(before).some((x) => x.replace)).toBe(false)
+    } finally {
+      ptys.kill('t2')
+      bus.off('push', on)
+    }
   })
 })
 

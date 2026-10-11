@@ -156,6 +156,25 @@ describe('sessions under failure', () => {
     off()
   })
 
+  it('lists a working chat and its retry for a window that loads meanwhile, and drops them as they end (KERNEL-340)', async () => {
+    const { sessions, chat } = await runner()
+    await sessions.send(chat.id, [{ type: 'text', text: 'Shorten the copy' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    await flush()
+    expect(sessions.runningIds()).toEqual([chat.id])
+    expect(sessions.retries()).toEqual({})
+    call.feed({ type: 'system', subtype: 'api_retry', attempt: 2, max_retries: 5, retry_delay_ms: 12_000, error_status: 529, error: 'overloaded', uuid: 'a', session_id: 's' })
+    await flush()
+    expect(sessions.retries()).toEqual({ [chat.id]: { attempt: 2, of: 5, nextAt: expect.any(Number) } })
+    call.feed({ type: 'assistant', uuid: 'm1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Shortened it.' }] }, session_id: 's' })
+    await flush()
+    expect(sessions.retries()).toEqual({})
+    expect(sessions.runningIds()).toEqual([chat.id])
+    call.feed(result())
+    await flush()
+    expect(sessions.runningIds()).toEqual([])
+  })
+
   it('reports an auth error and a dropped connection instead of a retry banner', async () => {
     const failures: string[] = []
     const { sessions, chat } = await runner({ onFailure: (f) => failures.push(f) })
@@ -341,7 +360,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(room.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     expect(ws.status).toBe('failed')
-    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     expect(texts(k, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await k.stop()
@@ -380,7 +399,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(room.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const other = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
     await k.archiveWorkspace(other.id)
@@ -598,7 +617,7 @@ describe('kernel recovery paths', () => {
 
   it('keeps a limit pause across a restart while the limit holds, and carries the stopped chat on once it resets', async () => {
     const { k, room, chat, resetsAt } = await limited()
-    const dataDir = (k as unknown as { o: { dataDir: string } }).o.dataDir
+    const dataDir = k.o.dataDir
     await k.stop()
     const again = new Kernel({ dataDir })
     // A start with a cut-off chat checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
@@ -713,7 +732,7 @@ describe('kernel recovery paths', () => {
     k.pauseRoom(room.id, 'limit')
     k.pauseRoom(other.id, 'you')
     await k.stop()
-    const again = new Kernel({ dataDir: (k as unknown as { o: { dataDir: string } }).o.dataDir })
+    const again = new Kernel({ dataDir: k.o.dataDir })
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: false })
     expect(again.store.room(room.id)?.pausedBy).toBeUndefined()

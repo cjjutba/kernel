@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { AgentDef, Approval, Workspace } from '@shared/types'
-import { call } from './api'
+import { call, cleanError } from './api'
 import { actions, getState, go, useStore } from './store'
 
 /** The room's Lead: the agent marked `lead: true`. */
@@ -36,7 +36,7 @@ async function leadWorkspace(roomId: string): Promise<Workspace | undefined> {
     return ws
   } catch (e) {
     const name = leadOf(getState().agents, roomId)?.name
-    actions.ui.toast({ title: `Could not open ${name ? `${name}'s` : "the Lead's"} chat`, sub: (e as Error).message })
+    actions.ui.toast({ title: `Could not open ${name ? `${name}'s` : "the Lead's"} chat`, sub: cleanError(e) })
     return undefined
   }
 }

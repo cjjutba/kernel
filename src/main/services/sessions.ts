@@ -6,6 +6,7 @@ import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, ty
 import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
+import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import type { Store } from '../db'
@@ -53,8 +54,8 @@ interface Live {
   tasks: Set<string>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
-  /** An api_retry is counting down. The next reply or result clears the banner. */
-  retrying?: boolean
+  /** An api_retry is counting down. The next reply or result clears the banner. Kept for a window that loads meanwhile (KERNEL-340). */
+  retry?: Retry
   /** Claude Code answered this turn with a usage limit, so the turn ended early. */
   limited?: boolean
   /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
@@ -158,6 +159,9 @@ export type { QueueReason }
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
 
+/** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
+const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
+
 export class Sessions {
   private live = new Map<string, Live>()
   /** Per chat, whether or not its process is running. */
@@ -178,7 +182,7 @@ export class Sessions {
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
   private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
-  /** Chats whose first prompt waits for the workspace's setup script to pass. */
+  /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
   private cutOff = new Map<string, CutOffReason>()
@@ -218,7 +222,7 @@ export class Sessions {
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
       const ws = chat && this.d.store.workspace(chat.workspaceId)
-      const waiting = ws?.status === 'ready' && !!ws.waitsFor?.held
+      const waiting = heldForMerge(ws)
       if ((ws?.status !== 'failed' && !waiting) || !Array.isArray(queue)) continue
       this.waiting.add(id)
       this.setQueue(id, queue)
@@ -303,10 +307,13 @@ export class Sessions {
     this.drainWaiting()
   }
 
-  /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
-  hold(chatId: string, parts: ChatPart[], o: Sender = {}) {
+  /**
+   * Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. With no
+   * message the chat only waits, as a forked workspace's does through its setup (KERNEL-346).
+   */
+  hold(chatId: string, parts?: ChatPart[], o: Sender = {}) {
     this.waiting.add(chatId)
-    this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+    this.setQueue(chatId, parts ? [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }] : this.queued(chatId))
   }
 
   release(chatId: string) {
@@ -370,6 +377,10 @@ export class Sessions {
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
   isManaged(sessionId: string) { return this.managedIds.has(sessionId) }
   isRunning(chatId: string) { return this.live.get(chatId)?.running ?? false }
+  /** The chats with a turn running, for a window that loads while they work (KERNEL-340). */
+  runningIds(): string[] { return [...this.live].filter(([, l]) => l.running).map(([id]) => id) }
+  /** The chats whose session is retrying an overloaded API, with the countdown their banner shows (KERNEL-340). */
+  retries(): Record<string, Retry> { return Object.fromEntries([...this.live].flatMap(([id, l]) => (l.retry ? [[id, l.retry]] : []))) }
   /** apiKeySource from the chat's init message. 'none' means the Claude plan pays. */
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
@@ -454,7 +465,7 @@ export class Sessions {
     const chat = this.d.store.chat(chatId)
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
-    if (this.waiting.has(chat.id)) return 'setup'
+    if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
     if (this.global) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.atCapacity(chat.id)) return 'capacity'
@@ -690,8 +701,11 @@ export class Sessions {
     }
   }
 
-  /** A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. */
-  private pushReasons() {
+  /**
+   * A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. Kernel calls it
+   * when a workspace changes too, since a held brief waits for setup or for a merge by its workspace's state (KERNEL-361).
+   */
+  pushReasons() {
     for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
   }
 
@@ -712,6 +726,8 @@ export class Sessions {
   async configure(chatId: string, patch: Partial<Pick<Chat, 'model' | 'effort' | 'plan'>>): Promise<Chat> {
     const chat = { ...this.mustChat(chatId), ...patch }
     this.d.store.saveChat(chat)
+    // The composer follows changes Kernel makes too, like leaving plan mode when a plan is approved.
+    bus.push({ type: 'chat', chat })
     const live = this.live.get(chatId)
     if (live) {
       if (patch.model) await live.query.setModel(patch.model).catch(() => undefined)
@@ -722,6 +738,15 @@ export class Sessions {
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
     return chat
+  }
+
+  /**
+   * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
+   * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67).
+   */
+  async planApproved(chatId: string) {
+    await this.configure(chatId, { plan: false }).catch(() => undefined)
+    if (this.isLeadChat(chatId)) this.handoffs.approved(chatId)
   }
 
   stop(chatId: string) {
@@ -861,9 +886,11 @@ export class Sessions {
   /**
    * Starts Claude Code the way the SDK's own spawn does, and records its pid until it exits, so a launch after a crash can
    * end it (`endLeftovers`). The SDK reads no stderr from a custom spawn, so Kernel keeps the end of it for the error note.
+   * Each process leads its own process group. In Kernel's group, a Ctrl+C or a closed tab in the terminal that ran `pnpm dev`
+   * reached every agent at once and ended its turn before the quit could save it to carry on (KERNEL-340).
    */
   private spawn(o: SpawnOptions, proc: Proc): SpawnedProcess {
-    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: true })
     proc.child = child
     child.stderr?.setEncoding('utf8')
     child.stderr?.on('data', (d: string) => { proc.stderr = (proc.stderr + d).slice(-STDERR_KEPT) })
@@ -913,7 +940,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams, compact: true }),
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude(),
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
@@ -1031,7 +1058,7 @@ export class Sessions {
           const failure = failureOf(msg.error, msg.error_status)
           // A connection error is the network's banner, not the overloaded one.
           if (failure === 'network' || failure === 'auth') { live.failed = failure; this.d.onFailure?.(failure, ws) }
-          else { live.retrying = true; bus.push({ type: 'retry', chatId, retry: { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms } }) }
+          else { live.retry = { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms }; bus.push({ type: 'retry', chatId, retry: live.retry }) }
         }
         if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
         // Most commands answer with an assistant message; some print here instead.
@@ -1175,9 +1202,7 @@ export class Sessions {
       const result = await decision
       if (!this.showBlocked(ws, chat.id)) this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
-      if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
-      if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
+      if (isPlan && result.behavior === 'allow') await this.planApproved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
@@ -1229,8 +1254,8 @@ export class Sessions {
   }
 
   private clearRetry(chatId: string, live: Live) {
-    if (!live.retrying) return
-    live.retrying = false
+    if (!live.retry) return
+    live.retry = undefined
     bus.push({ type: 'retry', chatId, retry: null })
   }
 
@@ -1596,27 +1621,19 @@ export function roomRule(command: string, suggestions?: PermissionUpdate[], supp
 }
 
 /** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean; compact?: boolean } = {}): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
-  // A chat on a 1M model compacts near 200k instead of near 1M. A window the user set themselves wins (KERNEL-226).
-  if (o.compact && !env[COMPACT_WINDOW]) env[COMPACT_WINDOW] = String(COMPACT_AT)
+  // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
   return env
 }
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
-
-/**
- * The window Claude Code compacts against. It compacts about 33k tokens below it, and a model's own smaller window still
- * applies. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` didn't move the threshold in the pinned CLI (KERNEL-226).
- */
-export const COMPACT_WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
-export const COMPACT_AT = 200_000
 
 /**
  * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP

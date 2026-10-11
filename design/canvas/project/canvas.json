@@ -1019,6 +1019,15 @@
       "x": 9120,
       "y": 15600
     },
+    "WorkspaceQuestionOther.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "A typed answer inside the question row",
+      "w": 1440,
+      "x": 12160,
+      "y": 15600
+    },
     "WorkspaceQueued.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1811,6 +1820,7 @@
     "WorkspacePerm.dc.html",
     "WorkspaceQuestion.dc.html",
     "WorkspaceQuestionSteps.dc.html",
+    "WorkspaceQuestionOther.dc.html",
     "WorkspaceQuestionAnswers.dc.html",
     "WorkspaceInterrupted.dc.html",
     "WorkspaceError.dc.html",

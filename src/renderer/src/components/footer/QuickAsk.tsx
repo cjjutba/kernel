@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openLead, openLeadChat } from '../../lead'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
@@ -52,7 +52,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
         const { chatId } = await call('lead.ask', { roomId: room.id, text: question })
         actions.chats.setItems(chatId, await call('chats.items', { chatId }))
         actions.quickAsk.setAsked(room.id, { chatId, since, question })
-      } catch (e) { setError((e as Error).message) }
+      } catch (e) { setError(cleanError(e)) }
       finally { actions.quickAsk.setSending(room.id, false) }
     })
   }

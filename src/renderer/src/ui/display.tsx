@@ -5,10 +5,10 @@ import { Button, IconButton } from './controls'
 
 /** One icon per failure type (DESIGN.md Patterns). */
 export const bannerIcon: Record<BannerKind, IconName> = {
-  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history'
+  limit: 'clock', context: 'context', offline: 'wifioff', auth: 'key', setup: 'x', hooks: 'plug', retry: 'history', trust: 'shield'
 }
 
-/** A failure banner: neutral surface, an icon for its type, never a red background. */
+/** A banner: neutral surface, an icon for its type, never a red background. */
 export function Banner({ kind, title, children, actions, onDismiss }: { kind: BannerKind; title: string; children?: ReactNode; actions?: ReactNode; onDismiss?: () => void }) {
   return (
     <div role="alert" className="banner" data-kind={kind}>

@@ -1,9 +1,9 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
-import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown } from './sharedStills'
+import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown, pricingStill } from './sharedStills'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
 
@@ -265,6 +265,18 @@ const planWaiting = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice
   approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
 }, { plan: true, model: 'claude-opus-5-5' })
 
+/** The same plan once approved: it keeps its place with its Plan approved line, plan mode is off and Kai starts building. */
+const planApproved = (f: Fixture): Partial<Fixture> => {
+  const s = planWaiting(f)
+  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Starting on step 1: Download PDF goes into the row actions menu, next to Duplicate.' }
+  return {
+    ...s,
+    chats: s.chats?.map((c) => (c.id === ids.tableChat ? { ...c, plan: false } : c)),
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'allowed' as const } : a)),
+    items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), reply] }
+  }
+}
+
 /** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals from the ones a scene passes. This one passes none and keeps the seed's.
@@ -433,6 +445,81 @@ const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
   }
 }))
 
+// Comment mode on a shared file (KERNEL-311). The canvas comments on a pricing page Noor shared, so these shots swap it in for the invoice layout.
+// A fixture run has no live page: `sharedHits` is what `system.preview.hit` finds, and the pins come from `sharedComments`.
+const pricingFile = (latest = 2): SharedFile => sharedFile('sh-pricing', 'noor', ids.table, 'Pricing page draft', 'html', '.kernel/shared/pricing.html', [
+  sharedVersion(1, 14, 20, 'text/html'), sharedVersion(2, 15, 7, 'text/html', { note: 'Prices are placeholders' }), sharedVersion(3, 15, 32, 'text/html', { note: 'Added the Team plan' })
+].slice(0, latest), HOUR)
+const commentFiles = (latest = 2): SharedFile[] => [pricingFile(latest), ...sharedFiles().filter((x) => x.id !== 'sh-html')]
+const commentData: NonNullable<Fixture['sharedData']> = {
+  ...sharedStills,
+  'sh-pricing': { 1: { text: '', thumb: pricingStill }, 2: { text: '', thumb: pricingStill }, 3: { text: '', thumb: pricingStill } }
+}
+const WINDOW = { width: 1280, height: 800, scrollY: 0 }
+const pricingHits: SharedAnchor[] = [
+  { x: 412, y: 188, viewport: WINDOW, element: { selector: 'section.hero > div.actions > button.cta', tag: 'button', text: 'Start free trial', rect: { x: 40, y: 160, width: 120, height: 36 } } },
+  { x: 880, y: 300, viewport: WINDOW, element: { selector: 'section.plans > div.plan:nth-of-type(3)', tag: 'div', text: 'Team $49 per month Five seats Shared client list', rect: { x: 501, y: 225, width: 216, height: 149 } } }
+]
+const comment = (id: string, sharedId: string, version: number, note: string, anchor: SharedAnchor): SharedComment =>
+  ({ id, sharedId, version, at: at(15, 8), note, anchor, chatId: ids.tableChat, itemId: `${id}-item` })
+const commentNotes: SharedComment[] = [
+  comment('cm-1', 'sh-pricing', 2, 'Tighten this headline.', { x: 503, y: 88, viewport: WINDOW, element: { selector: 'section.hero > h1', tag: 'h1', text: 'Invoicing that gets out of the way', rect: { x: 40, y: 68, width: 520, height: 36 } } }),
+  comment('cm-2', 'sh-pricing', 2, 'Make this one an outline.', { x: 256, y: 157, viewport: WINDOW, element: { selector: 'section.hero > div.actions > button:nth-of-type(2)', tag: 'button', text: 'See plans', rect: { x: 170, y: 160, width: 100, height: 36 } } }),
+  comment('cm-3', 'sh-image', 1, 'This weight looks too light.', { x: 449, y: 234, viewport: { width: 616, height: 385, scrollY: 0 } }),
+  comment('cm-4', 'sh-image', 1, 'The digits need more space.', { x: 481, y: 342, viewport: { width: 616, height: 385, scrollY: 0 } })
+]
+
+/** Noor's workspace with one of the two files open in a tab, in comment shots. `latest` is how many versions the page has. */
+const commentTab = (file: 'sh-pricing' | 'sh-image', latest = 2, picked?: number) => scene((f) => ({
+  ...renderer(f),
+  shared: commentFiles(latest).filter((x) => x.workspaceId === ids.table),
+  sharedData: commentData,
+  sharedComments: commentNotes,
+  sharedHits: pricingHits,
+  ui: {
+    ...open,
+    workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+    tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file], ...(picked ? { sharedVersion: { [file]: picked } } : {}) } }
+  }
+}))
+
+/** The comment as the agent got it, in the chat after Send (WorkspaceSharedCommentSent). */
+const commentSent = scene((f) => ({
+  ...renderer(f),
+  items: { [ids.tableChat]: [
+    userMsg('cs-u', 'Draft the pricing page so I can click through it.'),
+    { kind: 'text' as const, id: 'cs-t', ts: at(15, 7), text: 'Here is the pricing page draft. The prices are placeholders.' },
+    {
+      kind: 'user' as const, id: 'cs-c', ts: at(15, 9), parts: [
+        { type: 'text' as const, text: 'Comment on "Pricing page draft" v2 (.kernel/shared/pricing.html).\nWhere: the <button> "Start free trial" (section.hero > div.actions > button.cta), at 412, 188 in a 1280 px wide window.\n> Make this button the same blue as the header.' },
+        { type: 'image' as const, name: 'pricing-page-draft-v2-comment.png', width: 320, height: 200 }
+      ]
+    }
+  ] },
+  shared: commentFiles().filter((x) => x.workspaceId === ids.table),
+  sharedData: commentData,
+  ui: {
+    ...open,
+    workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+    tabs: { [ids.table]: { tab: ids.tableChat, lastChat: ids.tableChat, files: [], diffs: [], shared: ['sh-pricing'] } },
+    toasts: [{ id: 'cs-toast', title: 'Sent to Noor', action: { label: 'Open chat', tab: { workspaceId: ids.table, id: ids.tableChat } } }]
+  }
+}))
+
+/** Rowan's workspace, with the page Noor shared from a workspace that has been archived since (WorkspaceSharedCommentArchived). */
+const commentArchived = (f: Fixture): Partial<Fixture> => {
+  const p = sharedPanel(f)
+  return {
+    ...p,
+    workspaces: (p.workspaces ?? f.workspaces).map((w) => (w.id === ids.table ? { ...w, status: 'archived' as const } : w)),
+    shared: commentFiles(),
+    sharedData: commentData,
+    sharedComments: commentNotes,
+    sharedHits: pricingHits,
+    ui: { ...p.ui, tabs: { [ids.lead]: { tab: 'shared:sh-pricing', lastChat: ids.leadChat, files: [], diffs: [], shared: ['sh-pricing'] } } }
+  }
+}
+
 /** Rowan's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
 const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
@@ -481,6 +568,88 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
   return { ...rest, shared: sharedFiles(), sharedData: sharedStills }
 }
 
+// ---------- Lead chats that hold several tabs (KERNEL-338)
+
+const GROUPED = { export: 't-export', table: 't-table', login: 't-login', demo: 't-demo', csv: 't-csv' } as const
+const groupedThread = (id: string, title: string, m: number): Thread => ({ id, roomId: ids.roomA, title, createdAt: at(9, m) })
+/** A tab of the Lead's workspace in the Lead chat `threadId`. */
+const leadTab = (id: string, threadId: string, title: string, m: number, over: Partial<Chat> = {}): Chat =>
+  ({ id, workspaceId: ids.lead, title, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, threadId, createdAt: at(9, m), ...over })
+/** A workspace the Lead's chat `threadId` handed off, from its first tab. */
+const handedOff = (id: string, name: string, task: string, agentId: string, port: number, over: Partial<Workspace> = {}): Workspace =>
+  ({ id, roomId: ids.roomA, name, branch: `feat/${task}-${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port, status: 'ready', prState: 'none', createdAt: at(10, 2), threadId: GROUPED.export, leadChatId: ids.leadChat, ...over })
+
+const T15_STEPS = [
+  { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
+  { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
+]
+
+/** The first tab of the Export chat: the plan Rowan wrote and you approved, then the hand-off. */
+const exportItems = (): ChatItem[] => [
+  userMsg('g1', 'Add PDF export to invoices. Spec first.'),
+  { kind: 'thinking', id: 'g1-th', ts: at(10, 8), text: 'Renderer, button, tests and review can run in parallel.' },
+  tool('g1-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' }),
+  tool('g1-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
+  { kind: 'text', id: 'g1-tx', ts: at(10, 9), text: 'I split PDF export into four tasks that can run in parallel.' },
+  { kind: 'approval', id: 'approval-ap-plan-rowan', ts: at(10, 12), approvalId: 'ap-plan-rowan' },
+  { kind: 'text', id: 'g1-done', ts: at(10, 13), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
+]
+
+/** The Lead's workspace on the sidebar the Grouped PNGs share: four Lead chats, two of them with several tabs, and their workspaces. Each shot picks what is open. */
+function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'changes' | 'files'; running?: string[]; items?: Record<string, ChatItem[]>; chats?: (c: Chat[]) => Chat[]; threads?: (t: Thread[]) => Thread[] } = {}): Partial<Fixture> {
+  const T = GROUPED
+  const chats = [
+    leadTab(ids.leadChat, T.export, 'Export invoices as PDF', 5),
+    leadTab('chat-kai-pr', T.export, "How is Kai's PR going?", 6),
+    leadTab('chat-per-client', T.export, 'One PDF per client', 7),
+    leadTab('chat-table', T.table, 'Invoice table and empty states', 8),
+    leadTab('chat-table-copy', T.table, 'Empty state copy', 9),
+    leadTab('chat-login', T.login, 'Client portal login', 10),
+    leadTab('chat-login-redirect', T.login, 'Login redirect copy', 11),
+    leadTab('chat-demo', T.demo, 'Seed realistic demo data', 12)
+  ]
+  const threads = [
+    groupedThread(T.export, 'Export invoices as PDF', 5), groupedThread(T.table, 'Invoice table and empty states', 8),
+    groupedThread(T.login, 'Client portal login', 10), groupedThread(T.demo, 'Seed realistic demo data', 12)
+  ]
+  const plan: Approval = { ...pending('plan', 'rowan', { workspaceId: ids.lead, chatId: ids.leadChat, title: 'Plan for T-15', steps: T15_STEPS }), status: 'allowed', createdAt: at(10, 12) }
+  const tab = o.tab ?? ids.leadChat
+  const handed: Workspace[] = [
+    handedOff('ws-pdf-renderer', 'invoice-pdf-renderer', 't-15a', 'noor', 4320, { stat: { files: 3, added: 188, removed: 0 } }),
+    handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'kai', 4321, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' }),
+    handedOff('ws-pdf-tests', 'invoice-pdf-tests', 't-15c', 'ivy', 4322, { stat: { files: 2, added: 138, removed: 9 } })
+  ]
+  return {
+    threads: (o.threads ?? ((t) => t))(threads),
+    // The seed's single Lead chat gives way to the tabs above. The table and schema workspaces were handed off by the table chat.
+    chats: [...(o.chats ?? ((c) => c))(chats), ...f.chats.filter((c) => c.workspaceId !== ids.lead)],
+    workspaces: [...withWorkspace(f, ids.table, { threadId: T.table }).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w)), ...handed],
+    items: { [ids.leadChat]: exportItems(), [ids.tableChat]: [], ...o.items },
+    approvals: [plan, ...f.approvals],
+    push: [...f.push, ...(o.running ?? ['chat-table']).map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true }))],
+    // The Lead works on the main checkout, so no file differs from the base.
+    tree: { ...f.tree, [ids.lead]: (f.tree?.[ids.table] ?? []).map(({ status: _s, ...e }) => e) },
+    fileText: { ...f.fileText, [ids.lead]: f.fileText?.[ids.table] ?? {} },
+    ui: {
+      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: o.right ?? 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+      tabs: { [ids.lead]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
+    }
+  }
+}
+
+/** Rowan, mid-turn `ago` seconds in, as the running tabs of the Grouped shots show it. */
+const groupedTurn = (id: string, ago: number, ask: string, thought: string, tools: ChatItem[], reply?: string): ChatItem[] => [
+  { ...userMsg(id, ask), ts: Date.now() - ago * 1000 }, { kind: 'thinking', id: `${id}-th`, ts: at(10, 28), text: thought }, ...tools, ...(reply ? [{ kind: 'text' as const, id: `${id}-tx`, ts: at(10, 29), text: reply }] : [])
+]
+
+/** What a freshly cloned repo's settings.toml asks the user to trust (KERNEL-209, KERNEL-218). */
+export const scriptTrust: ScriptTrust = {
+  roomId: ids.roomA, hash: 'a41f0c9e', workspaceIds: [ids.table],
+  scripts: { setup: 'pnpm install --frozen-lockfile\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'pnpm clean' },
+  runScripts: [{ name: 'storybook', command: 'pnpm storybook --port $KERNEL_PORT' }],
+  copy: ['.env.local', 'certs/*.pem']
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -493,6 +662,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
     ui: open
   })),
+  // KERNEL-218: KERNEL-209 holds the workspace until the room's scripts are trusted. The brief waits in the queue.
+  WorkspaceTrustHeld: scene((f) => {
+    const queue = [{ id: 'q-trust', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Build the invoice table.' }], ts: at(10, 2) }]
+    return {
+      workspaces: withWorkspace(f, ids.table, { status: 'trust' }),
+      items: { [ids.tableChat]: [] },
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'room.trust', roomId: ids.roomA, trust: scriptTrust }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'setup' }],
+      ui: open
+    }
+  }),
   WorkspaceLoading: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },
@@ -526,6 +706,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
+  // The "..." menu under Kai's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
+  WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
   // No PNG draws a tab's state icon (D-098). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
   WorkspaceTabStates: scene((f) => ({
     chats: [
@@ -574,6 +756,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
+  WorkspacePlanApproved: scene(planApproved),
   // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
@@ -640,6 +823,73 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
+  // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
+  GroupedNewChat: scene((f) => {
+    const csv = leadTab('chat-csv', GROUPED.csv, 'Add CSV export', 13, { plan: true })
+    const g = grouped(f, {
+      tab: csv.id, running: ['chat-table', csv.id], chats: (c) => [...c, csv], threads: (t) => [...t, groupedThread(GROUPED.csv, 'Add CSV export', 13)],
+      items: { [csv.id]: groupedTurn('csv', 9, 'Add CSV export next to the PDF one. Spec first.', 'PDF export already lives in the row actions. CSV can sit in the same menu.', [tool('csv-t1', 'Read the invoices module', 'cat src/app/invoices/page.tsx', { name: 'Read' })]) }
+    })
+    return g
+  }),
+  GroupedTabs: scene((f) => grouped(f)),
+  GroupedSwitchChat: scene((f) => grouped(f, {
+    tab: 'chat-table', right: 'files', files: ['src/app/invoices/table.tsx'],
+    items: { 'chat-table': groupedTurn('gt', 38, 'Build the invoice table with sorting, plus the empty, loading and error states.', 'The table and the schema change are independent. Kai and Noor can start together.', [
+      tool('gt-t1', 'Write the plan', 'cat > plans/t-14-invoice-table.md', { name: 'Write' })
+    ], 'Kai has the table and its states. Noor has the schema change the table needs. I will tell you when either opens a PR.').concat([
+      tool('gt-t2', 'Check on Kai and Noor', 'kernel workspaces')
+    ]) }
+  })),
+  GroupedNewTabMenu: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, menu: 'newTab' } } }),
+  GroupedSharedWork: scene((f) => grouped(f, {
+    tab: 'chat-kai-pr',
+    items: { 'chat-kai-pr': [
+      userMsg('sw', "How is Kai's PR going?"),
+      tool('sw-t1', "List this chat's workspaces", 'kernel workspaces', { name: 'Bash' }),
+      tool('sw-t2', 'Read the approved plan', 'cat plans/t-15-invoice-pdf.md', { name: 'Read' }),
+      { kind: 'text', id: 'sw-tx', ts: at(10, 56), text: [
+        "Kai's PR is open as #43 on invoice-pdf-button. Checks pass and Theo is reviewing it. Here is where your other workspaces in this chat stand.", '',
+        '**Your workspaces in this chat**', '', '```', 'invoice-pdf-renderer  Noor  working', 'invoice-pdf-button    Kai   PR #43 open', 'invoice-pdf-tests     Ivy   waiting on the renderer', '```', '',
+        '**From the plan you approved in the first tab**', '', '1. T-15a PDF renderer with embedded fonts · Noor', '2. T-15b Download PDF in the row actions · Kai', '3. T-15c Snapshot tests for three invoice types · Ivy'
+      ].join('\n') },
+      { kind: 'result', id: 'sw-res', ts: at(10, 56), durationMs: 11_000, ok: true }
+    ] }
+  })),
+  GroupedContextFull: scene((f) => grouped(f, { chats: (c) => c.map((x) => (x.id === ids.leadChat ? { ...x, context: 92 } : x)) })),
+  // The same chat after New tab in the banner: a fourth tab, empty, in the same chat.
+  GroupedContextFullAfter: scene((f) => grouped(f, { tab: 'chat-new', chats: (c) => [...c.slice(0, 3), leadTab('chat-new', GROUPED.export, 'New tab', 14), ...c.slice(3)] })),
+  // Kai finished in the first tab, which you closed since. The update goes to a tab that is still open, and says where the work came from.
+  GroupedUpdateRouted: scene((f) => {
+    const row: TeamUpdateRow = {
+      workspaceId: 'ws-pdf-button', agentId: 'kai', name: 'Kai', task: 'T-15b Download PDF in the row actions', prNumber: 43, fromChat: 'Export invoices as PDF', fromTab: true,
+      events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }, { kind: 'pr.opened', text: 'Opened PR #43', actionable: false }],
+      reply: 'PR #43 is ready to merge. Checks pass and Theo approved it.'
+    }
+    return grouped(f, {
+      tab: 'chat-kai-pr', chats: (c) => c.map((x) => (x.id === ids.leadChat ? { ...x, closed: true } : x)),
+      items: { 'chat-kai-pr': [
+        userMsg('ur', "How is Kai's PR going?"),
+        { kind: 'text', id: 'ur-tx', ts: at(10, 30), text: "Kai's PR is open as #43 on invoice-pdf-button. Checks are still running." },
+        { kind: 'user', id: 'ur-up', ts: at(10, 41), from: 'kernel', update: { rows: [row] }, parts: [{ type: 'text', text: ['Team update from Kernel, not from the user.', '', 'From "Export invoices as PDF", a tab you closed:', '- Kai (kai) · T-15b Download PDF in the row actions · workspace ws-pdf-button: PR #43 is ready to merge.'].join('\n') }] }
+      ] }
+    })
+  }),
+  // Chat rows say what waits on you and what is running: the login chat has a question open in one tab, the table chat is working.
+  GroupedRowStatus: scene((f) => {
+    const g = grouped(f)
+    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: ids.lead, chatId: 'chat-login', title: 'Should the login redirect keep Google sign-in?', options: ['Keep it', 'Drop it'] }) }
+    return { ...g, approvals: [ask, ...(g.approvals ?? [])] }
+  }),
+  // The last tab of a chat that is still running asks first. Closing it leaves the chat's two workspaces in the sidebar.
+  GroupedCloseLastTab: scene((f) => {
+    const g = grouped(f, { tab: 'chat-table', chats: (c) => c.filter((x) => x.id !== 'chat-table-copy') })
+    return { ...g, ui: { ...g.ui!, modal: { name: 'confirm', kind: 'closeChats', workspaceId: ids.lead, chatIds: ['chat-table'] } } }
+  }),
+  GroupedCloseLastTabAfter: scene((f) => grouped(f, {
+    running: [], chats: (c) => c.filter((x) => x.id !== 'chat-table-copy').map((x) => (x.id === 'chat-table' ? { ...x, closed: true } : x)),
+    threads: (t) => t.map((x) => (x.id === GROUPED.table ? { ...x, closedAt: at(10, 50) } : x))
+  })),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
@@ -650,6 +900,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
   WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
+  // Comment mode (KERNEL-311). The shots click Comment and the spot (scripts/shots.ts); the state they reach is not a fixture's to force.
+  WorkspaceSharedComment: commentTab('sh-pricing'),
+  WorkspaceSharedCommentImage: commentTab('sh-image'),
+  WorkspaceSharedCommentSent: commentSent,
+  WorkspaceSharedCommentArchived: scene((f) => commentArchived(f)),
+  WorkspaceSharedCommentOlder: commentTab('sh-pricing', 3, 2),
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({
     settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
@@ -756,6 +1012,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
     return {
       queue: { [ids.tableChat]: queue },
       push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'capacity' }],
+      ui: open
+    }
+  }),
+  /** A brief Rowan handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
+  WorkspaceQueuedMerge: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
+    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' })
+    return {
+      workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
+      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.' }] },
+      queue: { [ids.tableChat]: queue },
+      // A held brief has no run script and no changes yet (KERNEL-259).
+      changes: { ...f.changes, [ids.table]: [] },
+      push: [...f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'), { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'merge' }],
       ui: open
     }
   }),

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, ConfirmDialog, useBusy } from '../../ui'
 import { archiveByHand } from './byHand'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /**
  * Archive a workspace (ConfirmArchive.png). With commits that never reached GitHub, the main button pushes first and
@@ -38,7 +37,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
       await archiveByHand({ workspaceId, deleteBranch: current || unread || (!push && unpushed > 0) ? false : deleteBranch, push })
       actions.ui.closeModal()
       actions.ui.toast({ title: push ? `Pushed ${plural(unpushed, 'commit')} and archived ${ws.name}.` : unpushed ? 'Archived without pushing. The commits are on the local branch.' : `Archived ${ws.name}.` })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   const removes = current ? 'This workspace is on your current branch, so no files are removed. The chat stays, and you can restore it from History.' : 'Archiving removes the worktree. The branch and chat stay, and you can restore it from History.'

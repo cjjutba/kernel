@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { KernelApi } from '@shared/ipc'
 import type { Room } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { RoomIcon } from '../../../components/RoomIcon'
 import { actions, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy, type MenuEntry } from '../../../ui'
@@ -12,7 +12,6 @@ type Kind = 'letter' | 'github' | 'image'
 
 const LABEL: Record<Kind, string> = { letter: 'Letter', github: 'GitHub avatar', image: 'Image' }
 const BUSY: Record<Kind, string> = { letter: 'Saving', github: 'Getting avatar', image: 'Saving' }
-const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /** Settings > a room > General > Icon (SettingsRoom.png, SettingsRoomIcon.png): the room's letter, its GitHub avatar or a picked image. */
 export function RoomIconRow({ room }: { room: Room }) {
@@ -23,7 +22,7 @@ export function RoomIconRow({ room }: { room: Room }) {
   // The avatar comes from the room's GitHub owner, so a room with no GitHub repo can't ask for one. One that already has it keeps the entry.
   const github = !!room.repo || kind === 'github'
 
-  const fail = (e: unknown) => actions.ui.toast({ title: 'Could not change the icon', sub: reason(e) })
+  const fail = (e: unknown) => actions.ui.toast({ title: 'Could not change the icon', sub: cleanError(e) })
   const save = (next: Kind, icon: KernelApi['rooms.setIcon']['req']['icon']) => void run(next, async () => {
     try {
       actions.rooms.upsert(await call('rooms.setIcon', { roomId: room.id, icon }))

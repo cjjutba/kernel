@@ -2,11 +2,14 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
 type Ok = { ok: true }
+
+/** Claude is overloaded and the session is retrying: which attempt, out of how many, and when the next one goes. */
+export interface Retry { attempt: number; of: number; nextAt: number }
 
 /**
  * Request/response pairs for ipcRenderer.invoke. One place to see everything the UI can ask for, built or not.
@@ -70,6 +73,11 @@ export interface KernelApi {
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
   /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
   'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; model?: ModelId; effort?: Effort; plan?: boolean }; res: Workspace }
+  /**
+   * Fork into new workspace (KERNEL-346): a new worktree workspace on a branch from the chat's workspace's HEAD, with its files as
+   * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
+   */
+  'workspaces.fork': { req: { chatId: string; itemId?: string }; res: Workspace }
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */
   'workspaces.restore': { req: { workspaceId: string }; res: Workspace }
@@ -105,8 +113,11 @@ export interface KernelApi {
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
-  /** `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). */
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string }; res: Chat }
+  /**
+   * `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). In the Lead's workspace a chat tab
+   * joins `threadId`, or starts a new thread when it is unset (KERNEL-337).
+   */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string; threadId?: string }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
@@ -126,11 +137,18 @@ export interface KernelApi {
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
+  /**
+   * The chats with a turn running and the ones retrying, which `chat.running` and `retry` only report as they change. A window
+   * that loads while agents work reads them here, or every working agent would look stopped (KERNEL-340).
+   */
+  'chats.live': { req: void; res: { running: string[]; retry: Record<string, Retry> } }
   'skills.list': { req: { roomId: string }; res: Skill[] }
   /** Claude Code's own slash commands for the / menu. The same in every room, so it is read once. */
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** Pushes the terminal's kept output as one `terminal.data` with `replace`, for a window that wasn't there to see it (KERNEL-340). */
+  'terminal.replay': { req: { chatId: string }; res: Ok }
   /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
   'terminal.presets': { req: void; res: TerminalPreset[] }
 
@@ -152,11 +170,15 @@ export interface KernelApi {
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
   /** Ask Rowan from anywhere (QuickAsk.png). The answer streams into the returned chat. */
-  'lead.ask': { req: { roomId: string; text: string }; res: { chatId: string } }
+  'lead.ask': { req: { roomId: string; text: string; threadId?: string }; res: { chatId: string } }
   /** The Lead's workspace, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Created on the main checkout the first time. */
   'lead.open': { req: { roomId: string }; res: Workspace }
   /** The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). */
   'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }; res: Chat }
+  /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
+  'threads.list': { req: { roomId?: string }; res: Thread[] }
+  /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
+  'threads.rename': { req: { threadId: string; title: string }; res: Thread }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
@@ -175,6 +197,8 @@ export interface KernelApi {
   'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
   /** Stops the named run script, or every run script in the workspace without a name. */
   'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
+  /** Pushes the workspace's script output, exit codes and URLs as one `script.state`, for a window that wasn't there to see them (KERNEL-340). */
+  'scripts.replay': { req: { workspaceId: string }; res: Ok }
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
@@ -234,6 +258,19 @@ export interface KernelApi {
   /** Open in Preview: Kernel's copy of a PDF version in the Mac's default PDF app. Refused for any other kind, which Kernel never hands to the system to open. */
   'shared.open': { req: { sharedId: string; version: number }; res: Ok }
 
+  // comments on shared files (KERNEL-310)
+  /**
+   * Sends a comment to the agent that shared the file, as a plain message naming the file, version and spot, with `image`
+   * (the crop around it) attached. Goes to the version's chat, else the workspace's first open chat, else a new one.
+   * `queued` and `why` say a busy chat or setup holds it. Refused for an archived workspace and for PDFs.
+   */
+  'shared.comment': {
+    req: { sharedId: string; version: number; note: string; anchor: SharedAnchor; image?: { dataUrl: string; width: number; height: number } }
+    res: { chatId: string; workspaceId: string; queued: boolean; why?: QueueReason }
+  }
+  /** Every comment on a shared file, every version, oldest first. */
+  'shared.comments': { req: { sharedId: string }; res: SharedComment[] }
+
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
   /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
@@ -259,6 +296,20 @@ export interface KernelApi {
   'system.preview.reload': { req: { viewId: string }; res: Ok }
   'system.preview.focus': { req: { viewId: string }; res: Ok }
   'system.preview.close': { req: { viewId: string }; res: Ok }
+
+  // pinning comments in a preview (KERNEL-310). Each runs in a world the page's own scripts can't see. Points and rects
+  // in a request or in `locate`'s answer are Kernel's CSS pixels from the view's top-left corner, as `place` takes them.
+  /**
+   * The element under a point: its selector, tag, text and rect, with the window it sits in. The anchor is in the page's own
+   * CSS pixels, which the comment's message names. Null when the view is gone.
+   */
+  'system.preview.hit': { req: { viewId: string; x: number; y: number }; res: SharedAnchor | null }
+  /** A PNG of the view around `rect`, padded by 24 px, from 320x200 to 1200x800. Null when the view is gone. */
+  'system.preview.crop': { req: { viewId: string; rect: { x: number; y: number; width: number; height: number } }; res: { dataUrl: string; width: number; height: number } | null }
+  /** Scrolls the page by `dx`, `dy`, or to `y`, in the page's pixels. Returns where it ended up, null when the view is gone. */
+  'system.preview.scroll': { req: { viewId: string; dx?: number; dy?: number; y?: number }; res: { scrollY: number } | null }
+  /** Where each selector's element is now, null for one that matches nothing. Places pins again after a scroll or reload. */
+  'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
 }
 
 export type Channel = keyof KernelApi
@@ -267,6 +318,8 @@ export type Channel = keyof KernelApi
 export type PushEvent =
   | { type: 'activity'; event: ActivityEvent }
   | { type: 'chat'; chat: Chat }
+  /** A Lead chat was created, renamed, retitled or closed (KERNEL-337). */
+  | { type: 'thread'; thread: Thread }
   | { type: 'chat.item'; chatId: string; item: ChatItem }
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
@@ -276,7 +329,11 @@ export type PushEvent =
    * and is absent once it is empty (KERNEL-271).
    */
   | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
-  | { type: 'terminal.data'; chatId: string; data: string }
+  /**
+   * Output from a terminal. With `replace` it is everything main kept, which takes the place of what the window has. A replay
+   * goes out on this same stream, after every chunk it already holds and before the next one (KERNEL-340).
+   */
+  | { type: 'terminal.data'; chatId: string; data: string; replace?: true }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
@@ -291,6 +348,12 @@ export type PushEvent =
   | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
   /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
   | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
+  /**
+   * Everything main kept of a workspace's scripts, in place of what the window has: the lines, each script's exit code by
+   * `scriptKey` (absent while it runs), and each running run script's URL by name. Sent on the push stream like the lines
+   * themselves, so none is shown twice or missed (KERNEL-340).
+   */
+  | { type: 'script.state'; workspaceId: string; lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string> }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
@@ -305,7 +368,7 @@ export type PushEvent =
   /** Network reachability as main sees it (WorkspaceOffline.png). */
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */
-  | { type: 'retry'; chatId: string; retry: { attempt: number; of: number; nextAt: number } | null }
+  | { type: 'retry'; chatId: string; retry: Retry | null }
   /** A file was shared, or got a new version (KERNEL-302). */
   | { type: 'shared'; file: SharedFile }
   /**
@@ -315,6 +378,8 @@ export type PushEvent =
   | { type: 'preview'; viewId: string; state: 'loading' | 'ready' | 'settled' | 'crashed' | 'unresponsive' }
   /** An app shortcut typed inside a preview, or F6 (code `F6`), which only asks the tab to focus its frame. Main has moved focus back to the app, which runs the shortcut. */
   | { type: 'preview.key'; key: string; code: string; meta: boolean; shift: boolean; alt: boolean; ctrl: boolean }
+  /** A comment on a shared file was stored (KERNEL-310). */
+  | { type: 'shared.comment'; comment: SharedComment }
   /** A toast from main, for news no other event carries: the window reloaded after a crash, or diagnostics were copied (KERNEL-288). */
   | { type: 'toast'; toast: Omit<Toast, 'id'> }
 

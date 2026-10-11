@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FolderInfo } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { Button, Icon, Modal } from '../../ui'
 import { baseName, getDraft, patchDraft, tilde, titleOf } from './draft'
@@ -22,7 +22,7 @@ export function OpenFolder() {
   const choose = async () => {
     const path = await call('system.pickFolder', undefined)
     if (!path) return
-    try { add(await call('rooms.inspectFolder', { path })) } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+    try { add(await call('rooms.inspectFolder', { path })) } catch (e) { setError(cleanError(e)) }
   }
   const back = () => (getDraft().name ? actions.ui.openModal({ name: 'newRoom' }) : actions.ui.closeModal())
   const current = folders?.find((f) => f.path === picked)

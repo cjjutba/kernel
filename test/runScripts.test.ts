@@ -165,6 +165,52 @@ describe('named run scripts (KERNEL-244)', () => {
   })
 })
 
+describe('a window that loads while scripts run (KERNEL-340)', () => {
+  /** What `scripts.replay` pushes for the workspace. */
+  async function replay(h: Awaited<ReturnType<typeof kernelOn>>['h'], workspaceId: string) {
+    let state: Extract<PushEvent, { type: 'script.state' }> | undefined
+    const on = (e: PushEvent) => { if (e.type === 'script.state' && e.workspaceId === workspaceId) state = e }
+    bus.on('push', on)
+    await h['scripts.replay']({ workspaceId })
+    bus.off('push', on)
+    return state!
+  }
+  const runLines = (state: Extract<PushEvent, { type: 'script.state' }>) => state.lines.filter((l) => l.kind === 'run').map((l) => `${l.name}: ${l.line}`)
+
+  it('gets back the lines, the URL while a script runs and the exit once it stops', async () => {
+    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "echo serving http://localhost:$KERNEL_PORT; sleep 30"\n\n[run_scripts]\nonce = "echo once; exit 3"\n`))
+    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    for (const name of ['run', 'once']) await h['scripts.run']({ workspaceId: ws.id, kind: 'run', name })
+    await until(() => printed(ws, 'run', `serving http://localhost:${ws.port}`) && exited(ws, 'once'), 'run to serve and once to exit')
+    const serving = await replay(h, ws.id)
+    expect(runLines(serving)).toEqual(expect.arrayContaining([`run: serving http://localhost:${ws.port}`, 'once: once']))
+    expect(serving.url).toEqual({ run: `http://localhost:${ws.port}` })
+    expect(serving.exit).toEqual({ 'run:once': 3 })
+
+    await h['scripts.stop']({ workspaceId: ws.id, kind: 'run' })
+    await until(() => exited(ws, 'run'), 'run to exit')
+    const stopped = await replay(h, ws.id)
+    expect(stopped.url).toEqual({})
+    expect(Object.keys(stopped.exit).sort()).toEqual(['run', 'run:once'])
+
+    // Started again, so its last exit no longer says it stopped.
+    await h['scripts.run']({ workspaceId: ws.id, kind: 'run' })
+    expect(Object.keys((await replay(h, ws.id)).exit)).toEqual(['run:once'])
+    await h['scripts.stop']({ workspaceId: ws.id, kind: 'run' })
+  })
+
+  it("forgets an archived workspace's scripts, the exits that come after the archive included", async () => {
+    const { k, h, room } = await kernelOn(scripts(`[scripts]\nrun = "${LONG}"\n`))
+    const ws = await k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })
+    await h['scripts.run']({ workspaceId: ws.id, kind: 'run' })
+    await until(() => printed(ws, 'run', `started-${ws.port}`), 'run to start')
+    expect(runLines(await replay(h, ws.id))).toContain(`run: started-${ws.port}`)
+    await k.archiveWorkspace(ws.id)
+    await until(() => exited(ws, 'run'), 'run to exit')
+    expect(await replay(h, ws.id)).toMatchObject({ lines: [], exit: {}, url: {} })
+  })
+})
+
 describe('run mode (KERNEL-244)', () => {
   const toml = (mode: string) => scripts(`[scripts]\nrun = "${LONG}"\nrun_mode = "${mode}"\n\n[run_scripts]\nweb = "${LONG}"\n`)
 
@@ -251,7 +297,7 @@ describe('port blocks (KERNEL-244)', () => {
 
   it('running out of ports leaves no worktree or branch behind', async () => {
     const { k, room, repo } = await kernelOn({})
-    const reserved = (k as unknown as { reservedPorts: Set<number> }).reservedPorts
+    const reserved = k.workspaces['reservedPorts']
     for (const p of BLOCK_STARTS) reserved.add(p)
     await expect(k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })).rejects.toThrow('No free block of ports')
     expect((await git(repo, 'branch', '--format=%(refname:short)')).trim()).toBe('main')

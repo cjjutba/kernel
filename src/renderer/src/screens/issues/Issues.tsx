@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { LinearIssue, LinearScope } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { getState, go, useStore } from '../../store'
 import { Banner, Button, Icon, IconButton, Pill, Spinner } from '../../ui'
 import { IssuePriority, IssueState } from '../../icons'
@@ -18,7 +18,7 @@ type View = { kind: 'loading' } | { kind: 'connect' } | { kind: 'error'; title: 
 const UNREACHABLE: View = { kind: 'error', title: "Can't reach Linear", sub: 'Check your connection, then try again.' }
 
 function failure(e: unknown): View {
-  const message = e instanceof Error ? e.message : String(e)
+  const message = cleanError(e)
   if (/^Connect Linear/i.test(message)) return { kind: 'connect' }
   if (/rejected the token/i.test(message)) return { kind: 'error', title: 'Linear rejected the token', sub: 'Reconnect it in Settings, Integrations, then try again.' }
   if (/could not reach/i.test(message)) return UNREACHABLE

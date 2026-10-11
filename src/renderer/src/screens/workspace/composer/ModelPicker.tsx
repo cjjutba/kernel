@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { EFFORTS, MODELS, type Effort, type ModelId } from '@shared/types'
 import { actions } from '../../../store'
-import { Icon } from '../../../ui'
+import { ClaudeMark, Icon } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
 import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, useEffortMemory } from './modelPrefs'
@@ -78,7 +78,7 @@ export function ModelPicker({ model, effort, fallback, onModel, onEffort, onClos
           {rows.map((m, i) => (
             <button key={m.id} type="button" role="option" aria-selected={m.id === model} tabIndex={-1} className="menu-item pick-row" data-active={!sub && i === at}
               onMouseEnter={() => { setAt(i); setSub(false) }} onMouseDown={(e) => e.preventDefault()} onClick={() => pickModel(m.id)}>
-              <span className="pick-glyph"><Icon name="claude" size={14} stroke={1.5} /></span>
+              <span className="pick-glyph"><ClaudeMark size={14} /></span>
               <span className="pick-name">{m.label}</span>
               <span className="pick-effort">{effortLabel(rowEffort(m.id))}</span>
               <span className="grow" />

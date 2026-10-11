@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
 import { archivedList, deleteAllLabel, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
@@ -38,7 +38,7 @@ export function History() {
       actions.ui.toast({ title: `Restored ${w.name}`, sub: `Back on ${w.branch}` })
       go({ name: 'workspace', workspaceId: w.id })
     } catch (e) {
-      actions.ui.toast({ title: `Could not restore ${w.name}`, sub: (e as Error).message })
+      actions.ui.toast({ title: `Could not restore ${w.name}`, sub: cleanError(e) })
     }
   })
 

@@ -89,8 +89,8 @@ describe('the Team update card', () => {
     expect(html).not.toContain('Show more')
     expect(html).toContain('<h3 class="tucard-title">Team update</h3>')
     expect(html).toContain('Updates on 1 more workspace left out')
-    expect(html).toContain('>Copy<')
-    expect(html).not.toContain('>Edit<')
+    expect(html).toContain('aria-label="Copy"')
+    expect(html).not.toContain('aria-label="Edit"')
     expect(html).toMatch(/<button[^>]*aria-label="Open Kai&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
   })
 
@@ -103,6 +103,17 @@ describe('the Team update card', () => {
     expect(odd).not.toContain('tucard')
     expect(odd).toContain('class="note"')
     expect(odd).toContain('Something Kernel no longer writes')
+  })
+
+  it('names a closed tab of this chat apart from a closed Lead chat, from saved rows and from the lines (KERNEL-337)', async () => {
+    const { TeamUpdateView } = await load()
+    const row = (workspaceId: string, extra: object) => ({ workspaceId, agentId: 'kai', name: 'Kai', task: 'T', events: [], ...extra })
+    const saved: ChatItem = { ...item, update: { rows: [row('w1', { fromChat: 'Icons', fromTab: true }), row('w2', { fromChat: 'Icons' })] } }
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: saved, workspaceOf: () => undefined }))
+    expect(html).toContain('From &quot;Icons&quot;, a tab you closed')
+    expect(html).toContain('From &quot;Icons&quot;, a Lead chat that is now closed')
+    const text = ['Update from Kernel (not the user):', 'From "Icons", a tab you closed:', '- Kai · T (workspace w1): checks failed on PR #54', 'From "Icons", a Lead chat that is now closed:', '- Kai · T (workspace w1): checks failed on PR #54'].join('\n')
+    expect(sections(legacyRows(text).rows).map((s) => [s.fromChat, s.fromTab, s.rows.length])).toEqual([['Icons', true, 1], ['Icons', undefined, 1]])
   })
 
   it('sends an archived workspace to History, and shows no Open for one that is gone', async () => {

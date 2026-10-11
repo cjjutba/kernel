@@ -256,8 +256,8 @@ describe('Kernel env', () => {
       expect(own.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('mac')
       expect(sessionEnv(k.envFor(ws), {}, { agentTeams: true }).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBe('1')
       expect(sessionEnv(k.envFor(ws), {}, { agentTeams: false }).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS).toBeUndefined()
-      // A project's compact window doesn't override Kernel's 200k one (KERNEL-226). Only the Mac's would.
-      expect(sessionEnv(k.envFor(ws), {}, { compact: true }).CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ?? '200000')
+      // A project's compact window never reaches a session. Only the Mac's does.
+      expect(own.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
       expect(k.envFor(ws, { script: true })).toMatchObject({ ANTHROPIC_BASE_URL: 'https://proxy.example', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_OAUTH_TOKEN: 'other-account' })
     } finally {
       for (const [k2, v] of [['ANTHROPIC_BASE_URL', mac.base], ['CLAUDE_CODE_USE_BEDROCK', mac.bedrock], ['CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS', mac.teams]] as const) {

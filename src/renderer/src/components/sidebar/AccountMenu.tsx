@@ -1,6 +1,6 @@
 import './account.css'
 import { useRef } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Icon, Menu, MENU_SEPARATOR } from '../../ui'
 
@@ -12,7 +12,7 @@ async function leave(title: string) {
     actions.account.set(await call('account.signOut', undefined))
     actions.system.setPreflight(await call('preflight.run', undefined))
     go({ name: 'onboarding', step: 'checks' })
-  } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
+  } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
 }
 
 /** The avatar and name at the top of the sidebar, and its menu (AccountMenu.png). */

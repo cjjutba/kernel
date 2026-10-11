@@ -7,9 +7,9 @@ import { MODELS } from '@shared/types'
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review'
 
-export type BannerId = 'signedOut' | 'offline' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -92,6 +92,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
   }
 
+  // KERNEL-209 holds the workspace until the user trusts the room's scripts. Its brief waits in the queue, so the composer stays open.
+  if (ws.status === 'trust') return {
+    id: 'trust', kind: 'trust', title: "Waiting for you to trust this repo's scripts", sub: `Setup has not run yet. ${name} starts once you trust them.`,
+    actions: [{ id: 'review', label: 'Review', primary: true }], blocks: false
+  }
+
   if (ws.status === 'failed') {
     const cmd = setupCommand(i.scripts)
     const what = cmd ? `${cmd} exited` : 'The setup script exited'
@@ -143,8 +149,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
   }
 
   if (chat && (chat.context ?? 0) >= CONTEXT_WARN) return {
-    id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new chat starts clean on this branch.',
-    actions: [{ id: 'newChat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
+    id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new tab starts clean in this chat.',
+    actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.

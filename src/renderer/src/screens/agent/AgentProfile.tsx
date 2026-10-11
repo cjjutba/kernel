@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentDef, AgentEdit, Effort } from '@shared/types'
 import { EFFORTS, MODELS } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { openRoom } from '../../lead'
 import { Button, SegmentedControl, useBusy } from '../../ui'
@@ -82,7 +82,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
       base.current = formOf(def)
       setForm(formOf(def))
       setSaved(true)
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+    } catch (e) { setError(cleanError(e)) }
   })
   const retire = () => actions.ui.openModal({ name: 'confirm', kind: 'retire', roomId, agentId: agent.id })
 

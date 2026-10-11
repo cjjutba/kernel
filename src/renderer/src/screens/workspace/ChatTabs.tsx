@@ -5,7 +5,7 @@ import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { chatGlyph } from '../../components/sidebar/workspaceGlyph'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { Icon, IconButton, Menu, MENU_SEPARATOR, type IconName } from '../../ui'
-import { closeChats } from './ConfirmCloseChats'
+import { closeChats, closesThread } from './ConfirmCloseChats'
 import { kindIcon, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerWhenOpen } from './composer/bus'
@@ -17,11 +17,12 @@ const base = (path: string) => path.split('/').pop() ?? path
 
 /**
  * The row of chat, terminal, file, diff, shared file, image and text tabs, with the new tab menu, the chat tab menu on right-click (rename, fork, close, close others),
- * a close button on hover and the Checkpoints button. The new tab menu lists a New chat row, then every terminal preset (Settings, Big terminal).
+ * a close button on hover and the Checkpoints button. The new tab menu lists a New tab row, then every terminal preset (Settings, Big terminal).
+ * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
-  workspaceId: string; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+export function ChatTabs({ workspaceId, threadId, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+  workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
@@ -41,15 +42,17 @@ export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, tex
   /** `preset` is a menu row's id. ⌘⇧T sends none, so main opens the settings' preset, or Claude when that one is gone. */
   const create = (kind: 'chat' | 'terminal', preset?: string) => attempt('Could not open a tab', async () => {
     closeMenu()
-    const c = await call('chats.create', { workspaceId, kind, ...(preset ? { preset } : {}) })
+    const c = await call('chats.create', { workspaceId, kind, ...(preset ? { preset } : {}), ...(kind === 'chat' && threadId ? { threadId } : {}) })
     await loadWorkspace(workspaceId)
     if (kind === 'chat') focusComposerWhenOpen(c.id)
     onSelect(c.id)
   })
-  // Closing stops the chat's session, so a chat that is still running asks first (ConfirmCloseChats.tsx).
+  // Closing stops the chat's session, so a chat that is still running asks first (ConfirmCloseChats.tsx). In a Lead chat only closing its last tab asks,
+  // since that closes the chat (KERNEL-338); another tab closes at once.
   const close = (ids: string[]) => {
     closeMenu()
-    if (ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
+    const asks = !threadId || !!closesThread(getState(), workspaceId, ids)
+    if (asks && ids.some((id) => getState().running[id])) return actions.ui.openModal({ name: 'confirm', kind: 'closeChats', workspaceId, chatIds: ids })
     return attempt(ids.length > 1 ? 'Could not close the other tabs' : 'Could not close the tab', () => closeChats(workspaceId, ids, active, onSelect))
   }
   // The menu belongs to the open tab, so right-clicking another chat opens it first.
@@ -71,7 +74,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, tex
     void attempt('Could not rename the tab', async () => { await call('chats.rename', { chatId: id, title: title.trim() }); await loadWorkspace(workspaceId) })
   }
 
-  // Cmd+T new chat, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
+  // Cmd+T new tab, Cmd+Shift+T big terminal, Cmd+W close the open tab. The main process hands Cmd+W over as a window event,
   // because the default menu would close the window first.
   const latest = useRef({ create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn })
   latest.current = { create, close, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText, active, chats, terminalOn }
@@ -157,7 +160,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, tex
               {t.kind === 'chat' && on && menu === 'tab' && (
                 <Menu label="Tab options" anchorRef={tabAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 220 }} items={[
                   { id: 'rename', label: 'Rename', onSelect: () => { closeMenu(); setRenaming(t.id) } },
-                  { id: 'fork', label: 'Fork into new chat', onSelect: () => void fork(t.id) },
+                  { id: 'fork', label: 'Fork into new tab', onSelect: () => void fork(t.id) },
                   { id: 'close', label: 'Close tab', shortcut: '⌘W', onSelect: () => void close([t.id]) },
                   { id: 'others', label: 'Close other tabs', disabled: chats.length < 2, onSelect: () => void close(chats.filter((c) => c.id !== t.id).map((c) => c.id)) }
                 ]} />
@@ -170,7 +173,7 @@ export function ChatTabs({ workspaceId, chats, files, diffs, shared, images, tex
         <IconButton icon="plus" size={14} label="New tab" aria-haspopup="menu" aria-expanded={menu === 'newTab'} onClick={() => actions.ui.toggleMenu('newTab')} />
         {menu === 'newTab' && (
           <Menu label="New tab" anchorRef={newAnchor} onClose={closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 282 }} items={[
-            { id: 'chat', label: 'New chat', shortcut: '⌘T', onSelect: () => void create('chat') },
+            { id: 'chat', label: 'New tab', shortcut: '⌘T', onSelect: () => void create('chat') },
             ...(terminalOn && presets && terminal ? [MENU_SEPARATOR, ...presets.map((p) => ({ id: `preset:${p.id}`, label: p.name, shortcut: p.id === selectedPreset(presets, terminal)?.id ? '⌘⇧T' : undefined, onSelect: () => void create('terminal', p.id) }))] : [])
           ]} />
         )}

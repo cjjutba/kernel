@@ -30,15 +30,18 @@ async function setup() {
   const deleted: [string, string | undefined][] = []
   const fails = new Set<string>()
   k.listSessions = (async (o?: { dir?: string }) => { listed.push(o?.dir); return (onDisk[o?.dir ?? ''] ?? []).map((s) => ({ ...s, summary: 'x', lastModified: 1 })) }) as typeof k.listSessions
+  // With no dir the SDK looks in every folder.
+  const folderOf = (id: string, dir?: string) => dir !== undefined ? dir : Object.keys(onDisk).find((d) => onDisk[d].some((s) => s.sessionId === id)) ?? ''
   k.sessionInfo = (async (id: string, o?: { dir?: string }) => {
-    const s = (onDisk[o?.dir ?? ''] ?? []).find((x) => x.sessionId === id)
+    const s = (onDisk[folderOf(id, o?.dir)] ?? []).find((x) => x.sessionId === id)
     return s ? { ...s, summary: 'x', lastModified: 1 } : undefined
   }) as typeof k.sessionInfo
   k.deleteSession = (async (id: string, o?: { dir?: string }) => {
     if (fails.has(id)) throw new Error('EACCES: permission denied')
-    const list = onDisk[o?.dir ?? ''] ?? []
+    const dir = folderOf(id, o?.dir)
+    const list = onDisk[dir] ?? []
     if (!list.some((s) => s.sessionId === id)) throw new Error(`Session ${id} not found in project directory for ${o?.dir}`)
-    onDisk[o?.dir ?? ''] = list.filter((s) => s.sessionId !== id)
+    onDisk[dir] = list.filter((s) => s.sessionId !== id)
     deleted.push([id, o?.dir])
   }) as typeof k.deleteSession
 
@@ -94,6 +97,25 @@ describe('deleting workspaces from History', () => {
     expect(await refs(`refs/kernel/checkpoints/${keep.id}/`)).not.toEqual([])
     expect(k.store.items(k.store.chats(keep.id)[0].id)).toHaveLength(1)
     expect(k.store.room(room.id)).toBeDefined()
+  })
+
+  it("keeps a session a forked workspace still uses, and finds the fork's own in the source's folder (KERNEL-346)", async () => {
+    const { k, room, onDisk, deleted, archived } = await setup()
+    const src = await archived('source')
+    // Fork into new workspace leaves the forked session in the source worktree's project folder, next to the source's own.
+    onDisk[src.path].push({ sessionId: 'fork-session', fileSize: 500 })
+    const fork = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'source-fork' })
+    k.store.saveChat({ ...k.store.chats(fork.id)[0], sessionId: 'fork-session' })
+
+    expect(await k.deleteWorkspaces([src.id], { deleteUnpushed: false })).toMatchObject({ deleted: [src.id], freedBytes: 1250 })
+    expect(deleted.map(([id]) => id).sort()).toEqual(['source-forgotten', 'source-now'])
+    expect(onDisk[src.path]).toEqual([{ sessionId: 'fork-session', fileSize: 500 }])
+
+    // Deleting the fork later finds its session there, though its own folder has none.
+    await k.archiveWorkspace(fork.id, false)
+    expect(await k.deleteWorkspaces([fork.id], { deleteUnpushed: false })).toMatchObject({ deleted: [fork.id], freedBytes: 500 })
+    expect(deleted.at(-1)).toEqual(['fork-session', undefined])
+    expect(onDisk[src.path]).toEqual([])
   })
 
   it('keeps a branch whose commits are pushed nowhere, and deletes it when asked', async () => {

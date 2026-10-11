@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import type { AgentDef, AgentStatus, Overlap, Task } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { Icon, useEscape } from '../../ui'
 import { actions, go, loadRoom, setState, useStore } from '../../store'
 import { SEATS, defaultSelected, deskless, needsCount } from '../../floor/layout'
@@ -146,7 +146,7 @@ export function Floor({ roomId }: { roomId: string }) {
   const needs = needsCount(live, shown, approvals)
   const togglePause = () => call('rooms.setPaused', { roomId, paused: !room.paused })
     .then((r) => setState((s) => ({ rooms: s.rooms.map((x) => (x.id === r.id ? r : x)) })))
-    .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: e.message }))
+    .catch((e: Error) => actions.ui.toast({ title: room.paused ? 'Could not resume the room' : 'Could not pause the room', sub: cleanError(e) }))
   // A click on bare floor closes the popover. Tags, cards, banners and the no-desk list handle their own clicks.
   const onFloorClick = (e: MouseEvent<HTMLDivElement>) => { if (sel && !(e.target as HTMLElement).closest('button, section, [role="status"]')) close() }
 

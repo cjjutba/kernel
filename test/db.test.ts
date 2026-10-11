@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval, SharedFile, Workspace } from '@shared/types'
+import type { Approval, Chat, Room, SharedFile, Workspace } from '@shared/types'
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
@@ -54,7 +54,7 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(3)
+    expect(LATEST).toBe(5)
     for (const t of TABLES) {
       // Approvals gain two columns; the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
@@ -149,6 +149,66 @@ describe('kernel.db versions', () => {
     expect((db.prepare(`select name from pragma_table_info('approvals')`).all() as { name: string }[]).map((c) => c.name)).not.toContain('settled_at')
     db.close()
     expect(existsSync(join(d, 'kernel.db.bak-v1'))).toBe(true)
+  })
+
+  it('gives every Lead tab, open or closed, a Lead chat of its own on upgrade, and nothing else (KERNEL-337)', () => {
+    const d = dir()
+    const file = join(d, 'kernel.db')
+    const db = new Database(file)
+    migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 4))
+    const put = (table: string, id: string, parent: string, data: object, at: number) => db.prepare(`insert into ${table} values (?, ?, ?, ?)`).run(id, parent, JSON.stringify({ id, ...data }), at)
+    db.prepare('insert into rooms values (?, ?, ?)').run('r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: 1 }), 1)
+    put('workspaces', 'lead', 'r1', { roomId: 'r1', name: 'lead', mode: 'current' }, 1)
+    put('workspaces', 'w1', 'r1', { roomId: 'r1', name: 'tabs', mode: 'worktree' }, 1)
+    put('chats', 'open', 'lead', { workspaceId: 'lead', title: 'Release plan', kind: 'chat', createdAt: 10 }, 10)
+    put('chats', 'closed', 'lead', { workspaceId: 'lead', title: 'Chat icons sizing', kind: 'chat', closed: true, createdAt: 20 }, 20)
+    put('chats', 'old', 'lead', { workspaceId: 'lead', title: 'Lead', createdAt: 5 }, 5)
+    put('chats', 'term', 'lead', { workspaceId: 'lead', title: 'Terminal (claude)', kind: 'terminal', createdAt: 30 }, 30)
+    put('chats', 'mate', 'w1', { workspaceId: 'w1', title: 'Tabs', kind: 'chat', createdAt: 40 }, 40)
+    // Handed off from a closed Lead tab, from a teammate's chat, and by hand.
+    put('workspaces', 'w2', 'r1', { roomId: 'r1', name: 'icons', mode: 'worktree', leadChatId: 'closed' }, 2)
+    put('workspaces', 'w3', 'r1', { roomId: 'r1', name: 'odd', mode: 'worktree', leadChatId: 'mate' }, 3)
+    put('workspaces', 'w4', 'r1', { roomId: 'r1', name: 'manual', mode: 'worktree' }, 4)
+    db.close()
+
+    const store = new Store(file)
+    const threads = store.threads('r1')
+    expect(threads.map((t) => [t.title, t.createdAt, !!t.closedAt])).toEqual([['Lead', 5, false], ['Release plan', 10, false], ['Chat icons sizing', 20, true]])
+    for (const [chat, title] of [['old', 'Lead'], ['open', 'Release plan'], ['closed', 'Chat icons sizing']]) {
+      expect(store.thread(store.chat(chat)!.threadId!)?.title, chat).toBe(title)
+    }
+    expect(store.chat('term')!.threadId).toBeUndefined()
+    expect(store.chat('mate')!.threadId).toBeUndefined()
+    expect(store.workspace('w2')!.threadId).toBe(store.chat('closed')!.threadId)
+    expect(store.workspace('w3')!.threadId).toBeUndefined()
+    expect(store.workspace('w4')!.threadId).toBeUndefined()
+    store.db.close()
+
+    // Opening again keeps the same Lead chats.
+    const again = new Store(file)
+    expect(again.threads('r1').map((t) => t.id)).toEqual(threads.map((t) => t.id))
+    again.db.close()
+  })
+
+  it("forgets a room's Lead chats with the room, and keeps another room's (KERNEL-337)", () => {
+    const store = new Store(join(dir(), 'kernel.db'))
+    for (const roomId of ['r1', 'r2']) {
+      store.saveRoom({ id: roomId, name: roomId, createdAt: 1 } as Room)
+      store.saveThread({ id: `t-${roomId}`, roomId, title: 'Release plan', createdAt: 1 })
+    }
+    store.deleteRoom('r1')
+    expect(store.threads().map((t) => t.id)).toEqual(['t-r2'])
+    store.db.close()
+  })
+
+  it('keeps the order of tabs made in the same millisecond when the older one is saved again (KERNEL-337)', () => {
+    const store = new Store(join(dir(), 'kernel.db'))
+    const tab = (id: string) => store.saveChat({ id, workspaceId: 'lead', title: 'New tab', kind: 'chat', threadId: 't1', createdAt: 10 } as Chat)
+    const first = tab('b-first')
+    tab('a-second')
+    store.saveChat({ ...first, title: 'Release plan' })
+    expect(store.threadTabs('a-second').map((c) => c.id)).toEqual(['b-first', 'a-second'])
+    store.db.close()
   })
 
   describe('a file from a newer build', () => {

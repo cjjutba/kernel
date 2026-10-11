@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { NoRoom, RoomPage, Section, useRoomPage } from '../kit'
@@ -32,7 +32,7 @@ export function RoomPermissions({ roomId }: { roomId?: string }) {
   const remove = (rule: string) => run(rule, async () => {
     try {
       actions.rooms.upsert(await call('rooms.update', { roomId, patch: { allow: allow.filter((r) => r !== rule) } }))
-    } catch (e) { actions.ui.toast({ title: 'Could not remove the rule', sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: 'Could not remove the rule', sub: cleanError(e) }) }
   })
   return (
     <RoomPage room={room} rs={rs} title="Permissions" intro={`Commands agents can run in ${room.name} without asking.`}>

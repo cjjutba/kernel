@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Integration } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
@@ -23,7 +23,7 @@ export function Integrations() {
   const [busy, run] = useBusy()
   useEffect(() => { void call('integrations.list', undefined).then(setRows).catch(() => setRows([])) }, [])
   const swap = (row: Integration) => setRows((list) => list.map((r) => (r.id === row.id ? row : r)))
-  const fail = (title: string, e: unknown) => actions.ui.toast({ title, sub: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') })
+  const fail = (title: string, e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 
   const saveToken = () => run('token', async () => {
     try {

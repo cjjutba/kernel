@@ -8,6 +8,9 @@ const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
   'WorkspaceTabStates',
+  'WorkspaceReplyMenu', // the "..." menu under a finished turn's reply, with Fork into new chat and Fork into new workspace (KERNEL-346)
+  'WorkspaceTrustHeld', // the banner KERNEL-209's trust hold shows, with Review (KERNEL-218)
+  'TrustScripts', // the dialog Review opens: the scripts and files.copy list to trust (KERNEL-218)
   'WorkspaceRowsOpen', // a Thinking, a Bash and an Edit row open in place, and a running tool (KERNEL-198)
   'WorkspaceRowsFolded', // the folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198)
   'WorkspaceDiffTab',
@@ -18,7 +21,10 @@ const noCanvas = [
   'WorkspaceContextPopover',
   'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
+  'WorkspaceQueuedMerge', // a brief held until another PR merges, with Send now (KERNEL-361)
   'InboxOverlap',
+  'LoadingError', // boot failed: the error and Try again (KERNEL-217)
+  'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
   'TeamEmpty',
   'QuickAskAnswered', // Ask Rowan reopened after a question, with the answer in (KERNEL-146)
   'QuickAskOpenChat',
@@ -35,6 +41,7 @@ const noCanvas = [
   'WorkspacePlanMode',
   'WorkspacePlanModeTyping',
   'WorkspacePlanTyping',
+  'WorkspacePlanApproved', // a plan once approved, with its Plan approved line in the chat
 ]
 
 describe('fixtures', () => {
@@ -99,5 +106,13 @@ describe('fixture handlers', () => {
 
   it('refuse to create a workspace', async () => {
     await expect(h['workspaces.create']({ roomId: 'room-a', prompt: 'x' })).rejects.toThrow(/Fixture mode/)
+  })
+
+  it("list a fixture's Lead chats, by room when asked (KERNEL-337)", async () => {
+    const threads = [{ id: 't1', roomId: 'room-a', title: 'Release plan', createdAt: 1 }, { id: 't2', roomId: 'room-b', title: 'Icons', createdAt: 2 }]
+    const withThreads = fixtureHandlers({ ...f, threads })
+    expect(await withThreads['threads.list']({})).toEqual(threads)
+    expect(await withThreads['threads.list']({ roomId: 'room-b' })).toEqual([threads[1]])
+    expect(await h['threads.list']({})).toEqual([])
   })
 })

@@ -2,13 +2,15 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
-import type { PushEvent } from '@shared/ipc'
-import { call, onPush } from './api'
+import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
+import { keepLine, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
+import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
+export { scriptKey }
 
 /**
  * The renderer's state: one top-level key per domain, plus `ui`. Keys stay flat so selectors read `s.rooms`, `s.items[chatId]`.
@@ -19,6 +21,8 @@ export interface State {
   rooms: Room[]
   /** By room id. Progress of a room being set up (RoomSetup.png). */
   roomSetup: Record<string, RoomSetupStep[]>
+  /** By room id. The scripts and files.copy list a room waits on the user to trust. A room with nothing to trust has no entry (KERNEL-218). */
+  scriptTrust: Record<string, ScriptTrust>
   /** By room id. */
   overlaps: Record<string, Overlap[]>
   // agents
@@ -41,6 +45,12 @@ export interface State {
   // chats
   /** By workspace id. */
   chats: Record<string, Chat[]>
+  /** By thread id. The Lead chats, each holding the Lead tabs whose `threadId` names it, open or closed (KERNEL-337). */
+  threads: Record<string, Thread>
+  /** By workspace id. The Lead chat each Lead workspace showed last, which stays current while a terminal tab is open (KERNEL-338). */
+  lastThread: Record<string, string>
+  /** By thread id. The tab last shown in each Lead chat, so the sidebar row and a switch back open where you left off. Kept across launches (KERNEL-338). */
+  lastTabs: Record<string, string>
   /** By chat id. */
   items: Record<string, ChatItem[]>
   /** By chat id. */
@@ -51,8 +61,10 @@ export interface State {
   queueWhy: Record<string, QueueReason>
   /** By chat id. Raw pty output for terminal chats. */
   terminal: Record<string, string>
+  /** By chat id. How many times main's copy replaced `terminal`, so an open terminal knows to draw it again from the top (KERNEL-340). */
+  terminalReplays: Record<string, number>
   /** By chat id. Set while Claude is overloaded and the session retries. */
-  retry: Record<string, { attempt: number; of: number; nextAt: number }>
+  retry: Record<string, Retry>
   // approvals, tasks, activity, notifications
   approvals: Approval[]
   /** By room id. */
@@ -99,14 +111,35 @@ function foldedChats(): string[] {
 function keepFoldedChats(ids: string[]) {
   try { localStorage.setItem(FOLDED_CHATS, JSON.stringify(ids)) } catch { /* not remembered */ }
 }
+/** The tab last shown in each Lead chat, by thread id, kept across launches like `lastChat`. localStorage may be missing or blocked, and its value may not be a map of strings. */
+const LAST_TABS = 'kernel.lastTabs'
+function lastTabs(): Record<string, string> {
+  try {
+    const map: unknown = JSON.parse(localStorage.getItem(LAST_TABS) ?? '{}')
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return {}
+    return Object.fromEntries(Object.entries(map).filter((e): e is [string, string] => typeof e[1] === 'string'))
+  } catch { return {} }
+}
+function keepLastTabs(map: Record<string, string>) {
+  try { localStorage.setItem(LAST_TABS, JSON.stringify(map)) } catch { /* not remembered */ }
+}
+/** Forgets the last tab of the threads `gone` picks out, so `kernel.lastTabs` doesn't keep a chat nobody can open. */
+function dropLastTabs(gone: (threadId: string) => boolean) {
+  const ids = Object.keys(state.lastTabs).filter(gone)
+  if (!ids.length) return
+  const next = { ...state.lastTabs }
+  for (const id of ids) delete next[id]
+  setState({ lastTabs: next })
+  keepLastTabs(next)
+}
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
-  rooms: [], roomSetup: {}, overlaps: {},
+  rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
-  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
@@ -145,19 +178,6 @@ export function useStore<T>(select: (s: State) => T): T {
   })
 }
 
-/** Lines kept for each script. */
-const SCRIPT_LINES = 400
-/** A run script's name, `run` for the default one. Setup and archive have none. */
-const runName = (kind: ScriptKind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
-/**
- * Where a script's exit code lives in `scriptExit`: `setup`, `archive`, `run` for the default run script and `run:<name>` for the rest.
- * A run script may be named `setup`, so its key can't be the bare name.
- */
-export const scriptKey = (kind: ScriptKind, name?: string) => {
-  const n = runName(kind, name)
-  return n && n !== 'run' ? `run:${n}` : kind
-}
-
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
 const byRecent = <T extends { createdAt: number }>(list: T[]) => [...list].sort((a, b) => b.createdAt - a.createdAt)
 /** `all` with each of `times` written into the room's entry when it is later than what is there. Unchanged rooms keep their identity. */
@@ -189,6 +209,15 @@ function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
 /** Selects the tab without recording a step. */
 function selectTab(workspaceId: string, tab: string) {
   setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } }))
+  // A Lead tab is also the last one shown in its Lead chat. A file or diff tab leaves the memory alone.
+  const threadId = state.chats[workspaceId]?.find((c) => c.id === tab)?.threadId
+  if (!threadId) return
+  if (state.lastThread[workspaceId] !== threadId) setState({ lastThread: { ...state.lastThread, [workspaceId]: threadId } })
+  if (state.lastTabs[threadId] !== tab) {
+    const next = { ...state.lastTabs, [threadId]: tab }
+    setState({ lastTabs: next })
+    keepLastTabs(next)
+  }
 }
 /** Where the app is now. */
 const placeNow = (): Place => {
@@ -357,6 +386,7 @@ export const actions = {
     clearBanner: () => setUi({ banner: null }),
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
+    setStartError: (startError: string | undefined) => setUi({ startError }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
@@ -385,9 +415,12 @@ export const actions = {
     },
     /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
     setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
-    /** Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. */
-    foldChat: (chatId: string, fold: boolean) => {
-      const ids = getState().ui.foldedChats.filter((id) => id !== chatId)
+    /**
+     * Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. `saved` are ids
+     * a fold was kept under before chats had threads (the chat ids of its tabs): any of them counts as a fold of the chat, and unfolding drops them too.
+     */
+    foldChat: (chatId: string, fold: boolean, saved: string[] = []) => {
+      const ids = getState().ui.foldedChats.filter((id) => id !== chatId && !saved.includes(id))
       const next = fold ? [...ids, chatId] : ids
       setUi({ foldedChats: next })
       keepFoldedChats(next)
@@ -408,6 +441,10 @@ export const actions = {
       ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
     })),
     setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
+    setTrust: (roomId: string, trust: ScriptTrust | null) => setState((s) => {
+      const { [roomId]: _, ...rest } = s.scriptTrust
+      return { scriptTrust: trust ? { ...rest, [roomId]: trust } : rest }
+    }),
     setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
   },
@@ -433,17 +470,13 @@ export const actions = {
         ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
       }
     }),
-    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
-      const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
-      const next = [...(s.scripts[workspaceId] ?? []), named]
-      // A chatty script drops its own oldest line, so it can't push another script's output out. The lines that stay are the
-      // same objects, so the log's rows keep their keys and only new lines are drawn (KERNEL-211).
-      if (next.length > SCRIPT_LINES) {
-        const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
-        if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
-      }
-      return { scripts: { ...s.scripts, [workspaceId]: next } }
-    }),
+    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: keepLine(s.scripts[workspaceId] ?? [], line) } })),
+    /** Main's copy of the workspace's scripts, in place of the window's: a window that just loaded missed what came before (KERNEL-340). */
+    setScripts: (workspaceId: string, lines: ScriptLine[], exit: Record<string, number | null>, url: Record<string, string>) => setState((s) => ({
+      scripts: { ...s.scripts, [workspaceId]: lines },
+      scriptExit: { ...s.scriptExit, [workspaceId]: exit },
+      scriptUrl: { ...s.scriptUrl, [workspaceId]: url }
+    })),
     scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
     /** The URL a run script printed, or null when the push says the run started again or exited. */
     setScriptUrl: (workspaceId: string, name: string, url: string | null) => setState((s) => {
@@ -473,7 +506,12 @@ export const actions = {
       return { queue: { ...s.queue, [chatId]: list }, queueWhy }
     }),
     setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
-    appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-200_000) } })),
+    appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-TERMINAL_KEEP) } })),
+    /** Main's copy of a terminal's output, in place of the window's (KERNEL-340). */
+    replaceTerminal: (chatId: string, data: string) => setState((s) => ({
+      terminal: { ...s.terminal, [chatId]: data.slice(-TERMINAL_KEEP) },
+      terminalReplays: { ...s.terminalReplays, [chatId]: (s.terminalReplays[chatId] ?? 0) + 1 }
+    })),
     setRetry: (chatId: string, retry: State['retry'][string] | null) => setState((s) => {
       const next = { ...s.retry }
       if (retry) next[chatId] = retry
@@ -491,6 +529,14 @@ export const actions = {
   approvals: {
     set: (list: Approval[]) => setState({ approvals: byRecent(list) }),
     upsert: (a: Approval) => setState((s) => ({ approvals: byRecent(upsert(s.approvals, a)) }))
+  },
+  threads: {
+    set: (list: Thread[]) => setState({ threads: Object.fromEntries(list.map((t) => [t.id, t])) }),
+    upsert: (thread: Thread) => {
+      setState((s) => ({ threads: { ...s.threads, [thread.id]: thread } }))
+      // A closed chat has no tab to reopen on, and a new tab reopens it with a fresh entry.
+      if (thread.closedAt) dropLastTabs((id) => id === thread.id)
+    }
   },
   tasks: {
     set: (roomId: string, list: Task[]) => setState((s) => ({ tasks: { ...s.tasks, [roomId]: list } })),
@@ -548,13 +594,14 @@ export function apply(e: PushEvent) {
     case 'chat': return actions.chats.upsert(e.chat)
     case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
-    case 'chat.running': return actions.chats.setRunning(e.chatId, e.running)
+    case 'chat.running': pushedLive?.running.add(e.chatId); return actions.chats.setRunning(e.chatId, e.running)
     case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
-    case 'terminal.data': return actions.chats.appendTerminal(e.chatId, e.data)
-    case 'retry': return actions.chats.setRetry(e.chatId, e.retry)
+    case 'terminal.data': return e.replace ? actions.chats.replaceTerminal(e.chatId, e.data) : actions.chats.appendTerminal(e.chatId, e.data)
+    case 'retry': pushedLive?.retry.add(e.chatId); return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)
     case 'room': return actions.rooms.upsert(e.room)
     case 'room.setup': return actions.rooms.setSetup(e.roomId, e.steps)
+    case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
     case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
@@ -562,6 +609,7 @@ export function apply(e: PushEvent) {
     case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
+    case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
@@ -569,6 +617,7 @@ export function apply(e: PushEvent) {
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
+    case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)
     case 'update': return actions.system.setUpdate(e.update)
@@ -582,23 +631,37 @@ export function apply(e: PushEvent) {
  * Load everything once, then stay live on push events. Only built channels load here; a lane that builds
  * a channel adds its first load (for example `tasks.list` in loadRoom) in the same PR.
  */
+let listening = false
+
 export async function boot() {
-  onPush(apply)
-  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared] = await Promise.all([
+  if (!listening) { listening = true; onPush(apply) }
+  try { await start() } catch (e) { actions.ui.setStartError(cleanError(e)) }
+}
+
+/** Loads what the first screen needs and picks it. A failure here leaves `booted` unset and lands in `boot`'s catch, which Loading shows. */
+async function start() {
+  // Which chats are working, asked once. Pushes only report changes, so without it every agent working while the window
+  // loaded would look stopped until its turn ended (KERNEL-340). An older main (a dev build mid-pull) has no such channel.
+  pushedLive = { running: new Set(), retry: new Set() }
+  void call('chats.live', undefined).then(applyLive, () => applyLive(null))
+  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
     // Cards and the Shared panel read these. A failed load only leaves them out until a push brings a file in.
-    call('shared.list', {}).catch((): SharedFile[] => [])
+    call('shared.list', {}).catch((): SharedFile[] => []),
+    // The sidebar lists Lead chats from these. A failed load leaves the rows to the tabs alone until a push brings a thread in.
+    call('threads.list', {}).catch((): Thread[] => [])
   ])
   fixtureMode = !!fixture
-  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])) })
+  // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
+  actions.ui.setStartError(undefined)
+  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
+  // Last tabs of chats closed since, or gone, would otherwise pile up in localStorage. A failed load leaves no threads to judge them by.
+  if (threads.length) dropLastTabs((id) => !state.threads[id] || !!state.threads[id].closedAt)
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
   const update = call('update.get', undefined).then((u) => { actions.system.setUpdate(u); return u }).catch(() => null)
-  // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
-  const checks = await call('preflight.run', undefined).catch(() => null)
-  if (checks) actions.system.setPreflight(checks)
   // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
   // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.
   const opening = launchRoute()
@@ -606,14 +669,37 @@ export async function boot() {
   // Replace, so Back right after launch has nowhere to go.
   const replace = { history: 'replace' } as const
   if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
-  else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' }, replace)
   else go(opening, replace)
-  for (const r of rooms) void loadRoom(r.id)
+  for (const r of rooms) void loadRoom(r.id).catch(() => undefined)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
+  // The checks rerun on every launch, after the app is up: they run claude and gh one after another and can take a while on a slow Mac.
+  // Only a blocking failure takes the screen (KERNEL-27, KERNEL-213), and only if nothing has moved you since the route above and no modal is open,
+  // because `go` closes modals. Otherwise a toast says so and nothing you are doing is interrupted.
+  const shown = state.ui.route
+  void call('preflight.run', undefined).then((checks) => {
+    actions.system.setPreflight(checks)
+    const blocking = checks.find((c) => !c.ok && c.blocking)
+    if (!rooms.length || !blocking) return
+    if (state.ui.route === shown && !state.ui.modal) go({ name: 'onboarding', step: 'checks' }, replace)
+    else actions.ui.toast({ title: blocking.title, sub: 'Kernel will show the checks the next time it starts.' })
+  }).catch(() => undefined)
   // After an update installs, What's new opens once with that version's notes (KERNEL-30). It waits for the route above, which closes modals,
   // and carries its own copy, since the updater's first check pushes a new state that drops `installed` and the notes.
   void update.then((u) => { if (u?.installed) actions.ui.openModal({ name: 'whatsNew', update: u }) })
+}
+
+/** Chats a `chat.running` or `retry` push reached while `chats.live` was out. The push came later, so it wins. */
+let pushedLive: { running: Set<string>; retry: Set<string> } | undefined
+
+function applyLive(live: KernelApi['chats.live']['res'] | null) {
+  const pushed = pushedLive
+  pushedLive = undefined
+  if (!live || !pushed) return
+  setState((s) => ({
+    running: { ...Object.fromEntries(live.running.filter((id) => !pushed.running.has(id)).map((id) => [id, true])), ...s.running },
+    retry: { ...Object.fromEntries(Object.entries(live.retry).filter(([id]) => !pushed.retry.has(id))), ...s.retry }
+  }))
 }
 
 /**
@@ -657,9 +743,29 @@ export async function loadRoom(roomId: string) {
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
+  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `room.trust` clears it (KERNEL-218).
+  void call('rooms.scriptTrust', { roomId }).then((trust) => { if (trust) actions.rooms.setTrust(roomId, trust) }).catch(() => undefined)
+}
+
+/**
+ * Workspaces and terminals whose output this window has asked main for. Once is enough: from then on every line reaches
+ * the store as it is printed, open or not (KERNEL-340).
+ */
+const replayedScripts = new Set<string>()
+const replayedTerminals = new Set<string>()
+
+/** Asks main for the terminal's output so far, the first time this window shows it. Its answer arrives as a `terminal.data` push. */
+export function replayTerminal(id: string) {
+  if (replayedTerminals.has(id)) return
+  replayedTerminals.add(id)
+  void call('terminal.replay', { chatId: id }).catch(() => { replayedTerminals.delete(id) })
 }
 
 export async function loadWorkspace(workspaceId: string) {
+  if (!replayedScripts.has(workspaceId)) {
+    replayedScripts.add(workspaceId)
+    void call('scripts.replay', { workspaceId }).catch(() => { replayedScripts.delete(workspaceId) })
+  }
   const chats = await call('chats.list', { workspaceId })
   actions.chats.set(workspaceId, chats)
   for (const c of chats) actions.chats.setItems(c.id, await call('chats.items', { chatId: c.id }))

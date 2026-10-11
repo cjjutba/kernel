@@ -41,7 +41,7 @@ async function setup() {
   const lead = await k.leadChat(room.id)
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const create = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+  const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
   /** create_workspace as the Lead calls it; the id of the new workspace, or the refusal. */
   const handOff = async (args: Record<string, string>) => {
     const out = await create.handler(args as never, {})
@@ -54,7 +54,7 @@ async function setup() {
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
-  return { k, gh, room, lead, author, handOff, notes, status, where: k['o'] as ConstructorParameters<typeof Kernel>[0] }
+  return { k, gh, room, lead, author, handOff, notes, status, where: k.o }
 }
 
 describe('create_workspace with a reviewer on another workspace\'s branch (KERNEL-299)', () => {

@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
-import { openRoom } from '../../lead'
-import { tabOf } from '../../nav'
+import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
+import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
@@ -50,7 +50,14 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
   const room = useStore((s) => s.rooms.find((r) => r.id === ws?.roomId))
   const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
-  const chats = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
+  const everyChat = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
+  // The Lead's workspace shows one chat at a time: that chat's tabs, then the files. Its other chats' tabs are rows in the sidebar (KERNEL-338).
+  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
+  const threadId = useStore((s) => (isLead ? currentThread(s, workspaceId) : undefined))
+  const chats = useMemo(
+    () => (isLead && threadId ? everyChat.filter((c) => !c.closed && (c.kind === 'terminal' || threadIdOf(c) === threadId)) : everyChat),
+    [everyChat, isLead, threadId]
+  )
   const view = useStore((s) => s.ui.workspace)
   const stored = useStore((s) => tabOf(s, workspaceId))
   const tabs = useStore((s) => s.ui.tabs[workspaceId])
@@ -176,7 +183,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />

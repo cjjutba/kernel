@@ -18,8 +18,15 @@ export abstract class Feature {
   protected get tasks() { return this.k.tasks }
   protected get settings() { return this.k.settings }
   protected get o() { return this.k.o }
-  protected get home() { return this.k['home'] }
-  protected get stopped() { return this.k['stopped'] }
+  protected get home() { return this.k.home }
+  protected get stopped() { return this.k.stopped }
+  protected get leadUpdates() { return this.k.leadUpdates }
+  protected get overlaps() { return this.k.overlaps }
+  protected get nudges() { return this.k.nudges }
+  protected get ptys() { return this.k.ptys }
+  protected get roomIcons() { return this.k.roomIcons }
+  protected get shared() { return this.k.shared }
+  protected get envStore() { return this.k.envStore }
 
   protected mustRoom(id: string) { return records.mustRoom(this.k.store, id) }
   protected mustWs(id: string) { return records.mustWs(this.k.store, id) }
@@ -28,7 +35,11 @@ export abstract class Feature {
   protected saveWs(ws: Workspace) { return records.saveWs(this.k.store, ws) }
   protected updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}) { return records.updateWs(this.k.store, id, patch, o) }
   protected saveChat(chat: Chat) { return records.saveChat(this.k.store, chat) }
-  protected newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }) { return records.newChat(this.k.store, workspaceId, title, o) }
+  protected newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }) { return records.newChat(this.k.store, workspaceId, title, o) }
   protected prChat(id: string) { return records.prChat(this.k.store, id) }
   protected note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') { return records.note(this.k.store, workspaceId, text, pr) }
+
+  // The team's, so code that moves out of kernel.ts keeps calling them as it did (KERNEL-326).
+  protected agentsSync(roomId: string) { return this.k.team.agentsSync(roomId) }
+  protected isLeadWorkspace(ws: Workspace) { return this.k.team.isLeadWorkspace(ws) }
 }

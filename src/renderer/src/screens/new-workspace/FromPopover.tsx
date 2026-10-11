@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions } from '../../store'
 import { Tabs } from '../../ui'
 import { useLayer } from '../../ui/hooks'
@@ -31,7 +31,7 @@ export function FromPopover({ roomId, branches, tab, onTab, onPick, anchorRef }:
     setLoad({ state: 'loading' })
     const t = setTimeout(() => {
       const done = (rows: FromRow[]) => { if (!stale) setLoad({ state: 'ready', rows }) }
-      const fail = (e: unknown) => { if (!stale) setLoad({ state: 'error', message: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }) }
+      const fail = (e: unknown) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) }
       if (tab === 'prs') call('github.prs', { roomId, query: q || undefined }).then((r) => done(r.map((p) => prRow(p, remote))), fail)
       else call('issues.list', { roomId, query: q || undefined }).then((r) => done(r.map(issueRow)), fail)
     }, q ? 200 : 0)

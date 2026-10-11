@@ -6,21 +6,33 @@ import { parseBlocks } from '../src/renderer/src/screens/workspace/mdParse'
 import { visibleRows } from '../src/renderer/src/screens/workspace/tree'
 
 describe('transcript thread', () => {
-  it('folds a finished turn into one group, then the reply, the changed files and the duration', () => {
+  it('folds a finished turn into one group, then the reply with the changed files and the duration under it', () => {
     const blocks = buildThread(tableItems)
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'files', 'meta'])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'reply'])
     const group = blocks[1]
     if (group.kind !== 'group') throw new Error('expected a group')
     expect(groupLabel(group.tools.length, group.messages)).toBe('14 tool calls, 3 messages')
-    const meta = blocks[4]
-    expect(meta.kind === 'meta' && meta.text.startsWith('4m 12s · ')).toBe(true)
+    const reply = blocks[2]
+    if (reply.kind !== 'reply') throw new Error('expected the reply')
+    expect(reply.item.id).toBe('x1')
+    expect(reply.files).toHaveLength(4)
+    expect(reply.meta.startsWith('4m 12s · ')).toBe(true)
+  })
+
+  it("keeps the files and the duration on their own rows when the reply isn't the turn's last row (KERNEL-346)", () => {
+    const end = tableItems.length - 1
+    const late = { kind: 'tool' as const, id: 't-late', ts: tableItems[end].ts, toolUseId: 'tu-late', name: 'Bash', label: 'Run the linter', detail: 'pnpm lint', status: 'done' as const }
+    const blocks = buildThread([...tableItems.slice(0, end), late, tableItems[end]])
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'item', 'files', 'meta'])
+    // A turn with no reply at all ends in its duration alone.
+    expect(buildThread(tableItems.filter((i) => i.kind !== 'text')).map((b) => b.kind)).toEqual(['item', 'group', 'files', 'meta'])
   })
 
   it('puts a note written after the turn ended below its duration', () => {
     const note = { kind: 'note' as const, id: 'n1', ts: tableItems[tableItems.length - 1].ts + 1, text: 'PR #42 was squashed into main.' }
     const blocks = buildThread([...tableItems, note])
-    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'item', 'files', 'meta', 'item'])
-    const last = blocks[5]
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'group', 'reply', 'item'])
+    const last = blocks[3]
     expect(last.kind === 'item' && last.item.id).toBe('n1')
   })
 

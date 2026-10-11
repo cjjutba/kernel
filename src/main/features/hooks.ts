@@ -39,7 +39,7 @@ export class Hooks extends Feature {
     // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
     const status = HOOK_STATUS[e.hook_event_name]
     if (!status || !ctx?.roomId || !ctx.agentId) return
-    if (this.k['statuses'].get(ctx.roomId)?.[ctx.agentId] === 'paused') return
+    if (this.k.team.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
     bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
   }
 

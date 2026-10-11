@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { AgentDef, Approval, PlanStep } from '@shared/types'
 import { call } from '../../../api'
-import { actions, go, useStore } from '../../../store'
+import { go, useStore } from '../../../store'
 import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { parseBlocks } from '../mdParse'
-import { attempt } from '../MessageActions'
+import { attempt, useCopy } from '../MessageActions'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
 
@@ -22,16 +22,6 @@ export const stepLine = (s: PlanStep, agents: AgentDef[]) => {
 /** What Copy puts on the clipboard: the plan's markdown, or the Lead's task list as numbered lines. */
 export function planCopyText(a: Approval, agents: AgentDef[]): string {
   return planText(a) || [`# ${a.title}`, '', ...planSteps(a).map((s, i) => `${i + 1}. ${stepLine(s, agents)}`)].join('\n')
-}
-
-/** Copies `text` and says "Copied" for 1.5s. */
-export function useCopy(text: string): [boolean, () => void] {
-  const [copied, setCopied] = useState(false)
-  const copy = () => void navigator.clipboard.writeText(text).then(
-    () => { setCopied(true); setTimeout(() => setCopied(false), 1500) },
-    () => actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' })
-  )
-  return [copied, copy]
 }
 
 const openPlanFile = (a: Approval) =>
@@ -85,7 +75,18 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         <IconButton icon={copied ? 'check' : 'copy'} size={13} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
       </div>
       {text ? <Markdown blocks={blocks} className="md-doc" /> : <StepsDoc a={a} agents={agents} />}
-      {a.status !== 'pending' && <span className="meta">{a.status === 'allowed' ? 'Plan approved' : outcome(a)}</span>}
+      {a.status !== 'pending' && <PlanOutcome a={a} />}
+    </div>
+  )
+}
+
+/** How the plan was decided, drawn like a PR note in the chat: the plan glyph, the outcome and a hairline (KERNEL-313). */
+function PlanOutcome({ a }: { a: Approval }) {
+  return (
+    <div className="note inline" data-plan={a.status}>
+      <Icon name="plan" size={14} />
+      <span className="note-text">{a.status === 'allowed' ? 'Plan approved' : outcome(a)}</span>
+      <span className="note-rule" aria-hidden="true" />
     </div>
   )
 }

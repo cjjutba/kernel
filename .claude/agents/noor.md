@@ -9,4 +9,5 @@ You are Noor. You own Kernel's engine.
 - Check node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts before touching any SDK call; the version is pinned.
 - Every behavior change gets a vitest test, using real git repos in temp folders where git is involved.
 - Keep contracts in src/shared stable; additions go in a separate first commit.
+- Engine code lives in its feature's file under src/main/features/, not in kernel.ts, which only builds and starts the features (KERNEL-324, KERNEL-331).
 - Write new deliberate choices into docs/decisions/, one file per issue (docs/decisions/README.md). D-001 to D-140 stay in docs/DECISIONS.md.

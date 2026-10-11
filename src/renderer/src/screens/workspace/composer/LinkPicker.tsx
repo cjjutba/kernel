@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ChatPart, IssueSummary, Workspace } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { useStore } from '../../../store'
 import { Button, Icon, Tabs } from '../../../ui'
 import { useLayer } from '../../../ui/hooks'
@@ -12,7 +12,6 @@ type Load = { state: 'loading' } | { state: 'ready'; rows: IssueSummary[] } | { 
 
 const SOURCES = [{ id: 'linear', label: 'Linear' }, { id: 'github', label: 'GitHub' }]
 const TAB_KEY = 'kernel.issueSource'
-const errorText = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /** The shell both pickers share: a search field over a list, anchored above the composer's + button. */
 function Panel({ label, query, onQuery, placeholder, onKey, anchorRef, onClose, children, style }: { label: string; query: string; onQuery: (q: string) => void; placeholder: string; onKey: (e: React.KeyboardEvent) => void; anchorRef: React.RefObject<HTMLElement | null>; onClose: () => void; children: ReactNode; style?: CSSProperties }) {
@@ -44,7 +43,7 @@ export function IssuePicker({ roomId, anchorRef, onPick, onClose, style }: { roo
     const t = setTimeout(() => {
       const query = q.trim() || undefined
       const req = source === 'linear' ? call('issues.list', { roomId, query }) : call('github.issues', { roomId, query })
-      req.then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: errorText(e) }) })
+      req.then((rows) => { if (!stale) setLoad({ state: 'ready', rows }) }, (e) => { if (!stale) setLoad({ state: 'error', message: cleanError(e) }) })
     }, q ? 200 : 0)
     return () => { stale = true; clearTimeout(t) }
   }, [source, q, roomId])

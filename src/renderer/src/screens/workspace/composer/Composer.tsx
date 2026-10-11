@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
 import { MODELS } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../../store'
 import { Button, Icon } from '../../../ui'
 import { attempt } from '../MessageActions'
@@ -130,7 +130,7 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
       // Back into the chat it came from, ahead of anything typed there since.
       const since = d.snapshot(id)
       d.reset(since.length ? [...kept, ...since] : kept, id)
-      actions.ui.toast({ title: 'Could not send', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not send', sub: cleanError(e) })
     }
   }
 

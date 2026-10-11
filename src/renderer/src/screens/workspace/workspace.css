@@ -51,7 +51,7 @@ button.ws-issue:hover { background: var(--surface-3); }
 .thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 10px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
-.bubble { padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
+.bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
 .msg-chip { display: inline-flex; align-items: center; gap: 6px; height: 22px; margin-right: 4px; padding: 0 7px; vertical-align: 1px; border-radius: var(--r-sm); border: 1px solid var(--chip-line); background: var(--surface-3); font: 11.5px var(--mono); color: var(--ink-2); }
 .msg-chip svg { color: var(--muted); }
 .msg-chip[data-kind='image'] svg { color: var(--add); }
@@ -60,10 +60,16 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-kernel { gap: 4px; }
 .msg-kernel .msg-acts { margin-left: 6px; }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
-.msg-reply .msg-acts { margin-left: -6px; }
-.msg:hover .msg-acts, .msg:focus-within .msg-acts { opacity: 1; }
-.msg-acts button { height: 24px; padding: 0 6px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font-size: 12px; }
-.msg-acts button:hover { background: var(--surface-3); color: var(--ink-2); }
+.msg-reply .msg-acts { margin-left: -5px; }
+/* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */
+.msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
+.msg-acts .icon-btn { width: 24px; height: 24px; border-radius: 5px; }
+/* The end of a finished turn (KERNEL-346): its time, always shown, then the reply's actions on the same line. */
+.msg-foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.msg-foot .msg-acts { margin-left: 0; }
+.msg-more { position: relative; display: inline-flex; }
+.msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.msg-reply .reply-files { margin-top: 6px; }
 .md { font-size: 14px; line-height: 1.6; color: color-mix(in srgb, var(--ink) 92%, transparent); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
@@ -141,6 +147,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .note.inline[data-pr='merged'] > svg { color: var(--pr-merged-text); }
 .note.inline[data-pr='cifail'] > svg { color: var(--pr-fail-text); }
 .note.inline[data-pr='closed'] > svg { color: var(--ink-3); }
+/* A decided plan's line keeps its icon grey whatever the outcome. */
+.note.inline[data-plan] > svg { color: var(--ink-3); }
 .note.inline .note-rule { flex: 1; min-width: 24px; height: 1px; background: var(--line); }
 
 /* right panel */

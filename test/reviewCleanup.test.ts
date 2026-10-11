@@ -32,7 +32,7 @@ async function setup(o: { other?: boolean } = {}) {
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
   // A merge or close starts an archive pass without awaiting it, so a check that a review stays must wait for the pass.
-  const passes = vi.spyOn(k as unknown as { archiveReviews: (...a: unknown[]) => Promise<void> }, 'archiveReviews')
+  const passes = vi.spyOn(k.autoArchive, 'archiveReviews')
   const settled = () => Promise.all(passes.mock.results.map((r) => r.value))
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
@@ -53,7 +53,7 @@ async function setup(o: { other?: boolean } = {}) {
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
   const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), SLOW)
   // A review Kernel will archive once its turn ends.
-  const marked = () => k['reviewsToArchive'].has(review.id)
+  const marked = () => k.autoArchive['reviewsToArchive'].has(review.id)
   return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, settled, status }
 }
 
@@ -132,7 +132,7 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
     await settled()
     expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
-    const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o
+    const where = k.o
     await k.stop()
     const k2 = new Kernel(where)
     await k2.start()
@@ -144,8 +144,8 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
     const k3 = new Kernel(where)
     await k3.start()
     onTestFinished(() => k3.stop())
-    expect(k3['reviewsToArchive'].has(review.id)).toBe(false)
-    await k3['sweepReviews']()
+    expect(k3.autoArchive['reviewsToArchive'].has(review.id)).toBe(false)
+    await k3.autoArchive['sweepReviews']()
     expect(k3.store.workspace(review.id)!.status).not.toBe('archived')
   })
 

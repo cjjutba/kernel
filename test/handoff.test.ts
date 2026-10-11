@@ -3,6 +3,8 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Chat, Decision, QueueReason, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
@@ -81,7 +83,8 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(askUser).not.toHaveBeenCalled()
   })
 
-  it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
+  /** request_plan_approval in a real Kernel's Lead chat, and the room's plan approvals. */
+  async function realLead() {
     const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -92,9 +95,14 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     const room = await k.addRoom(repo)
     const chat = await k.leadChat(room.id)
     const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const deps = (k as unknown as { leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps }).leadToolDeps(room.id, lead, chat)
+    const deps = k.lead.leadToolDeps(room.id, lead, chat)
     const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
     const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
+    return { k, chat, tool, plans }
+  }
+
+  it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
+    const { k, chat, tool, plans } = await realLead()
 
     await k.sessions.configure(chat.id, { plan: false })
     const off = await tool.handler(plan as never, {})
@@ -107,6 +115,25 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     expect(((await asked).content[0] as { text: string }).text).toBe(`approved. ${HANDOFF_NOW}`)
+  })
+
+  it('leaves plan mode once the plan is approved, as ExitPlanMode does, and tells the composer (D-074)', { timeout: 30_000 }, async () => {
+    const { k, chat, tool, plans } = await realLead()
+    await k.sessions.configure(chat.id, { plan: true })
+    const pushed: Chat[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === chat.id) pushed.push(e.chat) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+
+    const asked = tool.handler(plan as never, {})
+    for (let i = 0; i < 100 && !plans().length; i++) await new Promise((r) => setTimeout(r, 20))
+    expect(k.store.chat(chat.id)?.plan).toBe(true)
+    k.approvals.decide(plans()[0].id, { behavior: 'allow' })
+    await asked
+
+    expect(k.store.chat(chat.id)?.plan).toBe(false)
+    expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
+    expect(k.sessions.handoffs.due(chat.id)).toBe(true)
   })
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {

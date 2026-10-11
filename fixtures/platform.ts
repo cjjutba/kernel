@@ -219,16 +219,21 @@ export const platformFixtures: Record<string, Fixture> = {
   DevUiOverlays: gallery('overlays'),
   DevUiDialogs: gallery('dialogs'),
   Welcome: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'welcome' } } })),
+  // KERNEL-217: boot failed. The Loading layout with the error and Try again. No PNG.
+  LoadingError: scene(() => ({ ...empty, ui: { route: { name: 'onboarding', step: 'loading' }, startError: 'Could not read the Kernel database. Quit Kernel and open it again.' } })),
   LoadingApp: scene((f) => ({ ...sixRunning(f), ui: { route: { name: 'onboarding', step: 'loading' } } })),
   CheckHooks: scene((f) => ({
     ...sixRunning(f),
     hooks: { port: 7420, listening: true, installed: true, events: hookEvents },
     ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
   })),
-  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
-  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),
-  SetupTeamsOff: setup(failing({ id: 'teams', ok: false, blocking: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
-  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
+  // The four Setup PNGs below draw a failing check as a blocking one (red x, Continue off), so these fixtures mark theirs blocking. preflight.ts decides which checks block in real runs (KERNEL-213).
+  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
+  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),
+  SetupTeamsOff: setup(failing({ id: 'teams', ok: false, blocking: true, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
+  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: true, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
+  // KERNEL-217: what a failing gh really looks like. A warning icon and Continue on. No PNG.
+  SetupGhWarning: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
@@ -257,6 +262,8 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
+  // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
+  TrustScripts: scene(() => ({ ...workspaceFixtures.WorkspaceTrustHeld, ui: { ...open, modal: { name: 'confirm', kind: 'trust', roomId: ids.roomA } } })),
   WorkspaceSetupFailed: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),

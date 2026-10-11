@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, Icon, Modal, useBusy } from '../../ui'
 import './onboarding.css'
@@ -29,7 +29,7 @@ export function CheckHooks() {
 
   const act = (key: 'install' | 'test', fn: () => Promise<unknown>, done: string) => run(key, async () => {
     setNote(null)
-    try { await fn(); setNote(done); await refresh() } catch (e) { setNote((e as Error).message) }
+    try { await fn(); setNote(done); await refresh() } catch (e) { setNote(cleanError(e)) }
   })
   const install = () => act('install', () => call('hooks.install', { port: hooks?.port ?? 7420 }), 'Hooks installed. Your old settings file is kept next to it as a backup.')
   const test = () => act('test', () => call('hooks.test', undefined), 'Test event arrived.')

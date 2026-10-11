@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedFile,
-  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
+  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -35,6 +35,8 @@ export interface Fixture {
   /** By workspace id. */
   prs?: Record<string, PrInfo>
   overlaps?: Overlap[]
+  /** Lead chats, each holding the Lead tabs whose `threadId` names it (KERNEL-337). */
+  threads?: Thread[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
   /** Recent project folders (OpenFolder.png). */
@@ -87,6 +89,10 @@ export interface Fixture {
    * `still` is what `system.preview.open` returns in place of a live view, the thumbnail when unset (KERNEL-303).
    */
   sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string; still?: string }>>
+  /** Comments on shared files, every version (KERNEL-310). `shared.comments` filters them by shared id. */
+  sharedComments?: SharedComment[]
+  /** What `system.preview.hit` answers in a fixture run, which has no live page: the innermost anchor whose element box holds the point, as it is written (KERNEL-311). */
+  sharedHits?: SharedAnchor[]
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run

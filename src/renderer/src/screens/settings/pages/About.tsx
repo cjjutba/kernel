@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { AppUpdate } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
@@ -9,7 +9,7 @@ import { Page, Row, Section } from '../kit'
 const checkResult = (u: AppUpdate) =>
   u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? 'Could not check for updates' : 'Kernel is up to date'
 
-const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: (e as Error).message })
+const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 
 /** Settings > About (SettingsAbout.png). */
 export function About() {

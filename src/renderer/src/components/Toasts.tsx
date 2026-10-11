@@ -1,7 +1,7 @@
-import { call } from '../api'
 import { actions, useStore } from '../store'
 import { Toast, ToastStack } from '../ui'
 import { usePrToasts } from '../screens/workspace/pr/usePrToasts'
+import { runToastAction } from './toastAction'
 import { UpdateCard } from './UpdateCard'
 import './toasts.css'
 
@@ -18,8 +18,11 @@ export function Toasts() {
         {toasts.map((t) => (
           <Toast
             key={t.id} title={t.title} sub={t.sub} onDismiss={() => actions.ui.dismissToast(t.id)}
-            // A plain link would navigate the app window away, so the action opens its link in the browser.
-            action={t.action && { label: t.action.label, onClick: () => { const href = t.action?.href; if (href) void call('system.openExternal', { url: href }); actions.ui.dismissToast(t.id) } }}
+            // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
+            action={t.action && { label: t.action.label, boxed: !!t.action.tab, onClick: () => {
+              if (t.action) runToastAction(t.action)
+              actions.ui.dismissToast(t.id)
+            } }}
           />
         ))}
         <UpdateCard />

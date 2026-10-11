@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type { PushEvent } from '@shared/ipc'
 import type { SharedFile, SharedVersion } from '@shared/types'
 import { call, onPush } from '../../../api'
 import { getState } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
+import { CommentLayer } from './CommentLayer'
+import { pageSurface } from './commentSurfaces'
 import { isCovered, type Rect } from './cover'
 import { useThumb } from './shared'
 
 export type PreviewWidth = 'desktop' | 'tablet' | 'phone'
+/** Comment mode on a page (KERNEL-311): while `on`, the page is hidden behind its still capture and `CommentLayer` takes its place. */
+export interface CommentMode { on: boolean; by: string; archived: boolean; onExit: () => void }
 type PreviewState = Extract<PushEvent, { type: 'preview' }>['state']
 
 const quiet = () => undefined
@@ -17,9 +21,9 @@ const quiet = () => undefined
  * shows its still capture under that view. A PDF has no live view: Chromium's viewer doesn't render in the preview partition, so the tab
  * shows the page capture and the toolbar opens Kernel's copy in Preview. `again` counts Reload presses.
  */
-export function PreviewSurface({ workspaceId, file, version, width, again }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number }) {
+export function PreviewSurface({ workspaceId, file, version, width, again, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number; comment?: CommentMode }) {
   if (file.kind === 'pdf') return <PdfPage file={file} version={version} />
-  return <PagePreview workspaceId={workspaceId} file={file} version={version} width={width} again={again} />
+  return <PagePreview workspaceId={workspaceId} file={file} version={version} width={width} again={again} comment={comment} />
 }
 
 function PdfPage({ file, version }: { file: SharedFile; version: SharedVersion }) {
@@ -33,7 +37,7 @@ function replayKey(e: Extract<PushEvent, { type: 'preview.key' }>) {
   window.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, code: e.code, metaKey: e.meta, shiftKey: e.shift, altKey: e.alt, ctrlKey: e.ctrl, bubbles: true, cancelable: true }))
 }
 
-function PagePreview({ workspaceId, file, version, width, again }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number }) {
+function PagePreview({ workspaceId, file, version, width, again, comment }: { workspaceId: string; file: SharedFile; version: SharedVersion; width: PreviewWidth; again: number; comment?: CommentMode }) {
   // One view per tab, keyed by workspace and file. A fixture run has no live view, so its pushes name this key instead of a view.
   const key = `${workspaceId}:${file.id}`
   const frame = useRef<HTMLDivElement>(null)
@@ -46,6 +50,15 @@ function PagePreview({ workspaceId, file, version, width, again }: { workspaceId
   const watch = id ?? key
   const deadRef = useRef(dead)
   deadRef.current = dead
+  // Comment mode: `armed` once the still shows the page as it is now, and from then the view stays hidden for the layer to take its place.
+  const commenting = !!comment?.on
+  const [armed, setArmed] = useState(false)
+  const armedRef = useRef(armed)
+  armedRef.current = armed
+  const layer = useRef<HTMLDivElement>(null)
+  // Where the page was scrolled to before comment mode, and whether the layer has scrolled it since, so leaving puts it back as it was.
+  const scrolled = useRef<{ y: number | null; moved: boolean }>({ y: null, moved: false })
+  const surface = useMemo(() => pageSurface(id ?? key), [id, key])
   // Set while Reload waits for the page to answer: the next ready, crashed or unresponsive push ends it.
   const answered = useRef<(() => void) | null>(null)
 
@@ -59,6 +72,32 @@ function PagePreview({ workspaceId, file, version, width, again }: { workspaceId
   }, [key, version.n])
 
   const refresh = () => call('system.preview.still', { viewId: id! }).then((u) => { if (u) setStill(u) }).catch(quiet)
+
+  useEffect(() => {
+    if (!commenting) { setArmed(false); return }
+    let live = true
+    scrolled.current = { y: null, moved: false }
+    if (!id) { setArmed(true); return }
+    // The still is taken while the page is still showing, so the layer opens over the page as it is now. Then the view hides.
+    void call('system.preview.scroll', { viewId: id, dy: 0 })
+      .then((r) => { scrolled.current.y = r?.scrollY ?? null })
+      .catch(quiet)
+      .then(() => call('system.preview.still', { viewId: id }))
+      .then((u) => { if (live && u) setStill(u) })
+      .catch(quiet)
+      .then(() => { if (live) setArmed(true) })
+    return () => {
+      live = false
+      const { y, moved } = scrolled.current
+      if (moved && y !== null) void call('system.preview.scroll', { viewId: id, y }).catch(quiet)
+    }
+  }, [commenting, id])
+
+  const wheel = (dx: number, dy: number) => {
+    if (!id) return
+    scrolled.current.moved = true
+    void call('system.preview.scroll', { viewId: id, dx, dy }).catch(quiet)
+  }
 
   // Bounds. Every frame, because a sidebar toggle, a banner or a panel drag moves the frame without resizing anything a ResizeObserver
   // watches. The rect goes out only when it changes, and null while something of Kernel's covers the page or the page has crashed.
@@ -80,7 +119,7 @@ function PagePreview({ workspaceId, file, version, width, again }: { workspaceId
       const b = el.getBoundingClientRect()
       // The page fills the frame inside its border.
       const rect = { x: b.left + el.clientLeft, y: b.top + el.clientTop, width: el.clientWidth, height: el.clientHeight }
-      if (deadRef.current || isCovered(rect)) {
+      if (deadRef.current || armedRef.current || isCovered(rect)) {
         if (hidden) return
         hidden = true
         // Hide first, so the overlay draws over the still, then take a still of the page as it is now.
@@ -124,7 +163,7 @@ function PagePreview({ workspaceId, file, version, width, again }: { workspaceId
     await settled
   })
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Enter' || e.target !== e.currentTarget || !id) return
+    if (e.key !== 'Enter' || e.target !== e.currentTarget || !id || commenting) return
     e.preventDefault()
     void call('system.preview.focus', { viewId: id }).catch(quiet)
   }
@@ -133,6 +172,7 @@ function PagePreview({ workspaceId, file, version, width, again }: { workspaceId
     <div className="sv-stage">
       <div ref={frame} className="sv-frame" data-width={width} role="group" tabIndex={0} aria-label={`${file.title}. Press Enter to use the page, F6 to come back.`} onKeyDown={onKeyDown}>
         <img className="sv-still" alt="" src={still ?? thumb ?? undefined} />
+        {comment && armed && <CommentLayer layerRef={layer} kind="html" file={file} version={version} by={comment.by} archived={comment.archived} surface={surface} onExit={comment.onExit} onWheel={wheel} />}
       </div>
       {dead && (
         <div className="sv-crash" role="alert">

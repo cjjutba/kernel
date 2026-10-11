@@ -128,7 +128,7 @@ describe('the review link (KERNEL-130)', () => {
 
   it('reads reviews of the PR: approved on its head commit, stale after a push, running while the reviewer works', async () => {
     const { k, review, author, tip } = await setup()
-    const state = () => (k as unknown as { reviewState: (ws: Workspace) => { approvedBy: string[]; blockers: boolean; inProgress: boolean; stale?: boolean; open?: { workspaceId: string } } }).reviewState(k.store.workspace(author.id)!)
+    const state = () => k.reviews.reviewState(k.store.workspace(author.id)!)
     expect(state()).toMatchObject({ approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: review.id } })
     await k.submitReview(review.id, { verdict: 'approved', summary: 'Looks right.' })
     k.store.saveWorkspace({ ...k.store.workspace(author.id)!, prHead: tip })

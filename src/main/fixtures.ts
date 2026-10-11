@@ -100,6 +100,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
     'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
+    'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
     'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, transcriptBytes: 640 * 1024 * 1024 },
@@ -163,12 +164,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
     'chats.queueReason': async () => null,
+    // A fixture's running chats, retries, script lines and terminal output come from its push events.
+    'chats.live': async () => ({ running: [], retry: {} }),
     'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
     'commands.list': async () => [],
     'terminal.write': async () => ok,
     'terminal.resize': async () => ok,
+    'terminal.replay': async () => ok,
     'checkpoints.list': async ({ workspaceId }) => f.checkpoints?.[workspaceId] ?? [],
     'checkpoints.revert': async ({ workspaceId }) => ({ backupBranch: `backup/${workspace(workspaceId).name}` }),
     'approvals.list': async ({ roomId }) => f.approvals.filter((a) => !roomId || a.roomId === roomId).sort((a, b) => b.createdAt - a.createdAt),
@@ -198,6 +202,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return ws
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
+    'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
+    'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),
@@ -208,6 +214,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'pr.continue': async ({ workspaceId }) => ({ ...workspace(workspaceId), prState: 'none', prNumber: undefined, prUrl: undefined }),
     'scripts.run': async () => ok,
     'scripts.stop': async () => ok,
+    'scripts.replay': async () => ok,
     'activity.recent': async ({ roomId, limit = 50 }) => f.activity.filter((e) => !roomId || e.roomId === roomId).sort((a, b) => b.ts - a.ts).slice(0, limit),
     'rooms.lastActivity': async ({ roomId }) => {
       const last: Record<string, number> = {}
@@ -286,6 +293,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
     'shared.reveal': async () => ok,
     'shared.open': async () => ok,
+    // Nothing is sent: the answer names the chat it would go to, the version's or the workspace's first (KERNEL-310).
+    'shared.comment': async ({ sharedId, version }) => {
+      const file = f.shared?.find((x) => x.id === sharedId)
+      if (!file?.versions.some((x) => x.n === version)) throw new Error('That shared file or version is gone.')
+      if (file.kind === 'pdf') throw new Error('PDFs take no comments.')
+      const chatId = file.versions.find((x) => x.n === version)?.chatId ?? f.chats.find((c) => c.workspaceId === file.workspaceId && c.kind !== 'terminal')?.id ?? ''
+      return { chatId, workspaceId: file.workspaceId, queued: false }
+    },
+    'shared.comments': async ({ sharedId }) => (f.sharedComments ?? []).filter((c) => c.sharedId === sharedId).sort((a, b) => a.at - b.at),
     // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
     'env.get': async ({ roomId }) => {
       const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }

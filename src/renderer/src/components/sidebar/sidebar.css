@@ -35,8 +35,6 @@
 .ws-row:not([data-key]):hover .nav-item, .ws-row:not([data-key]):has(:focus-visible) .nav-item, .ws-row.busy:not([data-key]) .nav-item { padding-right: 32px; }
 .ws-row:hover .nav-item:not([aria-current='page']) { background: var(--nav-hover); }
 .ws-row.busy .more { opacity: 1; }
-/* The archive icon brightens on hover with no square behind it. */
-.ws-archive .icon-btn:hover { background: transparent; color: var(--ink); }
 /* Holding ⌘ swaps a numbered row's right end for its ⌘N. On a workspace row the archive button steps aside so the two don't overlap,
    and its 32px stays off so a hovered row's ⌘N lines up with the rest. */
 .nav-key { flex-shrink: 0; font-size: 11px; color: var(--muted); }

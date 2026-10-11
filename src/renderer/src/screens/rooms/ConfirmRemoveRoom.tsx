@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { tilde } from './draft'
@@ -26,7 +26,7 @@ export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
       actions.rooms.remove(roomId)
       if (here) actions.ui.go({ name: 'rooms' })
       actions.ui.closeModal()
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+    } catch (e) { setError(cleanError(e)) }
   })
   const n = (count: number, one: string) => `${count} ${one}${count === 1 ? '' : 's'}`
 

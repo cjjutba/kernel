@@ -1,5 +1,5 @@
 import { MODELS, type RateLimit } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Meter, Toggle, useBusy } from '../../../ui'
 import { resetPhrase } from '../../workspace/banners/model'
@@ -40,10 +40,10 @@ export function Account() {
       actions.account.set(await call('account.signOut', undefined))
       actions.system.setPreflight(await call('preflight.run', undefined))
       go({ name: 'onboarding', step: 'checks' })
-    } catch (e) { actions.ui.toast({ title: 'Could not sign out', sub: (e as Error).message }) }
+    } catch (e) { actions.ui.toast({ title: 'Could not sign out', sub: cleanError(e) }) }
   })
   const openUsage = () => run('usage', async () => {
-    try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'claude /usage' }) } catch (e) { actions.ui.toast({ title: 'Could not open a terminal', sub: (e as Error).message }) }
+    try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'claude /usage' }) } catch (e) { actions.ui.toast({ title: 'Could not open a terminal', sub: cleanError(e) }) }
   })
   return (
     <Page title="Account and usage">
