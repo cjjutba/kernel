@@ -49,7 +49,12 @@ async function realLead() {
   const deps = k.lead.leadToolDeps(room.id, lead, chat)
   const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
   const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
-  return { k, room, chat, tool, plans }
+  // The plan file is written after the card shows, so a test waits for it before `k.stop()` closes the store (KERNEL-383).
+  const planSaved = async () => {
+    for (let i = 0; i < 100 && !plans()[0]?.planFile; i++) await new Promise((r) => setTimeout(r, 20))
+    return plans()[0]?.planFile
+  }
+  return { k, room, chat, tool, plans, planSaved }
 }
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
@@ -105,7 +110,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   })
 
   it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
-    const { k, chat, tool, plans } = await realLead()
+    const { k, chat, tool, plans, planSaved } = await realLead()
 
     await k.sessions.configure(chat.id, { plan: false })
     const off = await tool.handler(plan as never, {})
@@ -118,10 +123,11 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     expect(((await asked).content[0] as { text: string }).text).toBe(`approved. ${HANDOFF_NOW}`)
+    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
   })
 
   it('leaves plan mode once the plan is approved, as ExitPlanMode does, and tells the composer (D-074)', { timeout: 30_000 }, async () => {
-    const { k, chat, tool, plans } = await realLead()
+    const { k, chat, tool, plans, planSaved } = await realLead()
     await k.sessions.configure(chat.id, { plan: true })
     const pushed: Chat[] = []
     const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === chat.id) pushed.push(e.chat) }
@@ -137,6 +143,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(k.store.chat(chat.id)?.plan).toBe(false)
     expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
     expect(k.sessions.handoffs.due(chat.id)).toBe(true)
+    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
   })
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {

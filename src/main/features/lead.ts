@@ -186,8 +186,10 @@ export class Lead extends Feature {
         this.sessions.placeApproval(chat.id, approval.id)
         // Saved like ExitPlanMode's plan, so a chat can build from it after the card is gone (D-092, KERNEL-373).
         const ws = this.store.workspace(chat.workspaceId)
+        // `update` skips an approval that is gone. The catch covers a store closed while the file was written, as on quit
+        // (KERNEL-383).
         if (o.kind === 'plan' && o.detail?.trim() && ws && existsSync(ws.path)) {
-          void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => this.approvals.update(approval.id, { planFile }), () => undefined)
+          void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => { this.approvals.update(approval.id, { planFile }) }).catch(() => undefined)
         }
         // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125).
         return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
