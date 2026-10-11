@@ -79,18 +79,56 @@ export async function cloneRepo(fullName: string, dest: string) {
   await run('gh', ['repo', 'clone', fullName, dest], { timeoutMs: 600_000 })
 }
 
-/** From scratch: a shallow copy of the starter kit with its history dropped, so the room starts with one commit. */
+/**
+ * From scratch: a shallow copy of the starter kit with its history dropped, so the room starts with one commit. The kit is
+ * Kernel's own files in a folder that was empty, so committing them is safe. Works without a git identity.
+ */
 export async function copyTemplate(fullName: string, dest: string) {
   await cloneRepo(fullName, dest)
   await rm(join(dest, '.git'), { recursive: true, force: true })
-  await initGit(dest)
+  await git(dest, 'init', '-q', '-b', 'main')
+  await gitSlow(dest, 'add', '-A')
+  await git(dest, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')
 }
 
-/** `git init` plus a first commit, so worktrees have something to branch from. Works without a git identity. */
-export async function initGit(path: string) {
+/** Past this many files, a folder is not a project to run `git init` in (KERNEL-231). */
+export const INIT_MAX_FILES = 5000
+
+/** The home folder is never a room: agents would work in all of it. */
+export function refuseHome(path: string, home = homedir()) {
+  if (resolve(path) === resolve(home)) throw new Error('Your home folder can\'t be a room. Pick a project folder inside it.')
+}
+
+/** Counts the files under `path`, `.git` left out, and stops once past `max`. Folders it can't read count as empty. */
+export async function countFiles(path: string, max: number): Promise<number> {
+  let n = 0
+  const dirs = [path]
+  while (dirs.length && n <= max) {
+    const dir = dirs.pop()!
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+    for (const e of entries) {
+      if (e.isDirectory()) { if (e.name !== '.git') dirs.push(join(dir, e.name)) }
+      else if (++n > max) break
+    }
+  }
+  return n
+}
+
+/** Refuses a folder `initGit` must not touch: the home folder, or one with more than INIT_MAX_FILES files. */
+export async function assertInitable(path: string, home = homedir()) {
+  refuseHome(path, home)
+  if (await countFiles(path, INIT_MAX_FILES) > INIT_MAX_FILES) {
+    throw new Error(`${tildify(path, home)} has more than ${INIT_MAX_FILES.toLocaleString('en-US')} files, so Kernel won't run git init there. Run git init yourself, add a .gitignore for folders like node_modules, make the first commit, then add the folder.`)
+  }
+}
+
+/**
+ * `git init` only (KERNEL-231). Kernel commits nothing, since the folder may hold secrets or build output: the user makes the
+ * first commit, and until then the room has nothing to branch a worktree from.
+ */
+export async function initGit(path: string, home = homedir()) {
+  await assertInitable(path, home)
   await git(path, 'init', '-q', '-b', 'main')
-  await gitSlow(path, 'add', '-A')
-  await git(path, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')
 }
 
 /**

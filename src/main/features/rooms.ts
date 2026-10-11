@@ -8,11 +8,11 @@ import type { Handlers } from '../kernel'
 import { PAUSE_KEEPS } from '../services/sessions'
 import { KERNEL_HOOK_EVENTS } from '../services/hooksInstaller'
 import { loadRepoSettings, localSettingsOwn } from '../services/settings'
-import { defaultBranch, remoteRepo, slugify } from '../services/worktrees'
+import { defaultBranch, remoteRepo, roomWorktreeRoot, slugify } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, assertInitable, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, refuseHome, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
@@ -20,8 +20,11 @@ export class Rooms extends Feature {
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
     if (existing) return existing
+    refuseHome(path, this.home)
     const remote = await this.k.config.remoteFor(path)
-    const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
+    const id = newId()
+    // Its worktrees go in a folder named by its id, so another room with the same name gets its own (KERNEL-231).
+    const room: Room = { id, name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, worktreeDir: id, createdAt: Date.now() }
     this.store.saveRoom(room)
     await this.k.team.agents(room.id)
     await this.k.trust.untrusted(room).catch(() => null)
@@ -40,17 +43,21 @@ export class Rooms extends Feature {
     let path: string
     if (req.source === 'folder') {
       path = expandHome(req.from, this.home)
+      refuseHome(path, this.home)
       const info = await inspectFolder(path, this.home)
       if (!info.git && !req.initGit) throw new Error(`${tildify(path, this.home)} is not a git repository. Initialize git to use it.`)
+      // Refused here, before the room exists, rather than in the setup step (KERNEL-231).
+      if (!info.git) await assertInitable(path, this.home)
     } else {
       path = expandHome(req.cloneTo ?? join(this.home, 'Projects', slugify(req.source === 'repo' ? basename(req.from) : name)), this.home)
       await assertFreeFolder(path, this.home)
     }
     const taken = this.store.rooms().find((r) => r.path === path)
     if (taken) throw new Error(`${tildify(path, this.home)} is already the room ${taken.name}.`)
+    const id = newId()
     const room: Room = {
-      id: newId(), name, desc: req.desc?.trim() || undefined, kind: req.source, path,
-      repo: req.source === 'repo' ? req.from : undefined, defaultBranch: req.baseBranch || 'main', paused: false, createdAt: Date.now()
+      id, name, desc: req.desc?.trim() || undefined, kind: req.source, path,
+      repo: req.source === 'repo' ? req.from : undefined, defaultBranch: req.baseBranch || 'main', paused: false, worktreeDir: id, createdAt: Date.now()
     }
     this.store.saveRoom(room)
     bus.push({ type: 'room', room })
@@ -61,7 +68,7 @@ export class Rooms extends Feature {
 
   /** The six steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no checkout. */
   private async setupRoom(room: Room, req: NewRoomRequest) {
-    const worktrees = join(this.settings.worktreeRoot, slugify(room.name))
+    const worktrees = roomWorktreeRoot(this.settings.worktreeRoot, room)
     const steps: RoomSetupStep[] = [
       { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(room.path, this.home), state: 'wait' },
       { id: 'worktrees', title: 'Create the worktree folder', detail: tildify(worktrees, this.home), state: 'wait' },
@@ -87,13 +94,16 @@ export class Rooms extends Feature {
     publish()
 
     const checkedOut = await step('clone', async () => {
+      let inited = false
       if (req.source === 'repo') await cloneRepo(req.from, room.path)
       else if (req.source === 'scratch') await copyTemplate(req.from, room.path)
-      else if (req.initGit && !(await inspectFolder(room.path, this.home)).git) await initGit(room.path)
+      else if (req.initGit && !(await inspectFolder(room.path, this.home)).git) { await initGit(room.path, this.home); inited = true }
       const remote = await this.k.config.remoteFor(room.path)
       const next: Room = { ...room, repo: room.repo ?? (await remoteRepo(room.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(room.path, remote).catch(() => 'main')) }
       this.store.saveRoom(next)
       bus.push({ type: 'room', room: next })
+      // Kernel commits nothing in the user's folder, so the first commit is theirs, and new workspaces wait for it (KERNEL-231).
+      if (inited) return { detail: `Git initialized in ${tildify(room.path, this.home)}. Make the first commit so new workspaces have something to branch from.` }
     })
     if (!checkedOut) return
 

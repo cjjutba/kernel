@@ -134,6 +134,8 @@ export interface SessionDeps {
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
+  /** Claude's API answered: a message with no error, or a turn that ended well. The network works, whatever DNS says (KERNEL-231). */
+  onReached?: () => void
   /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
   onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
   /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
@@ -1205,6 +1207,7 @@ export class Sessions {
         if (failure === 'auth' || failure === 'network') live.failed = failure
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
+        if (!failure) this.d.onReached?.()
         this.d.onReply?.(ws, chat)
         // Subagent chatter stays inside the tool row. Only the model it runs on reaches the row's label.
         if (msg.parent_tool_use_id) { this.subagentModel(chat, live, msg.parent_tool_use_id, msg.message.model); return }
@@ -1247,6 +1250,7 @@ export class Sessions {
       }
       case 'result': {
         const ok = msg.subtype === 'success'
+        if (ok) this.d.onReached?.()
         if (msg.subtype !== 'success' && live.resume && msg.errors?.includes(`${SESSION_GONE}${live.resume}`) && this.renew(chat, ws, live)) return
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
         if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })

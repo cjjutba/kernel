@@ -1,10 +1,9 @@
-import { join } from 'node:path'
 import type { Chat, ChatPart, Effort, ModelId, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchName, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, leadBase, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
+import { branchName, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, folderGone, freeBranch, hasCommit, leadBase, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, roomWorktreeRoot, shortSlug, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readImage, readWorkspaceFile, searchFiles } from '../services/files'
@@ -34,6 +33,8 @@ export interface CutWorkspace {
 export class Workspaces extends Feature {
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
   readonly reservedPorts = new Set<number>()
+  /** Per room, the last branch pick and worktree add, so two creates at once never pick the same free branch (KERNEL-231). */
+  private branchLocks = new Map<string, Promise<unknown>>()
 
   /** A workspace for the room's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
   async createWorkspace(roomId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
@@ -63,6 +64,8 @@ export class Workspaces extends Feature {
     if (o.reviewOf && (!reviewed || reviewed.roomId !== roomId || reviewed.status === 'archived')) throw new Error('The workspace to review is not open in this room.')
     const remote = await this.k.config.remoteFor(room.path, repo)
     const mode = reviewed ? 'worktree' : o.lead ? (await leadBase(room.path, remote) ? 'worktree' : 'current') : o.mode ?? repo.workspace.mode ?? s.workspace.mode
+    // A room Kernel ran git init in waits for the user's first commit (KERNEL-231). Without one, a worktree has nothing to start from.
+    if (mode === 'worktree' && !(await hasCommit(room.path))) throw new Error(`${room.name} has no commit yet, so a new workspace has nothing to branch from. Make the first commit in ${room.path}, then try again.`)
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     // A base nobody set is the repo's default branch, the one PRs go into (KERNEL-400). Rowan starts from it or the branch picked
@@ -94,10 +97,12 @@ export class Workspaces extends Feature {
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
         const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(issue.id) : [])
-        branch = await freeBranch(room.path, asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+        const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
-          : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels))))
-        path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
+          : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        const made = await this.newBranchWorktree(room, wanted, baseRef)
+        branch = made.branch
+        path = made.path
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
       } else if (o.lead) {
@@ -277,8 +282,7 @@ export class Workspaces extends Feature {
   /** The fork's worktree and record: a branch at `from` whose files are made to match `files`, and the workspace in setup. */
   private async forkTree(src: Workspace, room: Room, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
     const ws = await this.withPort(async (port) => {
-      const branch = await freeBranch(room.path, `${capBranch(src.branch, 55)}-fork`)
-      const path = await createWorktree({ repo: room.path, root: join(this.settings.worktreeRoot, slugify(room.name)), branch, baseRef: from })
+      const { branch, path } = await this.newBranchWorktree(room, `${capBranch(src.branch, 55)}-fork`, from)
       try {
         await writeTree(path, `${from}^{tree}`, files)
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -297,6 +301,20 @@ export class Workspaces extends Feature {
     bus.push({ type: 'workspace', workspace: ws })
     bus.activity({ kind: 'workspace.created', actor: 'you', roomId: room.id, workspaceId: ws.id, agentId: ws.agentId, text: `forked ${src.name} into`, object: ws.name })
     return ws
+  }
+
+  /**
+   * A worktree on a new branch: `wanted`, or the first free name after it. The pick and the add run one at a time per room,
+   * since a branch is free until `worktree add` makes it, and a second create at once would pick it too (KERNEL-231).
+   */
+  private async newBranchWorktree(room: Room, wanted: string, baseRef: string): Promise<{ branch: string; path: string }> {
+    const before = this.branchLocks.get(room.id) ?? Promise.resolve()
+    const run = before.catch(() => undefined).then(async () => {
+      const branch = await freeBranch(room.path, wanted)
+      return { branch, path: await createWorktree({ repo: room.path, root: roomWorktreeRoot(this.settings.worktreeRoot, room), branch, baseRef }) }
+    })
+    this.branchLocks.set(room.id, run)
+    try { return await run } finally { if (this.branchLocks.get(room.id) === run) this.branchLocks.delete(room.id) }
   }
 
   /** The first port of every open workspace's block. */
