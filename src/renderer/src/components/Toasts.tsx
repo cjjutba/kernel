@@ -6,7 +6,8 @@ import { UpdateCard } from './UpdateCard'
 import './toasts.css'
 
 /**
- * `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 2.6s, or stays while hovered.
+ * `ui.toasts`, bottom right of the main panel (WorkspaceToast.png). Each one leaves after 2.6s, or stays while hovered. Swiping
+ * it right or pressing its action dismisses it sooner.
  * The update card sits last, under them (KERNEL-164). The stack stays mounted so a closed card stays closed.
  */
 export function Toasts() {
@@ -19,10 +20,7 @@ export function Toasts() {
           <Toast
             key={t.id} title={t.title} sub={t.sub} onDismiss={() => actions.ui.dismissToast(t.id)}
             // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
-            action={t.action && { label: t.action.label, boxed: !!t.action.tab, onClick: () => {
-              if (t.action) runToastAction(t.action)
-              actions.ui.dismissToast(t.id)
-            } }}
+            action={t.action && { label: t.action.label, boxed: !!t.action.tab, onClick: () => { if (t.action) runToastAction(t.action) } }}
           />
         ))}
         <UpdateCard />

@@ -111,7 +111,6 @@ let hookPort: () => number | undefined = () => undefined
 async function copyDiagnostics() {
   const text = await diagnostics({ app: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch, electron: process.versions.electron, hookPort: hookPort(), log, ...redaction })
   clipboard.writeText(text)
-  toast({ title: 'Diagnostics copied', sub: 'Paste them into your bug report.' })
 }
 
 /** When the window's page last crashed, so a page that crashes as it loads isn't reloaded forever. */
