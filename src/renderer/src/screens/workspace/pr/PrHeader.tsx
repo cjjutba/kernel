@@ -8,7 +8,8 @@ import { openRoom } from '../../../lead'
 import { archivedByHand } from '../byHand'
 import './pr.css'
 
-const request: Record<PrAction, (workspaceId: string) => Promise<unknown>> = {
+/** What each action calls on the main process. Shared with `MergeButton`. */
+export const request: Record<PrAction,(workspaceId: string) => Promise<unknown>> = {
   create: (workspaceId) => call('pr.create', { workspaceId }),
   resolve: (workspaceId) => call('pr.resolve', { workspaceId }),
   merge: (workspaceId) => call('pr.merge', { workspaceId }),

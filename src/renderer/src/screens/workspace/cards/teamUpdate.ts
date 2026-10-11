@@ -1,4 +1,4 @@
-import type { ChatItem, TeamEventKind, TeamUpdate, TeamUpdateRow } from '@shared/types'
+import type { ChatItem, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 
 type UserItem = Extract<ChatItem, { kind: 'user' }>
 
@@ -9,6 +9,37 @@ export const textOf = (item: UserItem) => item.parts.flatMap((p) => (p.type === 
 export function cardData(item: UserItem): TeamUpdate {
   return item.update ?? legacyRows(textOf(item))
 }
+
+/** The workspace a row's Merge button merges: a reviewer's row merges the work it reviewed (`reviewOf`), every other row its own. */
+export const mergeTargetOf = (ws: Pick<Workspace, 'id' | 'reviewOf'>) => ws.reviewOf ?? ws.id
+
+const newest = new WeakMap<ChatItem[], WeakMap<Workspace[], Map<string, string>>>()
+
+/**
+ * For each workspace a PR belongs to, the id of the newest item in the chat with a Team update row about it (KERNEL-351). Only
+ * that row offers Merge, so older cards about the same PR keep Open alone. Review rows carry no PR number, so a row is
+ * matched to its target through its workspace. Kept per `items` and `workspaces` array, so every row of every card reads
+ * one map and a new array is the only thing that rebuilds it.
+ */
+export function newestRows(items: ChatItem[] | undefined, workspaces: Workspace[]): Map<string, string> {
+  if (!items) return EMPTY
+  let byWorkspaces = newest.get(items)
+  if (!byWorkspaces) newest.set(items, (byWorkspaces = new WeakMap()))
+  let map = byWorkspaces.get(workspaces)
+  if (map) return map
+  map = new Map()
+  const byId = new Map(workspaces.map((w) => [w.id, w]))
+  for (const item of items) {
+    if (item.kind !== 'user' || !item.update) continue
+    for (const row of item.update.rows) {
+      const ws = byId.get(row.workspaceId)
+      if (ws) map.set(mergeTargetOf(ws), item.id)
+    }
+  }
+  byWorkspaces.set(workspaces, map)
+  return map
+}
+const EMPTY = new Map<string, string>()
 
 /** Rows in the order the Lead read them, grouped under the closed Lead chat, or closed tab (`fromTab`), they came from, when they did. */
 export function sections(rows: TeamUpdateRow[]): { fromChat?: string; fromTab?: boolean; rows: TeamUpdateRow[] }[] {

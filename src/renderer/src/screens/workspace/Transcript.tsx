@@ -259,7 +259,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
       const view = userView(item)
-      return view === 'update' ? <TeamUpdateCard item={item} /> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
+      return view === 'update' ? <TeamUpdateCard item={item} chatId={chatId} /> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
     }
     case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} />
     case 'thinking': return <ThinkingRow item={item} />
