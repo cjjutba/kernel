@@ -39,7 +39,7 @@ async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: Sh
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: o.sharing ?? true } }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...(o.sharing === undefined ? {} : { experimental: { sharing: o.sharing } }) }))
   const revealed: string[] = []
   const make = async () => {
     const k = new Kernel({ dataDir, home, reveal: (p) => revealed.push(p), ...(o.opened ? { openFile: async (p: string) => { o.opened!.push(p) } } : {}), ...(o.capture ? { capture: { thumbnail: o.capture } } : {}) })
@@ -333,8 +333,18 @@ describe('who gets share_file (KERNEL-302)', () => {
     }
   })
 
+  it('gives a new Lead, reviewer and teammate session share_file, and the Lead its rule, with no setting in settings.json (KERNEL-308)', async () => {
+    // setup writes no experimental table unless asked, so these sessions run on the defaults.
+    const s = await setup()
+    for (const ws of [s.leadWs, s.review, s.kai]) {
+      const c = await started(s, ws)
+      expect(c.mcpServers?.kernel.tools, ws.agentId).toContain('share_file')
+      if (ws === s.leadWs) expect(c.systemPrompt?.append).toContain(LEAD_SHARING_RULE)
+    }
+  })
+
   it('gives every agent share_file next to its own tools while sharing is on, and nothing new while it is off', async () => {
-    const on = await setup()
+    const on = await setup({ sharing: true })
     const names = (s: typeof on, ws: Workspace, id: string) => s.k().toolsFor(ws, s.agent(id), s.chatOf(ws)).map((t) => t.name)
     const lead = names(on, on.leadWs, 'rowan')
     expect(lead).toEqual(expect.arrayContaining(['create_workspace', 'message_agent', 'share_file']))

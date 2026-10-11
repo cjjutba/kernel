@@ -252,7 +252,7 @@ export class Kernel {
   }
 
   private get home() { return this.o.home ?? homedir() }
-  /** Whether agents get share_file. `experimental.sharing` in settings.json, with no page in Settings until KERNEL-308. */
+  /** Whether agents get share_file. `experimental.sharing` in settings.json, on by default and with no page in Settings (KERNEL-308). */
   private get sharing() { return this.settings?.experimental.sharing === true }
   private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 

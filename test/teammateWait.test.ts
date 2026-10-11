@@ -173,12 +173,12 @@ describe('who gets wait_for_merge', () => {
     const agent = (id: string) => agents.find((a) => a.id === id)
     const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #164', leadChatId: lead.id, reviewOf: noor.id })
     const leadWs = k.store.workspace(lead.workspaceId)!
-    expect(deps.mcpFor(kai, agent('kai'), chatOf(k, kai))?.kernel.tools).toEqual(['wait_for_merge'])
-    expect(deps.mcpFor(review, agent('theo'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review'])
+    expect(deps.mcpFor(kai, agent('kai'), chatOf(k, kai))?.kernel.tools).toEqual(['wait_for_merge', 'share_file'])
+    expect(deps.mcpFor(review, agent('theo'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review', 'share_file'])
     expect(deps.mcpFor(leadWs, agent('rowan'), lead)?.kernel.tools).not.toContain('submit_review')
     expect(deps.rulesFor(kai, agent('kai'))).toBe(TEAMMATE_RULE)
     expect(deps.rulesFor(review, agent('theo'))).not.toContain('wait_for_merge')
-    expect(deps.rulesFor(leadWs, agent('rowan'))).toBeUndefined()
+    expect(deps.rulesFor(leadWs, agent('rowan'))).not.toContain('wait_for_merge')
     expect(TEAMMATE_RULE).toContain("If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop.")
     await k.stop()
   })
@@ -186,7 +186,7 @@ describe('who gets wait_for_merge', () => {
   it("runs in the teammate's session without asking for permission, as submit_review does", async () => {
     const { k, kai } = await setup()
     const options = callsIn(kai)[0].options
-    expect(options.mcpServers.kernel.tools).toEqual(['wait_for_merge'])
+    expect(options.mcpServers.kernel.tools).toEqual(['wait_for_merge', 'share_file'])
     expect(options.systemPrompt.append).toContain(TEAMMATE_RULE)
     // A prompt would wait on the user; this answers at once.
     const answer = await (options.canUseTool as CanUseTool)('mcp__kernel__wait_for_merge', { on: '#164' }, { signal: new AbortController().signal, toolUseID: 'w1', requestId: 'r1' } as never)
