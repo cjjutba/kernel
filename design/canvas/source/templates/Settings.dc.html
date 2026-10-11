@@ -295,6 +295,10 @@ class Component extends DCLogic {
           seg('rg-mode', 'Default workspace type', ['Use default', 'New worktree', 'Current branch'], 0, 'The app default is New worktree'),
           over(sel('rg-from', 'Branch new workspaces from', ['origin/dev', 'origin/main'])),
           sel('rg-remote', 'Remote origin', ['origin', 'upstream'], 'The app default is origin')
+        ] },
+        { title: 'Cleanup', rows: [
+          seg('rg-delbranch', 'Delete branch on archive', ['Use default', 'On', 'Off'], 0, 'The app default is Off'),
+          over(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2))
         ] }
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
