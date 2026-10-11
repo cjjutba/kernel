@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, writeFile, rm, stat, utimes } from 'node:fs/promises'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { mkdir, mkdtemp, readFile, rename, writeFile, rm, stat, utimes } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
-import { git } from '../src/main/services/exec'
+import { setUp, tempRepo } from './helpers'
+import { exec, git } from '../src/main/services/exec'
 import { createWorktree, snapshotBaseline } from '../src/main/services/worktrees'
 import { listCheckpoints, revertTo, snapshot } from '../src/main/services/checkpoints'
 import { Kernel } from '../src/main/kernel'
+import { KEEP_CHECKPOINTS_MS } from '../src/main/features/archive'
 
 const read = (dir: string, f: string) => readFile(join(dir, f), 'utf8')
 const exists = (dir: string, f: string) => stat(join(dir, f)).then(() => true, () => false)
@@ -188,4 +189,113 @@ describe('checkpoints in the kernel', () => {
     expect(note?.kind === 'note' && note.text).toBe(`Reverted files to the start of the chat. Later changes are saved on ${backupBranch}.`)
     await k.stop()
   })
+})
+
+describe('checkpoints of archived workspaces (KERNEL-221)', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  async function setup() {
+    const repo = await tempRepo({ 'README.md': '# x\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop().catch(() => undefined))
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.addRoom(repo)
+    const refs = async (prefix = 'refs/kernel/') => (await git(repo, 'for-each-ref', '--format=%(refname)', prefix)).trim().split('\n').filter(Boolean)
+    /** A workspace with a turn that left a file only its checkpoint holds, archived `daysAgo` days ago by a faked clock. */
+    async function archived(title: string, daysAgo: number) {
+      const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title })
+      await writeFile(join(ws.path, 'draft.md'), `only in a checkpoint of ${title}\n`)
+      const c = await snapshot(ws, { chatId: k.store.chats(ws.id)[0].id, title: 'Draft' })
+      const blob = (await git(repo, 'rev-parse', `${c.ref}:draft.md`)).trim()
+      vi.useFakeTimers({ toFake: ['Date'], now: Date.now() - daysAgo * DAY })
+      try { await k.archive.archiveWorkspace(ws.id, false) } finally { vi.useRealTimers() }
+      await k.archive.trashEmptied()
+      return { ws: k.store.workspace(ws.id)!, blob }
+    }
+    const done = () => k.store.meta<Record<string, number>>('checkpointsDropped') ?? {}
+    return { repo, k, room, refs, archived, done }
+  }
+
+  it('drops the refs of a workspace archived 31 days ago, and git gc reclaims what only they held', async () => {
+    const { repo, k, refs, archived, done } = await setup()
+    const { ws, blob } = await archived('Old', 31)
+    expect(await refs(`refs/kernel/checkpoints/${ws.id}/`)).toHaveLength(2)
+    expect(KEEP_CHECKPOINTS_MS).toBe(30 * DAY)
+    // While the refs are there, gc keeps the file only a checkpoint holds.
+    await git(repo, 'gc', '--prune=now', '--quiet')
+    expect((await exec('git', ['-C', repo, 'cat-file', '-e', blob])).code).toBe(0)
+
+    await k.archive.dropOldCheckpoints()
+
+    expect(await refs()).toEqual([])
+    expect(done()).toEqual({ [ws.id]: ws.archivedAt })
+    // The branch Restore needs stays.
+    expect((await git(repo, 'branch', '--list', ws.branch)).trim()).not.toBe('')
+    await git(repo, 'gc', '--prune=now', '--quiet')
+    expect((await exec('git', ['-C', repo, 'cat-file', '-e', blob])).code).not.toBe(0)
+  }, 30000)
+
+  it('keeps the checkpoints of a workspace archived yesterday, and it restores with them', async () => {
+    const { k, refs, archived, done } = await setup()
+    const { ws } = await archived('Recent', 1)
+
+    await k.archive.dropOldCheckpoints()
+
+    expect(await refs(`refs/kernel/checkpoints/${ws.id}/`)).toHaveLength(2)
+    expect(done()).toEqual({})
+    await k.archive.restoreWorkspace(ws.id)
+    await setUp(k, ws.id)
+    expect((await k.handlers()['checkpoints.list']({ workspaceId: ws.id })).map((c) => c.title)).toEqual(['Draft', 'Go'])
+  }, 30000)
+
+  it('restores a workspace after the cleanup with no checkpoints, and new turns save again', async () => {
+    const { k, archived, done } = await setup()
+    const { ws } = await archived('Cleaned', 31)
+    await k.archive.dropOldCheckpoints()
+
+    await k.archive.restoreWorkspace(ws.id)
+    const back = await setUp(k, ws.id)
+    const h = k.handlers()
+    expect(await h['checkpoints.list']({ workspaceId: ws.id })).toEqual([])
+    await snapshot(back, { chatId: k.store.chats(ws.id)[0].id, title: 'Next' })
+    expect((await h['checkpoints.list']({ workspaceId: ws.id })).map((c) => c.title)).toEqual(['Next'])
+    // Restored, it leaves the list, so archiving it again counts from then.
+    await k.archive.dropOldCheckpoints()
+    expect(done()).toEqual({})
+  }, 30000)
+
+  it('skips the workspaces a run already did, and comes back to one archived again', async () => {
+    const { repo, k, refs, archived } = await setup()
+    const { ws } = await archived('Done', 31)
+    await k.archive.dropOldCheckpoints()
+    // A ref the next run would drop if it looked: it doesn't, since the workspace is done.
+    await git(repo, 'update-ref', `refs/kernel/checkpoints/${ws.id}/7`, 'HEAD')
+
+    await k.archive.dropOldCheckpoints()
+    expect(await refs()).toEqual([`refs/kernel/checkpoints/${ws.id}/7`])
+
+    // Archived again since, long enough ago: done from scratch.
+    k.store.saveWorkspace({ ...ws, archivedAt: ws.archivedAt! + 1 })
+    await k.archive.dropOldCheckpoints()
+    expect(await refs()).toEqual([])
+  }, 30000)
+
+  it('skips a room whose folder is gone, and stops touching the store once Kernel stops', async () => {
+    const { repo, k, refs, archived, done } = await setup()
+    const { ws } = await archived('Moved', 31)
+    await rename(repo, `${repo}-moved`)
+    await k.archive.dropOldCheckpoints()
+    expect(done()).toEqual({})
+    await rename(`${repo}-moved`, repo)
+
+    await k.stop()
+    expect(k.archive['checkpointTimer']).toBeUndefined()
+    // The database is closed: a run now returns before reading it, and leaves the refs.
+    await k.archive.dropOldCheckpoints()
+    expect(await refs(`refs/kernel/checkpoints/${ws.id}/`)).toHaveLength(2)
+  }, 30000)
 })
