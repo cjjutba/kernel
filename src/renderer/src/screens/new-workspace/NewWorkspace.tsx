@@ -186,7 +186,6 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
             {menu === 'model' && <ModelPicker anchorRef={modelAnchor} model={model} effort={effort} fallback={defaultEffort} onClose={actions.ui.closeMenu} onModel={(m, x) => { setModel(m); setEffort(x); actions.ui.closeMenu() }} onEffort={(x) => { rememberEffort(model, x); setEffort(x) }} />}
           </span>
           <span className="grow">
-            {busy && <span className="nw-status" role="status">Sending to {lead?.name ?? 'the Lead'}</span>}
             {error && !busy && <span role="alert" className="nw-status">{error.message}</span>}
           </span>
           <span ref={plusAnchor} className="nw-plus" style={{ position: 'relative' }}>
