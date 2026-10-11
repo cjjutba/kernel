@@ -15,6 +15,7 @@ import { describeTool, matchesRule, needsUser, type Approvals } from './approval
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { toolKind, toolPolicy, type ToolPolicy } from './agentTools'
 import { IMAGE_DATA_URL, revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
@@ -981,6 +982,8 @@ export class Sessions {
     const sessionId = chat.sessionId ?? randomUUID()
     this.managedIds.add(sessionId)
     const mcpServers = this.d.mcpFor(ws, agent, chat)
+    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
+    const tools = toolPolicy(agent?.tools)
     const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
     const root = this.d.store.room(ws.roomId)?.path
     const options: Options = {
@@ -998,8 +1001,14 @@ export class Sessions {
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)) },
       mcpServers,
       ...(off ? { settings: off } : {}),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false,
-        agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined),
+      ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
+      hooks: kernelHooks({
+        ctx, commands, tools,
+        verdict: (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)),
+        held: () => this.paused.get(ws.roomId)?.open ?? this.global?.open,
+        networkAllowed: () => this.d.settings().permissions.network !== false,
+        handoff: agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined
+      }),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -1506,7 +1515,17 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
  * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
  */
-function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true, handoff?: LeadHandoff): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+function kernelHooks(o: {
+  ctx: { roomId: string; workspaceId: string; agentId?: string }
+  commands: Map<string, string>
+  verdict: (command: string) => BashVerdict
+  held: () => Promise<void> | undefined
+  networkAllowed?: () => boolean
+  handoff?: LeadHandoff
+  /** The agent file's tools line, when it has one (KERNEL-397). */
+  tools?: ToolPolicy
+}): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+  const { ctx, commands, verdict, held, networkAllowed = () => true, handoff, tools } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -1538,6 +1557,16 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
+  // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
+  if (tools) {
+    const gate: HookCallback = async (input) => {
+      const tool = (input as PreToolUseHookInput).tool_name
+      if (tools.allows(tool)) return {}
+      bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
+    }
+    hooks.PreToolUse!.push({ hooks: [gate] })
+  }
   if (handoff) {
     // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
     const afterPlan: HookCallback = async () => { const t = handoff.afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }

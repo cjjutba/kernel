@@ -503,6 +503,46 @@ describe('agent teams (KERNEL-73)', () => {
   })
 })
 
+describe("an agent file's tools line (KERNEL-397)", () => {
+  const theo = { id: 'theo', name: 'Theo', role: 'Reviewer', description: 'Reviews.', lead: false, prompt: 'You review.', file: '/r/theo.md', tools: ['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear__get_issue'] } as AgentDef
+  const gateOf = (options: Options) => {
+    const hooks = options.hooks!.PreToolUse!.filter((m) => !m.matcher).flatMap((m) => m.hooks)
+    return hooks.length > 2 ? hooks[hooks.length - 1] as HookCallback : undefined
+  }
+  const use = (gate: HookCallback, tool: string) => gate({ hook_event_name: 'PreToolUse', tool_name: tool, tool_input: {}, tool_use_id: tool, session_id: 's', transcript_path: '', cwd: '/tmp/ws' } as never, tool, { signal: new AbortController().signal } as never)
+
+  it('leaves out the built-in tools the file leaves out, and refuses any other tool it does not list', async () => {
+    const { options } = await setup('acceptEdits', { agent: theo })
+    expect(options.disallowedTools).toEqual(['Write', 'Edit', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
+    const gate = gateOf(options)!
+    expect(await use(gate, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
+    expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+    for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
+  it('restricts nothing for an agent with no tools line', async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined } })
+    expect(options).not.toHaveProperty('disallowedTools')
+    expect(gateOf(options)).toBeUndefined()
+  })
+
+  it('starts a changed agent fresh once its turn ends, and keeps the conversation', async () => {
+    const { sessions, call, options, chat } = await setup('acceptEdits', { agent: theo })
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    sessions.restartIdle(['ws'])
+    // Busy: the process stays until the turn ends.
+    expect(sessions.isRunning(chat.id)).toBe(true)
+    const signal = (options.abortController as AbortController).signal
+    expect(signal.aborted).toBe(false)
+    call.feed({ type: 'result', subtype: 'success', uuid: 'r1', duration_ms: 5 })
+    await flush()
+    expect(signal.aborted).toBe(true)
+    await sessions.send(chat.id, [{ type: 'text', text: 'Again' }])
+    expect(sdk.calls[sdk.calls.length - 1].options.resume).toBe(options.sessionId)
+  })
+})
+
 describe('who sent a message (KERNEL-116)', () => {
   const lead: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
   const update: TeamUpdate = { rows: [{ workspaceId: 'w1', agentId: 'kai', name: 'Kai', task: 'Remove the Try section', prNumber: 108, events: [{ kind: 'pr.ready', text: 'Passed checks, no conflicts. Not reviewed yet', actionable: true }] }] }
