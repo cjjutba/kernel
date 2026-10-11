@@ -67,6 +67,22 @@ export class Prs extends Feature {
   private async limited(e: GhReadError, cwd: string) {
     const resetAt = e.secondary ? undefined : (await this.k.github.rateLimit?.(cwd).catch(() => undefined))?.resetAt
     this.cadence.limited({ secondary: e.secondary, resetAt })
+    this.syncGitHub()
+  }
+
+  /** The GitHub pause as last pushed, so the window hears each start, move and end once (KERNEL-401). */
+  private pushedGitHub = '{}'
+
+  /**
+   * Pushes the GitHub pause to the window when it starts, moves or ends, for the footer (KERNEL-401). The poll's own timer
+   * runs at the pause's end, so main says when it is over and the window never times it out itself.
+   */
+  private syncGitHub() {
+    const status = this.cadence.status()
+    const key = JSON.stringify(status)
+    if (key === this.pushedGitHub) return
+    this.pushedGitHub = key
+    bus.push({ type: 'github', status })
   }
 
   /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
@@ -150,7 +166,7 @@ export class Prs extends Feature {
     const next = same ? ws : this.updateWs(id, patch)
     if (info?.conflictsUnknown) this.recheckSoon(id)
     else if (info) this.cancelRecheck(id)
-    this.guardOnReady(id, ws.prState, next.prState, info)
+    this.guardOnReady(id, ws.prState, next.prState, info, ws.prBlocked === 'behind')
     if (next.prState !== ws.prState) {
       this.changedAt = Date.now()
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
@@ -158,6 +174,11 @@ export class Prs extends Feature {
       const text = prNote(next, info, this.mergedWith.get(id), remote)
       if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
+    }
+    // A ready PR GitHub started or stopped blocking, its state the same, so nothing above told anyone (KERNEL-401). A PR that
+    // becomes ready already blocked goes out with its 'pr' push, which the Lead and the Inbox read prBlocked on.
+    if (ws.prState === 'ready' && next.prState === 'ready' && ws.prBlocked !== next.prBlocked) {
+      bus.push({ type: 'pr.blocked', workspaceId: id, ...(next.prBlocked ? { blocked: next.prBlocked } : {}) })
     }
     return next
   }
@@ -201,16 +222,20 @@ export class Prs extends Feature {
   /**
    * The work moved on, so the loop guard starts over for it and its reviews (KERNEL-125): when the PR becomes ready. Right
    * after a push GitHub has no checks for the new commit and reads the PR as ready for a moment, so on a PR that has had
-   * checks, ready counts once they ran, even if the state read ready all along.
+   * checks, ready counts once they ran, even if the state read ready all along. A ready PR still behind its base hasn't
+   * moved on either: the Lead asks its agent to update it, and an update onto a stale base would otherwise start the guard
+   * over every round. Leaving behind does count (KERNEL-401). `wasBehind` is the block before this read.
    */
-  private guardOnReady(id: string, before: PrState, after: PrState, info: PrInfo | null | undefined) {
+  private guardOnReady(id: string, before: PrState, after: PrState, info: PrInfo | null | undefined, wasBehind = false) {
     if (info?.checks.length) this.hasChecks.add(id)
     if (after !== 'ready') { this.readyUnchecked.delete(id); if (after !== 'checks') this.guardReadyOn.delete(id); return }
+    if (info?.blocked === 'behind') return
     if (!info?.checks.length && this.hasChecks.has(id)) { this.readyUnchecked.add(id); return }
     // Ready again on the commit the guard started over on, after only checks, isn't the work moving on. GitHub checks a
     // PR for conflicts again each time its base moves, and it reads as checks until then (KERNEL-283).
     const again = before === 'checks' && !!info?.head && this.guardReadyOn.get(id) === info.head
-    if ((before !== 'ready' && !again) || this.readyUnchecked.delete(id)) {
+    const caughtUp = before === 'ready' && wasBehind
+    if ((before !== 'ready' && !again) || caughtUp || this.readyUnchecked.delete(id)) {
       this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
       if (info?.head) this.guardReadyOn.set(id, info.head)
     }
@@ -349,6 +374,8 @@ export class Prs extends Feature {
 
   private async pollOnce(o: { chores?: boolean }) {
     const start = Date.now()
+    // A pause that ran out ends here, on the poll its timer brought (KERNEL-401).
+    this.syncGitHub()
     if (!this.offline() && !this.cadence.paused()) {
       const open: Workspace[] = []
       for (const ws of this.store.workspaces()) {
@@ -403,7 +430,7 @@ export class Prs extends Feature {
           const optional = await this.optionalOf(roomId)
           const read = await this.k.github.prs!(room.path, numbers, optional.length ? { optional } : {})
           probe = read.infos
-          if (read.rate) this.cadence.rated(read.rate)
+          if (read.rate) { this.cadence.rated(read.rate); this.syncGitHub() }
           this.cadence.ok()
         } catch (e) {
           if (e instanceof GhReadError && e.rateLimited) await this.limited(e, room.path)
@@ -499,6 +526,7 @@ export class Prs extends Feature {
   start() {
     this.live = true
     this.cadence.started()
+    this.syncGitHub()
     this.schedule(this.cadence.c.calmMs)
   }
 
@@ -554,7 +582,7 @@ export class Prs extends Feature {
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
-      'github.status': async () => ({}),
+      'github.status': async () => this.cadence.status(),
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId)

@@ -413,6 +413,8 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
   const ev = (kind: TeamEventKind, extra: Partial<TeamEvent> = {}): TeamEvent => ({ n: 1, workspaceId: 'w1', kind, pr: 54, ...extra })
   const at = '(workspace w1)'
   const NEEDS_REVIEW = 'PR #54 needs a review. Theo (theo) reviews on this team: call create_workspace with agent "theo" and review_of "w1".'
+  const BEHIND = "Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+
   const rows: [string, TeamEvent[], PrState, Partial<WakeContext>, string[]][] = [
     ['an error in a turn Rowan started', [ev('error', { by: 'lead' })], 'none', {}, [`Noor stopped with an error. Ask Noor what happened with message_agent ${at}, or tell the user.`]],
     ['an error in a turn the user started', [ev('error', { by: 'user' })], 'none', {}, []],
@@ -471,19 +473,23 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     expect(out.wake.size).toBe(todo.length)
   })
 
-  it("says why a PR that passed checks can't merge yet when GitHub blocks it (KERNEL-388)", () => {
+  it("says why a PR that passed checks can't merge yet when GitHub blocks it (KERNEL-388, KERNEL-401)", () => {
     const blocked = (prBlocked: NonNullable<Workspace['prBlocked']>) => ({ ...ws('ready'), prBlocked })
     const off = { allMerged: () => false, autoReview: false, review: { approvedBy: [], blockers: false, inProgress: false } }
     expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, off).todo)
-      .toEqual(["PR #54 passed checks and has no conflicts. It can't merge yet: GitHub needs an approving review before this pull request can merge. Tell the user."])
+      .toEqual(["PR #54 can't merge until someone approves it on GitHub. Tell the user."])
+    // A branch behind its base is its agent's to update, approved or not.
     expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { ...off, review: { approvedBy: ['Theo'], blockers: false, inProgress: false } }).todo)
-      .toEqual(["PR #54 passed checks, has no conflicts and Theo approved it. It can't merge yet: this branch is behind its base, and GitHub needs it up to date before it can merge. Tell the user."])
-    // A reviewer's approval of a ready PR GitHub still blocks.
+      .toEqual([BEHIND])
+    // A reviewer's approval of a ready PR GitHub still blocks: the author's to update, or the user's to know.
     const approval = ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })
     expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('rules'), id: 'w2', prNumber: 60 }) }).todo)
-      .toEqual(["PR #60 passed checks, has no conflicts and Noor approved it. It can't merge yet: GitHub's branch rules block this merge. Tell the user."])
-    // The review flow itself goes on as for any ready PR.
+      .toEqual(["GitHub's branch rules block PR #60. Tell the user."])
+    expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('behind'), id: 'w2', prNumber: 60 }) }).todo)
+      .toEqual(['Ask Kai to update PR #60: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w2). GitHub won\'t merge it while its branch is behind.'])
+    // The review flow itself goes on as for any ready PR, except on a branch that is behind.
     expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([NEEDS_REVIEW])
+    expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([BEHIND])
   })
 
   it('asks nothing of an archived workspace, and still says when the last task merged', () => {

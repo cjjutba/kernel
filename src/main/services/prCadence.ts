@@ -1,3 +1,4 @@
+import type { GitHubStatus } from '@shared/types'
 import type { RateLimit } from './github'
 
 /**
@@ -40,6 +41,8 @@ export class PrCadence {
   private backoff = 0
   /** The reset the last batch read reported. `gh api rate_limit` can report another one, so a pause takes the later. */
   private resetAt = 0
+  /** The pause is GitHub's "slow down" limit, not its rate limit running out. Set by whichever pause set `pausedUntil` (KERNEL-401). */
+  private slowDown = false
 
   constructor(private now: () => number = Date.now) {}
 
@@ -48,6 +51,7 @@ export class PrCadence {
     this.pausedUntil = 0
     this.low = false
     this.backoff = 0
+    this.slowDown = false
   }
 
   /** What a read said is left of the rate limit. */
@@ -55,7 +59,7 @@ export class PrCadence {
     this.resetAt = r.resetAt
     const left = r.limit > 0 ? r.remaining / r.limit : 1
     this.low = left < LOW
-    if (left < FLOOR) this.pauseUntil(r.resetAt)
+    if (left < FLOOR) this.pauseUntil(r.resetAt, false)
   }
 
   /**
@@ -64,9 +68,10 @@ export class PrCadence {
    */
   limited(o: { secondary?: boolean; resetAt?: number }) {
     const resetAt = Math.max(o.resetAt ?? 0, this.resetAt)
-    if (!o.secondary && resetAt > this.now()) { this.low = true; this.pauseUntil(resetAt); return }
+    if (!o.secondary && resetAt > this.now()) { this.low = true; this.pauseUntil(resetAt, false); return }
     this.backoff = this.backoff ? Math.min(this.backoff * 2, this.c.backoffMaxMs) : this.c.backoffMs
-    this.pauseUntil(this.now() + this.backoff)
+    // A primary limit with no known reset backs off the same way, and is still the rate limit.
+    this.pauseUntil(this.now() + this.backoff, !!o.secondary)
   }
 
   /** A read went through, so the next "slow down" starts its backoff over. */
@@ -77,6 +82,11 @@ export class PrCadence {
 
   /** When the pause ends, for a message that says when Kernel reads again. */
   resumesAt() { return this.paused() ? this.pausedUntil : undefined }
+
+  /** The pause as the footer shows it: nothing while Kernel reads, else until when and which limit (KERNEL-401). */
+  status(): GitHubStatus {
+    return this.paused() ? { pausedUntil: this.pausedUntil, ...(this.slowDown ? { slowDown: true } : {}) } : {}
+  }
 
   /** How long until the next poll: the rest of a pause, else by how low the rate limit is and whether a PR is moving. */
   delay(moving: boolean): number {
@@ -89,5 +99,11 @@ export class PrCadence {
   choresDue() { return this.now() - this.choresAt >= this.c.choresMs && this.now() - this.startedAt >= this.c.choresMs }
   choresRan() { this.choresAt = this.now() }
 
-  private pauseUntil(at: number) { this.pausedUntil = Math.max(this.pausedUntil, Math.min(at, this.now() + this.c.pauseMaxMs)) }
+  /** Pauses until `at`, at most `pauseMaxMs` away. A pause already running longer stays, with its own reason. */
+  private pauseUntil(at: number, slowDown: boolean) {
+    const until = Math.min(at, this.now() + this.c.pauseMaxMs)
+    if (until <= this.pausedUntil) return
+    this.pausedUntil = until
+    this.slowDown = slowDown
+  }
 }
