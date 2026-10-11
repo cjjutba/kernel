@@ -1,7 +1,7 @@
 import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { parseEnv } from 'node:util'
-import { ENV_NAME, isKernelVar, type KernelVar } from '@shared/kernelVars'
+import { ENV_NAME, isClaudeVar, isKernelVar, type KernelVar } from '@shared/kernelVars'
 
 /**
  * Turns a value into text that is safe to write to disk and back. The app passes Electron's `safeStorage`, which uses the
@@ -34,15 +34,12 @@ export const kernelVars = (ws: { id: string; path: string; port: number }, root:
   ({ KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: root })
 
 /**
- * Names that pick Claude Code's endpoint, account or billing: `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`,
+ * A layer without the names `isClaudeVar` matches: `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`,
  * `CLAUDE_CODE_OAUTH_TOKEN` and the rest. Sessions and terminals take them from the Mac only, never from Kernel's
  * variables or a room's env files, so a project's `.env` can't send the plan's login to a proxy (KERNEL-247).
  */
-export const CLAUDE_NAME = /^(ANTHROPIC_|CLAUDE_CODE_)/
-
-/** A layer without the names `CLAUDE_NAME` matches. */
 export const withoutClaudeNames = (layer: Record<string, string>): Record<string, string> =>
-  Object.fromEntries(Object.entries(layer).filter(([k]) => !CLAUDE_NAME.test(k)))
+  Object.fromEntries(Object.entries(layer).filter(([k]) => !isClaudeVar(k)))
 
 /** The largest env file Kernel reads. A bigger one counts as missing. */
 export const MAX_ENV_FILE = 1024 * 1024
