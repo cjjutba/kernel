@@ -1,12 +1,18 @@
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
-import type { ChatItem, TeamEventKind, TeamUpdate } from '../src/shared/types'
-import { cardData, eventTone, legacyRows, sections, taskParts } from '../src/renderer/src/screens/workspace/cards/teamUpdate'
+import { describe, expect, it, vi } from 'vitest'
+import type { ChatItem, PrInfo, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
+import { cardData, eventTone, legacyRows, newestRows, sections, taskParts } from '../src/renderer/src/screens/workspace/cards/teamUpdate'
 
 // KERNEL-127: Kernel's team update draws as a card, from the data saved with it or from an older update's lines.
 
 Object.assign(globalThis, { React })
+
+// The store reads need a browser, so the card gets a stand-in for MergeButton that shows which workspace it was given.
+vi.mock('../src/renderer/src/screens/workspace/pr/MergeButton', async (original) => ({
+  ...(await original<object>()),
+  MergeButton: ({ ws }: { ws: Workspace }) => React.createElement('b', { className: 'stub-merge' }, `Merge #${ws.prNumber}`)
+}))
 
 const LEGACY = [
   'Update from Kernel (not the user):',
@@ -66,7 +72,7 @@ describe('reading an update from before KERNEL-117', () => {
 })
 
 describe('the Team update card', () => {
-  type View = (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined }) => React.ReactElement
+  type View = (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest?: (target: string, itemId: string) => boolean }) => React.ReactElement
   const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: View }>
   const item: ChatItem = {
     kind: 'user', id: 'u', ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }],
@@ -76,7 +82,7 @@ describe('the Team update card', () => {
 
   it('draws a card from Kernel with the teammate, its events, the reply and Copy, and no Edit', async () => {
     const { TeamUpdateView } = await load()
-    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
     expect(html).toContain('aria-label="Team update from Kernel"')
     expect(html).toContain('Team update')
     expect(html).toContain('<span class="tucard-name">Kai</span>')
@@ -97,9 +103,9 @@ describe('the Team update card', () => {
   it('counts what an older update left out in updates, and shows one with no rows it can read as a note', async () => {
     const { TeamUpdateView } = await load()
     const legacy = (text: string): ChatItem => ({ kind: 'user', id: 'u', ts: 0, parts: [{ type: 'text', text }] })
-    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: legacy(LEGACY), workspaceOf: () => undefined }))
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: legacy(LEGACY), useNewest: () => false, workspaceOf: () => undefined }))
     expect(html).toContain('2 earlier updates left out')
-    const odd = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: legacy('Update from Kernel (not the user):\nSomething Kernel no longer writes'), workspaceOf: () => undefined }))
+    const odd = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: legacy('Update from Kernel (not the user):\nSomething Kernel no longer writes'), useNewest: () => false, workspaceOf: () => undefined }))
     expect(odd).not.toContain('tucard')
     expect(odd).toContain('class="note"')
     expect(odd).toContain('Something Kernel no longer writes')
@@ -109,7 +115,7 @@ describe('the Team update card', () => {
     const { TeamUpdateView } = await load()
     const row = (workspaceId: string, extra: object) => ({ workspaceId, agentId: 'kai', name: 'Kai', task: 'T', events: [], ...extra })
     const saved: ChatItem = { ...item, update: { rows: [row('w1', { fromChat: 'Icons', fromTab: true }), row('w2', { fromChat: 'Icons' })] } }
-    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: saved, workspaceOf: () => undefined }))
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: saved, useNewest: () => false, workspaceOf: () => undefined }))
     expect(html).toContain('From &quot;Icons&quot;, a tab you closed')
     expect(html).toContain('From &quot;Icons&quot;, a Lead chat that is now closed')
     const text = ['Update from Kernel (not the user):', 'From "Icons", a tab you closed:', '- Kai · T (workspace w1): checks failed on PR #54', 'From "Icons", a Lead chat that is now closed:', '- Kai · T (workspace w1): checks failed on PR #54'].join('\n')
@@ -118,9 +124,85 @@ describe('the Team update card', () => {
 
   it('sends an archived workspace to History, and shows no Open for one that is gone', async () => {
     const { TeamUpdateView } = await load()
-    const archived = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, workspaceOf: () => ({ id: 'w1', status: 'archived' }) }))
+    const archived = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: () => ({ id: 'w1', status: 'archived' }) }))
     expect(archived).toMatch(/aria-label="Find Kai&#x27;s workspace for Remove the Try section in History"[^>]*>In History</)
-    const gone = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, workspaceOf: () => undefined }))
+    const gone = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: () => undefined }))
     expect(gone).not.toContain('tucard-open')
+  })
+})
+
+describe('Merge on a Team update row (KERNEL-351)', () => {
+  const load = () => import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/cards/TeamUpdateCard' as string) as Promise<{ TeamUpdateView: (p: { item: ChatItem; workspaceOf: (id: string) => object | undefined; useNewest: (target: string, itemId: string) => boolean }) => React.ReactElement }>
+  const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'r', name: id, branch: id, baseRef: 'main', path: `/${id}`, mode: 'worktree', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 7, createdAt: 0, ...over } as Workspace)
+  const card = (id: string, ...rows: [workspaceId: string][]): ChatItem => ({
+    kind: 'user', id, ts: 0, from: 'kernel', parts: [{ type: 'text', text: 'Team update' }],
+    update: { rows: rows.map(([workspaceId]) => ({ workspaceId, agentId: 'kai', name: 'Kai', task: 'T', events: [] })) }
+  })
+  const workspaces = [ws('w1', { prNumber: 162 }), ws('w2', { prNumber: 161 }), ws('review', { reviewOf: 'w2', prState: 'none', prNumber: undefined })]
+
+  it('maps each PR to the newest card with a row about it, and a reviewer row to the work it reviewed', () => {
+    const items = [card('old', ['w1'], ['w2']), card('new', ['w1']), card('review-card', ['review'])]
+    expect([...newestRows(items, workspaces)]).toEqual([['w1', 'new'], ['w2', 'review-card']])
+    // The same arrays give the same map, and a chat with no items gives an empty one.
+    expect(newestRows(items, workspaces)).toBe(newestRows(items, workspaces))
+    expect(newestRows(undefined, workspaces).size).toBe(0)
+  })
+
+  it('offers Merge only on the newest row, and a reviewer row merges the reviewed PR', async () => {
+    const { TeamUpdateView } = await load()
+    const items = [card('old', ['w1']), card('new', ['w1'], ['review'])]
+    const useNewest = (target: string, itemId: string) => newestRows(items, workspaces).get(target) === itemId
+    const draw = (item: ChatItem) => renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest, workspaceOf: (id) => workspaces.find((w) => w.id === id) }))
+    expect(draw(items[0])).not.toContain('stub-merge')
+    const html = draw(items[1])
+    expect(html).toContain('Merge #162')
+    // The reviewer's row (the second) names the reviewed PR, not a number of its own.
+    expect(html).toContain('Merge #161')
+    expect(html.indexOf('Merge #162')).toBeLessThan(html.indexOf('>Open<'))
+  })
+
+  it('offers no Merge for an archived workspace, whose row says In History', async () => {
+    const { TeamUpdateView } = await load()
+    const gone = [ws('w1', { status: 'archived', prState: 'merged' })]
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: card('c', ['w1']), useNewest: () => true, workspaceOf: (id) => gone.find((w) => w.id === id) }))
+    expect(html).not.toContain('stub-merge')
+    expect(html).toContain('In History')
+  })
+
+  const rules = { requireGreen: true, requireReviewer: true }
+  const pr = (over: Partial<PrInfo> = {}): PrInfo => ({ workspaceId: 'w1', number: 7, url: '', title: '', state: 'ready', baseRef: 'main', checks: [{ name: 'ci', state: 'pass' }], comments: [], conflicts: [], ...over })
+
+  it('decides what the button place shows from the shared merge rule', async () => {
+    const { mergeView } = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/pr/MergeButton' as string) as typeof import('../src/renderer/src/screens/workspace/pr/MergeButton')
+    expect(mergeView(ws('w1'), pr(), rules)).toEqual({ kind: 'ready' })
+    expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules)).toEqual({ kind: 'merging' })
+    expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules)).toEqual({ kind: 'merged' })
+    // A PR with failed checks, or none yet, has nothing to say: the row's events already do.
+    expect(mergeView(ws('w1', { prState: 'cifail' }), pr(), rules)).toEqual({ kind: 'none' })
+    expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
+    const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
+    expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("Theo hasn't approved") })
+  })
+
+  it('draws the button, the reason, the spinner and the merged label, and toasts a failed merge', async () => {
+    const mod = await import(/* @vite-ignore */ '../src/renderer/src/screens/workspace/pr/MergeButton' as string) as typeof import('../src/renderer/src/screens/workspace/pr/MergeButton')
+    const draw = (view: Parameters<typeof mod.MergeSlot>[0]['view'], busy?: string) => renderToStaticMarkup(React.createElement(mod.MergeSlot, { ws: ws('w1', { prNumber: 162 }), view, busy, onMerge: () => undefined }))
+    expect(draw({ kind: 'ready' })).toMatch(/<button[^>]*aria-label="Merge PR #162"[^>]*>Merge #162<\/button>/)
+    // While merging, the button spins, says Merging and is disabled, so it can't be pressed twice.
+    const spinning = draw({ kind: 'ready' }, 'Merging')
+    expect(spinning).toContain('aria-busy="true"')
+    expect(spinning).toContain('disabled')
+    expect(spinning).toContain('Merging')
+    expect(draw({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*>.*Merging/)
+    expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
+    expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
+    expect(draw({ kind: 'merged' })).toContain('tucard-merged')
+    expect(draw({ kind: 'none' })).toBe('')
+
+    const { actions } = await import(/* @vite-ignore */ '../src/renderer/src/store' as string) as typeof import('../src/renderer/src/store')
+    const toast = vi.spyOn(actions.ui, 'toast').mockImplementation(() => 't1')
+    Object.assign(globalThis, { window: { kernel: { invoke: async () => { throw new Error("Error invoking remote method 'pr.merge': Error: Checks have not passed yet.") } } } })
+    await mod.mergeAndToast('w1')
+    expect(toast).toHaveBeenCalledWith({ title: 'Could not merge', sub: 'Checks have not passed yet.' })
   })
 })
