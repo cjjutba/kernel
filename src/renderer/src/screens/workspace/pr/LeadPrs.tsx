@@ -29,7 +29,11 @@ export function LeadPrs({ roomId }: { roomId: string }) {
   )
 }
 
-/** "Merged #331. Stopped at #330. It has merge conflicts." for a run that stopped, or nothing for one that merged everything. */
+/**
+ * Where a run stopped and why, for one that stopped: "Merged" with the PR numbers it merged, "Stopped at" the one it couldn't,
+ * then the reason. Nothing for a run that merged everything. (PR numbers stay out of this comment: the theme test reads "#" and
+ * three digits as a color.)
+ */
 export function stoppedText(r: MergeAllResult): string | null {
   if (!r.stopped) return null
   const merged = r.merged.length ? `Merged ${r.merged.map((n) => `#${n}`).join(', ')}. ` : ''
