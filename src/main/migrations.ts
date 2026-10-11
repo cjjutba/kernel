@@ -50,6 +50,14 @@ export const migrations: Migration[] = [
       create unique index if not exists shared_files_by_source on shared_files (workspace_id, source);
       create index if not exists shared_files_by_room on shared_files (room_id, updated_at);
     `)
+  },
+  {
+    // comments on shared files, per version (KERNEL-310)
+    version: 4,
+    up: (db) => db.exec(`
+      create table if not exists shared_comments (id text primary key, shared_id text not null, version integer not null, data text not null, created_at integer not null);
+      create index if not exists shared_comments_by_version on shared_comments (shared_id, version);
+    `)
   }
 ]
 
