@@ -3,6 +3,7 @@ import type { WorkspaceGitStatus } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, ConfirmDialog, useBusy } from '../../ui'
+import { useRoomSettings } from '../settings/useSettings'
 import { archiveByHand } from './byHand'
 import './confirm.css'
 
@@ -14,11 +15,15 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
  */
 export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
   const ws = useStore((s) => s.workspaces.find((w) => w.id === workspaceId))
-  const deleteByDefault = useStore((s) => s.settings?.workspace.deleteBranchOnArchive ?? false)
+  const appDefault = useStore((s) => s.settings?.workspace.deleteBranchOnArchive ?? false)
+  // The room's own value wins over the app's. Room settings arrive after the first render, so the box follows the default until the person touches it.
+  const roomDefault = useRoomSettings(ws?.roomId)?.workspace.deleteBranchOnArchive
+  const deleteByDefault = roomDefault ?? appDefault
   const [git, setGit] = useState<WorkspaceGitStatus | null>(null)
   // The status couldn't be read: archiving still works, and the branch stays (KERNEL-70).
   const [unread, setUnread] = useState(false)
-  const [deleteBranch, setDeleteBranch] = useState(deleteByDefault)
+  const [picked, setPicked] = useState<boolean | null>(null)
+  const deleteBranch = picked ?? deleteByDefault
   const [busy, run] = useBusy<'main' | 'anyway'>()
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
@@ -61,7 +66,7 @@ export function ConfirmArchive({ workspaceId }: { workspaceId: string }) {
         {git && unpushed > 0 && <span>{plural(unpushed, 'commit')} ahead of origin</span>}
         {dirty && <span>{dirty}</span>}
       </div>
-      {!current && !unread && <label className="wsc-check"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} />Also delete the local branch</label>}
+      {!current && !unread && <label className="wsc-check"><input type="checkbox" checked={deleteBranch} onChange={(e) => setPicked(e.target.checked)} />Also delete the local branch</label>}
       {error && <p role="alert" className="wsc-error">{error}</p>}
     </ConfirmDialog>
   )
