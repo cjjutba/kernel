@@ -5,7 +5,7 @@ import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
-import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
+import { isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
 import { tabOf } from '../../nav'
 import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
@@ -16,7 +16,7 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
-import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { leadHomeOf, liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -57,11 +57,11 @@ const KeyHint = ({ n }: { n: number }) => <span className="mono nav-key" aria-hi
 /** A row's place in the room's ⌘1 to ⌘9 order, and whether ⌘ is held so it should show. Rows of other rooms get none. */
 type RowKey = { n: number; hint: boolean }
 
-function NavItem({ route, icon, label, right, sub, nested, describedBy, slot }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; describedBy?: string; slot?: RowKey }) {
+function NavItem({ route, icon, label, right, sub, nested, describedBy, slot, onOpen }: { route: Route; icon: string | ReactNode; label: ReactNode; right?: ReactNode; sub?: boolean; nested?: boolean; describedBy?: string; slot?: RowKey; /** In place of going to `route`. */ onOpen?: () => void }) {
   // Issues opens on an issue too, so any issue is the Issues row's page.
   const current = useStore((s) => same(s.ui.route, route) || (route.name === 'issues' && s.ui.route.name === 'issues'))
   return (
-    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => go(route)}>
+    <button className={`nav-item${sub ? ' nav-sub' : ''}${nested ? ' nav-nested' : ''}`} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={onOpen ?? (() => go(route))}>
       {typeof icon === 'string' ? <Icon name={icon} /> : icon}
       <span className="grow ellipsis">{label}</span>
       {slot?.hint ? <KeyHint n={slot.n} /> : right}
@@ -92,7 +92,7 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const g = leadGlyph(status, waiting)
   return (
     <div {...card.bind}>
-      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} aria-describedby={card.at ? card.id : undefined} onClick={() => void openLead(roomId)}>
+      <button className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={`${lead.name}, Lead chat, ${g.label}`} aria-keyshortcuts={slot && `Meta+${slot.n}`} aria-describedby={card.at ? card.id : undefined} onClick={() => openRow(roomId, { kind: 'lead' })}>
         <Glyph g={g} />
         <span className="grow ellipsis">{lead.name}</span>
         {slot?.hint ? <KeyHint n={slot.n} /> : <span className="muted" style={{ fontSize: 12 }}>Lead</span>}
@@ -125,7 +125,7 @@ function ChatItem({ roomId, chat, owned, folded, slot }: { roomId: string; chat:
     <div className="hv chat-row">
       <button
         className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${chat.title}, ${g.label}` : chat.title}
-        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => void openLeadChat(roomId, chat.id)}
+        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => openRow(roomId, { kind: 'chat', chat, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
         <span className="grow ellipsis">{chat.title}</span>
@@ -172,6 +172,7 @@ function WorkspaceItem({ ws, slot, nested }: { ws: Workspace; slot?: RowKey; nes
     <div {...card.bind} className={`hv ws-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <NavItem
         sub nested={nested} route={{ name: 'workspace', workspaceId: ws.id }} icon={<Glyph g={g} />} label={ws.name} describedBy={card.at ? card.id : undefined} slot={slot}
+        onOpen={() => openRow(ws.roomId, { kind: 'workspace', ws, nested: !!nested })}
         right={ws.stat && (ws.stat.added || ws.stat.removed)
           ? <span className="mono ws-right ws-stat">{ws.stat.added ? <span className="add">+{ws.stat.added}</span> : null}{ws.stat.removed ? <span className="del">-{ws.stat.removed}</span> : null}</span>
           : ws.prNumber ? <span className="mono muted ws-right" style={{ fontSize: 11 }}>#{ws.prNumber}</span> : null}

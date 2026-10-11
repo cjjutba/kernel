@@ -2,6 +2,7 @@ import type { AgentDef, Chat, Room, Workspace } from '@shared/types'
 import { getState, go } from '../../store'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat } from '../../lead'
 import { roomInView } from '../../screens/search/model'
+import { focusComposerIn, focusComposerWhenOpen } from '../../screens/workspace/composer/bus'
 
 /** The ⌘1 to ⌘9 shortcuts reach this many rows. */
 const MAX_SLOTS = 9
@@ -86,7 +87,16 @@ export function openSlot(n: number): void {
   const room = roomInView(s.ui.route, s.rooms, s.workspaces)
   const slot = room && slotsFor(room, s.agents, s.workspaces, s.chats, s.ui.foldedChats)[n - 1]
   if (!room || !slot) return
-  if (slot.kind === 'lead') void openLead(room.id)
-  else if (slot.kind === 'chat') void openLeadChat(room.id, slot.chat.id)
-  else go({ name: 'workspace', workspaceId: slot.ws.id })
+  openRow(room.id, slot)
+}
+
+/**
+ * Opens a row with the caret in the message box of the chat it shows, whether it was clicked or reached with ⌘1 to ⌘9.
+ * The Lead row's workspace may not exist until `lead.open` makes it, so that row asks once the answer is back.
+ */
+export function openRow(roomId: string, slot: Slot): void {
+  if (slot.kind === 'lead') { void openLead(roomId).then((ws) => { if (ws) focusComposerIn(ws.id) }); return }
+  if (slot.kind === 'chat') { focusComposerWhenOpen(slot.chat.id); void openLeadChat(roomId, slot.chat.id); return }
+  focusComposerIn(slot.ws.id)
+  go({ name: 'workspace', workspaceId: slot.ws.id })
 }
