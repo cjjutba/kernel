@@ -1,11 +1,14 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } from '@shared/types'
 import { call } from '../../api'
+import { isLeadWorkspace, leadOf } from '../../lead'
 import { actions, go, useStore, type State } from '../../store'
 import { Button, Icon, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
+import { LeadPrs } from './pr/LeadPrs'
+import { useLeadPrs } from './pr/leadPrList'
 import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
@@ -160,21 +163,26 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
 }
 
 export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void }) {
-  const shown = useStore((s) => s.ui.workspace.right)
+  // The Lead's workspace keeps its own tab, and PRs is the one only it has: elsewhere `prs` falls back to Changes, the way Shared does (KERNEL-354).
+  const isLead = useStore((s) => isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
+  const shown = useStore((s) => (isLead ? s.ui.workspace.leadRight ?? 'prs' : s.ui.workspace.right))
+  const ready = useLeadPrs(isLead ? ws.roomId : '').filter((r) => r.ready).length
   const shared = useStore((s) => sharedHere(s, ws).length)
   // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
   const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
-  const right = shown === 'shared' && !sharing ? 'changes' : shown
+  const right = (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
       <div className="panel-tabs">
-        <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView({ right: id as typeof right })} tabs={[
+        <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })} tabs={[
+          ...(isLead ? [{ id: 'prs', label: <>PRs <span className="mono muted" style={{ fontSize: 11.5 }}>{ready}</span></> }] : []),
           { id: 'files', label: 'All files' },
           { id: 'changes', label: <>Changes <span className="mono muted" style={{ fontSize: 11.5 }}>{changes.length}</span></> },
           { id: 'checks', label: 'Checks' },
           ...(sharing ? [{ id: 'shared', label: <>Shared <span className="mono muted" style={{ fontSize: 11.5 }}>{shared}</span></> }] : [])
         ]} />
       </div>
+      {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
       {right === 'files' && <FilesTree workspaceId={ws.id} changes={changes} onOpenFile={onOpenFile} />}
       {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} />}
       {right === 'checks' && <Checks ws={ws} changes={changes} />}

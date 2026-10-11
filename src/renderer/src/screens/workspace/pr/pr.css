@@ -46,3 +46,27 @@
 .pr-sent-head { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border-bottom: 1px solid var(--card-line); font-size: 12.5px; color: var(--ink-2); }
 .pr-sent-body { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--ink-3); }
 .pr-sent-body span { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The Lead's PRs tab (KERNEL-354): a header that counts what can merge, then the room's open PRs, ready ones first. */
+.lp-summary { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.lp-summary[data-spread] { align-self: stretch; }
+.lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
+.lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--faint); }
+.lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.lp-list { list-style: none; margin: 0; padding: 0; }
+.lp-row { padding: 5px 14px 7px; border-top: 1px solid var(--line); }
+.lp-l1 { display: flex; align-items: center; gap: 8px; height: 24px; }
+.lp-name { flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+.lp-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--faint); }
+.lp-act { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.lp-state { font-size: 12px; color: var(--ink-3); }
+.lp-state[data-tone='del'] { color: var(--pr-fail-text); }
+.lp-open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--muted); }
+.lp-open:hover { color: var(--ink); }
+.lp-title { font-size: 13px; line-height: 18px; color: var(--ink-2); }
+.lp-row:not([data-ready]) .lp-name, .lp-row:not([data-ready]) .lp-title { color: var(--muted); }
+.lp-l3 { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 16px; color: var(--muted); }
+.lp-review[data-tone='good'] { color: var(--add); }
+.lp-review[data-tone='bad'] { color: var(--del); }
+.lp-review[data-tone='faint'] { color: var(--faint); }
+.lp-stat { font-size: 11px; font-variant-numeric: tabular-nums; }

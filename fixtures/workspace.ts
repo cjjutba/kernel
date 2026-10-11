@@ -398,6 +398,75 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = 
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
 
+/** What the Lead's PRs tab (KERNEL-354) reads for one open PR, in the words of LeadPrs.png. */
+interface OpenPr {
+  id: string; agentId: string; key: string; n: number; title: string; state: Workspace['prState']; stat: [number, number]
+  /** Theo's review: `approved` of the head commit, `stale` an approval of an earlier one, `blockers` two blockers on the head commit. None is not reviewed. */
+  review?: 'approved' | 'stale' | 'blockers'
+}
+
+/** The fields of a workspace that has `p` open: the PR, the issue it builds, its changes and Theo's review. */
+const prFields = (p: OpenPr): Partial<Workspace> => {
+  const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
+  const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
+  return {
+    prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: p.title, prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
+    stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews
+  }
+}
+
+const openPrWorkspace = (p: OpenPr): Workspace => {
+  const name = `${p.key.toLowerCase()}-${p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 18)}`
+  return { id: p.id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId: p.agentId, port: 4330 + p.n % 50, status: 'ready', createdAt: at(19, 40), prState: 'open', ...prFields(p) }
+}
+
+/** GitHub's read of each PR: its checks follow its state, and the head commit is the one the workspace saw. */
+const openPrInfo = (p: OpenPr): PrInfo => ({
+  workspaceId: p.id, number: p.n, url: `https://github.com/samrivera/client-a/pull/${p.n}`, title: p.title, state: p.state, baseRef: 'main', comments: [], conflicts: [], head: `h${p.n}`,
+  checks: p.state === 'checks' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] : p.state === 'cifail' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '48s' }] : [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
+})
+
+/** The PRs the room has open, as workspaces and as GitHub reads them. Kai's org-invites workspace of the seed gives way to them. */
+const openPrs = (f: Fixture, list: OpenPr[]): Pick<Fixture, 'workspaces' | 'prs'> => ({
+  workspaces: [...withWorkspace(f, ids.invites, { prNumber: undefined, prUrl: undefined, prState: 'none' }), ...list.map(openPrWorkspace)],
+  prs: Object.fromEntries(list.map((p) => [p.id, openPrInfo(p)]))
+})
+
+/**
+ * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354) over a chat with Rowan: the two ready PRs first, then six that wait
+ * on something. #158 holds an approval of an earlier commit, so the reviewer rule keeps it back.
+ */
+const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string): Partial<Fixture> => {
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+    { ...userMsg('lp-u', ask), ts: at(20, 31) },
+    { kind: 'text', id: 'lp-tx', ts: at(20, 31), text: reply },
+    { kind: 'result', id: 'lp-res', ts: at(20, 31), durationMs: 12_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest, ...openPrs(f, list),
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  }
+}
+
+/** Kai's org invites PR, ready to merge. */
+const INVITES_PR: OpenPr = { id: ids.invites, agentId: 'kai', key: 'T-09', n: 41, title: 'Org invites', state: 'ready', stat: [212, 34], review: 'approved' }
+
+/** Kai's download button PR from the Export chat, ready to merge. */
+const PDF_BUTTON_PR: OpenPr = { id: 'ws-pdf-button', agentId: 'kai', key: 'T-15b', n: 43, title: 'Download PDF in the row actions', state: 'ready', stat: [96, 12], review: 'approved' }
+
+const LEAD_PRS: OpenPr[] = [
+  { id: 'ws-182', agentId: 'kai', key: 'KERNEL-182', n: 162, title: 'New chats focus the composer, and ⌘L focuses it', state: 'ready', stat: [49, 5], review: 'approved' },
+  { id: 'ws-176', agentId: 'noor', key: 'KERNEL-176', n: 161, title: 'Rowan asks when a brief is unclear', state: 'ready', stat: [117, 16], review: 'approved' },
+  { id: 'ws-172', agentId: 'noor', key: 'KERNEL-172', n: 158, title: 'Duplicates show once in Issues', state: 'ready', stat: [28, 7], review: 'stale' },
+  { id: 'ws-183', agentId: 'noor', key: 'KERNEL-183', n: 166, title: 'Stop idle chat sessions', state: 'checks', stat: [117, 16] },
+  { id: 'ws-184', agentId: 'ivy', key: 'KERNEL-184', n: 165, title: 'Run the test suite from a chat', state: 'cifail', stat: [28, 7] },
+  { id: 'ws-189', agentId: 'kai', key: 'KERNEL-189', n: 167, title: 'Download PDF in the row actions', state: 'changes', stat: [64, 9], review: 'blockers' },
+  { id: 'ws-188', agentId: 'noor', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
+  { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
+]
+
 /**
  * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
  * reads Opus 5.5, not the PNG's Sonnet 5.5. Plan mode is off here, as the PNG draws it. The app's default (Settings, Models) is on.
@@ -649,7 +718,7 @@ const exportItems = (): ChatItem[] => [
 ]
 
 /** The Lead's workspace on the sidebar the Grouped PNGs share: four Lead chats, two of them with several tabs, and their workspaces. Each shot picks what is open. */
-export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'changes' | 'files'; running?: string[]; items?: Record<string, ChatItem[]>; chats?: (c: Chat[]) => Chat[]; threads?: (t: Thread[]) => Thread[] } = {}): Partial<Fixture> {
+export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'prs' | 'changes' | 'files'; running?: string[]; items?: Record<string, ChatItem[]>; chats?: (c: Chat[]) => Chat[]; threads?: (t: Thread[]) => Thread[] } = {}): Partial<Fixture> {
   const T = GROUPED
   const chats = [
     leadTab(ids.leadChat, T.export, 'Export invoices as PDF', 5),
@@ -669,14 +738,16 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
   const tab = o.tab ?? ids.leadChat
   const handed: Workspace[] = [
     handedOff('ws-pdf-renderer', 'invoice-pdf-renderer', 't-15a', 'noor', 4320, { stat: { files: 3, added: 188, removed: 0 } }),
-    handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'kai', 4321, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' }),
+    handedOff('ws-pdf-button', 'invoice-pdf-button', 't-15b', 'kai', 4321, prFields(PDF_BUTTON_PR)),
     handedOff('ws-pdf-tests', 'invoice-pdf-tests', 't-15c', 'ivy', 4322, { stat: { files: 2, added: 138, removed: 9 } })
   ]
   return {
     threads: (o.threads ?? ((t) => t))(threads),
     // The seed's single Lead chat gives way to the tabs above. The table and schema workspaces were handed off by the table chat.
     chats: [...(o.chats ?? ((c) => c))(chats), ...f.chats.filter((c) => c.workspaceId !== ids.lead)],
-    workspaces: [...withWorkspace(f, ids.table, { threadId: T.table }).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w)), ...handed],
+    workspaces: [...handed, ...withWorkspace(f, ids.table, { threadId: T.table }).map((w) => (w.id === ids.schema ? { ...w, threadId: T.table, stat: { files: 2, added: 54, removed: 6 } } : w.id === ids.invites ? { ...w, ...prFields(INVITES_PR) } : w))],
+    // Kai's two PRs are ready and approved, which the tab and the header count (KERNEL-354).
+    prs: { 'ws-pdf-button': openPrInfo(PDF_BUTTON_PR), [ids.invites]: openPrInfo(INVITES_PR) },
     items: { [ids.leadChat]: exportItems(), [ids.tableChat]: [], ...o.items },
     approvals: [plan, ...f.approvals],
     push: [...f.push, ...(o.running ?? ['chat-table']).map((chatId): PushEvent => ({ type: 'chat.running', chatId, running: true }))],
@@ -684,7 +755,7 @@ export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?:
     tree: { ...f.tree, [ids.lead]: (f.tree?.[ids.table] ?? []).map(({ status: _s, ...e }) => e) },
     fileText: { ...f.fileText, [ids.lead]: f.fileText?.[ids.table] ?? {} },
     ui: {
-      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: o.right ?? 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: o.right ?? 'prs', bottom: 'run', checkpoints: false, toolsOpen: false },
       tabs: { [ids.lead]: { tab, lastChat: tab.startsWith('file:') ? undefined : tab, files: o.files ?? [], diffs: [] } }
     }
   }
@@ -881,8 +952,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: open
   })),
   // The canvas draws Rowan's plan in a worktree called export-invoices-as-pdf. WorkspaceLeadPlan keeps the Lead's real workspace, on the main checkout.
-  WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree', lead: undefined })),
+  // The Lead's own workspace with Kai's org invites PR ready to merge, so its PRs tab and header count one (KERNEL-354).
+  WorkspaceLead: scene((f) => {
+    const base = leadPlan(f, { agentId: 'rowan' })
+    return { ...base, workspaces: (base.workspaces ?? f.workspaces).map((w) => (w.id === ids.invites ? { ...w, ...prFields(INVITES_PR) } : w)), prs: { [ids.invites]: openPrInfo(INVITES_PR) } }
+  }),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
+  // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
+  LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
+  LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
