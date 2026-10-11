@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel · Room setup, code host</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#f7f8f8}a:hover{color:#ffffff}
+button:focus-visible,a:focus-visible,select:focus-visible{outline:2px solid rgba(247,248,248,.55);outline-offset:1px}
+.cmp:focus-within{border-color:#3a3c42}
+input::placeholder,textarea::placeholder{color:#8a8f98}
+.pin{animation:pin 1.8s ease-out infinite}
+.pina{animation:pina 1.4s ease-out infinite}
+@keyframes pin{0%{box-shadow:0 0 0 0 rgba(247,248,248,.4)}100%{box-shadow:0 0 0 6px rgba(247,248,248,0)}}
+@keyframes pina{0%{box-shadow:0 0 0 0 rgba(245,165,36,.55)}100%{box-shadow:0 0 0 7px rgba(245,165,36,0)}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.2px)}}
+.bob{transform-box:fill-box;animation:bob .9s ease-in-out infinite}
+@keyframes stride{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.8px)}}
+.stride{transform-box:fill-box;animation:stride .32s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .8s linear infinite}
+@media (prefers-reduced-motion: reduce){.pin,.pina,.spin,.bob,.stride{animation:none}}
+.hv .more{opacity:0;transition:opacity .12s}
+.hv:hover .more,.hv:focus-within .more,.hv .more.show,.hv .more:has(details[open]){opacity:1}
+details.dd{position:relative}
+details.dd>summary{list-style:none}
+details.dd>summary::-webkit-details-marker{display:none}
+.mi:hover{background:#232428}
+.row:hover{background:#141518}
+.scrim{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.msg .acts{opacity:0;transition:opacity .12s}
+.msg:hover .acts,.msg:focus-within .acts,.acts.show{opacity:1}
+.sk{display:block;background:#18191c;animation:skp 1.4s ease-in-out infinite}
+@keyframes skp{50%{opacity:.5}}
+@media (prefers-reduced-motion: reduce){.sk{animation:none}}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; background: #08090a; color: #f7f8f8; font-family: 'Inter', -apple-system, 'SF Pro Text', system-ui, sans-serif; font-feature-settings: 'cv01', 'ss03'; font-size: 13px; line-height: 1.45; -webkit-font-smoothing: antialiased">
+<div style="height: 42px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+</div>
+<main style="flex: 1; min-height: 0; display: flex; justify-content: center; padding-top: 40px">
+<div style="width: 560px; display: flex; flex-direction: column; gap: 20px">
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.4px">{{ title }}</h1>
+<p style="margin: 0; color: #8a8f98">This takes a minute. Your team is ready when it finishes.</p>
+</div>
+<div style="display: flex; flex-direction: column; border-radius: 12px; border: 1px solid #1f2024; background: #0f1011">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="7">
+<div style="display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: {{ r.border }}">
+<div style="display: flex; align-items: center; gap: 12px">
+<sc-if value="{{ r.ok }}" hint-placeholder-val="{{ true }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#4cb782" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0"><path d="m3.5 8.3 2.8 2.7 6.2-6.3"></path></svg></sc-if>
+<sc-if value="{{ r.run }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" class="spin" style="width: 13px; height: 13px; flex-shrink: 0; margin: 0 1px; box-sizing: border-box; border-radius: 50%; border: 1.6px solid #3e3e44; border-top-color: #d0d6e0"></span></sc-if>
+<sc-if value="{{ r.wait }}" hint-placeholder-val="{{ false }}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#62666d" stroke-width="1.6" stroke-linecap="round" style="flex-shrink: 0"><path d="M4.5 8h7"></path></svg></sc-if>
+<span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 500; color: {{ r.titleColor }}">{{ r.title }}</span><span style="font-size: 12.5px; color: #8a8f98">{{ r.detail }}</span></span>
+<span style="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #8a8f98">{{ r.meta }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 10px">
+<span style="flex: 1; font-size: 12.5px; color: #8a8f98">You can leave this screen. Kernel keeps going.</span>
+<span aria-disabled="true" style="display: inline-flex; align-items: center; height: 32px; padding: 0 14px; border-radius: 8px; background: #1c1d21; color: #62666d; font-weight: 500">Open the room</span>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  // KERNEL-441: Kernel reads the repo's remote before it makes the worktree folder, and says which host the room has.
+  // GitHub when origin points at github.com (owner/repo), Local when the repo has no GitHub remote.
+  renderVals() {
+    var host = 'local';
+    var hosts = {
+      github: {
+        title: 'Setting up Client C',
+        first: ['Clone cjjutba/client-c', '~/Projects/client-c', '4s'],
+        host: ['Code host', 'GitHub, cjjutba/client-c'],
+        worktree: '~/kernel/worktrees/client-c'
+      },
+      local: {
+        title: 'Setting up Shop',
+        first: ['Use your folder', '~/Projects/shop', ''],
+        host: ['Code host', 'Local, no GitHub remote. Kernel merges branches on this Mac.'],
+        worktree: '~/kernel/worktrees/shop'
+      }
+    };
+    var h = hosts[host];
+    var steps = [
+      h.first,
+      h.host.concat(['']),
+      ['Create the worktree folder', h.worktree, ''],
+      ['Install dependencies', 'pnpm install', ''],
+      ['Copy local files', '.env.local, .env.test', ''],
+      ['Install hooks', '10 events to localhost:7420', ''],
+      ['Seat agents', 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', '']
+    ];
+    var rows = steps.map(function (x, i) {
+      var st = i < 3 ? 'ok' : (i === 3 ? 'run' : 'wait');
+      return { title: x[0], detail: x[1], meta: st === 'run' ? 'running' : x[2], ok: st === 'ok', run: st === 'run', wait: st === 'wait', titleColor: st === 'wait' ? '#8a8f98' : '#f7f8f8', border: i === 0 ? '0' : '1px solid #1a1b1e' };
+    });
+    return { title: h.title, rows: rows };
+  }
+}
+</script>
+</body>
+</html>
