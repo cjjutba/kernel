@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
 import { readFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +9,6 @@ import electronUpdater from 'electron-updater'
 import { bus } from './bus'
 import { Kernel } from './kernel'
 import { fixtureHandlers, fixturePush } from './fixtures'
-import { exec } from './services/exec'
 import { hookTokenFile } from './services/hookToken'
 import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
@@ -21,11 +20,11 @@ import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
-import { insideRoots, isAppUrl } from './windowGuard'
+import { isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
 import type { TelemetryEvent } from '@shared/telemetry'
-import type { Room, Toast, Workspace } from '@shared/types'
+import type { Toast } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -303,6 +302,8 @@ app.whenReady().then(async () => {
     // Usage data goes out only from a packaged release built with a key, after the user says yes, and never from a smoke
     // test, a fixture or headless run, or when DO_NOT_TRACK=1 or KERNEL_TELEMETRY=0 is set (KERNEL-397).
     const sends = app.isPackaged && !smokeTest && !fixtureName && !headless && !!__KERNEL_TELEMETRY__.key && process.env.DO_NOT_TRACK !== '1' && process.env.KERNEL_TELEMETRY !== '0'
+    /** Each app's icon for the Open in menu, drawn once per app path (KERNEL-427). */
+    const appIcons = new Map<string, Promise<string | undefined>>()
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
       telemetry: sends ? { ...__KERNEL_TELEMETRY__, os: process.getSystemVersion(), arch: process.arch } : undefined,
@@ -331,6 +332,12 @@ app.whenReady().then(async () => {
       confirmQuit: () => quit.confirmUpdate(),
       capture: preview,
       reveal: (path) => shell.showItemInFolder(path),
+      // A Quick Look thumbnail, since app.getFileIcon goes by extension on macOS and draws every .app with the same icon.
+      appIcon: (p) => {
+        let icon = appIcons.get(p)
+        if (!icon) appIcons.set(p, (icon = nativeImage.createThumbnailFromPath(p, { width: 32, height: 32 }).then((i) => i.toDataURL(), () => undefined)))
+        return icon
+      },
       openFile: async (path) => { const err = await shell.openPath(path); if (err) throw new Error(err) },
       // Only web pages, as system.openExternal: a sign-in page Codex or Claude Code names.
       openExternal: async (url) => { if (isWebUrl(url)) await shell.openExternal(url) }
@@ -375,16 +382,10 @@ app.whenReady().then(async () => {
   for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
   handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
   handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
-  // Never shell.openPath: on a tracked run.command or .terminal file it runs the file, and checkouts carry no quarantine
-  // flag. Without the code command the file is shown in Finder instead.
+  // The file view, plan rows, approval cards and Settings open in the default editor, through Open in's checks (KERNEL-427).
   handle('system.openInEditor' satisfies Channel, async (_e, { path }: KernelApi['system.openInEditor']['req']) => {
     await started
-    const rooms = (await handlers['rooms.list'](undefined)) as Room[]
-    const workspaces = (await handlers['workspaces.list']({})) as Workspace[]
-    if (!insideRoots(path, [...rooms, ...workspaces].map((x) => x.path))) throw new Error('Kernel only opens files inside a room or workspace.')
-    const r = await exec('code', [path])
-    if (r.code !== 0) shell.showItemInFolder(path)
-    return { ok: true }
+    return handlers['app.openIn']({ path })
   })
   bus.on('push', (event) => mainWindow()?.webContents.send('kernel:event', event))
   Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({ copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)) })))

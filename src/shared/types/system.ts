@@ -46,6 +46,17 @@ export interface AppUpdate {
   currentNotes?: { title: string; body: string }[]
 }
 
+/**
+ * An app on this Mac that Kernel can open a folder or file in, for the Open in menu (KERNEL-427). `id` is the catalog's, the
+ * only thing the renderer sends back. `icon` is the app's own icon as a PNG data URL.
+ */
+export interface OpenApp {
+  id: string
+  name: string
+  kind: 'finder' | 'editor' | 'terminal'
+  icon?: string
+}
+
 export interface Integration {
   id: 'github' | 'linear' | 'vercel' | 'remote'
   name: string
