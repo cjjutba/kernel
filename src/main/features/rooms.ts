@@ -24,7 +24,7 @@ export class Rooms extends Feature {
     const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
     this.store.saveRoom(room)
     await this.k.team.agents(room.id)
-    await this.k['untrusted'](room).catch(() => null)
+    await this.k.trust.untrusted(room).catch(() => null)
     return room
   }
 
@@ -100,7 +100,7 @@ export class Rooms extends Feature {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path)) await this.k['trustCurrent'](room)
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path)) await this.k.trust.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
@@ -221,10 +221,10 @@ export class Rooms extends Feature {
     const shared = this.store.sharedFiles({ roomId }).map((f) => f.id)
     this.store.deleteRoom(roomId)
     this.k.envStore.dropRoom(roomId)
-    this.k['envFilesOk'].delete(roomId)
+    this.k.trust.envFilesOk.delete(roomId)
     await this.k.roomIcons.remove(room.icon)
     await this.k.shared.remove(shared)
-    await this.k['trusted'].forget(roomId)
+    await this.k.trust.forgetRoom(roomId)
     this.k.team.forgetRoom(roomId)
   }
 

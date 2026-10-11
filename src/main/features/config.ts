@@ -12,7 +12,7 @@ import { Feature } from './feature'
 /** The app's settings, each room's settings file, and the git remote they name (KERNEL-325). */
 export class Config extends Feature {
   /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
-  private readonly roomRemotes = new Map<string, string | undefined>()
+  readonly roomRemotes = new Map<string, string | undefined>()
 
   get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
@@ -67,12 +67,12 @@ export class Config extends Feature {
       },
       'settings.setRoom': async ({ roomId, patch, shared }) => {
         const room = this.mustRoom(roomId)
-        const before = await this.k['trustState'](room)
+        const before = await this.k.trust.trustState(room)
         const next = await saveRepoSettings(room.path, patch, shared)
         this.roomRemotes.set(room.path, next.workspace.remote)
-        await this.k['trustSaved'](room, before, patch, !!shared, next)
+        await this.k.trust.trustSaved(room, before, patch, !!shared, next)
         // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-        await this.k['untrusted'](room, next)
+        await this.k.trust.untrusted(room, next)
         return next
       },
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).

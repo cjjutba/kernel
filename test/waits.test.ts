@@ -147,7 +147,7 @@ describe('a hand-off that waits for a merge', () => {
     expect(existsSync(join(w.path, 'ran.txt'))).toBe(false)
     expect(await listCheckpoints(w)).toEqual([])
     // The Lead's message waits behind the brief, and the Lead hears why.
-    const sent = await k['messageWorkspace'](room.id, w.id, 'Use the new rows', lead.id)
+    const sent = await k.lead['messageWorkspace'](room.id, w.id, 'Use the new rows', lead.id)
     expect(sent.note).toBe('Kai waits for PR #164 by Noor to merge, so this goes out after the brief. To start Kai now, call wait_for_merge with an empty list.')
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead'], ['Use the new rows', 'lead']])
     await k.stop()
@@ -157,7 +157,7 @@ describe('a hand-off that waits for a merge', () => {
     const { k, room, lead, target, mergeOnGitHub, origin } = await setup()
     const noor = await target(k, 164)
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    await k['messageWorkspace'](room.id, w.id, 'Use the new rows', lead.id)
+    await k.lead['messageWorkspace'](room.id, w.id, 'Use the new rows', lead.id)
     const chat = chatOf(k, w)
     if (where === 'GitHub') await mergeOnGitHub(k, noor)
     else await k.mergePr(noor.id)
@@ -238,7 +238,7 @@ describe('a hand-off that waits for a merge', () => {
     expect(notes(k, chatOf(k, one))).toContain('Started without waiting for PR #164 by Noor.')
     const two = await k.createWorkspace(room.id, { prompt: 'Build T-16', agentId: 'kai', title: 'Thinking rows again', leadChatId: lead.id, waitFor: [noor.id] })
     const chat = chatOf(k, two)
-    await k['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
+    await k.chats['sendNow'](chat.id, k.sessions.queued(chat.id)[0].id)
     expect(k.store.workspace(two.id)?.waitsFor).toBeUndefined()
     expect(users(k, chat)).toEqual([['Build T-16', 'lead']])
     await k.stop()
@@ -251,7 +251,7 @@ describe('a hand-off that waits for a merge', () => {
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [a.id, b.id] })
     await mergeOnGitHub(k, a)
     const rowan = (await k.agents(room.id)).find((x) => x.lead)!
-    const tool = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'wait_for_merge')!
+    const tool = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'wait_for_merge')!
     const out = (await tool.handler({ workspace_id: w.id, on: [] } as never, {})).content[0] as { text: string }
     expect(out.text).toBe('Kai no longer waits. Kernel sent the brief, so Kai starts now.')
     expect(k.store.workspace(w.id)?.waitsFor).toBeUndefined()
@@ -310,7 +310,7 @@ describe('a hand-off that waits for a merge', () => {
     const noor = await target(k, 164)
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
     const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const archive = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'archive_workspace')!
+    const archive = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'archive_workspace')!
     const out = await archive.handler({ workspace_ids: [w.id] } as never, {})
     expect((out.content[0] as { text: string }).text).toBe(`Archived ${w.name}.`)
     expect(k.store.workspace(w.id)).toMatchObject({ status: 'archived' })
@@ -325,7 +325,7 @@ describe('a hand-off that waits for a merge', () => {
     await k.continuePr(noor.id)
     expect(k.store.workspace(noor.id)).toMatchObject({ prState: 'none', mergedAt: expect.any(Number) })
     const w = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
-    await k['retryWaits']()
+    await k.waits['retryWaits']()
     const next = k.store.workspace(noor.id)!
     gh.prs.set(next.branch, prInfo('open', 164))
     await k.refreshPr(noor.id)
@@ -394,8 +394,8 @@ describe('across a restart', () => {
     await flush()
     expect(k2.store.workspace(w.id)).toMatchObject({ status: 'ready', waitsFor: { held: true } })
     expect(queue(k2, chat)).toEqual([['Build T-15', 'lead']])
-    expect((await k2['messageWorkspace'](room.id, w.id, 'Still there?', lead.id)).sent).toBe(false)
-    await k2['pollPrs']()
+    expect((await k2.lead['messageWorkspace'](room.id, w.id, 'Still there?', lead.id)).sent).toBe(false)
+    await k2.prs['pollPrs']()
     await released(k2, w)
     expect(users(k2, chat)[0]).toEqual(['Build T-15', 'lead'])
     expect(existsSync(join(w.path, 'pr-164.txt'))).toBe(true)
@@ -422,7 +422,7 @@ describe('the Lead\'s tools', () => {
     const { k, room, lead, target } = await setup()
     const noor = await target(k, 164)
     const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const tools = kernelTools(k['leadToolDeps'](room.id, rowan, lead))
+    const tools = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead))
     const create = tools.find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: ['#164'] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(room.id).find((x) => x.title === 'Thinking rows')!
@@ -438,7 +438,7 @@ describe('the Lead\'s tools', () => {
     const noor = await target(k, 164)
     await mergeOnGitHub(k, noor)
     const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const create = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+    const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', wait_for: [noor.id] } as never, {})).content[0] as { text: string }
     const w = k.store.workspaces(room.id).find((x) => x.title === 'Thinking rows')!
     expect(out.text).toBe(`Created ${w.id} on ${w.branch} for kai.`)
@@ -496,7 +496,7 @@ function linear(blockedBy: Record<string, string[]>, o: { fail?: boolean } = {})
 describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
   const handOff = async (k: Kernel, room: { id: string }, lead: Chat, input: object) => {
     const rowan = (await k.agents(room.id)).find((a) => a.lead)!
-    const create = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+    const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
     const out = (await create.handler({ agent: 'kai', title: 'Thinking rows', brief: 'Build T-15', ...input } as never, {})).content[0] as { text: string }
     return { text: out.text, w: k.store.workspace(/^Created (\S+) on/.exec(out.text)![1])! }
   }

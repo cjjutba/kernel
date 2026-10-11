@@ -41,7 +41,7 @@ async function setup() {
   const lead = await k.leadChat(room.id)
   const rowan = (await k.agents(room.id)).find((a) => a.lead) as AgentDef
   const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
-  const create = kernelTools(k['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
+  const create = kernelTools(k.lead['leadToolDeps'](room.id, rowan, lead)).find((t) => t.name === 'create_workspace')!
   /** create_workspace as the Lead calls it; the id of the new workspace, or the refusal. */
   const handOff = async (args: Record<string, string>) => {
     const out = await create.handler(args as never, {})

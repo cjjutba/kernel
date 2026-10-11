@@ -9,7 +9,7 @@ import { Feature } from './feature'
 
 /** Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). */
 export class Team extends Feature {
-  private agentCache = new Map<string, AgentDef[]>()
+  readonly agentCache = new Map<string, AgentDef[]>()
   private agentWatchers = new Map<string, () => void>()
   readonly statuses = new Map<string, Record<string, AgentStatus>>()
 
@@ -73,7 +73,7 @@ export class Team extends Feature {
   }
 
   /** `was` is the team before the change: whoever is new walks in. Leave it out to announce no one. */
-  private announceTeam(roomId: string, list: AgentDef[], was?: AgentDef[]) {
+  announceTeam(roomId: string, list: AgentDef[], was?: AgentDef[]) {
     const had = new Set((was ?? list).map((a) => a.id))
     const room = this.mustRoom(roomId)
     const known = this.statuses.get(roomId) ?? {}

@@ -360,7 +360,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(room.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     expect(ws.status).toBe('failed')
-    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     expect(texts(k, chat.id)).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
     await k.stop()
@@ -399,7 +399,7 @@ describe('kernel recovery paths', () => {
     const lead = await k.leadChat(room.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const other = await k.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-    await k['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
+    await k.lead['messageWorkspace'](room.id, ws.id, 'Use EmptyState')
     const chat = k.store.chats(ws.id)[0]
     k.sessions.unqueue(chat.id, k.sessions.queued(chat.id)[1].id)
     await k.archiveWorkspace(other.id)

@@ -18,8 +18,15 @@ export abstract class Feature {
   protected get tasks() { return this.k.tasks }
   protected get settings() { return this.k.settings }
   protected get o() { return this.k.o }
-  protected get home() { return this.k['home'] }
-  protected get stopped() { return this.k['stopped'] }
+  protected get home() { return this.k.home }
+  protected get stopped() { return this.k.stopped }
+  protected get leadUpdates() { return this.k.leadUpdates }
+  protected get overlaps() { return this.k.overlaps }
+  protected get nudges() { return this.k.nudges }
+  protected get ptys() { return this.k.ptys }
+  protected get roomIcons() { return this.k.roomIcons }
+  protected get shared() { return this.k.shared }
+  protected get envStore() { return this.k.envStore }
 
   protected mustRoom(id: string) { return records.mustRoom(this.k.store, id) }
   protected mustWs(id: string) { return records.mustWs(this.k.store, id) }

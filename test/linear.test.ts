@@ -5,10 +5,10 @@ import { join } from 'node:path'
 import { tempRepo } from './helpers'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { kernelTools } from '../src/main/services/kernelMcp'
 import { saveLinearToken } from '../src/main/services/integrations'
 import { getIssue, getScope, issueFilter, listIssues, moveToStarted, NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
-import type { ActivityEvent, AgentDef, Chat, ChatPart } from '../src/shared/types'
+import type { ActivityEvent, AgentDef, ChatPart } from '../src/shared/types'
 
 interface Call { query: string; variables: Record<string, unknown>; auth: string }
 
@@ -220,7 +220,7 @@ describe('Linear in the kernel', () => {
   async function createWorkspace(k: Kernel, roomId: string, args: Record<string, string>) {
     const lead = (await k.agents(roomId)).find((a) => a.lead) as AgentDef
     const chat = await k.leadChat(roomId)
-    const deps = (k as unknown as { leadToolDeps(roomId: string, lead: AgentDef, chat: Chat): KernelToolDeps }).leadToolDeps(roomId, lead, chat)
+    const deps = k.lead.leadToolDeps(roomId, lead, chat)
     const tool = kernelTools(deps).find((t) => t.name === 'create_workspace')!
     const out = await tool.handler({ agent: 'noor', title: 'Build the screen', brief: 'Goal, files, acceptance criteria', ...args } as never, {})
     return { text: (out.content[0] as { text: string }).text, ws: k.store.workspaces(roomId).find((w) => w.agentId === 'noor')! }
