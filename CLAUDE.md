@@ -4,7 +4,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 ## Commands
 
-- `pnpm install` installs and rebuilds native modules for Electron
+- `pnpm install` installs, downloads Electron and rebuilds native modules for it
 - `pnpm dev` runs the app with hot reload
 - `pnpm test:changed` runs only the test files your changes (committed or not) affect, compared with `origin/main`. Use this one while you work. It runs everything if you touched `package.json` or the vitest config
 - `pnpm test` runs the full suite on Electron's Node (engine tests use real git repos in temp folders). CI runs it on every PR, so run it locally only to reproduce a CI failure or after changing the test setup. One file: `pnpm test test/kernel.test.ts`. Plain `pnpm exec vitest` fails, see D-013
