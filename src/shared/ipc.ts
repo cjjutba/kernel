@@ -279,6 +279,11 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /**
+   * Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding
+   * (KERNEL-447). Reads admin policy and asks Claude Code which models run Auto, so the first call can take a few seconds.
+   */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
   /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
   'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
   // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
@@ -392,15 +397,6 @@ export interface KernelApi {
   'system.preview.scroll': { req: { viewId: string; dx?: number; dy?: number; y?: number }; res: { scrollY: number } | null }
   /** Where each selector's element is now, null for one that matches nothing. Places pins again after a scroll or reload. */
   'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
-}
-
-/**
- * Channels whose types are settled before anything answers them (KERNEL-432). The ticket that builds one moves it into
- * KernelApi with its handler, so no window can call it, and no NotImplemented stub is needed, until then.
- */
-export interface PlannedApi {
-  /** Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding. */
-  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
 }
 
 export type Channel = keyof KernelApi
