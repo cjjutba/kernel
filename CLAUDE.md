@@ -74,6 +74,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Lists that several PRs add to (`docs/SCREENS.md` rows, the screen lists in `build.py`, `noCanvas`, fixtures) keep one entry per line. No doc states a count that every PR would have to change, and tests derive counts from the files.
+- Never run `git pull` in the main checkout, the folder where `main` is checked out (the first line of `git worktree list`). That goes for Rowan and every chat. CJ runs Kernel from that folder with `pnpm dev`. A pull reloads the window onto code the running app doesn't have, and the restart that fixes it interrupts every agent. Anything else that rewrites its files does the same, so don't run `git checkout`, `git switch`, `git merge` or `git reset` there either. To see what landed on main, run `git fetch origin` and read `origin/main`. To bring a branch up to date, rebase it onto `origin/main` in its own worktree. CJ pulls main when no agent is running.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 
 ## Lanes

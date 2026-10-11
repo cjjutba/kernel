@@ -7,8 +7,10 @@ import { bus } from '../bus'
 import { exec, git } from './exec'
 import { resolveCopySources, within } from './filesToCopy'
 import type { Readable } from 'node:stream'
-import { PORT_BLOCK } from '@shared/types'
+import { PORT_BLOCK, type ScriptLine } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
+import { keepLine, scriptKey } from '@shared/scriptLog'
 
 const canBind = (p: number) => new Promise<boolean>((res) => {
   const srv = createServer()
@@ -128,6 +130,40 @@ const key = (workspaceId: string, kind: Kind, name?: string) => JSON.stringify([
 const nameOf = (kind: Kind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
 
 /**
+ * Each workspace's scripts as the window was told: their lines, trimmed as the window trims them, the exit code of each
+ * script that stopped and the URL of each run script still running. A window that reloads or reopens gets them back from
+ * `replayScripts`, since the lines only ever went out as pushes (KERNEL-340).
+ */
+const kept = new Map<string, { lines: ScriptLine[]; exit: Record<string, number | null>; url: Record<string, string> }>()
+/** Archived workspaces. Their scripts' last lines and exits come after the archive and aren't kept. */
+const archived = new Set<string>()
+
+/**
+ * Keeps a pushed script event, whoever pushed it: Kernel adds setup and archive lines of its own. Kernel's push listener
+ * calls it for every push. An archived workspace's record goes, and a restored one keeps lines again.
+ */
+export function keepScript(e: PushEvent) {
+  if (e.type === 'workspace') {
+    if (e.workspace.status !== 'archived') archived.delete(e.workspace.id)
+    else { archived.add(e.workspace.id); kept.delete(e.workspace.id) }
+    return
+  }
+  if ((e.type !== 'script.output' && e.type !== 'script.exit' && e.type !== 'script.url') || archived.has(e.workspaceId)) return
+  let k = kept.get(e.workspaceId)
+  if (!k) kept.set(e.workspaceId, (k = { lines: [], exit: {}, url: {} }))
+  if (e.type === 'script.output') k.lines = keepLine(k.lines, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
+  else if (e.type === 'script.exit') k.exit[scriptKey(e.kind, e.name)] = e.code
+  else if (e.url) k.url[e.name] = e.url
+  else delete k.url[e.name]
+}
+
+/** Pushes everything kept for the workspace's scripts as one `script.state`, which takes the place of what the window has. */
+export function replayScripts(workspaceId: string) {
+  const k = kept.get(workspaceId)
+  bus.push({ type: 'script.state', workspaceId, lines: k?.lines ?? [], exit: { ...k?.exit }, url: { ...k?.url } })
+}
+
+/**
  * Run a workspace script in a login shell, streaming lines to the UI. Resolves with the exit code. `env` is the whole
  * environment, from `Kernel.envFor` (KERNEL-247).
  */
@@ -145,6 +181,8 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
       detached: true
     })
     running.set(k, { workspaceId: o.workspaceId, kind: o.kind, name, child })
+    // Running again, so the last run's exit code no longer says it stopped.
+    delete kept.get(o.workspaceId)?.exit[scriptKey(o.kind, name)]
     const current = () => running.get(k)?.child === child
     // A run script's URL starts empty. The first local URL it prints is its URL until it exits (KERNEL-246).
     let url: string | null = null

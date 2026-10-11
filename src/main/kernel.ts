@@ -30,7 +30,7 @@ import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelTo
 import { loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, type AppSettings } from './services/settings'
 import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount } from './services/account'
-import { blocksOverlap, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
+import { blocksOverlap, linkNodeModules, portBlock, replayScripts, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { EnvStore } from './services/env'
 import { githubAvatar, RoomIcons } from './services/roomIcons'
 import { exec, git } from './services/exec'
@@ -1959,6 +1959,7 @@ export class Kernel {
       'chats.fork': async ({ chatId, itemId }) => this.forkChat(chatId, itemId),
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
+      'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
       'chats.create': async ({ workspaceId, kind, preset }) => {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
@@ -1980,6 +1981,7 @@ export class Kernel {
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
       'chats.queueReason': async ({ chatId }) => this.sessions.queueReason(chatId) ?? null,
+      'chats.live': async () => ({ running: this.sessions.runningIds(), retry: this.sessions.retries() }),
       'chats.unqueue': async ({ chatId, id }) => this.sessions.unqueue(chatId, id),
       'chats.sendNow': async ({ chatId, id }) => this.sendNow(chatId, id),
       'chats.retry': async ({ chatId, itemId, now }) => {
@@ -2003,6 +2005,7 @@ export class Kernel {
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
+      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } },
       'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
       'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
       'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),
