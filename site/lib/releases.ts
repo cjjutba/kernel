@@ -18,3 +18,10 @@ export function loadReleases(dir: string): Release[] {
     })
   return releases.sort((a, b) => compareVersions(b.version, a.version))
 }
+
+/** The releases at or below `published`, GitHub's latest published version, newest first (KERNEL-412). */
+export function publishedReleases(releases: Release[], published: string): Release[] {
+  const shown = releases.filter((r) => compareVersions(r.version, published) <= 0)
+  if (!shown.length) throw new Error(`no release file at or below ${published}, GitHub's latest release`)
+  return shown
+}
