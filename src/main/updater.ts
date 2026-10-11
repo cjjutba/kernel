@@ -36,6 +36,7 @@ export const BOOT_UPDATE_MS = 90_000
  * the first `get()` says `installed` so What's new shows once with the release notes.
  *
  * Failures stay quiet: a check that can't reach GitHub (offline, or the repo still private) reports idle again.
+ * A copy outside Applications never checks, since it can't replace itself, and says why in `blocked` (KERNEL-443).
  */
 export class Updater {
   private state: AppUpdate
@@ -46,10 +47,11 @@ export class Updater {
   private readonly watchers = new Set<() => void>()
 
   /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (KERNEL-154). */
-  constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string }) {
+  /** `outside` is where a copy outside Applications runs from (`runsFrom` in loginItem.ts). */
+  constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string; outside?: string }) {
     this.file = join(o.dataDir, 'update.json')
     this.saved = readSaved(this.file)
-    this.state = { status: 'idle', current: o.current, currentNotes: this.currentNotes() }
+    this.state = { status: 'idle', current: o.current, currentNotes: this.currentNotes(), blocked: o.outside && blockedReason(o.outside) }
     const e = o.engine
     e.autoDownload = true
     // A downloaded update installs on the next quit even without Restart to update.
@@ -71,6 +73,7 @@ export class Updater {
 
   /** Checks now and then every few hours. */
   start() {
+    if (this.state.blocked) return console.warn(`[kernel] updates are off: ${this.state.blocked}`)
     void this.check()
     this.timer = setInterval(() => void this.check(), this.o.every ?? CHECK_EVERY_MS)
     this.timer.unref?.()
@@ -89,7 +92,7 @@ export class Updater {
 
   /** Settings > About and the timer. Resolves once the check is answered; the download carries on after. */
   async check(): Promise<AppUpdate> {
-    if (this.state.status === 'ready' || this.state.status === 'downloading') return this.state
+    if (this.state.blocked || this.state.status === 'ready' || this.state.status === 'downloading') return this.state
     await this.o.engine.checkForUpdates().catch(() => undefined)
     return this.state
   }
@@ -143,6 +146,14 @@ export class Updater {
     this.saved = s
     void writeFile(this.file, JSON.stringify(s)).catch((err) => console.warn('[kernel] could not save update.json', err))
   }
+}
+
+/**
+ * Why a copy outside Applications can't update itself, for Settings, About. Squirrel replaces the app where it runs, and a
+ * disk image or a translocated copy is read-only, so Kernel doesn't download an update it can't install (KERNEL-443).
+ */
+export function blockedReason(place: string): string {
+  return `Kernel is running from ${place}. Move it to Applications and open it from there.`
 }
 
 /** A notes file as What's new items, or none when the file isn't there. */

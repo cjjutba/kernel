@@ -1,5 +1,6 @@
 import type { TeamConfig } from './agents'
 import type { Effort, Provider } from './chats'
+import type { TrackerKind } from './trackers'
 import type { WorkspaceMode } from './workspaces'
 
 export type Theme = 'dark' | 'light'
@@ -71,13 +72,18 @@ export interface AppSettings {
   providers: { claude: ProviderBinary; codex: ProviderBinary & { personality: CodexPersonality } }
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
-  permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
+  /**
+   * `mode` is the app's permission mode, which a room and a chat can override. `bypassOnlyInWorktrees` keeps Bypass
+   * permissions off a current-branch workspace. The modes were `ask`, `acceptEdits` and `bypassInWorktrees` before
+   * KERNEL-432, and `loadAppSettings` moves them over.
+   */
+  permissions: { mode: PermissionMode; bypassOnlyInWorktrees: boolean; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
   /**
    * `requireReviewer` holds a merge until a reviewer approves the PR's latest commit, only on PRs a reviewer looked at.
    * `autoReview` has the Lead start a review when a PR passes checks (KERNEL-115). No page shows it yet.
    * `leadMerge` lets the Lead merge ready PRs with merge_workspace, only in a turn the user started (KERNEL-352).
    */
-  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean } & PrInstructions
+  pr: { mergeMethod: MergeMethod; draft: boolean; requireGreen: boolean; requireReviewer: boolean; autoReview: boolean; leadMerge: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
   terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
@@ -104,6 +110,27 @@ export interface ProviderBinary { path: string; useSystem: boolean }
 
 /** Codex personality for new chats: Pragmatic by default, Friendly, or None. */
 export type CodexPersonality = 'pragmatic' | 'friendly' | 'none'
+
+/**
+ * How much an agent does without asking, named as Claude Code names its modes (KERNEL-432): Manual (`default`) asks before
+ * edits and commands, Accept edits takes file edits, Auto lets Claude Code's classifier decide, and Bypass permissions asks
+ * for nothing Kernel's own rules allow. Plan mode isn't one of them: it is `Chat.plan`.
+ */
+export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'bypassPermissions'
+
+export const PERMISSION_MODES: readonly PermissionMode[] = ['default', 'acceptEdits', 'auto', 'bypassPermissions']
+
+/**
+ * Whether a provider can run Auto and Bypass permissions now (KERNEL-432). Auto on Claude depends on the account and the
+ * model, and admin policy can turn either off. `reason` says why one can't, for the line under the mode picker.
+ */
+export interface ModeAvailability { auto: boolean; bypass: boolean; reason?: string }
+
+/** How a PR merges: the app's `pr.mergeMethod`, or a room's `[pr] merge_method`. */
+export type MergeMethod = 'squash' | 'merge' | 'rebase'
+
+/** What a room does when an agent reaches for an MCP server its file doesn't list: ask the user, or hide the server as Claude Code does. */
+export type UnlistedTools = 'ask' | 'hide'
 
 /**
  * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).
@@ -147,12 +174,25 @@ export interface RoomSettings {
   disabled?: { skills: string[]; mcp: string[] }
   /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
+  /** The room's issue tracker, `[tracker] kind`. Without it Kernel works the tracker out from the Linear token and the remote (KERNEL-432). */
+  tracker?: { kind?: TrackerKind | 'none' }
   /**
    * The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). `optionalChecks` names checks
    * that never fail a PR in a repo that requires none, `*` matching any run of characters ("Vercel*"). A check the repo
-   * requires always counts (KERNEL-388).
+   * requires always counts (KERNEL-388). `mergeMethod` (`merge_method`) is this room's over the app's (KERNEL-432).
    */
-  pr?: Partial<PrInstructions> & { optionalChecks?: string[] }
+  pr?: Partial<PrInstructions> & { optionalChecks?: string[]; mergeMethod?: MergeMethod }
+  /**
+   * `[mcp.aliases]`: a server name the agent files use, and the name of the server this Mac has for it
+   * (`linear = "claude_ai_Linear"`). Both files merge alias by alias (KERNEL-432).
+   */
+  mcp?: { aliases?: Record<string, string> }
+  /**
+   * The `[agents]` table (KERNEL-432). `unlistedTools` (`unlisted_tools`) is `ask` when unset. `allow` is each agent's
+   * `[agents.<id>] allow`: by agent id, the MCP servers the user let it use in this room though its file doesn't list them.
+   * Both files merge agent by agent.
+   */
+  agents?: { unlistedTools?: UnlistedTools; allow?: Record<string, string[]> }
   /**
    * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
@@ -204,11 +244,16 @@ export interface ProductionHint {
 
 /**
  * A patch to a room's settings file. `null` removes the key so the app default applies again.
- * `runScripts` maps a name to its command, and `run` is `[scripts] run`.
+ * `runScripts` maps a name to its command, and `run` is `[scripts] run`. `mcp.aliases` and `agents.allow` change only the
+ * names they list, and `null` removes one (KERNEL-432).
  */
 export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
-} & { runScripts?: Record<string, string | null> }
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team' | 'mcp' | 'agents'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+} & {
+  runScripts?: Record<string, string | null>
+  mcp?: { aliases?: Record<string, string | null> }
+  agents?: { unlistedTools?: UnlistedTools | null; allow?: Record<string, string[] | null> }
+}
 
 /** Recursive partial for settings patches. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] : T[K] extends object | null ? DeepPartial<T[K]> : T[K] }
