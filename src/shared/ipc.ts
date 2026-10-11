@@ -238,6 +238,21 @@ export interface KernelApi {
   'system.trafficLights': { req: { at: 'sidebar' | 'header' }; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
   'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
+
+  // live previews of shared HTML (KERNEL-303). Each is a locked-down native view main draws over the tab. `preview`
+  // events report its state and `preview.key` carries app shortcuts typed inside it.
+  /**
+   * The view for a tab, made or reused by `key` (workspace and file). Another version reloads the same view. `viewId` is
+   * null when there is no live view: fixture mode, and every kind but HTML. `still` is the last capture, if any.
+   */
+  'system.preview.open': { req: { sharedId: string; version: number; key: string }; res: { viewId: string | null; still?: string | null } }
+  /** Puts the view over `rect`, in the page's CSS pixels. Null hides it. A view main has since closed is ignored; open it again. */
+  'system.preview.place': { req: { viewId: string; rect: { x: number; y: number; width: number; height: number } | null }; res: Ok }
+  /** A JPEG data URL of the view as it is now, shown while it is hidden. Null when the view is gone. */
+  'system.preview.still': { req: { viewId: string }; res: string | null }
+  'system.preview.reload': { req: { viewId: string }; res: Ok }
+  'system.preview.focus': { req: { viewId: string }; res: Ok }
+  'system.preview.close': { req: { viewId: string }; res: Ok }
 }
 
 export type Channel = keyof KernelApi
@@ -287,6 +302,13 @@ export type PushEvent =
   | { type: 'retry'; chatId: string; retry: { attempt: number; of: number; nextAt: number } | null }
   /** A file was shared, or got a new version (KERNEL-302). */
   | { type: 'shared'; file: SharedFile }
+  /**
+   * A preview view's state (KERNEL-303). `settled` comes 300 ms after input, a finished load or a move, when a fresh
+   * still is worth taking.
+   */
+  | { type: 'preview'; viewId: string; state: 'loading' | 'ready' | 'settled' | 'crashed' | 'unresponsive' }
+  /** An app shortcut typed inside a preview. Main has moved focus back to the app, which runs the shortcut. */
+  | { type: 'preview.key'; key: string; code: string; meta: boolean; shift: boolean; alt: boolean; ctrl: boolean }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
 export const NOT_IMPLEMENTED = 'Not built yet'
