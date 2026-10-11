@@ -164,7 +164,8 @@ export class Store {
   // chats
   chats(workspaceId: string): Chat[] { return this.all('select data from chats where workspace_id = ? order by created_at', workspaceId) }
   chat(id: string): Chat | undefined { return this.one('select data from chats where id = ?', id) }
-  saveChat(c: Chat) { this.db.prepare('insert or replace into chats (id, workspace_id, data, created_at) values (?, ?, ?, ?)').run(c.id, c.workspaceId, JSON.stringify(c), c.createdAt); return c }
+  // An upsert, not insert or replace, so a saved chat keeps its rowid, which orders tabs made in the same millisecond (KERNEL-337)
+  saveChat(c: Chat) { this.db.prepare('insert into chats (id, workspace_id, data, created_at) values (?, ?, ?, ?) on conflict(id) do update set workspace_id = excluded.workspace_id, data = excluded.data, created_at = excluded.created_at').run(c.id, c.workspaceId, JSON.stringify(c), c.createdAt); return c }
 
   // Lead chats, each holding one or more Lead tabs (KERNEL-337), oldest first
   threads(roomId?: string): Thread[] {

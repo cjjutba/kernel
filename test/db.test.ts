@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval, SharedFile, Workspace } from '@shared/types'
+import type { Approval, Chat, SharedFile, Workspace } from '@shared/types'
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
@@ -181,6 +181,16 @@ describe('kernel.db versions', () => {
     const again = new Store(file)
     expect(again.threads('r1').map((t) => t.id)).toEqual(threads.map((t) => t.id))
     again.db.close()
+  })
+
+  it('keeps the order of tabs made in the same millisecond when the older one is saved again (KERNEL-337)', () => {
+    const store = new Store(join(dir(), 'kernel.db'))
+    const tab = (id: string) => store.saveChat({ id, workspaceId: 'lead', title: 'New tab', kind: 'chat', threadId: 't1', createdAt: 10 } as Chat)
+    const first = tab('b-first')
+    tab('a-second')
+    store.saveChat({ ...first, title: 'Release plan' })
+    expect(store.threadTabs('a-second').map((c) => c.id)).toEqual(['b-first', 'a-second'])
+    store.db.close()
   })
 
   describe('a file from a newer build', () => {
