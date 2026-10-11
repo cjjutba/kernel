@@ -6,7 +6,7 @@ import type { AgentDef, Chat, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
-import { applySettingsPatch, DEFAULT_SETTINGS, loadAppSettings } from '../src/main/services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, loadAppSettings, saveAppSettings } from '../src/main/services/settings'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
 const sdk = vi.hoisted(() => ({ calls: [] as { feed: (m: unknown) => void }[] }))
@@ -65,6 +65,14 @@ describe('loadAppSettings', () => {
     expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({ 'claude-opus-5-5': 'xhigh' })
     await writeFile(file, JSON.stringify({ models: { effortByModel: ['xhigh'] } }))
     expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({})
+  })
+  it('keeps the Lead from merging until it is turned on, and remembers the switch after a restart (KERNEL-352)', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ pr: { mergeMethod: 'rebase' } }))
+    const before = await loadAppSettings(file, '/home/cj')
+    expect(before.pr.leadMerge).toBe(false)
+    await saveAppSettings(file, applySettingsPatch(before, { pr: { leadMerge: true } }))
+    expect((await loadAppSettings(file, '/home/cj')).pr).toMatchObject({ leadMerge: true, mergeMethod: 'rebase' })
   })
 
   describe('open to (replaces the default home view)', () => {
