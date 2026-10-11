@@ -1378,7 +1378,7 @@ export class Kernel {
       // The sidebar's check before a one-click archive. A current-branch workspace removes no files, and neither does a
       // worktree whose folder is already gone (KERNEL-109).
       unsaved: (id) => this.unsavedOf(id),
-      planApproved: () => this.sessions.handoffs.approved(chat.id),
+      planApproved: () => this.sessions.planApproved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {
         const was = this.team['agentCache'].get(roomId) ?? await this.agents(roomId)
