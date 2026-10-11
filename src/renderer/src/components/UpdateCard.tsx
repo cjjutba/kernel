@@ -20,10 +20,11 @@ export function UpdateCard() {
     setClosedFor(version)
     actions.ui.openModal({ name: 'whatsNew' })
   }
-  // Kernel quits on success, so the button stays busy until it does.
+  // Kernel quits on success, so the button stays busy until it does. With agents working Kernel asks first, and
+  // Cancel keeps it running, so the button is usable again.
   const restart = () => {
     setBusy(true)
-    void call('update.install', undefined).catch((e: unknown) => {
+    void call('update.install', undefined).then((r) => { if (r.canceled) setBusy(false) }, (e: unknown) => {
       setBusy(false)
       actions.ui.toast({ title: 'Could not restart to update', sub: (e as Error).message })
     })
