@@ -6,7 +6,7 @@ const room: Room = { id: 'a', name: 'Client A', path: '/p/a', defaultBranch: 'ma
 const rowan: AgentDef = { id: 'rowan', name: 'Rowan', role: 'Lead', description: 'Lead.', model: 'opus', lead: true, prompt: '', file: '.claude/agents/rowan.md' }
 const kai: AgentDef = { ...rowan, id: 'kai', name: 'Kai', role: 'Frontend', lead: false }
 const ws = (id: string, over: Partial<Workspace> = {}): Workspace => ({ id, roomId: 'a', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/w/${id}`, mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'none', createdAt: 1, ...over })
-const home = ws('home', { name: 'lead', agentId: 'rowan', mode: 'current' })
+const home = ws('home', { name: 'lead', agentId: 'rowan', mode: 'current', lead: true })
 const chat = (id: string, over: Partial<Chat> = {}): Chat => ({ id, workspaceId: 'home', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, ...over })
 const agents = { a: [rowan, kai] }
 const keys = (rows: ReturnType<typeof sidebarRows>) => rows.map(slotKey)

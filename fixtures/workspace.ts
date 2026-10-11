@@ -529,7 +529,7 @@ const commentArchived = (f: Fixture): Partial<Fixture> => {
 /** Rowan's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
 const sharedPanel = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
-  const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', agentId: 'rowan', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
+  const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', lead: undefined, agentId: 'rowan', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
     userMsg('sp-u', 'Add PDF export to invoices. Spec first.'),
     { kind: 'text', id: 'sp-t', ts: at(14, 41), text: 'I split PDF export into four tasks. Noor shared the layout, a sample and the notes in the meantime.' }
   ], {}, { model: 'claude-opus-5-5' })
@@ -834,7 +834,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: open
   })),
   // The canvas draws Rowan's plan in a worktree called export-invoices-as-pdf. WorkspaceLeadPlan keeps the Lead's real workspace, on the main checkout.
-  WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree' })),
+  WorkspaceLead: scene((f) => leadPlan(f, { name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', agentId: 'rowan', mode: 'worktree', lead: undefined })),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
@@ -921,6 +921,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
     running: [], chats: (c) => c.filter((x) => x.id !== 'chat-table-copy').map((x) => (x.id === 'chat-table' ? { ...x, closed: true } : x)),
     threads: (t) => t.map((x) => (x.id === GROUPED.table ? { ...x, closedAt: at(10, 50) } : x))
   })),
+  // A room whose last chat was closed (KERNEL-365): the Lead's workspace opens on New chat with Rowan and the sidebar has no chat row (KERNEL-366).
+  // The three workspaces the closed chat handed off stay as unowned rows.
+  LeadNoChats: scene((f) => {
+    const g = grouped(f, { running: [], chats: (c) => c.map((x) => ({ ...x, closed: true })), threads: (t) => t.map((x) => ({ ...x, closedAt: at(10, 50) })) })
+    // Nothing is open, so no tab is stored and the closed chats keep no transcript.
+    return { ...g, items: {}, ui: { ...g.ui!, tabs: {} } }
+  }),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
   // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),

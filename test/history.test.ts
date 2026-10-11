@@ -21,7 +21,7 @@ beforeEach(() => {
   setState({
     rooms: [room('r1'), room('r2')],
     agents: { r1: [lead] },
-    workspaces: [ws('lead', 'r1', { name: 'lead', mode: 'current', agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', mode: 'current' })],
+    workspaces: [ws('lead', 'r1', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }), ws('other', 'r1'), ws('r2lead', 'r2', { name: 'lead', mode: 'current', lead: true })],
     chats: { lead: [chat('c1', 'lead'), chat('c2', 'lead'), chat('c3', 'lead')], other: [chat('o1', 'other')], r2lead: [chat('x1', 'r2lead')] }
   })
   setState((s) => ({ ui: { ...s.ui, route: { name: 'home' }, tabs: {}, modal: null } }))

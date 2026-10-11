@@ -67,7 +67,7 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 
   it("skips the Lead's own workspace", async () => {
-    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', prState: 'none' })])
+    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', lead: true, prState: 'none' })])
     expect(await t.archive(['lead'])).toBe('Skipped lead: it is your own workspace.')
     expect(t.archiveWorkspace).not.toHaveBeenCalled()
   })
@@ -121,14 +121,14 @@ describe('archive_workspace (KERNEL-93)', () => {
   })
 
   it("does not refresh the Lead's own workspace, a running one or a closed PR", async () => {
-    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', prState: 'open' }), ws('busy', { prState: 'open' }), ws('merged')], { running: ['busy'] })
+    const t = leadTools([ws('lead', { agentId: 'rowan', mode: 'current', lead: true, prState: 'open' }), ws('busy', { prState: 'open' }), ws('merged')], { running: ['busy'] })
     expect(await t.archive(['lead', 'busy', 'merged'])).toBe('Skipped lead: it is your own workspace.\nSkipped busy: its agent is still working.\nArchived merged.')
     expect(t.refreshPr).not.toHaveBeenCalled()
   })
 
   it('handles a mixed list one id at a time, and a failed archive does not stop the rest', async () => {
     const t = leadTools([
-      ws('first'), ws('lead', { agentId: 'rowan', mode: 'current' }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('dirty'), ws('last', { prState: 'none' })
+      ws('first'), ws('lead', { agentId: 'rowan', mode: 'current', lead: true }), ws('broken'), ws('open-pr', { prState: 'open' }), ws('busy'), ws('dirty'), ws('last', { prState: 'none' })
     ], { running: ['busy'], unsaved: { dirty: 'dirty' }, failing: { broken: 'The folder is locked.' } })
     expect(await t.archive(['first', 'lead', 'missing', 'broken', 'open-pr', 'busy', 'dirty', 'last', 'first'])).toBe([
       'Archived first.',

@@ -19,16 +19,14 @@ import { KernelNote } from './KernelNote'
 import { SharedCard } from './cards/SharedCard'
 import { TeamUpdateCard } from './cards/TeamUpdateCard'
 import { ReviewCard } from './pr/ReviewCard'
+import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 
 const EMPTY: ChatItem[] = []
 /** The reader counts as following the chat while the end is this close. */
 const PIN_PX = 80
 
-/** What a new chat offers to start with, by who you're talking to (KERNEL-274): the Lead plans and checks on the team. */
-const LEAD_SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Plan the next issues', icon: 'issues' }, { text: 'Who is blocked right now?', icon: 'team' }, { text: 'Review the open pull requests', icon: 'pr' }]
 /** The PR state icons a note draws before its text, the same glyphs as the PR header (KERNEL-313). */
 const NOTE_GLYPH: Record<NonNullable<Extract<ChatItem, { kind: 'note' }>['pr']>, IconName> = { merged: 'merged', closed: 'prClosed', cifail: 'pr' }
-const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review the diff so far', icon: 'branch' }, { text: 'Write tests for this change', icon: 'flask' }, { text: 'Explain this branch', icon: 'doc' }]
 
 /** The user's own send is what a reader scrolled up follows. A bubble with a sender, the Lead handing work to a teammate, arrives while they read and leaves them where they are. */
 export const followsSend = (item: ChatItem | undefined) => item?.kind === 'user' && !item.from && userView(item) === 'bubble'
@@ -362,15 +360,8 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   return (
     <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll}>
       {empty && (
-        <div className="chat-empty">
-          <h2>{chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`}</h2>
-          <span className="muted">Same worktree and branch, fresh context.</span>
-          <div className="chat-suggest">
-            {(isLead ? LEAD_SUGGESTIONS : SUGGESTIONS).map(({ text, icon }) => (
-              <button key={text} type="button" onClick={() => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))}><Icon name={icon} size={14} />{text}</button>
-            ))}
-          </div>
-        </div>
+        <ChatWelcome title={chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`} suggestions={isLead ? LEAD_SUGGESTIONS : SUGGESTIONS}
+          onPick={(text) => void attempt('Could not send', () => call('chats.send', { chatId: chat.id, parts: [{ type: 'text', text }] }))} />
       )}
       <div className="thread" style={empty ? { display: 'none' } : undefined}>
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}

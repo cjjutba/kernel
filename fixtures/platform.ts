@@ -168,7 +168,11 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
-  SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
+  // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
+  SettingsRoomGit: roomPage('git', {
+    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    branches: ['origin/main', 'origin/dev', 'main']
+  }, 'settingsFiles'),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
   // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
   SettingsRoomScripts: roomPage('scripts', clientA({

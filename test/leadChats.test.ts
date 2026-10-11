@@ -175,6 +175,42 @@ describe('backfilling the Lead chat on workspaces from before KERNEL-105', () =>
   })
 })
 
+describe("marking the Lead's workspace (KERNEL-353)", () => {
+  it('marks a new Lead workspace, and marks older ones once, by the Lead agent or by name in a room whose agents did not load', async () => {
+    const d = await dirs()
+    const old = new Kernel(d)
+    await old.start()
+    old.sessions.send = async () => ({ queued: false })
+    const room = await old.addRoom(await tempRepo(REPO))
+    const shut = await old.addRoom(await tempRepo(REPO))
+    const lead = old.store.workspace((await old.lead.leadChat(room.id)).workspaceId)!
+    const shutLead = old.store.workspace((await old.lead.leadChat(shut.id)).workspaceId)!
+    expect(lead.lead).toBe(true)
+    // A worktree handed to the Lead when its agent retired is the Lead agent's too, and isn't the Lead's workspace.
+    const handed = await old.workspaces.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Handed over' })
+    old.store.saveWorkspace({ ...old.store.workspace(handed.id)!, agentId: 'rowan' })
+    // As if this database came from a version before the mark existed.
+    for (const ws of [lead, shutLead]) old.store.saveWorkspace({ ...ws, lead: undefined })
+    old.store.saveRoom({ ...old.store.room(shut.id)!, archived: true })
+    old.store.saveMeta('leadWorkspaceBackfill', false)
+    await old.stop()
+
+    const k = new Kernel(d)
+    await k.start()
+    expect(k.team.isLeadWorkspace(k.store.workspace(lead.id)!)).toBe(true)
+    expect(k.store.workspace(shutLead.id)!.lead).toBe(true)
+    expect(k.store.workspace(handed.id)!.lead).toBeUndefined()
+    expect(k.store.meta('leadWorkspaceBackfill')).toBe(true)
+    k.store.saveWorkspace({ ...k.store.workspace(lead.id)!, lead: undefined })
+    await k.stop()
+
+    const again = new Kernel(d)
+    await again.start()
+    onTestFinished(() => again.stop())
+    expect(again.store.workspace(lead.id)!.lead).toBeUndefined()
+  })
+})
+
 describe("the Lead's messages in a teammate's chat (KERNEL-116)", () => {
   it("sends the hand-off brief and message_agent as the Lead's, not the user's", async () => {
     const { first, call, byTitle, sent } = await setup()

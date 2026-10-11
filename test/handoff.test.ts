@@ -7,7 +7,8 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
-import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
+import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, reviewRule } from '../src/main/services/handoff'
+import { reviewTools } from '../src/main/services/reviewMcp'
 import { kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
@@ -48,7 +49,12 @@ async function realLead() {
   const deps = k.lead.leadToolDeps(room.id, lead, chat)
   const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
   const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
-  return { k, room, chat, tool, plans }
+  // The plan file is written after the card shows, so a test waits for it before `k.stop()` closes the store (KERNEL-383).
+  const planSaved = async () => {
+    for (let i = 0; i < 100 && !plans()[0]?.planFile; i++) await new Promise((r) => setTimeout(r, 20))
+    return plans()[0]?.planFile
+  }
+  return { k, room, chat, tool, plans, planSaved }
 }
 
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
@@ -104,7 +110,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   })
 
   it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
-    const { k, chat, tool, plans } = await realLead()
+    const { k, chat, tool, plans, planSaved } = await realLead()
 
     await k.sessions.configure(chat.id, { plan: false })
     const off = await tool.handler(plan as never, {})
@@ -117,10 +123,11 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(plans()).toEqual([expect.objectContaining({ chatId: chat.id, status: 'pending', title: 'KERNEL-53' })])
     k.approvals.decide(plans()[0].id, { behavior: 'allow' })
     expect(((await asked).content[0] as { text: string }).text).toBe(`approved. ${HANDOFF_NOW}`)
+    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
   })
 
   it('leaves plan mode once the plan is approved, as ExitPlanMode does, and tells the composer (D-074)', { timeout: 30_000 }, async () => {
-    const { k, chat, tool, plans } = await realLead()
+    const { k, chat, tool, plans, planSaved } = await realLead()
     await k.sessions.configure(chat.id, { plan: true })
     const pushed: Chat[] = []
     const onPush = (e: PushEvent) => { if (e.type === 'chat' && e.chat.id === chat.id) pushed.push(e.chat) }
@@ -136,6 +143,7 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(k.store.chat(chat.id)?.plan).toBe(false)
     expect(pushed.at(-1)).toMatchObject({ id: chat.id, plan: false })
     expect(k.sessions.handoffs.due(chat.id)).toBe(true)
+    expect(await planSaved()).toBe('.kernel/plans/symlink-node-modules.md')
   })
 
   it('tells the Lead to ask for approval only in plan mode, and otherwise to ask in the chat before handing off', () => {
@@ -373,5 +381,29 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
     expect(await t.review('done')).toEqual({ isError: true, text: "Not created: done's PR is already merged, so there is nothing left to review." })
     expect(await t.review('main')).toEqual({ isError: true, text: 'Not created: main works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.' })
     expect(t.made).toEqual([])
+  })
+})
+
+describe('reviews block only on real problems (KERNEL-377)', () => {
+  const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main' })
+
+  it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
+    const [submit] = reviewTools({ submit: async () => '' })
+    const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+    for (const text of [rule, submit.description, ...theos]) expect(text).toContain(BLOCKER_RULE)
+    for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)
+  })
+
+  it('keeps blockers short, approves with notes, and scopes a re-review to the earlier blockers', () => {
+    expect(rule).toContain('Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. Kai picks the fix.')
+    expect(rule).toContain('When nothing blocks, approve. Put minor findings in the summary as at most three short notes.')
+    expect(rule).toContain('check only your earlier blockers and anything the fix broke')
+    expect(rule).toContain('Raise nothing new unless the fix caused it.')
+    expect(rule).toContain('Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.')
+  })
+
+  it('has the Lead pass on blockers only and mention notes to the user', () => {
+    expect(LEAD_RULE).toContain('When a review found blockers, pass on the blockers and nothing else.')
+    expect(LEAD_RULE).toContain("mention them to the user in one line and don't send them to the author")
   })
 })

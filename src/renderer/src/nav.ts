@@ -1,8 +1,9 @@
 import type { Chat, Route, UiState } from '@shared/types'
+import { isLeadWorkspace } from '@shared/leadWorkspace'
 import type { State } from './store'
 
 /**
- * Where you are: a route and, on a workspace, the tab open in it. Pure functions over `State` live here, with type-only imports,
+ * Where you are: a route and, on a workspace, the tab open in it. Pure functions over `State` live here, importing nothing that needs one,
  * so tests and the store use them without a window.
  */
 export interface Place { route: Route; tab?: string }
@@ -69,12 +70,12 @@ export function stillThere(route: Route, s: State): boolean {
 }
 
 /**
- * A room's front door: the Lead's workspace on the main checkout, or Team when the room has none (D-104). The Lead is found by its
- * agent once agents have loaded, and by the `lead` workspace name before, since agents load after the first route is chosen.
+ * A room's front door: the Lead's workspace, or Team when the room has none (D-104). The Lead is found by its agent once agents
+ * have loaded, and by the workspace's `lead` mark alone before, since agents load after the first route is chosen.
  */
 export function roomHome(roomId: string, s: State): Route {
   const leadId = s.agents[roomId]?.find((a) => a.lead)?.id
-  const lead = s.workspaces.find((w) => w.roomId === roomId && w.mode === 'current' && w.status !== 'archived' && (leadId ? w.agentId === leadId : w.name === 'lead'))
+  const lead = s.workspaces.find((w) => w.roomId === roomId && (leadId ? isLeadWorkspace(w, leadId) : !!w.lead && w.status !== 'archived'))
   return lead ? { name: 'workspace', workspaceId: lead.id } : { name: 'team', roomId }
 }
 
