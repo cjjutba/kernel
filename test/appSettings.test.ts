@@ -77,6 +77,14 @@ describe('loadAppSettings', () => {
     await writeFile(file, JSON.stringify({}))
     expect((await loadAppSettings(file, '/home/cj')).resolved.workspace.branchPattern).toBe('{type}/{task}-{slug}')
   })
+  it('loads a file that still has the unused setUpstream, without it (KERNEL-460)', async () => {
+    const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
+    await writeFile(file, JSON.stringify({ workspace: { setUpstream: false, archiveOnMerge: false } }))
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj')
+    expect(saved.workspace).toEqual({ archiveOnMerge: false })
+    expect(resolved.workspace).not.toHaveProperty('setUpstream')
+    expect(DEFAULT_SETTINGS('/home/cj').workspace).not.toHaveProperty('setUpstream')
+  })
   it('moves the old model per role and the one effort into Claude roles at that effort (KERNEL-406)', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ models: { lead: 'claude-fable-5-1', engineers: 'claude-opus-5-5', qa: 'claude-haiku-4-5-20251001', reviewer: 'claude-sonnet-5-5', effort: 'xhigh', agentLimit: 3 } }))

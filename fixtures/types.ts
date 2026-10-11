@@ -1,6 +1,6 @@
 import type { AccountProfile, Provider, ProviderModel, ProviderStatus,
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, PushCheck, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -78,6 +78,8 @@ export interface Fixture {
   terminalClis?: TerminalPreset[]
   /** By room id, the data URL `rooms.icon` returns for a room with an icon. */
   roomIcons?: Record<string, string>
+  /** By room id, what `rooms.pushCheck` returns (KERNEL-460). A room left out has no remote. */
+  pushChecks?: Record<string, PushCheck>
   /** By room id, the ignored files in the room's main checkout. `files.preview` picks from them with the room's Files to copy. */
   localFiles?: Record<string, FileToCopy[]>
   account?: ClaudeAccount
