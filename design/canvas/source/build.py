@@ -125,12 +125,20 @@ for n,st in [
     ('IssuesEmpty','empty'),
     ('IssuesConnect','connect'),
     ('IssuesError','error'),
+    ('IssuesGitHub','github'),
+    ('IssuesNoTracker','notracker'),
 ]: emit(n, is_.replace('%%STATE%%',st), 'issues')
 tr=rd('_Try.dc.html')
 for n,mode,title in [
     ('ConnectRepo','repo','Connect a repo'),
     ('OpenFolder','folder','Open a folder'),
     ('CheckHooks','hooks','Check hooks'),
+    # KERNEL-437: why hooks can't be installed, with the one fix for each.
+    ('CheckHooksNotWritable','hooks-eacces','Check hooks · folder not writable'),
+    ('CheckHooksReadOnly','hooks-erofs','Check hooks · read-only disk'),
+    ('CheckHooksSymlink','hooks-symlink','Check hooks · settings file is a link'),
+    ('CheckHooksManaged','hooks-managed','Check hooks · managed settings'),
+    ('CheckHooksOff','hooks-off','Check hooks · hooks turned off'),
 ]:
     emit(n, tr.replace('%%MODE%%',mode).replace('%%TITLE%%',title), None)
 # The app's fixtures open the room menu over Team and Ask Rowan over Home.
@@ -217,6 +225,8 @@ for n,m in [
     ('NewWorkspace','none'),
     ('NewWorkspaceBranch','branch'),
     ('NewWorkspaceFrom','from'),
+    ('NewWorkspaceFromGitHub','from-github'),
+    ('NewWorkspaceFromNone','from-none'),
     ('NewWorkspaceModel','model'),
     ('NewWorkspacePlus','plus'),
 ]:
@@ -234,6 +244,7 @@ for n,k in [
     ('ConfirmDiscard','discard'),
     ('ConfirmRetire','retire'),
     ('TelemetryAsk','telemetry'),
+    ('ConfirmIssueTaken','taken'),
 ]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
 su=rd('Setup.dc.html')
 for n,k in [
@@ -241,7 +252,13 @@ for n,k in [
     ('SetupClaudeOld','old'),
     ('SetupGhSignedOut','gh'),
     ('SetupPortBusy','port'),
+    # KERNEL-437: the lines B1 and B2 add to the readiness checks, and the room setup that warns before an agent needs to push.
+    ('SetupGhIdentity','ghkeyring'),
+    ('SetupGhToken','ghtoken'),
+    ('SetupShellTimeout','shell'),
+    ('SetupBedrock','bedrock'),
     ('RoomSetup','room'),
+    ('RoomSetupWarnings','roomwarn'),
 ]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
 # KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
@@ -270,6 +287,11 @@ for n,pg in [
     ('SettingsPrivacy','privacy'),
     ('SettingsRoom','r-general'),
     ('SettingsRoomGit','r-git'),
+    # KERNEL-437: the room's push check when it fails, its Disk row while measuring, and the production warning on Files to copy.
+    ('SettingsRoomGitPushFailed','r-git-push-failed'),
+    ('SettingsRoomGitUnreachable','r-git-unreachable'),
+    ('SettingsRoomDiskMeasuring','r-general-measuring'),
+    ('SettingsFilesProduction','r-files-production'),
     ('SettingsRoomScripts','r-scripts'),
     ('SettingsRoomInstructions','r-instructions'),
     ('SettingsRoomPermissions','r-permissions'),
@@ -278,6 +300,8 @@ for n,pg in [
     ('SettingsEnvironmentAdd','r-env-add'),
     ('SettingsBigTerminal','bigterm'),
     ('SettingsRoomIcon','r-icon'),
+    ('SettingsRoomTracker','r-tracker'),
+    ('SettingsRoomTrackerNone','r-tracker-none'),
 ]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 # KERNEL-336: grouped chats. A chat is a sidebar row and its tabs are conversations inside it. KERNEL-338 builds the first eleven screens, KERNEL-339 the last two.
