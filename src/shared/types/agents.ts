@@ -127,6 +127,22 @@ export interface AgentEdit {
   prompt?: string
 }
 
+/**
+ * Who a hire, an edit, a retire or a restore is for (KERNEL-466). `me`: this Mac only, through `~/.claude/agents` or Kernel's
+ * own record of the change, and the repo stays as it is. `team`: a pull request into the repo's `.claude/agents` that
+ * everyone gets once it merges. A change that doesn't say is `me`.
+ */
+export type AgentScope = 'me' | 'team'
+
+/** The pull request a change for the team opened, from a workspace of its own (KERNEL-466). */
+export interface AgentChangePr {
+  workspaceId: string
+  number?: number
+  url?: string
+  /** Why Kernel committed the change in the workspace but couldn't open the pull request. Create PR there finishes it. */
+  error?: string
+}
+
 /** New agent flow: Describe produces a draft file, Review edits it, Create saves it (NewAgent*.png). */
 export interface AgentDraft {
   id: string

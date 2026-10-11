@@ -1,3 +1,5 @@
+import type { AgentScope } from './agents'
+
 export type ApprovalKind = 'tool' | 'plan' | 'question' | 'agent'
 
 /** One line of a plan card. `taskId` and `agentId` are set when the Lead plans a hand-off. */
@@ -38,8 +40,11 @@ export interface Approval {
   steps?: PlanStep[]
   /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
   planFile?: string
-  /** Agent approvals: the file the Lead wants to write (WorkspaceHire.png). */
-  agentFile?: { path: string; text: string }
+  /**
+   * Agent approvals: the file the Lead wants to write (WorkspaceHire.png), and who the Lead proposes it for, `me` unless it
+   * says (KERNEL-466). The user's choice on the card is the decision's `scope`.
+   */
+  agentFile?: { path: string; text: string; scope?: AgentScope }
   /**
    * Tool approvals for a tool the agent's file doesn't list, which Kernel asks about instead of blocking (KERNEL-432).
    * `server` is set for an MCP server's tool.
@@ -53,7 +58,8 @@ export interface Approval {
 }
 
 export type Decision =
-  | { behavior: 'allow'; always?: boolean }
+  /** `scope`: on an agent approval, who the user hires the agent for (KERNEL-466). */
+  | { behavior: 'allow'; always?: boolean; scope?: AgentScope }
   /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-134). */
   | { behavior: 'deny'; message?: string; images?: { name: string; dataUrl: string }[] }
   /** `answers` maps each question's text to its answer; `text` is them joined for display. A text-only answer goes to the first question. */
