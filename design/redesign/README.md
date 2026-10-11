@@ -10,6 +10,7 @@ To redraw the PNGs after editing an artboard, run `node design/redesign/render.m
 
 - Linear's neutrals and hues stay: the same greys, `--add`, `--del` and `--merged`. New tokens cover only plan mode and the PR bands.
 - **PR header.** Every state gets a band: grey for neutral, green for open and ready, red for anything to fix, violet for merged. The label, the link pill and the buttons take the band's tone. A busy button keeps the tone and dims, and the spinner only ever appears on the button.
+- **PR capsule.** With the right panel hidden, the PR cluster moves into the chat header inside a capsule that takes the band's own tint and line, so merged stays violet, ready green and failed red. The toggle sits outside the capsule in neutral grey, because it is window chrome and not a PR action.
 - **Plan mode.** The composer gets a blue border and a glow from the bottom edge (`--plan`). Plan waiting uses the same blue, with Copy and Approve in a blue strip on top. There's no hatch and no label.
 - **Amber (`--needs`).** It means "your turn": the waiting icon on sidebar rows and chat tabs, and the Inbox count.
 
@@ -54,8 +55,24 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `PlanModeEmpty`, `PlanModeTyping` | Plan mode in Rowan's chat | `composer/composer.css` |
 | `PlanWaiting`, `PlanWaitingTyping` | A plan waiting for approval | `cards/plan.tsx` (`PlanBar`, `PlanInline`) |
 | `PrNoChanges` to `PrClosed` | One screen per PR state, in the order a PR moves through them | `pr/model.ts` (`headerView`), `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrMergedOpen` | Merged with the panel open. The panel toggle ends the panel head, after Archive, in the window's top-right corner. The panel is drawn 400px wide, see Header and panel toggle | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrMergedHidden` | Merged with the panel hidden. The chat column fills the width, and the PR capsule and the toggle sit at the right end of the header | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrReadyHidden` | Ready to merge with the panel hidden, in the green band's tone | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrCiFailHidden` | Checks failed with the panel hidden, in the red band's tone | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `PrMergedHiddenLong` | Merged with the panel hidden and a long task title. The title cuts off with an ellipsis next to the capsule | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
+| `HeaderBranchTooltip` | The header with the title hovered. The tooltip shows the full branch and "Click to copy the branch" | `screens/workspace/Workspace.tsx`, `pr/PrHeader.tsx`, `pr/pr.css` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
+
+## Header and panel toggle
+
+- **Toggle.** One button, `Hide panel` or `Show panel`, in the window's top-right corner in both states. With the panel open it ends the panel head, after Archive. With the panel hidden it ends the chat header. The right edge is at the same x in both. The canvas draws the chat header 40px high and the panel head 44px, so the two toggles differ by about 2px vertically on the canvas. The app has both at 44px.
+- **Panel width.** `PrMergedOpen` draws the panel 400px wide. At the 380px the other PR screens use, the toggle takes the room the state label needs, and "Merged" shrinks to "Merg…". "Changes requested" is nearly as tight. 400px is the app's default at this window width (`clamp(320px, 28vw, 400px)` in `workspace.css`). The other PR screens stay as the spec for the panel's contents.
+- **Header content.** Left to right: room, then the task title, the issue key chip, the editor icon. On the right: the PR capsule (panel hidden only) and the toggle.
+- **Title.** It is `ws.title` on one line, cut off with an ellipsis. If the title starts with the issue key, the key is dropped from the text, because the chip shows it. Everything else in the header keeps its size, so the title is the only thing that shrinks.
+- **Branch.** The header shows no branch text. Hovering the title shows the full branch in a tooltip with a second line, "Click to copy the branch", and clicking the title copies it. The tooltip is a hairline box on `--surface-2` with no shadow. A native `title` attribute can't draw it, so it is a custom tooltip.
+- **Labels that stay.** Rowan's workspace keeps "latest origin/main" and a current-branch workspace keeps "current branch", because those labels carry meaning. They have no hover-to-copy.
+- **Build notes.** The container rule that hides the PR button labels below 370px of head width needs the toggle's width counted in. The rule that hides the branch below 480px of header width goes away with the branch text.
 
 ## Merge (KERNEL-347)
 
