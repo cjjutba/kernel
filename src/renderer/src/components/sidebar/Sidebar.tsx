@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { Chat, Room, Workspace } from '@shared/types'
+import type { Chat, Room, Thread, Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
-import { tabOf } from '../../nav'
+import { currentThread } from '../../nav'
 import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
@@ -103,36 +103,37 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
 }
 
 /**
- * One of the Lead's open chats. Its icon is the one its tab shows (a plan to review, something that needs you, a running turn), from
- * the same approvals and `running` flag. It opens the Lead's workspace on that chat's tab, and the full title is the tooltip.
- * A chat that started workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the
- * icon also shows what a hidden workspace needs from you, so nothing waits out of sight.
+ * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
+ * needs you in any tab wins, then a running turn in any tab, else the chat icon. They read the same approvals and `running` flags as the tabs.
+ * It opens the Lead's workspace on the tab last shown in the chat, and the full title is the tooltip. A chat that handed off workspaces folds
+ * like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a hidden workspace needs
+ * from you, so nothing waits out of sight.
  */
-function ChatItem({ roomId, chat, owned, folded, slot }: { roomId: string; chat: Chat; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
+function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
   const waiting = useMemo(
-    () => approvals.filter((a) => a.status === 'pending' && (a.chatId === chat.id || (folded && owned.some((w) => w.id === a.workspaceId)))),
-    [approvals, chat.id, folded, owned]
+    () => approvals.filter((a) => a.status === 'pending' && (tabs.some((c) => c.id === a.chatId) || (folded && owned.some((w) => w.id === a.workspaceId)))),
+    [approvals, tabs, folded, owned]
   )
-  const running = useStore((s) => !!s.running[chat.id])
-  // The chat the workspace shows, which is none while a file or diff tab is open there (D-139).
+  const running = useStore((s) => tabs.some((c) => s.running[c.id]))
+  // The chat the Lead's workspace shows, which stays the one you were on while a file or diff tab is open there.
   const current = useStore((s) => {
     const r = s.ui.route
-    return r.name === 'workspace' && r.workspaceId === chat.workspaceId && tabOf(s, chat.workspaceId) === chat.id
+    return r.name === 'workspace' && r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id
   })
   const g = chatGlyph({ waiting, running })
   return (
     <div className="hv chat-row">
       <button
-        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${chat.title}, ${g.label}` : chat.title}
-        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => openRow(roomId, { kind: 'chat', chat, owned, folded })}
+        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title}
+        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={thread.title} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
-        <span className="grow ellipsis">{chat.title}</span>
+        <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
       {owned.length > 0 && (
-        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${chat.title}`} onClick={() => actions.ui.foldChat(chat.id, !folded)}>
+        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
           <Icon name="right" size={14} />
         </button>
       )}
@@ -218,10 +219,11 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const agents = useStore((s) => s.agents)
   const workspaces = useStore((s) => s.workspaces)
   const chats = useStore((s) => s.chats)
+  const threads = useStore((s) => s.threads)
   const foldedChats = useStore((s) => s.ui.foldedChats)
-  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, foldedChats), [room, agents, workspaces, chats, foldedChats])
+  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, threads, foldedChats), [room, agents, workspaces, chats, threads, foldedChats])
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
-  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, foldedChats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, foldedChats])
+  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads, foldedChats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads, foldedChats])
   const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
@@ -248,7 +250,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       {expanded && rows.map((row) => {
         const key = slotKey(row)
         if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
-        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} chat={row.chat} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
+        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
         return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} />
       })}
     </div>

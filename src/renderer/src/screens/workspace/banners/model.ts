@@ -149,8 +149,8 @@ export function bannerFor(i: BannerInput): BannerView | null {
   }
 
   if (chat && (chat.context ?? 0) >= CONTEXT_WARN) return {
-    id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new chat starts clean on this branch.',
-    actions: [{ id: 'newChat', label: 'New chat' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
+    id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new tab starts clean in this chat.',
+    actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.

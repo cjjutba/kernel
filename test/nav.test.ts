@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { actions, canBack, getState, launchRoute, resetHistory, setState } from '../src/renderer/src/store'
-import { hasTab, isChatTab, nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
+import { currentThread, hasTab, isChatTab, nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
 import type { AgentDef, Chat, Room, Route, SharedFile, Workspace } from '../src/shared/types'
 
 const room = (id: string, over: Partial<Room> = {}): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Room
@@ -24,6 +24,27 @@ const route = () => getState().ui.route
 const at = (workspaceId: string): Route => ({ name: 'workspace', workspaceId })
 
 beforeEach(seed)
+
+describe('currentThread (KERNEL-338)', () => {
+  it('is the thread of the open chat tab, and of the last chat while a file tab is open', () => {
+    setState({ chats: { lead: [chat('a1', 'lead', { threadId: 't1' }), chat('a2', 'lead', { threadId: 't1' }), chat('b1', 'lead', { threadId: 't2' }), chat('term', 'lead', { kind: 'terminal' })] } })
+    expect(currentThread(getState(), 'lead')).toBe('t1')
+    actions.ui.openTab('lead', 'b1')
+    expect(currentThread(getState(), 'lead')).toBe('t2')
+    actions.ui.openTab('lead', 'file:src/a.ts')
+    expect(currentThread(getState(), 'lead')).toBe('t2')
+    // A terminal has no chat of its own to show, so the chat before it stays the current one.
+    actions.ui.openTab('lead', 'term')
+    expect(currentThread(getState(), 'lead')).toBe('t2')
+  })
+  it('moves to another thread when the one on screen has no open tab left, and is none without chats', () => {
+    setState({ chats: { lead: [chat('a1', 'lead', { threadId: 't1' }), chat('b1', 'lead', { threadId: 't2' })] } })
+    actions.ui.openTab('lead', 'b1')
+    actions.chats.upsert(chat('b1', 'lead', { threadId: 't2', closed: true }))
+    expect(currentThread(getState(), 'lead')).toBe('t1')
+    expect(currentThread(getState(), 'nothing')).toBeUndefined()
+  })
+})
 
 describe('tabOf', () => {
   it('has no tab until a workspace has chats, then the first open chat', () => {

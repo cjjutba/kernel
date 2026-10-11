@@ -71,8 +71,9 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         await call('chats.configure', { chatId: chat.id, model: view.switchTo })
         await loadWorkspace(ws.id)
       })
-      case 'newChat': return run(id, 'Could not start a new chat', async () => {
-        const c = await call('chats.create', { workspaceId: ws.id, kind: 'chat' })
+      case 'newChat': return run(id, 'Could not open a tab', async () => {
+        // In a Lead chat the tab joins that chat, like + and ⌘T (KERNEL-338).
+        const c = await call('chats.create', { workspaceId: ws.id, kind: 'chat', ...(chat?.threadId ? { threadId: chat.threadId } : {}) })
         await loadWorkspace(ws.id)
         focusComposerWhenOpen(c.id)
         actions.ui.openTab(ws.id, c.id)
