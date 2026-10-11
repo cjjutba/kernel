@@ -106,6 +106,9 @@ export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there
 /** request_plan_approval's refusal when it gets task lines without the write-up (KERNEL-373). */
 export const NO_PLAN = 'Not asked: plan is missing. Pass the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps, then call request_plan_approval again.'
 
+/** The longest option label ask_user takes (KERNEL-415). */
+export const LABEL_MAX = 60
+
 /** merge_workspace's refusals: the switch in Settings is off, or Kernel started the turn (KERNEL-352). */
 export const MERGE_OFF = 'Merging is off in Settings, Pull requests. Tell the user they can merge from the PRs tab.'
 export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them which PRs are ready.'
@@ -236,10 +239,13 @@ export function kernelTools(d: KernelToolDeps) {
     }),
     tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {
       question: z.string(),
-      options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional() })])).optional()
-        .describe('Each option: label is the answer in a few words, description says what it means or why. Say which one you recommend in its description, not its label')
+      options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional(), recommended: z.boolean().optional() })])).optional()
+        .describe(`Each option: label is the answer in a few words (${LABEL_MAX} characters at most), description says what it means or why. Set recommended: true on the option you recommend instead of writing it in the text`)
     }, async ({ question, options }) => {
       const asked = options?.map((o) => (typeof o === 'string' ? { label: o } : o))
+      // A paragraph in a label squeezes the card's answer row, so the explanation has to go in description (KERNEL-415).
+      const long = asked?.find((o) => o.label.length > LABEL_MAX)
+      if (long) return { ...text(`Not asked: the label "${long.label.slice(0, 40)}..." is over ${LABEL_MAX} characters. Keep each label to a few words and move the rest into description.`), isError: true }
       const questions = asked && [{ question, options: asked }]
       const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions })
       if (!decision) return text('No answer yet.')

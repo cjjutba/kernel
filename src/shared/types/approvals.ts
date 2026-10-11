@@ -9,11 +9,11 @@ export interface PlanStep {
   workspaceId?: string
 }
 
-/** One question of an AskUserQuestion call. A call can carry several. */
+/** One question of an AskUserQuestion call. A call can carry several. `recommended` marks the option the agent recommends (KERNEL-415). */
 export interface AskedQuestion {
   question: string
   header?: string
-  options: { label: string; description?: string }[]
+  options: { label: string; description?: string; recommended?: boolean }[]
   multiSelect?: boolean
 }
 

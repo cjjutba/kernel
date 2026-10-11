@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatPart, PrCheck, PrState } from '@shared/types'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
-import type { QueueReason } from '../src/main/services/sessions'
+import { askedQuestions, type QueueReason } from '../src/main/services/sessions'
 import { Nudges } from '../src/main/services/nudges'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
@@ -537,6 +537,43 @@ describe("the Lead's ask_user options (KERNEL-407)", () => {
     expect(p).toMatchObject({ options: ['Yes', 'No'], questions: [{ options: [{ label: 'Yes' }, { label: 'No' }] }] })
     k.approvals.decide(p.id, { behavior: 'answer', text: 'No' })
     expect(await asking).toBe('No')
+  })
+
+  it('refuses a label over 60 characters, string options included, and asks nothing (KERNEL-415)', async () => {
+    const { k, first, run } = await setup()
+    const long = 'Guided sign-in, because Kernel opens the browser and nobody has to copy a token by hand'
+    for (const options of [[{ label: long, description: 'Recommended.' }, { label: 'Paste a token' }], ['Yes', long]]) {
+      const r = await run(first, 'ask_user', { question: 'How should adding a Claude account work?', options })
+      expect(r.isError).toBe(true)
+      expect(r.text).toContain('Keep each label to a few words and move the rest into description')
+    }
+    // Exactly 60 characters is still a label.
+    const asking = run(first, 'ask_user', { question: 'Which one?', options: ['x'.repeat(60), 'No'] })
+    const p = await waiting(k)
+    expect(p.options).toEqual(['x'.repeat(60), 'No'])
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'No' })
+    expect((await asking).isError).toBe(false)
+    expect(k.store.approvals()).toHaveLength(1)
+  })
+
+  it('carries the recommended flag to the approval\'s questions (KERNEL-415)', async () => {
+    const { k, first, call } = await setup()
+    const options = [{ label: 'Guided sign-in', description: 'Kernel opens the sign-in in your browser.', recommended: true }, { label: 'Paste a token' }]
+    const asking = call(first, 'ask_user', { question: 'How should adding a Claude account work?', options })
+    const p = await waiting(k)
+    expect(p.questions).toEqual([{ question: 'How should adding a Claude account work?', options }])
+    k.approvals.decide(p.id, { behavior: 'answer', text: 'Guided sign-in' })
+    expect(await asking).toBe('Guided sign-in')
+  })
+
+  it('turns "(Recommended)" at the end of an SDK AskUserQuestion label into the flag (KERNEL-415)', () => {
+    const options = [{ label: 'Postgres (Recommended)', description: 'The main database' }, { label: 'SQLite  (recommended) ' }, { label: 'MySQL' }, { label: '(Recommended)' }]
+    expect(askedQuestions({ questions: [{ question: 'Which store?', options }] })[0].options).toEqual([
+      { label: 'Postgres', description: 'The main database', recommended: true },
+      { label: 'SQLite', recommended: true },
+      { label: 'MySQL' },
+      { label: '(Recommended)' }
+    ])
   })
 })
 
