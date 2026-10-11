@@ -1519,16 +1519,25 @@ export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
   return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
 }
 
+/** "(Recommended)" at the end of an AskUserQuestion label, in any case. */
+const RECOMMENDED = /\s*\(recommended\)$/i
+
 /** Every question of an AskUserQuestion call, with what the card needs from each. */
-function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
+export function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
   const list = Array.isArray(input.questions) ? input.questions : []
   return list.filter((q: any) => q && typeof q.question === 'string').map((q: any) => ({
     question: q.question,
     ...(typeof q.header === 'string' ? { header: q.header } : {}),
-    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => ({
-      label: String(o?.label ?? o),
-      ...(typeof o?.description === 'string' ? { description: o.description } : {})
-    })),
+    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => {
+      // Claude Code's habit is "Postgres (Recommended)". The card shows a tag instead (KERNEL-415).
+      const label = String(o?.label ?? o).trim()
+      const plain = label.replace(RECOMMENDED, '') || label
+      return {
+        label: plain,
+        ...(typeof o?.description === 'string' ? { description: o.description } : {}),
+        ...(plain !== label ? { recommended: true } : {})
+      }
+    }),
     ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
   }))
 }
