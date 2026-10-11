@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedComment, SharedFile,
-  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
+  Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 
@@ -35,6 +35,8 @@ export interface Fixture {
   /** By workspace id. */
   prs?: Record<string, PrInfo>
   overlaps?: Overlap[]
+  /** Lead chats, each holding the Lead tabs whose `threadId` names it (KERNEL-337). */
+  threads?: Thread[]
   /** The signed-in user's GitHub repos (ConnectRepo.png). */
   repos?: RepoSummary[]
   /** Recent project folders (OpenFolder.png). */
