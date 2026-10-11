@@ -98,7 +98,8 @@ const settingsRoom = (f: Fixture): Partial<Fixture> => ({
 
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
-const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
+/** As Kernel resolves them (KERNEL-397): Rowan leads, and Theo reviews with tools that can't open a PR, so takes no tasks. */
+const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', reviewer: id === 'theo', member: id !== 'rowan' && id !== 'theo', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
 const sixAgents: AgentDef[] = [
   agentFile('rowan', 'Rowan', 'Lead', 'Plans and hands out tasks'), agentFile('kai', 'Kai', 'Frontend', 'UI work, follows DESIGN.md'),
   agentFile('noor', 'Noor', 'Backend', 'Schema, API, migrations'), agentFile('ivy', 'Ivy', 'QA', 'Runs tests, attaches output'),
@@ -169,6 +170,15 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsExperimental: settingsPage('experimental'),
   SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
+  // KERNEL-397: usage data is opt-in. This build can send, and the user hasn't said yes, so every event is kept on the Mac.
+  SettingsPrivacy: settingsPage('privacy', { telemetry: { canSend: true, recent: [
+    { event: { name: 'team.resolved', leadFrom: 'builtin', reviewerFrom: 'file', agents: '1-5', helpers: '1-5', warnings: '1-5' }, at: at(10, 42), sent: false },
+    { event: { name: 'agent.warning', kind: 'cant-open-pr' }, at: at(10, 42), sent: false },
+    { event: { name: 'room.created', source: 'folder' }, at: at(10, 41), sent: false },
+    { event: { name: 'app.started' }, at: at(10, 40), sent: false }
+  ] } }),
+  // KERNEL-397: the one question about usage data, over Home, in a build that can send.
+  TelemetryAsk: scene(() => ({ telemetry: { canSend: true }, ui: { route: { name: 'home' }, modal: { name: 'telemetryAsk' } } })),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
   // KERNEL-401: the optional checks come from settings.toml.

@@ -1,4 +1,4 @@
-import type { AgentDef, AgentStatus, Room, Task, TaskColumn, Workspace } from '@shared/types'
+import type { AgentDef, AgentStatus, AgentWarning, Room, Task, TaskColumn, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { lookFor, overflowShirt, seating } from '../../floor/layout'
 
@@ -77,3 +77,24 @@ export function recentWork(agentId: string, tasks: Task[], workspaces: Workspace
 
 /** What a chip row shows: the standard choices, then anything else the agent already has. */
 export const withExtras = (options: string[], chosen: string[] = []) => [...options, ...chosen.filter((c) => !options.includes(c))]
+
+/** The tags after an agent's role on Team: Kernel's own agents, and agents that don't take tasks (KERNEL-397). */
+export function roleTags(a: AgentDef): string[] {
+  return [a.builtIn ? 'Built in' : '', a.member === false && !a.lead && !a.reviewer ? 'Helper' : ''].filter(Boolean)
+}
+
+/** What Team and the profile say about something Kernel noticed in an agent file (KERNEL-397). */
+export function warningText(w: AgentWarning): string {
+  switch (w.kind) {
+    case 'no-description': return 'It has no description, so the Lead can\u2019t tell what to hand it.'
+    case 'cant-open-pr': return 'Its tools can\u2019t edit files and run git, so it doesn\u2019t take tasks.'
+    case 'second-lead': return `It\u2019s marked Lead too. ${w.detail ?? 'Another agent'} leads this room.`
+    case 'setting-missing': return `${w.detail ?? 'A setting'} in settings.toml names nobody on this team.`
+    case 'reserved-id': return `${w.detail ?? 'A file'} uses a name Kernel keeps for its own agents, so Kernel skips that file.`
+    case 'duplicate-id': return `${w.detail ?? 'Another file'} has the same name, so Kernel skips that file.`
+    case 'looks-like-lead': return 'Its description says it leads. Add lead: true to its file to make it the Lead.'
+  }
+}
+
+/** Where a built-in agent's file would be: it has none, it runs from the app. */
+export const fileLabel = (a: AgentDef) => (a.builtIn ? 'Built into Kernel' : shortFile(a.file))

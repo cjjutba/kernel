@@ -86,9 +86,3 @@ export function checkEvent(e: { name: string } & Record<string, unknown>): strin
   }
   return undefined
 }
-
-/** Sent with every event: what the Privacy page lists under "What's sent". */
-export const ALWAYS_SENT = ["Kernel's version", "your Mac's macOS version and chip", 'a random install id that is tied to no account'] as const
-
-/** What never leaves the Mac, as the Privacy page lists it. */
-export const NEVER_SENT = ['code, diffs and file contents', 'prompts, chats and plans', 'file paths, repo names, room names and branch names', 'agent names and descriptions', 'issue keys, emails and GitHub usernames', "anything Claude Code prints"] as const

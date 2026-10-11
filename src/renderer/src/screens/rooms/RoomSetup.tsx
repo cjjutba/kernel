@@ -1,24 +1,58 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import type { AgentDef, TeamPatch } from '@shared/types'
+import { KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, Icon, Spinner } from '../../ui'
+import { Button, Icon, Select, Spinner, useBusy } from '../../ui'
+import { warningText } from '../team/model'
 import { getDraft } from './draft'
 import '../onboarding/onboarding.css'
 import './rooms.css'
 
-/** RoomSetup.png: clone, folders, install, files, hooks, agents. Progress comes from `room.setup` push events. */
+const NO_AGENTS: AgentDef[] = []
+const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
+
+/**
+ * RoomSetup.png: clone, folders, install, files, hooks, agents. Progress comes from `room.setup` push events.
+ * RoomSetupTeam.png: a repo that brought its own agents shows its team once setup is done, to check who leads and who
+ * reviews before the room opens (KERNEL-397).
+ */
 export function RoomSetup({ roomId }: { roomId?: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const steps = useStore((s) => (roomId ? s.roomSetup[roomId] : undefined))
+  const agents = useStore((s) => (roomId ? s.agents[roomId] ?? NO_AGENTS : NO_AGENTS))
   const finished = !!steps && steps.every((s) => s.state === 'ok' || s.state === 'fail')
   const failed = steps?.filter((s) => s.state === 'fail').length ?? 0
-  const open = () => { if (roomId) void openRoom(roomId) }
-  // "Brief Rowan right away" in New room: when setup finishes cleanly, land in Rowan's chat (D-104).
-  useEffect(() => { if (finished && !failed && getDraft().autostart && roomId) void openRoom(roomId) }, [finished, failed, roomId])
+  const seated = steps?.find((s) => s.id === 'agents')
+  const team = agents.filter((a) => !a.retired)
+  const review = finished && seated?.state === 'ok' && !!seated.brought && team.length > 0
+  const warnings = team.flatMap((a) => (a.warnings ?? []).map((w) => `${a.name}: ${lower(warningText(w))}`))
+  const leadNow = team.find((a) => a.lead)?.id ?? KERNEL_LEAD
+  const reviewerNow = team.find((a) => a.reviewer)?.id ?? NO_REVIEWER
+  const [lead, setLead] = useState<string>()
+  const [reviewer, setReviewer] = useState<string>()
+  const [busy, run] = useBusy()
+  const files = team.filter((a) => !a.builtIn)
+  // The team the repo brought is saved as checked, and only what changed goes to settings.toml (KERNEL-397).
+  const open = () => run('open', async () => {
+    if (!roomId) return
+    if (review) {
+      const patch: TeamPatch = {}
+      if (lead && lead !== leadNow) patch.lead = lead
+      if (reviewer && reviewer !== reviewerNow) patch.reviewer = reviewer
+      try { await call('agents.setTeam', { roomId, team: patch, from: 'setup' }) } catch (e) { actions.ui.toast({ title: 'Could not change the team', sub: cleanError(e) }); return }
+    }
+    await openRoom(roomId)
+  })
+  // "Brief Rowan right away" in New room: when setup finishes cleanly, land in Rowan's chat (D-104). A team the repo brought
+  // with something to look at waits for Open the room.
+  const teamPending = finished && seated?.state === 'ok' && !!seated.brought && !team.length
+  useEffect(() => { if (finished && !failed && !teamPending && getDraft().autostart && roomId && !(review && warnings.length)) void openRoom(roomId) }, [finished, failed, teamPending, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="panel" style={{ background: 'transparent', border: 0 }}>
-      <div className="ob-page">
+      <div className={review ? 'ob-page rs-review' : 'ob-page'}>
         <div className="ob-col">
           <h1 className="ob-h1">Setting up {room?.name ?? 'your room'}</h1>
           <p className="ob-sub">This takes a minute. Your team is ready when it finishes.</p>
@@ -41,9 +75,26 @@ export function RoomSetup({ roomId }: { roomId?: string }) {
             ))}
             {!steps && <div className="ob-check"><Spinner label="Starting" /><span className="muted">Starting</span></div>}
           </div>
+          {review && (
+            <section className="rs-team" aria-labelledby="rs-team">
+              <div className="rs-team-head">
+                <h2 id="rs-team">Your team</h2>
+                <p>This repo brought its own agents. Check who leads and who reviews. Settings, Agents changes it later.</p>
+              </div>
+              <div className="rs-team-row">
+                <span className="rs-team-text"><span className="rs-team-label">Lead</span><span>Plans with you and hands out tasks</span></span>
+                <Select label="Lead" value={lead ?? leadNow} disabled={busy !== null} onChange={(e) => setLead(e.target.value)} options={[...files.map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_LEAD, label: 'Rowan, from Kernel' }]} />
+              </div>
+              <div className="rs-team-row">
+                <span className="rs-team-text"><span className="rs-team-label">Reviewer</span><span>Reviews each pull request before it merges</span></span>
+                <Select label="Reviewer" value={reviewer ?? reviewerNow} disabled={busy !== null} onChange={(e) => setReviewer(e.target.value)} options={[...files.filter((a) => a.id !== (lead ?? leadNow)).map((a) => ({ value: a.id, label: a.name })), { value: KERNEL_REVIEWER, label: 'Theo, from Kernel' }, { value: NO_REVIEWER, label: 'No reviewer' }]} />
+              </div>
+              {warnings.map((w) => <div key={w} className="rs-team-warn"><Icon name="warning" size={14} /><span>{w}</span></div>)}
+            </section>
+          )}
           <div className="ob-bar">
             <span role="status">{finished && failed ? `${failed} ${failed === 1 ? 'step' : 'steps'} did not finish. You can still open the room.` : 'You can leave this screen. Kernel keeps going.'}</span>
-            <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished} onClick={open}>Open the room</Button>
+            <Button variant={finished ? 'primary' : 'secondary'} size="lg" disabled={!finished || busy !== null} busy={busy === 'open'} busyLabel="Opening" onClick={() => void open()}>Open the room</Button>
           </div>
           {finished && failed > 0 && <button type="button" className="ob-link" style={{ alignSelf: 'flex-start', marginTop: 12 }} onClick={() => { actions.ui.go({ name: 'rooms' }) }}>All rooms</button>}
         </div>

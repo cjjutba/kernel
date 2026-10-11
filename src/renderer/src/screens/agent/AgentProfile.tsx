@@ -4,8 +4,8 @@ import { EFFORTS, MODELS } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { openRoom } from '../../lead'
-import { Button, SegmentedControl, useBusy } from '../../ui'
-import { STANDARD_TOOLS, STATUS_WORD, currentWorkspace, modelAlias, recentWork, sameModel, shirtOf, shortFile, withExtras } from '../team/model'
+import { Button, Icon, SegmentedControl, useBusy } from '../../ui'
+import { STANDARD_TOOLS, STATUS_WORD, currentWorkspace, fileLabel, modelAlias, recentWork, sameModel, shirtOf, shortFile, warningText, withExtras } from '../team/model'
 import '../team/team.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -17,7 +17,11 @@ const formOf = (a: AgentDef): Form => ({ description: a.description, model: a.mo
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 const slash = (s: string) => (s.startsWith('/') ? s : `/${s}`)
 
-/** AgentProfile.png: who the agent is and what they have been doing on the left, the editable file on the right. Save rewrites the agent file. */
+/**
+ * AgentProfile.png: who the agent is and what they have been doing on the left, the editable file on the right. Save rewrites
+ * the agent file. AgentProfileBuiltIn.png: Kernel's own Rowan or Theo, shown as it runs, with Customize to copy it into
+ * .claude/agents (KERNEL-397).
+ */
 export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId] ?? NO_AGENTS)
@@ -27,6 +31,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const workspaces = useStore((s) => s.workspaces)
   const tasks = useStore((s) => s.tasks[roomId])
   const defaultEffort = useStore((s) => s.settings?.models.effort)
+  const models = useStore((s) => s.settings?.models)
   const agent = agents.find((a) => a.id === agentId && !a.retired)
   useEffect(() => { void loadRoom(roomId) }, [roomId])
 
@@ -68,7 +73,9 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
   const ws = currentWorkspace(agent.id, roomId, workspaces)
   const recent = recentWork(agent.id, tasks ?? [], workspaces)
   const team = agents.filter((a) => !a.retired)
-  const modelId = MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
+  const builtIn = !!agent.builtIn
+  // Kernel's own agents have no model of their own: Settings, Models picks it.
+  const modelId = builtIn ? (agent.lead ? models?.lead : models?.reviewer) ?? '' : MODELS.find((m) => sameModel(form.model, m.id))?.id ?? ''
   const effort = form.effort ?? defaultEffort ?? 'high'
 
   const save = () => run('save', async () => {
@@ -85,6 +92,14 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
     } catch (e) { setError(cleanError(e)) }
   })
   const retire = () => actions.ui.openModal({ name: 'confirm', kind: 'retire', roomId, agentId: agent.id })
+  const customize = () => run('customize', async () => {
+    setError(null)
+    try {
+      const def = await call('agents.customize', { roomId, agentId: agent.id })
+      actions.ui.toast({ title: `${def.name} is in ${shortFile(def.file)} now`, sub: 'Edit it here like any agent.' })
+      go({ name: 'agent', roomId, agentId: def.id })
+    } catch (e) { setError(cleanError(e)) }
+  })
 
   return (
     <div className="panel">
@@ -95,9 +110,15 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
         <h1>{agent.name}</h1>
         <span className="grow" />
         {error && <span role="alert" className="ap-save-note del">{error}</span>}
-        {saved && !dirty && <span role="status" className="ap-save-note">Saved to {shortFile(agent.file)}</span>}
-        <Button variant="ghost" disabled={agent.lead} title={agent.lead ? `${agent.name} leads this room. Mark another agent as the Lead first.` : undefined} onClick={retire}>Retire</Button>
-        <Button variant={dirty ? 'primary' : 'secondary'} busy={!!saving} busyLabel="Saving" disabled={!dirty || !form.description.trim()} onClick={() => void save()}>Save changes</Button>
+        {builtIn ? (
+          <Button variant="primary" busy={saving === 'customize'} busyLabel="Copying" onClick={() => void customize()}>Customize</Button>
+        ) : (
+          <>
+            {saved && !dirty && <span role="status" className="ap-save-note">Saved to {shortFile(agent.file)}</span>}
+            <Button variant="ghost" disabled={agent.lead || !!saving} title={agent.lead ? `${agent.name} leads this room. Pick another Lead in Settings, Agents first.` : undefined} onClick={retire}>Retire</Button>
+            <Button variant={dirty ? 'primary' : 'secondary'} busy={saving === 'save'} busyLabel="Saving" disabled={!dirty || !form.description.trim() || !!saving} onClick={() => void save()}>Save changes</Button>
+          </>
+        )}
       </header>
       <div className="ap-body">
         <aside className="ap-side" aria-label={agent.name}>
@@ -109,7 +130,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
             <dt>Status</dt><dd>{STATUS_WORD[status]}</dd>
             <dt>Workspace</dt>
             <dd>{ws && ws.mode !== 'current' ? <button type="button" className="ap-link" onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>{ws.name}</button> : <span className="tm-mono">{ws ? 'main checkout' : 'none'}</span>}</dd>
-            <dt>File</dt><dd className="tm-mono tm-ink3">{shortFile(agent.file)}</dd>
+            <dt>File</dt><dd className={builtIn ? 'tm-ink3' : 'tm-mono tm-ink3'}>{fileLabel(agent)}</dd>
             <dt>Rooms</dt><dd className="ink2">{inRooms.map((r) => r.name).join(', ') || room.name}</dd>
           </dl>
           {!!recent.length && (
@@ -125,7 +146,18 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
           )}
         </aside>
         <div className="ap-main">
-          <form className="ap-form" onSubmit={(e) => { e.preventDefault(); if (dirty) void save() }}>
+          <form className="ap-form" onSubmit={(e) => { e.preventDefault(); if (dirty && !builtIn) void save() }}>
+            {builtIn && (
+              <p className="ap-note" role="note">
+                {agent.name} is built into Kernel and {agent.lead ? 'leads' : 'reviews for'} this room because <span className="mono">.claude/agents</span> has no {agent.lead ? 'Lead' : 'reviewer'}. It isn{'\u2019'}t a file in this repo, so it can{'\u2019'}t be edited here. Customize copies it to <span className="mono">.claude/agents/{agent.lead ? 'rowan' : 'theo'}.md</span>, where you can change it like any agent.
+              </p>
+            )}
+            {!builtIn && !!agent.warnings?.length && (
+              <ul className="ap-warns" aria-label="What Kernel noticed in this file">
+                {agent.warnings.map((w) => <li key={w.kind}><Icon name="warning" size={13} />{warningText(w)}</li>)}
+              </ul>
+            )}
+            <fieldset className="ap-fields" disabled={builtIn}>
             <div className="ap-field">
               <label className="ap-label" htmlFor="ap-desc">Description</label>
               <textarea id="ap-desc" className="ap-text" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
@@ -135,10 +167,12 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
               <div className="ap-field">
                 <span className="ap-label" id="ap-model">Model</span>
                 <SegmentedControl label="Model" value={modelId} onChange={(id) => set({ model: modelAlias(id) })} options={['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001', 'claude-fable-5-1'].map((id) => ({ value: id, label: MODELS.find((m) => m.id === id)?.label ?? id }))} />
+                {builtIn && <span className="hint">From Settings, Models</span>}
               </div>
               <div className="ap-field">
                 <span className="ap-label">Effort</span>
                 <SegmentedControl label="Effort" value={effort} onChange={(v) => set({ effort: v as Effort })} options={EFFORTS.map((e) => ({ value: e.id, label: e.label }))} />
+                {builtIn && <span className="hint">From Settings, Models</span>}
               </div>
             </div>
             <div className="ap-field">
@@ -146,7 +180,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
               <div className="ap-chips" role="group" aria-labelledby="ap-tools">
                 {toolList.map((t) => <button key={t} type="button" className="ap-chip" aria-pressed={!!form.tools?.includes(t)} onClick={() => set({ tools: pick(form.tools, t, toolList) })}>{t}</button>)}
               </div>
-              {!form.tools && <span className="hint">No tools line in the file, so {agent.name} can use every tool. Pick some to limit them.</span>}
+              {!form.tools && <span className="hint">{builtIn ? `${agent.name} can use every tool.` : `No tools line in the file, so ${agent.name} can use every tool. Pick some to limit them.`}</span>}
             </div>
             <div className="ap-field">
               <span className="ap-label" id="ap-skills">Skills</span>
@@ -159,6 +193,7 @@ export function AgentProfile({ roomId, agentId }: { roomId: string; agentId: str
               <label className="ap-label" htmlFor="ap-prompt">Instructions</label>
               <textarea id="ap-prompt" className="ap-text mono" rows={12} value={form.prompt} onChange={(e) => set({ prompt: e.target.value })} spellCheck={false} />
             </div>
+            </fieldset>
           </form>
         </div>
       </div>

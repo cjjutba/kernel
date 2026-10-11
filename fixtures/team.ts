@@ -49,6 +49,16 @@ const setupSteps: RoomSetupStep[] = [
   { id: 'agents', title: 'Seat agents', detail: 'Rowan, Kai, Noor, Ivy, Theo from .claude/agents', state: 'wait' }
 ]
 
+const shop: Room = { id: 'room-shop', name: 'Shop', kind: 'folder', path: '/Users/you/Projects/shop', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
+const shopSteps: RoomSetupStep[] = [
+  { id: 'clone', title: 'Use your folder', detail: '~/Projects/shop', state: 'ok' },
+  { id: 'worktrees', title: 'Create the worktree folder', detail: '~/kernel/worktrees/shop', state: 'ok' },
+  { id: 'install', title: 'Install dependencies', detail: 'pnpm install', state: 'ok', meta: '12s' },
+  { id: 'copy', title: 'Copy local files', detail: '.env.local, .env.test', state: 'ok' },
+  { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
+  { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Rowan and Theo from Kernel', state: 'ok', brought: 3 }
+]
+
 const clientC: Room = { id: 'room-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
   ['client-c', true, 2 * HOUR], ['personal-site', false, DAY], ['habit-tracker', true, 3 * DAY], ['recipe-box', true, 7 * DAY], ['starter-kit', true, 14 * DAY], ['starter-kit-mobile', true, 21 * DAY]
@@ -206,6 +216,44 @@ const teamScene = (f: Fixture): Partial<Fixture> => {
       task('T-15b', 'Download PDF button', 'build', 'kai', 'ws-pdf-button', 10, 41), task('T-14', 'Invoice table', 'done', 'kai', 'ws-t14', 9, 40),
       task('T-09', 'Org settings page', 'done', 'kai', 'ws-t09', 9, 10), task('T-06', 'Sign-in screens', 'done', 'kai', 'ws-t06', 8, 40)
     ] }
+  }
+}
+
+/**
+ * A repo that brought its own agents and has no Lead or reviewer, so Kernel's own Rowan and Theo fill in (KERNEL-397).
+ * Architect's tools can't open a PR, so it is a helper. TeamOwnAgents.png, AgentProfileBuiltIn.png and RoomSetupTeam.png.
+ */
+const ownCrew: AgentDef[] = [
+  {
+    id: 'kernel-lead', name: 'Rowan', role: 'Lead', builtIn: 'lead', lead: true, reviewer: false, member: false, file: '',
+    description: 'Lead. Plans features, gets your approval, and hands each task to the right teammate in its own workspace.',
+    prompt: 'You are Rowan, the lead of this room\'s team in Kernel.\n- While the chat is in plan mode: plan first, then call request_plan_approval with the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps.\n- With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask before calling create_workspace.\n- Give every create_workspace a complete brief: goal, files, acceptance criteria.\n- Use list_agents to see who is on the team.\n- If the team lacks a skill, propose a new teammate with hire_agent.'
+  },
+  { id: 'api', name: 'Api', role: 'Backend', description: 'Backend engineer. Builds the API.', lead: false, reviewer: false, member: true, prompt: 'You build the API.', file: '.claude/agents/api.md' },
+  {
+    id: 'architect', name: 'Architect', role: 'Architect', description: 'Designs the system. Writes no code.', model: 'opus', tools: ['Read', 'Grep', 'Glob'],
+    lead: false, reviewer: false, member: false, warnings: [{ kind: 'cant-open-pr' }], prompt: 'You design.', file: '.claude/agents/architect.md'
+  },
+  {
+    id: 'kernel-reviewer', name: 'Theo', role: 'Reviewer', builtIn: 'reviewer', lead: false, reviewer: true, member: false, file: '', tools: ['Read', 'Grep', 'Glob', 'Bash'],
+    description: 'Reviewer. Reviews diffs for correctness, security and maintainability before merge. Read-only.', prompt: 'You are Theo, the reviewer.'
+  },
+  { id: 'web', name: 'Web', role: 'Frontend', description: 'Frontend engineer.', lead: false, reviewer: false, member: true, prompt: 'You build the UI.', file: '.claude/agents/web.md' }
+]
+
+/** Client A with `ownCrew` in place of Kernel's starter team. Its workspaces and questions go to whoever does the same job. */
+const ownTeamScene = (f: Fixture): Partial<Fixture> => {
+  const A = ids.roomA
+  const t = teamScene(f)
+  const swap: Record<string, string> = { rowan: 'kernel-lead', kai: 'web', noor: 'api', ivy: 'web', theo: 'kernel-reviewer', lumi: 'web' }
+  const mapped = <T extends { roomId?: string; agentId?: string }>(x: T): T => (x.roomId === A && x.agentId && swap[x.agentId] ? { ...x, agentId: swap[x.agentId] } : x)
+  return {
+    ...t,
+    agents: { ...t.agents, [A]: ownCrew },
+    workspaces: t.workspaces!.map(mapped),
+    approvals: t.approvals!.map(mapped),
+    tasks: { [A]: [] },
+    status: { [A]: { 'kernel-lead': 'idle', api: 'working', architect: 'idle', 'kernel-reviewer': 'idle', web: 'working' } }
   }
 }
 
@@ -474,7 +522,10 @@ export const teamFixtures: Record<string, Fixture> = {
   Team: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
   // No PNG: a new room with no agents offers the team templates the empty floor had (D-104).
   TeamEmpty: scene((f) => ({ ...teamScene(f), rooms: [...f.rooms, clientC], ui: { route: { name: 'team', roomId: clientC.id } } })),
+  // KERNEL-397: a repo's own agents, with Kernel's Rowan and Theo, a helper and its warning.
+  TeamOwnAgents: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'team', roomId: ids.roomA } } })),
   AgentProfile: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' } } })),
+  AgentProfileBuiltIn: scene((f) => ({ ...ownTeamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kernel-lead' } } })),
   NewAgent: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'describe', prefill: { name: 'Lumi', model: 'sonnet' } } } })),
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
@@ -519,6 +570,11 @@ export const teamFixtures: Record<string, Fixture> = {
     push: [{ type: 'room.setup', roomId: clientC.id, steps: setupSteps }],
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
   })),
+  // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the room opens.
+  RoomSetupTeam: scene((f) => {
+    const r = roomsScene(f)
+    return { ...r, rooms: [...f.rooms, shop], agents: { ...(r.agents ?? f.agents), [shop.id]: ownCrew }, push: [{ type: 'room.setup', roomId: shop.id, steps: shopSteps }], ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } } }
+  }),
   Issues: scene((f) => issuesScene(f)),
   IssuesWorking: scene((f) => issuesScene(f, { issueId: 'KERNEL-24', working: true })),
   IssuesNoRoom: scene((f) => issuesScene(f, { linkedRoom: false })),

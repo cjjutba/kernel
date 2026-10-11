@@ -32,6 +32,7 @@
 .nr-name { height: 32px; padding: 0; border: 0; outline: none; background: transparent; font-size: 20px; font-weight: 600; letter-spacing: -0.4px; }
 .nr-desc { height: 22px; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink-2); font-size: 14px; }
 .nr-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+.nr-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .nr-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .nr-source { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 1px solid var(--line-2); background: var(--panel); color: var(--ink); text-align: left; }
 .nr-source:hover { background: var(--surface); }
@@ -110,3 +111,15 @@
 .ts-item { display: flex; flex-direction: column; gap: 6px; }
 .ts-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
 .ts-error { margin: 0; font-size: 13px; color: var(--ink); }
+
+/* Room setup's team review, for a repo that brought its own agents (RoomSetupTeam.png, KERNEL-397). */
+.ob-page.rs-review { padding-top: 48px; padding-bottom: 32px; overflow-y: auto; }
+.rs-team { margin-top: 20px; border: 1px solid var(--panel-line); border-radius: var(--r-lg); background: var(--panel); }
+.rs-team-head { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px 12px; }
+.rs-team-head h2 { margin: 0; font-size: 14px; font-weight: 500; }
+.rs-team-head p { margin: 0; font-size: 12.5px; color: var(--muted); }
+.rs-team-row { display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.rs-team-text { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 12.5px; color: var(--muted); }
+.rs-team-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.rs-team-warn { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+.rs-team-warn svg { flex-shrink: 0; margin-top: 2px; color: var(--needs); }

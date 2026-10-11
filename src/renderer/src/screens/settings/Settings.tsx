@@ -17,6 +17,7 @@ import { Git } from './pages/Git'
 import { Hooks } from './pages/Hooks'
 import { Integrations } from './pages/Integrations'
 import { PRs } from './pages/PRs'
+import { Privacy } from './pages/Privacy'
 import { Room } from './pages/Room'
 import { RoomGit } from './pages/RoomGit'
 import { RoomInstructions } from './pages/RoomInstructions'
@@ -44,6 +45,7 @@ export function Settings({ page, roomId, section }: { page: SettingsPage; roomId
   else if (page === 'permissions') body = <Permissions s={settings} />
   else if (page === 'env') body = <Environment />
   else if (page === 'experimental') body = <Experimental s={settings} />
+  else if (page === 'privacy') body = <Privacy s={settings} />
   else if (page === 'bigterm') body = <BigTerminal s={settings} />
   else if (page === 'git') body = <Git s={settings} />
   else if (page === 'scripts') body = <Scripts s={settings} />

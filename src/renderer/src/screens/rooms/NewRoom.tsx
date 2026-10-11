@@ -108,14 +108,15 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
           <p className="nr-label">Team <span style={{ fontWeight: 400 }}>from .claude/agents</span></p>
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
             {STARTER_TEAM.map((m) => {
-              const on = d.team.includes(m.id) || m.id === 'rowan'
+              const on = m.builtIn || d.team.includes(m.id)
               return (
-                <button key={m.id} type="button" className="nr-member" aria-pressed={on} disabled={m.id === 'rowan'} onClick={() => toggle(m.id)}>
+                <button key={m.id} type="button" className="nr-member" aria-pressed={on} disabled={m.builtIn} onClick={() => toggle(m.id)}>
                   <span className="nr-av" aria-hidden="true">{m.name[0]}</span>{m.name}<span className="mono nr-role">{m.role}</span>
                 </button>
               )
             })}
           </div>
+          <p className="nr-hint">Rowan and Theo are built into Kernel. The others are copied into .claude/agents.</p>
         </div>
       </div>
     </Modal>
