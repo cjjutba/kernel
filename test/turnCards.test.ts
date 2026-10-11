@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AskedQuestion, ChatItem } from '../src/shared/types'
-import { answerDecision, answeredList, emptyPick, isStepList, isStepped, noteFromParts, outcome, pickReady, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
+import { allAnswered, answerDecision, answeredList, emptyPick, isStepList, isStepped, nextUnanswered, noteFromParts, outcome, pickReady, planSteps, planTitle, waitingPlan } from '../src/renderer/src/screens/workspace/cards/steps'
 import { buildThread } from '../src/renderer/src/screens/workspace/thread'
 
 describe('turn cards', () => {
@@ -32,6 +32,29 @@ describe('turn cards', () => {
       expect(pickReady({ sel: ['Menu'], other: false, text: '' })).toBe(true)
       expect(pickReady({ sel: ['Menu'], other: true, text: '  ' })).toBe(false)
       expect(pickReady({ sel: [], other: true, text: 'Somewhere' })).toBe(true)
+    })
+
+    it('finds the next question without an answer, wrapping to the start, and knows when every one has one', () => {
+      const yes = { sel: ['Yes'], other: false, text: '' }
+      const typed = { sel: [], other: true, text: 'Somewhere' }
+      const empty = emptyPick()
+      expect(nextUnanswered([yes, empty, empty], 0)).toBe(1)
+      expect(nextUnanswered([yes, yes, empty], 0)).toBe(2)
+      expect(nextUnanswered([empty, yes, yes], 2)).toBe(0)
+      expect(nextUnanswered([yes, { sel: [], other: true, text: ' ' }], 0)).toBe(1)
+      expect(nextUnanswered([yes, typed], 0)).toBe(-1)
+      expect(nextUnanswered([empty], 0)).toBe(-1)
+      expect(allAnswered([yes, typed])).toBe(true)
+      expect(allAnswered([yes, empty])).toBe(false)
+    })
+
+    it('holds the answers back until every question has one, so Send comes only after the last', () => {
+      const sendable = (picks: Parameters<typeof allAnswered>[0]) => (allAnswered(picks) ? answerDecision(qs, picks) : undefined)
+      const yes = { sel: ['Yes'], other: false, text: '' }
+      expect(sendable([yes, emptyPick()])).toBeUndefined()
+      expect(sendable([emptyPick(), { sel: ['Menu'], other: false, text: '' }])).toBeUndefined()
+      expect(sendable([yes, { sel: [], other: true, text: '' }])).toBeUndefined()
+      expect(sendable([yes, { sel: [], other: true, text: 'Footer' }])?.answers).toEqual({ 'Keep the number?': 'Yes', 'Where?': 'Footer' })
     })
 
     it('sends one answer keyed by question text, multi-select labels joined with ", " in the order asked', () => {
