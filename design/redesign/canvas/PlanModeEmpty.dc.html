@@ -60,20 +60,39 @@ body{margin:0}
 .tu-events .bad{color:var(--del)}.tu-events .good{color:var(--add)}.tu-events .mrg{color:var(--merged)}
 .tr .tu-reply{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .k .tu-more{margin-top:5px;font-size:12px;color:var(--faint)}
-.cmp{position:relative;overflow:hidden;width:640px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 10px 10px 14px}
-.cmp > *{position:relative;z-index:1}
-.cmp.plan{border-color:rgba(90,162,255,.7);background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%),#0c0d10}
-.cmp.plan .caret{background:#5aa2ff}
-.k .cmp.plan .mode{width:28px;height:28px;border-radius:8px;background:rgba(90,162,255,.16);color:#5aa2ff}
-.cmp-text{min-height:48px;font-size:14px;line-height:24px;color:var(--ink)}
-.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px}
-.cmp-foot{display:flex;align-items:center;gap:10px;margin-top:10px}
-.cmp-agent{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px;font-size:12.5px}
-.cmp-sep{width:1px;height:16px;background:var(--line-3)}
-.k .send{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-3);color:var(--faint)}
-.k .cmp.plan .send.on{background:#5aa2ff;color:#06101e}
+.cmp{--plan:#5aa2ff;--ease:cubic-bezier(.33,0,.2,1);position:relative;width:640px;display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 12px 10px;transition:border-color 1.6s ease-in-out}
+.cmp > *{position:relative}
+.cmp::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%);opacity:0;transform:scaleY(.85);transform-origin:50% 100%;transition:opacity 1.6s ease-in-out,transform 1.6s ease-in-out}
+.cmp.focus{border-color:#3a3c42;transition:border-color .6s ease-out}
+.cmp.plan{border-color:rgba(90,162,255,.45);transition:border-color 2.4s var(--ease)}
+.cmp.plan.focus{border-color:rgba(90,162,255,.7);transition:border-color .6s ease-out}
+.cmp.plan::before{opacity:.9;transform:none;transition:opacity 2.4s var(--ease),transform 2.4s var(--ease);animation:plan-breathe 8s ease-in-out 2.4s infinite}
+.cmp.plan.focus::before{opacity:1;animation:none;transition:opacity 1s ease-out}
+@keyframes plan-breathe{0%,100%{opacity:.9}50%{opacity:.62}}
+.cmp-text{min-height:34px;font-size:14px;line-height:24px;color:var(--ink)}
+.cmp-text.ph{color:var(--muted)}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px;animation:caret-blink 1.1s steps(1) infinite}
+.cmp.plan .caret{background:var(--plan)}
+@keyframes caret-blink{50%{opacity:0}}
+.cmp-foot{display:flex;align-items:center;gap:12px}
+.cmp-agent{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border:1px solid var(--line-3);border-radius:999px;font-size:12.5px}
+.cmp-agent .n{color:var(--ink-2)}
+.cmp-agent .r,.cmp-model .r{color:var(--muted)}
+.cmp-model{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.k .send{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-3);color:var(--muted);transition:background-color .16s ease-out,color .16s ease-out}
+.k .send.on{background:var(--ink);color:var(--on-ink)}
+.k .cmp.plan .send.on{background:var(--plan);color:#06101e}
 .k .cmp.plan.wait .send.on{background:var(--ink);color:var(--on-ink)}
-.cmp-text.ph{color:var(--faint)}
+.pbar{display:flex;align-items:center;gap:6px;margin:-12px -12px 6px;padding:7px 8px 7px 12px;overflow:hidden;border-radius:11px 11px 0 0;background:rgba(90,162,255,.08);border-bottom:1px solid rgba(90,162,255,.24);animation:pbar-in 1.2s var(--ease) both}
+.pbar > *{position:relative}
+.pbar::before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(100deg,rgba(90,162,255,0) 30%,rgba(90,162,255,.18) 50%,rgba(90,162,255,0) 70%);transform:translateX(-100%);animation:pbar-sweep 2.6s ease-in-out .6s both}
+@keyframes pbar-in{from{max-height:0;opacity:0;padding-top:0;padding-bottom:0}to{max-height:44px;opacity:1}}
+@keyframes pbar-sweep{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+.pbar .ic{display:inline-flex;color:var(--plan)}
+.k .pb{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.k .pb.acc{background:var(--plan);color:#06101e}
+.pb .kb{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-weight:400;opacity:.6}
+@media (prefers-reduced-motion: reduce){.cmp,.cmp::before,.k .send,.pbar,.pbar::before,.caret{animation:none !important;transition:none !important}}
 .tr ol,.tr ul{margin:0 0 12px;padding-left:20px}
 .tr li{margin-bottom:6px}
 .tr b{color:var(--ink);font-weight:500}
@@ -90,11 +109,6 @@ body{margin:0}
 .pstep .who{font-size:12.5px;font-weight:400;color:var(--faint);margin-left:6px}
 .pstep .d{font-size:13px;line-height:1.5;color:var(--ink-3);margin-top:2px}
 .pnote{font-size:12.5px;line-height:1.5;color:var(--muted);padding:10px 0 12px;border-top:1px solid var(--line)}
-.pbar{display:flex;align-items:center;gap:6px;margin:-12px -10px 12px -14px;padding:8px 8px 8px 14px;background:rgba(90,162,255,.08);border-bottom:1px solid rgba(90,162,255,.24)}
-.pbar .ic{display:inline-flex;color:#5aa2ff}
-.k .pb{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--ink-2)}
-.k .pb.acc{background:#5aa2ff;color:#06101e}
-.pb .kb{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-weight:400;opacity:.6}
 </style>
 </helmet>
 <div class="k" style="width: 1440px; height: 900px; display: flex; overflow: hidden; --signal: {{signal}}">
@@ -203,14 +217,13 @@ body{margin:0}
 
 <div style="flex-shrink: 0; display: flex; justify-content: center; padding: 0 24px 16px">
 <div class="cmp plan">
-<div class="cmp-text ph"><span class="caret"></span>Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
 <div class="cmp-foot">
-<span class="cmp-agent"><span style="color: var(--ink-2)">Rowan</span><span style="color: var(--faint)">Lead</span></span><span class="cmp-sep"></span>
-<div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px"><span style="color: var(--ink-2)">Opus 5.5</span><span style="color: var(--faint)">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></div>
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
 <svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
-<button class="ib mode" aria-label="Plan mode" aria-pressed="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5l1.2 1.2 2.1-2.4M2.5 10.5l1.2 1.2 2.1-2.4M8 4.5h5.5M8 10.5h5.5"></path></svg></button>
 <button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
-<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
 </div>
 </div>
 </div>

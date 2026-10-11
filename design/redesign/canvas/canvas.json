@@ -15,6 +15,7 @@
     "NewChat.dc.html": { "x": 4560, "y": 1020, "w": 1440, "h": 900, "title": "Proposed, New chat" },
     "Composer.dc.html": { "x": 1520, "y": 2040, "w": 1440, "h": 900, "title": "Proposed, Composer states" },
     "PlanStates.dc.html": { "x": 3040, "y": 2040, "w": 1440, "h": 900, "title": "Plan mode and plan waiting" },
+    "PlanMotion.dc.html": { "x": 4560, "y": 2040, "w": 1440, "h": 900, "title": "Plan mode motion", "is_interactive": true },
     "PlanModeEmpty.dc.html": { "x": 1520, "y": 3060, "w": 1440, "h": 900, "title": "Plan mode" },
     "PlanModeTyping.dc.html": { "x": 3040, "y": 3060, "w": 1440, "h": 900, "title": "Plan mode, typing" },
     "PlanWaiting.dc.html": { "x": 4560, "y": 3060, "w": 1440, "h": 900, "title": "Plan waiting for you" },
@@ -36,7 +37,7 @@
   },
   "order": [
     "Main.dc.html", "Proposed.dc.html", "ProposedSetup.dc.html", "ProposedTerminal.dc.html",
-    "TeamUpdate.dc.html", "TeamUpdateShared.dc.html", "AskRowan.dc.html", "NewChat.dc.html", "Composer.dc.html", "PlanStates.dc.html",
+    "TeamUpdate.dc.html", "TeamUpdateShared.dc.html", "AskRowan.dc.html", "NewChat.dc.html", "Composer.dc.html", "PlanStates.dc.html", "PlanMotion.dc.html",
     "PlanModeEmpty.dc.html", "PlanModeTyping.dc.html", "PlanWaiting.dc.html", "PlanWaitingTyping.dc.html",
     "PrNoChanges.dc.html", "PrNoPr.dc.html", "PrCreating.dc.html", "PrDraft.dc.html", "PrOpen.dc.html",
     "PrChecks.dc.html", "PrCiFail.dc.html", "PrChanges.dc.html", "PrConflict.dc.html", "PrResolving.dc.html",
