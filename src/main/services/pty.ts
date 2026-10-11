@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import * as pty from 'node-pty'
 import { TERMINAL_KEEP } from '@shared/scriptLog'
 import { bus } from '../bus'
+import { Batcher } from './batch'
 
 export interface PtyOptions {
   cwd: string
@@ -29,6 +30,8 @@ export class Ptys {
    * reopens gets it back from `replay`, since the output only ever went out as pushes (KERNEL-340).
    */
   private kept = new Map<string, string>()
+  /** Each terminal's output from the last 50 ms, pushed as one string, so `pnpm install` is about 20 pushes a second (KERNEL-216). */
+  private out = new Batcher<string>((id, chunks) => bus.push({ type: 'terminal.data', chatId: id, data: chunks.join('') }))
 
   has(id: string) { return this.procs.has(id) }
 
@@ -46,6 +49,7 @@ export class Ptys {
       if (this.procs.get(id) !== proc) return
       this.procs.delete(id)
       this.send(id, `\r\n[process exited with code ${exitCode}]\r\n`)
+      this.out.flush(id)
     })
     if (o.command) proc.write(`${o.command}\r`)
   }
@@ -56,13 +60,16 @@ export class Ptys {
   private send(id: string, data: string) {
     const was = this.kept.get(id)
     if (was !== undefined) this.kept.set(id, (was + data).slice(-TERMINAL_KEEP))
-    bus.push({ type: 'terminal.data', chatId: id, data })
+    this.out.add(id, data)
   }
 
   /** Pushes the terminal's output so far as one `terminal.data` with `replace`. Nothing for a terminal that never started. */
   replay(id: string) {
     const data = this.kept.get(id)
-    if (data !== undefined) bus.push({ type: 'terminal.data', chatId: id, data, replace: true })
+    if (data === undefined) return
+    // What waits to go out is in what was kept already, so the replay carries it.
+    this.out.drop(id)
+    bus.push({ type: 'terminal.data', chatId: id, data, replace: true })
   }
 
   resize(id: string, cols: number, rows: number) {

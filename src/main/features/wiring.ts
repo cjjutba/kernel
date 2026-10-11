@@ -30,6 +30,8 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     store: k.store,
     enabled: () => k.settings.models.leadUpdates !== false,
     target: (roomId, owner) => k.lead.leadUpdateTarget(roomId, owner),
+    // With no Lead tab open, an update that needs the Lead opens one rather than being dropped (KERNEL-365).
+    open: (roomId, owner) => k.lead.openUpdateTab(roomId, owner),
     isLead: (ws) => !!k.team.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
     agentName: (roomId, agentId) => k.team.agentsSync(roomId).find((a) => a.id === agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),

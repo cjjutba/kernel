@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill } from '@shared/types'
+import type { AgentDef, BuiltinCommand, Chat, ChatPart, Effort, FileEntry, ModelId, QueuedMessage, Skill, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../../store'
@@ -17,9 +17,13 @@ import { effortFor } from '@shared/effort'
 import { effortLabel, nextEffort, rememberEffort, useDefaultEffort, useEffortMemory } from './modelPrefs'
 import { PlusMenu, type PlusPanel } from './PlusMenu'
 import { QueueList } from './QueueList'
+import { NoteText } from '../NoteText'
+import { heldLine, waitersLine } from '../waitLines'
 import './composer.css'
 
 const EMPTY_QUEUE: QueuedMessage[] = []
+const EMPTY_TEAM: AgentDef[] = []
+const EMPTY_WS: Workspace[] = []
 /**
  * The newest prefill already put in a box, so a composer that remounts doesn't write an old one over a restored draft.
  * It compares `n`, which `Workspace` sets from `Date.now()`, so it only goes up. A per-mount counter would block every edit after the first.
@@ -37,6 +41,12 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
   const ws = useStore((s) => s.workspaces.find((w) => w.id === chat.workspaceId))
   const queue = useStore((s) => s.queue[chat.id]) ?? EMPTY_QUEUE
   const queueWhy = useStore((s) => s.queueWhy[chat.id])
+  // What this workspace waits for, and who waits for it, named live as PRs open and merge (KERNEL-259). Only those
+  // workspaces are read, so a poll of the room's other PRs doesn't redraw the box.
+  const related = useStore((s) => (ws ? s.workspaces.filter((w) => ws.waitsFor?.on.includes(w.id) || w.waitsFor?.on.includes(ws.id)) : EMPTY_WS))
+  const team = useStore((s) => (ws ? s.agents[ws.roomId] : undefined)) ?? EMPTY_TEAM
+  const held = useMemo(() => (ws ? heldLine(ws, related, team) : undefined), [ws, related, team])
+  const waiters = useMemo(() => (ws ? waitersLine(ws, related, team) : undefined), [ws, related, team])
   const forced = useStore((s) => s.ui.workspace.composer)
   // Fixtures open the context popover for a shot.
   const contextForced = useStore((s) => s.ui.workspace.contextOpen)
@@ -203,9 +213,11 @@ export function Composer({ chat, agent, blocked, running, prefill, banner }: { c
     <div className="composer-wrap">
       <div className="composer-inner">
         {ws && <HunkCard ws={ws} agentName={name} refreshKey={running} />}
+        {waiters && <div className="note" role="status"><span className="note-text"><NoteText text={waiters.text} refs={waiters.refs} /></span></div>}
         <QueueList
           queue={queue}
           why={queueWhy}
+          held={held}
           onEdit={editQueued}
           onNow={(q) => void attempt('Could not send now', async () => actions.chats.setQueue(chat.id, await call('chats.sendNow', { chatId: chat.id, id: q.id })))}
           onRemove={(q) => void attempt('Could not remove the message', async () => actions.chats.setQueue(chat.id, await call('chats.unqueue', { chatId: chat.id, id: q.id })))}

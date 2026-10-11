@@ -143,7 +143,7 @@ describe('IPC contract', () => {
     // Right after the line that printed it, as the engine pushes it.
     const push = fixturePush(f)
     const at = push.findIndex((e) => e.type === 'script.url')
-    expect(push[at - 1]).toMatchObject({ type: 'script.output', workspaceId: found[0].workspaceId, line: 'Next.js ready on http://localhost:4312' })
+    expect(push[at - 1]).toMatchObject({ type: 'script.output', workspaceId: found[0].workspaceId, lines: [{ line: 'Next.js ready on http://localhost:4312' }] })
     // An exit clears it.
     const ws = found[0].workspaceId
     expect(fixturePush({ ...f, push: [...f.push, { type: 'script.exit', workspaceId: ws, kind: 'run', code: 0 }] }).filter((e) => e.type === 'script.url').map((e) => e.type === 'script.url' && e.url))

@@ -274,9 +274,9 @@ export const platformFixtures: Record<string, Fixture> = {
     items: {},
     push: [
       ...f.push,
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: '$ pnpm install --frozen-lockfile', stream: 'stdout' },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' },
-      { type: 'script.output', workspaceId: ids.table, kind: 'setup', line: 'Setup failed with exit code 1', stream: 'stderr' },
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: '$ pnpm install --frozen-lockfile', stream: 'stdout' }] },
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'ERR_PNPM_OUTDATED_LOCKFILE  Cannot install with "frozen-lockfile" because pnpm-lock.yaml is not up to date', stream: 'stderr' }] },
+      { type: 'script.output', workspaceId: ids.table, kind: 'setup', lines: [{ line: 'Setup failed with exit code 1', stream: 'stderr' }] },
       { type: 'script.exit', workspaceId: ids.table, kind: 'setup', code: 1 }
     ],
     ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }

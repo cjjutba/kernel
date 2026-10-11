@@ -5,7 +5,7 @@ import type {
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
-import { keepLine, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
+import { keepLines, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
 import { call, cleanError, onPush } from './api'
 import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
@@ -470,7 +470,9 @@ export const actions = {
         ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
       }
     }),
-    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: keepLine(s.scripts[workspaceId] ?? [], line) } })),
+    /** One script's lines from a `script.output` batch, added in one update (KERNEL-216). */
+    appendScript: (workspaceId: string, kind: ScriptKind, name: string | undefined, lines: Pick<ScriptLine, 'line' | 'stream'>[]) =>
+      setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: keepLines(s.scripts[workspaceId] ?? [], kind, name, lines) } })),
     /** Main's copy of the workspace's scripts, in place of the window's: a window that just loaded missed what came before (KERNEL-340). */
     setScripts: (workspaceId: string, lines: ScriptLine[], exit: Record<string, number | null>, url: Record<string, string>) => setState((s) => ({
       scripts: { ...s.scripts, [workspaceId]: lines },
@@ -606,7 +608,7 @@ export function apply(e: PushEvent) {
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
-    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
+    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, e.kind, e.name, e.lines)
     case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
     case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
     case 'script.state': return actions.workspaces.setScripts(e.workspaceId, e.lines, e.exit, e.url)

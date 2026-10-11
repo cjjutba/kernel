@@ -66,10 +66,18 @@ export class Lead extends Feature {
     return { ws, lead }
   }
 
-  /** The Lead's first open chat. Floor briefs go there. With no open tab, a new Lead chat (KERNEL-337). */
+  /**
+   * The Lead's first open chat, for Kernel's own sends: floor briefs, an overlap, a comment on a shared file. With no open
+   * tab, a new Lead chat (KERNEL-337). Opening the room doesn't come here, so it starts no chat (KERNEL-365).
+   */
   async leadChat(roomId: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.leadTab(ws, LEAD_CHAT, { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.leadTab(ws, LEAD_CHAT, this.leadPick(lead))
+  }
+
+  /** The model, effort and plan mode a Lead tab Kernel opens starts with. */
+  private leadPick(lead: AgentDef) {
+    return { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode }
   }
 
   /**
@@ -173,7 +181,7 @@ export class Lead extends Feature {
           return queued ? { ...out, queued } : out
         }
         const code = this.k.setup.setupFailures.get(ws.id)
-        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
+        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
       askUser: async (o) => {
@@ -305,6 +313,25 @@ export class Lead extends Feature {
     return first && { chat: first, ...(was ? { from: { title: this.chatTitleOf(was) } } : {}) }
   }
 
+  /**
+   * A Team update that needs the Lead found no open Lead tab (KERNEL-365). It opens a new tab in the Lead chat that handed
+   * off the work, which opens that chat again, else a new Lead chat. The tab is saved and pushed so the sidebar shows it,
+   * and `leadUpdateTarget` then finds it, so the update names the closed tab it came from and another batch for the same
+   * chat lands in the same tab. A room whose Lead workspace is gone or archived has nobody to tell.
+   */
+  openUpdateTab(roomId: string, owner?: string): { chat: Chat; from?: From } | undefined {
+    const found = this.leadUpdateTarget(roomId, owner)
+    if (found) return found
+    const lead = this.agentsSync(roomId).find((a) => a.lead)
+    const ws = lead && this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
+    if (!lead || !ws || ws.status === 'archived') return undefined
+    const was = owner ? this.store.chat(owner) : undefined
+    const threadId = was?.threadId ?? (owner ? this.store.workspaces(roomId).find((w) => w.leadChatId === owner && w.threadId)?.threadId : undefined)
+    const known = threadId && this.store.thread(threadId)?.roomId === roomId ? threadId : undefined
+    this.saveChat(this.leadTab(ws, NEW_TAB, this.leadPick(lead), known))
+    return this.leadUpdateTarget(roomId, owner)
+  }
+
   /** The ids of every tab in `chat`'s Lead chat, closed ones too, and its own. */
   private threadTabIds(chat: Chat) { return new Set(this.store.threadTabs(chat.id).map((c) => c.id).concat(chat.id)) }
 
@@ -373,7 +400,8 @@ export class Lead extends Feature {
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
       'lead.ask': async ({ roomId, text, threadId }) => this.askLead(roomId, text, threadId),
-      'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
+      // Opening the room shows the Lead's workspace as it is, with no chat when none is open (KERNEL-365).
+      'lead.open': async ({ roomId }) => (await this.leadWorkspace(roomId)).ws,
       'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),
       'threads.list': async ({ roomId }) => this.store.threads(roomId),
       'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title)

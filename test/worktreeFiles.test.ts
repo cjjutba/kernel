@@ -166,7 +166,7 @@ describe('files.copy stays inside the repo (KERNEL-209)', () => {
     // Saved in Settings, so trusted: confinement still applies to trusted text.
     await k.handlers()['settings.setRoom']({ roomId: room.id, patch: { files: { copy: ['../../.ssh/id_rsa'] } }, shared: true })
     const lines: string[] = []
-    const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(e.line) }
+    const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'setup') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     bus.off('push', on)

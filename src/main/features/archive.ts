@@ -4,7 +4,7 @@ import type { Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { branchExists, detachWorktree, dropBranch, folderGone, restoreWorktree } from '../services/worktrees'
-import { blocksOverlap, linkNodeModules, runScript, stopRuns, stopScript } from '../services/scripts'
+import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
 import type { Handlers } from '../kernel'
@@ -81,8 +81,11 @@ export class Archive extends Feature {
     const gone = await folderGone(ws.path)
     if (!gone && repo.scripts.archive && this.settings.scripts.archiveOnArchive) {
       // Archiving never waits on trust: untrusted text is skipped and the workspace archives (KERNEL-209).
-      if (await this.k.trust.untrusted(room, repo)) bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', line: "Skipped the archive script: this room's scripts aren't trusted yet.", stream: 'stderr' })
-      else await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
+      if (await this.k.trust.untrusted(room, repo)) bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: "Skipped the archive script: this room's scripts aren't trusted yet.", stream: 'stderr' }] })
+      else if (await runScript({ workspaceId: id, kind: 'archive', script: repo.scripts.archive, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) }) === 'timeout') {
+        // A hung archive script would hold the archive forever. It is stopped and the archive goes on (KERNEL-216).
+        bus.push({ type: 'script.output', workspaceId: id, kind: 'archive', lines: [{ line: `The archive script didn't finish in ${timeoutText(this.settings)}, so Kernel stopped it.`, stream: 'stderr' }] })
+      }
     }
     // Commits that never left this machine live only on the branch, so it stays whatever was asked. So does a branch
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
@@ -144,7 +147,7 @@ export class Archive extends Feature {
       const repo = await loadRepoSettings(room.path)
       await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote: await this.k.config.remoteFor(room.path, repo) })
       if (!(await this.k.trust.untrusted(room, repo))) await this.k.setup.copyFiles(ws, room, repo)
-      else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' })
+      else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' }] })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
     } else if (this.settings.workspace.oneCurrentBranchPerRoom && this.store.workspaces(ws.roomId).some((w) => w.mode === 'current' && w.status !== 'archived' && w.agentId !== ws.agentId)) {
       throw new Error('Another workspace is already working on the current branch in this room.')
