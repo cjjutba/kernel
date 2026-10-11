@@ -15,7 +15,7 @@ import { describeTool, matchesRule, needsUser, type Approvals } from './approval
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
-import { IMAGE_DATA_URL, savePlan } from './plans'
+import { IMAGE_DATA_URL, revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
 
@@ -1189,7 +1189,7 @@ export class Sessions {
       this.setStatus(ws, agent, 'needs', d.title)
       const isPlan = toolName === 'ExitPlanMode'
       const plan = isPlan ? String((input as any).plan ?? '') : ''
-      const reuse = isPlan ? this.lastPlanFile(chat, ws) : undefined
+      const reuse = isPlan ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chat.id) : undefined
       const { approval, decision } = this.d.approvals.request({
         kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
         toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : isPlan ? `Plan for ${ws.name}` : d.title,
@@ -1337,15 +1337,6 @@ export class Sessions {
     const named = { ...row, label: `${row.label} · ${modelName(model)}` }
     live.toolItems.set(toolUseId, named)
     this.item(chat, named)
-  }
-
-  /**
-   * Where a new plan-mode plan in this chat is saved (D-092). After "Request changes" the revision overwrites the last
-   * plan's file. Once a plan here was approved, the next one gets a file of its own.
-   */
-  private lastPlanFile(chat: Chat, ws: Workspace): string | undefined {
-    const last = this.d.store.approvals({ roomId: ws.roomId }).find((a) => a.chatId === chat.id && a.kind === 'plan')
-    return last && last.status !== 'allowed' ? last.planFile : undefined
   }
 
   /** Put an approval card in the chat's transcript, so it stays there after it is answered and across restarts. */
