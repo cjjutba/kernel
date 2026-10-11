@@ -88,7 +88,7 @@ describe('command palette, shared files', () => {
     id, roomId: 'a', workspaceId: 'w1', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: `File ${id}`, kind: 'html',
     versions: [{ n: 1, at: 1, file: 'v1', mime: 'text/html', bytes: 10, sha256: id }], createdAt: 1, updatedAt: 1, ...over
   })
-  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'rowan', mode: 'current' }), ws('wb', { roomId: 'b', agentId: 'rowan' })]
+  const workspaces = [ws('w1', { roomId: 'a' }), ws('w2', { roomId: 'a', agentId: 'noor' }), ws('lead', { roomId: 'a', name: 'lead', agentId: 'rowan', mode: 'current', lead: true }), ws('wb', { roomId: 'b', agentId: 'rowan' })]
   const base = { rooms, workspaces, approvals: [], agents, act }
   const shared = (list: SharedFile[], route: Parameters<typeof buildItems>[0]['route'] = { name: 'workspace', workspaceId: 'w1' }, extra: Partial<Parameters<typeof buildItems>[0]> = {}) => buildItems({ ...base, shared: list, route, ...extra })
   const ids = (list: { id: string }[]) => list.map((x) => x.id)
@@ -166,7 +166,7 @@ describe('command palette, shared files', () => {
     const archived = ws('w1', { roomId: 'a', status: 'archived' })
     pick(file('s', { title: 'Totals page' }), { workspaces: [archived] })
     // The Lead workspace exists: no round trip to the engine.
-    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { roomId: 'a', agentId: 'rowan', mode: 'current' })] })
+    pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('lead', { roomId: 'a', agentId: 'rowan', mode: 'current', lead: true })] })
     // A room with no Lead agent opens in its first workspace that is still open.
     pick(file('s', { title: 'Totals page' }), { workspaces: [archived, ws('w3', { roomId: 'a' })], agents: { a: [noor] } })
     // No Lead agent and no workspace that is open: say what to do.

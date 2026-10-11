@@ -1,6 +1,7 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, Decision, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
 import { renderAgentFile } from './agents'
@@ -306,8 +307,8 @@ export function kernelTools(d: KernelToolDeps) {
         const ws = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
         if (!ws) { lines.push(`Skipped ${id}: not an open workspace in this room.`); continue }
         const reason = await archiveSkip(ws, {
-          // Only the Lead's current-branch workspace. One handed to the Lead when an agent retired can go.
-          isOwnLead: (w) => w.mode === 'current' && !!d.lead && w.agentId === d.lead.id,
+          // Only the Lead's own workspace. One handed to the Lead when an agent retired can go.
+          isOwnLead: (w) => isLeadWorkspace(w, d.lead?.id),
           isRunning: d.isRunning, latestPr, unsaved: d.unsaved
         })
         if (reason) { lines.push(`Skipped ${ws.name}: ${reason}.`); continue }

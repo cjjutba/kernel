@@ -1,4 +1,5 @@
 import type { AgentDef, Approval, Chat, ChatPart, Effort, ModelId, Thread, Workspace } from '@shared/types'
+import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { saveAgent } from '../services/agents'
@@ -54,11 +55,11 @@ export class Lead extends Feature {
     const agents = await this.k.team.agents(roomId)
     const lead = agents.find((a) => a.lead)
     if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
-    let ws = this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
+    let ws = this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
     if (!ws) {
       const room = this.mustRoom(roomId)
       const branch = await currentBranch(room.path)
-      ws = await this.k.workspaces.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', branch, baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
+      ws = await this.k.workspaces.withPort((port) => this.saveWs({ id: newId(), roomId, name: 'lead', branch, baseRef: room.defaultBranch, path: room.path, mode: 'current', agentId: lead.id, lead: true, port, status: 'ready', prState: 'none', createdAt: Date.now() }))
     }
     return { ws, lead }
   }
@@ -267,7 +268,7 @@ export class Lead extends Feature {
   /** The room's Lead chat if the Lead has been briefed. Unlike `leadChat`, never creates one. */
   private existingLeadChat(roomId: string): Chat | undefined {
     const lead = this.agentsSync(roomId).find((a) => a.lead)
-    const ws = lead && this.store.workspaces(roomId).find((w) => w.agentId === lead.id && w.mode === 'current' && w.status !== 'archived')
+    const ws = lead && this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
     return ws ? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') : undefined
   }
 
@@ -297,14 +298,20 @@ export class Lead extends Feature {
   /** The ids of every tab in `chat`'s Lead chat, closed ones too, and its own. */
   private threadTabIds(chat: Chat) { return new Set(this.store.threadTabs(chat.id).map((c) => c.id).concat(chat.id)) }
 
+  /** Startup's one-time fixes to data from older versions, after the agents load. */
+  backfill() {
+    this.markLeadWorkspaces()
+    this.backfillLeadChats()
+  }
+
   /**
    * Workspaces the Lead created before Kernel saved `leadChatId` (KERNEL-105). Only a Lead chat has the kernel tools, so
    * each finished `create_workspace` in a chat ("Created <id> on <branch> ...") names a workspace that chat handed off.
-   * Runs once; a workspace it can't place reports to the room's first Lead chat, as before.
+   * Runs once, after `markLeadWorkspaces`; a workspace it can't place reports to the room's first Lead chat, as before.
    */
-  backfillLeadChats() {
+  private backfillLeadChats() {
     if (this.store.meta<boolean>('leadChatBackfill')) return
-    for (const lead of this.store.workspaces().filter((w) => w.mode === 'current')) {
+    for (const lead of this.store.workspaces().filter((w) => w.lead)) {
       for (const chat of this.store.chats(lead.id)) {
         for (const item of this.store.items(chat.id)) {
           if (item.kind !== 'tool' || item.name !== 'mcp__kernel__create_workspace' || item.status !== 'done') continue
@@ -315,6 +322,21 @@ export class Lead extends Feature {
       }
     }
     this.store.saveMeta('leadChatBackfill', true)
+  }
+
+  /**
+   * Marks the Lead workspaces made before Kernel saved `lead` (KERNEL-353). They were the Lead agent's workspaces on the main
+   * checkout, or, in a room whose agents didn't load, the current-branch workspaces named `lead`. Archived ones too, so History
+   * still knows them. Runs once, after the agents load.
+   */
+  private markLeadWorkspaces() {
+    if (this.store.meta<boolean>('leadWorkspaceBackfill')) return
+    for (const ws of this.store.workspaces()) {
+      if (ws.lead || ws.mode !== 'current') continue
+      const agents = this.agentsSync(ws.roomId)
+      if (agents.length ? agents.find((a) => a.lead)?.id === ws.agentId : ws.name === 'lead') this.store.saveWorkspace({ ...ws, lead: true })
+    }
+    this.store.saveMeta('leadWorkspaceBackfill', true)
   }
 
   handlers() {

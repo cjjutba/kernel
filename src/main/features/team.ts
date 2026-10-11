@@ -139,7 +139,11 @@ export class Team extends Feature {
   }
 
   agentsSync(roomId: string) { return this.agentCache.get(roomId) ?? [] }
-  isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
+  /**
+   * The Lead's own workspace, archived or not (KERNEL-353): History and comments on an archived Lead's files ask too. The shared
+   * `isLeadWorkspace` is the same check for open workspaces.
+   */
+  isLeadWorkspace(ws: Workspace) { return !!ws.lead && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
 
   statusOf(roomId: string): Record<string, AgentStatus> {
     const s = { ...(this.statuses.get(roomId) ?? {}) }

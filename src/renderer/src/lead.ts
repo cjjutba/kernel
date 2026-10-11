@@ -1,14 +1,14 @@
 import { useMemo } from 'react'
 import type { AgentDef, Approval, Workspace } from '@shared/types'
+import { isLeadWorkspace as isLead } from '@shared/leadWorkspace'
 import { call, cleanError } from './api'
 import { actions, getState, go, useStore } from './store'
 
 /** The room's Lead: the agent marked `lead: true`. */
 export const leadOf = (agents: Record<string, AgentDef[]>, roomId: string | undefined): AgentDef | undefined => (roomId ? agents[roomId]?.find((a) => a.lead) : undefined)
 
-/** The Lead's own workspace on the main checkout, the one `Kernel.leadChat` finds. A worktree the Lead works in doesn't count. */
-export const isLeadWorkspace = (w: Workspace, roomId: string, leadId: string | undefined) =>
-  !!leadId && w.roomId === roomId && w.agentId === leadId && w.mode === 'current' && w.status !== 'archived'
+/** The room's Lead workspace, the one `Kernel.leadChat` finds. A worktree the Lead works in doesn't count. */
+export const isLeadWorkspace = (w: Workspace, roomId: string, leadId: string | undefined) => w.roomId === roomId && isLead(w, leadId)
 
 const NONE: Approval[] = []
 

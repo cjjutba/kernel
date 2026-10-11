@@ -19,7 +19,7 @@ const { closeChats, closesThread, frozenWhole, wholeChat } = await import('../sr
 
 const room = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Room
 const rowan = { id: 'rowan', lead: true } as AgentDef
-const lead = { id: 'lead', roomId: 'r1', name: 'lead', branch: 'main', baseRef: 'main', path: '/w/lead', mode: 'current', agentId: 'rowan', port: 0, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+const lead = { id: 'lead', roomId: 'r1', name: 'lead', branch: 'main', baseRef: 'main', path: '/w/lead', mode: 'current', lead: true, agentId: 'rowan', port: 0, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
 const tab = (id: string, threadId: string, over: Partial<Chat> = {}): Chat =>
   ({ id, workspaceId: 'lead', title: id, kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: 1, threadId, ...over })
 
