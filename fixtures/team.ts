@@ -71,6 +71,13 @@ const shopSteps: RoomSetupStep[] = [
   { id: 'hooks', title: 'Install hooks', detail: '10 events to localhost:7420', state: 'ok' },
   { id: 'agents', title: 'Seat agents', detail: 'Api, Architect, Web from .claude/agents, Rowan and Theo from Kernel', state: 'ok', brought: 3 }
 ]
+/** KERNEL-477: the code host read from the checkout, after its first step. The PNGs were drawn before the push step, so it isn't here. */
+const hostSteps = (first: RoomSetupStep, host: string, folder: string): RoomSetupStep[] => [
+  first,
+  { id: 'host', title: 'Code host', detail: host, state: 'ok' },
+  { id: 'worktrees', title: 'Create the worktree folder', detail: `~/kernel/worktrees/${folder}`, state: 'ok' },
+  ...setupSteps.filter((s) => s.id === 'install' || s.id === 'copy' || s.id === 'hooks' || s.id === 'agents')
+]
 
 const clientC: Room = { id: 'room-client-c', name: 'Client C', desc: 'Booking dashboard for a dental clinic', kind: 'repo', repo: 'samrivera/client-c', path: '/Users/you/Projects/client-c', defaultBranch: 'main', paused: false, createdAt: ago(MIN) }
 const repos = [
@@ -593,6 +600,18 @@ export const teamFixtures: Record<string, Fixture> = {
     rooms: [...f.rooms, clientC],
     push: [{ type: 'room.setup', roomId: clientC.id, steps: warnSteps }],
     ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
+  })),
+  RoomSetupGitHub: scene((f) => ({
+    ...roomsScene(f),
+    rooms: [...f.rooms, { ...clientC, host: 'github' }],
+    push: [{ type: 'room.setup', roomId: clientC.id, steps: hostSteps(setupSteps[0], 'GitHub, samrivera/client-c', 'client-c') }],
+    ui: { route: { name: 'onboarding', step: 'room', roomId: clientC.id } }
+  })),
+  RoomSetupLocal: scene((f) => ({
+    ...roomsScene(f),
+    rooms: [...f.rooms, { ...shop, host: 'local' }],
+    push: [{ type: 'room.setup', roomId: shop.id, steps: hostSteps(shopSteps[0], 'Local, no GitHub remote. Kernel merges branches on this Mac.', 'shop') }],
+    ui: { route: { name: 'onboarding', step: 'room', roomId: shop.id } }
   })),
   // KERNEL-397: setup is done in a repo that brought its own agents, and shows the team to check before the room opens.
   RoomSetupTeam: scene((f) => {

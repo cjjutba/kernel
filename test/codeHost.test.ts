@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PrInfo, Room } from '@shared/types'
 import { tempRepo } from './helpers'
 import { Kernel } from '../src/main/kernel'
+import { exec } from '../src/main/services/exec'
 import { gh, type CodeHost } from '../src/main/services/github'
 
 // KERNEL-453: the PR feature asks each room's code host, and a room that merges locally never reaches GitHub.
@@ -61,6 +62,59 @@ describe('hostFor', () => {
   it('refuses a room that merges locally, which has no host yet', async () => {
     const k = await kernel()
     expect(() => k.codeHost.hostFor({ host: 'local' })).toThrow("This room merges locally, which Kernel can't do yet.")
+  })
+})
+
+describe('the host a room gets at setup (KERNEL-477)', () => {
+  /** A real checkout with origin at `url`, or no remote. */
+  const checkout = async (url?: string) => {
+    const repo = await tempRepo()
+    if (url) await exec('git', ['-C', repo, 'remote', 'add', 'origin', url])
+    return repo
+  }
+
+  it('is GitHub for a github.com remote over HTTPS or SSH, and local for a remote elsewhere or none', async () => {
+    const k = await kernel()
+    const github = { host: 'github', repo: 'samrivera/client-c' }
+    expect(await k.codeHost.detect(await checkout('https://github.com/samrivera/client-c.git'))).toEqual(github)
+    expect(await k.codeHost.detect(await checkout('git@github.com:samrivera/client-c.git'))).toEqual(github)
+    expect(await k.codeHost.detect(await checkout('ssh://git@github.com/samrivera/client-c'))).toEqual(github)
+    expect(await k.codeHost.detect(await checkout('https://gitlab.com/samrivera/client-c.git'))).toEqual({ host: 'local' })
+    expect(await k.codeHost.detect(await checkout(await mkdtemp(join(tmpdir(), 'kernel-remote-'))))).toEqual({ host: 'local' })
+    expect(await k.codeHost.detect(await checkout())).toEqual({ host: 'local' })
+  })
+
+  it("reads the remote the room's settings name, not origin", async () => {
+    const k = await kernel()
+    const repo = await checkout('https://gitlab.com/samrivera/client-c.git')
+    await exec('git', ['-C', repo, 'remote', 'add', 'upstream', 'git@github.com:samrivera/client-c.git'])
+    await mkdir(join(repo, '.kernel'), { recursive: true })
+    await writeFile(join(repo, '.kernel', 'settings.toml'), '[workspace]\nremote = "upstream"\n')
+    expect(await k.codeHost.detect(repo)).toEqual({ host: 'github', repo: 'samrivera/client-c' })
+  })
+
+  it('says which in the Code host row', async () => {
+    const k = await kernel()
+    expect(k.codeHost.line({ host: 'github', repo: 'samrivera/client-c' })).toBe('GitHub, samrivera/client-c')
+    expect(k.codeHost.line({ host: 'local' })).toBe('Local, no GitHub remote. Kernel merges branches on this Mac.')
+  })
+})
+
+describe('gh in preflight (KERNEL-477)', () => {
+  it('is checked with no room yet, or while an open room is on GitHub or older than hosts, and not when every open room merges locally', async () => {
+    const k = await kernel()
+    expect(k.codeHost.usesGitHub()).toBe(true)
+    // A room from before KERNEL-477 has no host, keeps none, and stays a GitHub room.
+    const old = await k.addRoom(await tempRepo())
+    expect(k.store.room(old.id)?.host).toBeUndefined()
+    expect(k.codeHost.usesGitHub()).toBe(true)
+    k.store.saveRoom({ ...old, host: 'local' })
+    expect(k.codeHost.usesGitHub()).toBe(false)
+    const github = await k.addRoom(await tempRepo())
+    k.store.saveRoom({ ...github, host: 'github' })
+    expect(k.codeHost.usesGitHub()).toBe(true)
+    k.store.saveRoom({ ...k.store.room(github.id)!, archived: true })
+    expect(k.codeHost.usesGitHub()).toBe(false)
   })
 })
 

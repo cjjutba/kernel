@@ -16,6 +16,7 @@ const lower = (t: string) => t.charAt(0).toLowerCase() + t.slice(1)
 /**
  * RoomSetup.png: clone, folders, install, files, hooks, push access, agents. Progress comes from `room.setup` push events.
  * RoomSetupWarnings.png: a step that finished with something to fix warns, and the room still opens (KERNEL-460).
+ * RoomSetupGitHub.png and RoomSetupLocal.png: the code host read from the checkout, after the first step (KERNEL-477).
  * RoomSetupTeam.png: a repo that brought its own agents shows its team once setup is done, to check who leads and who
  * reviews before the room opens (KERNEL-397).
  */

@@ -112,7 +112,8 @@ export class Hooks extends Feature {
   private async preflight() {
     const shell = (await this.o.refreshPath?.()) ?? undefined
     const codex = Object.values(this.settings.models.roles).some((r) => r.provider === 'codex') ? { bin: this.k.providers.binary('codex').path } : undefined
-    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex, shell })
+    // gh only while a room's PRs go to GitHub, so a Mac with only local rooms sees no gh warning (KERNEL-477).
+    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, codex, shell, gh: this.k.codeHost.usesGitHub() })
   }
 
   private get hookToken() { return hookToken(this.o.dataDir) }
