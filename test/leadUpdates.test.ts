@@ -32,7 +32,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
   ws('w2', 'kai', { title: 'Inbox actions' })
   chat('lc', 'lead'); chat('lc2', 'lead'); chat('nc', 'w1'); chat('kc', 'w2')
   store.saveItem('nc', { kind: 'text', id: 't1', ts: 1, text: REPLY })
-  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined }
+  const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined, autoReview: true }
   const deps: ConstructorParameters<typeof LeadUpdates>[0] = {
     store, enabled: () => s.enabled,
     // Kernel's rule in small: the owner while it's open, else the first Lead chat ("lc"), saying where the work came from:
@@ -50,6 +50,7 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
     delivered: (_r, _c, update) => { s.delivered.push(update) },
     reviewer: () => s.reviewer,
     reviewState: () => s.review,
+    autoReview: () => s.autoReview,
     delayMs: o.delayMs ?? 20
   }
   const make = () => { const x = new LeadUpdates(deps); x.attach(); open.push(x); return x }
@@ -306,6 +307,17 @@ describe('what wakes the Lead (KERNEL-121)', () => {
     expect(parts(s.posts.pop()!).todo).toEqual(['- PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.'])
   })
 
+  it('with auto review off, tells the Lead a PR that passed checks is ready to merge instead of asking for a review (KERNEL-115)', async () => {
+    const { s, pr } = await setup()
+    s.reviewer = THEO
+    s.autoReview = false
+    pr('w1', 'ready')
+    await wait()
+    const sent = s.posts.pop()!
+    expect(parts(sent).todo).toEqual(['- PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.'])
+    expect(sent).not.toContain('create_workspace')
+  })
+
   it('tells the Lead when the last task of its chat merges, and only then', async () => {
     const { s, pr } = await setup()
     pr('w1', 'merged')
@@ -405,6 +417,10 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR that passed checks with an idle review workspace open', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs a review. Ask Theo to review it with message_agent (workspace rv).']],
     ['a PR whose review was of an earlier commit', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
     ['a PR whose review workspace failed setup', [ev('pr.ready')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: false, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo', failed: true } } }, ["PR #54 needs a review, and setup failed in Theo's review workspace. Tell the user to fix it and click Run again there (workspace rv)."]],
+    ['a PR that passed checks with auto review off (KERNEL-115)', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: { approvedBy: [], blockers: false, inProgress: false } }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
+    ['a PR that passed checks with auto review off and no reviewer', [ev('pr.ready')], 'ready', { autoReview: false }, ['PR #54 passed checks and has no conflicts. Tell the user it is ready to merge.']],
+    ['a PR the user had reviewed, approved, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: { approvedBy: ['Theo'], blockers: false, inProgress: false } }, ['PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.']],
+    ['a PR the user had reviewed, of an earlier commit, with auto review off', [ev('pr.ready')], 'ready', { reviewer: THEO, autoReview: false, review: { approvedBy: [], blockers: false, inProgress: false, stale: true, open: { workspaceId: 'rv', agentId: 'theo', name: 'Theo' } } }, ['PR #54 needs another review: the last one was of a different commit. Ask Theo to review it again with message_agent (workspace rv).']],
     ['a review with blockers', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', {}, ["Send Noor's blockers to Kai with message_agent (workspace w2). When Kai is done, ask Noor to review again with message_agent (workspace w1)."]],
     ['an approval of work that merged before the verdict came', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('merged'), id: 'w2', prNumber: 60 }) }, []],
     ['blockers found after the work was closed', [ev('review', { review: { verdict: 'blockers', summary: 'Two issues.', blockers: [{ text: 'x' }], of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ['Noor found blockers in PR #60 after it was closed. Tell the user what they are in a line or two.']],

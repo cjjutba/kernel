@@ -51,12 +51,29 @@ export class Reviews extends Feature {
     return review.verdict === 'approved' ? `Saved: you approved ${what}. The Lead hears about it.` : `Saved: ${verdict.blockers?.length ?? 0} blocker(s) in ${what}. The Lead passes them on.`
   }
 
+  /** Verdicts on the workspace's PR, and those of them on its head commit, as far as either is known. */
+  private verdicts(ws: Workspace) {
+    const verdicts = (ws.reviews ?? []).filter((v) => !v.prNumber || !ws.prNumber || v.prNumber === ws.prNumber)
+    return { verdicts, current: verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead) }
+  }
+
+  /**
+   * The reviewer a merge waits for under "require Reviewer approval" (KERNEL-115): the one whose current verdict found
+   * blockers, else whoever reviewed last when no verdict approves the head commit. Undefined when nobody reviewed the PR,
+   * or a current approval stands with no current blockers.
+   */
+  mergeHolder(ws: Workspace): string | undefined {
+    const { verdicts, current } = this.verdicts(ws)
+    const latest = (vs: ReviewVerdict[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
+    const blocking = current.filter((v) => v.verdict === 'blockers')
+    const holder = blocking.length ? latest(blocking) : verdicts.length && !current.some((v) => v.verdict === 'approved') ? latest(verdicts) : undefined
+    return holder && (this.agentsSync(ws.roomId).find((a) => a.id === holder.agentId)?.name ?? holder.agentId)
+  }
+
   /** What Kernel knows about reviews of a workspace's PR, for the Lead's updates. */
   reviewState(ws: Workspace): ReviewState {
     const name = (id: string) => this.agentsSync(ws.roomId).find((a) => a.id === id)?.name ?? id
-    // Verdicts on this PR, and those of them on its head commit, as far as either is known.
-    const verdicts = (ws.reviews ?? []).filter((v) => !v.prNumber || !ws.prNumber || v.prNumber === ws.prNumber)
-    const current = verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead)
+    const { verdicts, current } = this.verdicts(ws)
     const blockers = current.some((v) => v.verdict === 'blockers')
     const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
     // A review runs while its setup runs, or while its reviewer works on it and hasn't sent a verdict on the head commit.

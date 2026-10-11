@@ -9,6 +9,7 @@ import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrV
 import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { Kernel } from '../src/main/kernel'
 import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
+import { LEAD_REVIEW_RULE, LEAD_RULE } from '../src/main/services/handoff'
 
 describe('checks from statusCheckRollup', () => {
   it('maps check runs and status contexts, with durations', () => {
@@ -152,7 +153,10 @@ describe('PR header and toasts', () => {
 
 describe('PR flow in the kernel (gh and the session stubbed)', () => {
   async function setup(settings: object = {}) {
-    const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
+    const repo = await tempRepo({
+      'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.',
+      '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.'
+    })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...settings }))
@@ -241,6 +245,58 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(merged.mergedAt).toBeTypeOf('number')
     expect(notes().at(-1)).toBe('PR #42 was squashed into main.')
     await k.stop()
+  })
+
+  it('with Reviewer approval required, merges a reviewed PR only on an approval of its latest commit (KERNEL-115)', async () => {
+    const { k, ws, gh } = await setup()
+    const verdict = (v: 'approved' | 'blockers', sha: string, ts: number): NonNullable<Workspace['reviews']>[number] => ({ workspaceId: 'rev', agentId: 'theo', verdict: v, summary: '', sha, prNumber: 42, ts })
+    const review = (...reviews: NonNullable<Workspace['reviews']>) => k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, reviews })
+    const refusal = "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+    gh.pr = { ...info({ state: 'ready', checks: [{ name: 'e2e', state: 'pass' }] }), head: 'b'.repeat(40) }
+    await k.prs.refreshPr(ws.id)
+
+    review(verdict('blockers', 'b'.repeat(40), 1))
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
+    // An approval of the commit before the latest push doesn't count.
+    review(verdict('approved', 'a'.repeat(40), 2))
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
+    // The poll last saw the approved commit, and a push since moved the head: the merge reads GitHub's head itself.
+    review(verdict('approved', 'a'.repeat(40), 2))
+    k.store.saveWorkspace({ ...k.store.workspace(ws.id)!, prHead: 'a'.repeat(40) })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow(refusal)
+    expect(gh.merged).toEqual([])
+
+    review(verdict('blockers', 'a'.repeat(40), 1), { ...verdict('approved', 'b'.repeat(40), 2), workspaceId: 'rev2' })
+    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+    expect(gh.merged).toEqual(['squash'])
+    await k.stop()
+  })
+
+  it('merges a PR nobody reviewed, and a reviewed one with the setting off (KERNEL-115)', async () => {
+    const { k, ws, gh } = await setup()
+    gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }
+    await k.prs.refreshPr(ws.id)
+    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+
+    const off = await setup({ pr: { requireReviewer: false } })
+    off.gh.pr = { ...info({ state: 'ready' }), head: 'b'.repeat(40) }
+    await off.k.prs.refreshPr(off.ws.id)
+    off.k.store.saveWorkspace({ ...off.k.store.workspace(off.ws.id)!, reviews: [{ workspaceId: 'rev', agentId: 'theo', verdict: 'blockers', summary: '', sha: 'b'.repeat(40), prNumber: 42, ts: 1 }] })
+    expect(await off.k.prs.mergePr(off.ws.id)).toMatchObject({ prState: 'merged' })
+    await k.stop()
+    await off.k.stop()
+  })
+
+  it("describes the automatic review in the Lead's prompt only while auto review is on (KERNEL-115)", async () => {
+    const lead = { id: 'rowan', name: 'Rowan', role: 'Lead', description: '', lead: true, prompt: '', file: '' }
+    const on = await setup()
+    expect(on.k.tools.rulesFor(on.ws, lead)).toContain(LEAD_REVIEW_RULE)
+    const off = await setup({ pr: { autoReview: false } })
+    expect(off.k.tools.rulesFor(off.ws, lead) ?? '').not.toContain(LEAD_REVIEW_RULE)
+    // Asked for, a review still goes to the reviewer.
+    expect(LEAD_RULE).toContain('When the user asks for a review, hand the PR to the team\'s reviewer')
+    await on.k.stop()
+    await off.k.stop()
   })
 
   it('continues on a fresh branch from the base, in the same worktree', async () => {

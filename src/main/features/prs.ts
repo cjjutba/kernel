@@ -120,15 +120,27 @@ export class Prs extends Feature {
     if (before !== 'ready' || this.readyUnchecked.delete(id)) this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
   }
 
-  /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
+  /**
+   * Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. With
+   * "require Reviewer approval" on, a PR a reviewer looked at waits for an approval of its latest commit; one nobody
+   * reviewed merges as before (KERNEL-115).
+   */
   async mergePr(id: string) {
-    const ws = await this.syncBranch(id)
+    let ws = await this.syncBranch(id)
     if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
-    if (this.settings.pr.requireGreen) {
+    const { requireGreen, requireReviewer } = this.settings.pr
+    const reviewed = requireReviewer && !!ws.reviews?.length
+    if (requireGreen || reviewed) {
       const info = await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
       if (!info) throw new Error('Could not read the pull request from GitHub.')
       bus.push({ type: 'pr.info', info })
-      if (!allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
+      if (requireGreen && !allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
+      // Judge the verdicts against the commit that would merge, not the one the last poll saw.
+      if (info.head && info.head !== ws.prHead) ws = this.updateWs(id, { prHead: info.head })
+    }
+    if (reviewed) {
+      const holder = this.k.reviews.mergeHolder(ws)
+      if (holder) throw new Error(`${holder} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`)
     }
     const method = this.settings.pr.mergeMethod
     this.merging.add(id)
