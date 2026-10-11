@@ -275,7 +275,17 @@ export class Prs extends Feature {
     this.leadUpdates.flushAll()
     // A rebase message that couldn't go out, or a release that failed, tries again (KERNEL-259). After the flush, since a
     // release can fetch and rerun setup.
-    await this.k.waits.retryWaits()
+    void this.retryWaits()
+  }
+
+  private retrying?: Promise<void>
+
+  /**
+   * The poll's retry of waits, one at a time and outside `polling`. A release can rerun setup, which may take the whole
+   * script timeout, and the PR reads don't wait for it (KERNEL-216).
+   */
+  private retryWaits(): Promise<void> {
+    return (this.retrying ??= this.k.waits.retryWaits().catch(() => undefined).finally(() => { this.retrying = undefined }))
   }
 
 
