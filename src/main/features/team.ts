@@ -234,7 +234,7 @@ export class Team extends Feature {
     // A choice Kernel would make anyway is left out, so the file only holds what the team decided.
     if (want.lead && (await this.resolve(roomId, { ...want, lead: undefined })).agents.find((a) => a.lead)?.id === want.lead) delete want.lead
     if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? NO_REVIEWER) === want.reviewer) delete want.reviewer
-    const opens = (id: string) => canOpenPr(files.find((a) => a.id === id)?.tools)
+    const opens = (id: string) => { const a = files.find((f) => f.id === id); return canOpenPr(a?.tools, a?.disallowedTools) }
     want.members = want.members?.filter((id) => ids.has(id) && !opens(id))
     want.helpers = want.helpers?.filter((id) => ids.has(id) && opens(id))
     const next: TeamPatch = {}
