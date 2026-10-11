@@ -31,7 +31,7 @@ describe('quitDialog', () => {
   it('counts agents and makes Cancel the default', () => {
     expect(quitDialog(3, 'user')).toEqual({
       message: '3 agents are working',
-      detail: 'Quitting stops them partway through their work.',
+      detail: 'Quitting stops them. They carry on where they left off when Kernel opens again.',
       buttons: ['Quit', 'Cancel'],
       defaultId: 1,
       cancelId: 1
