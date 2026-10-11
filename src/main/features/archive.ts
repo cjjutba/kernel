@@ -22,7 +22,7 @@ export class Archive extends Feature {
   private emptying: Promise<void> = Promise.resolve()
 
   /** Throws away uncommitted changes, after a checkpoint so they can still come back from the drawer. */
-  async discard(workspaceId: string) {
+  private async discard(workspaceId: string) {
     const ws = this.mustWs(workspaceId)
     if (ws.mode === 'current') throw new Error('Discard is off on the current branch, because it would throw away your own changes too. Revert to a checkpoint instead.')
     const chats = this.store.chats(workspaceId)

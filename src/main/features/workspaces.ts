@@ -181,13 +181,13 @@ export class Workspaces extends Feature {
     return files
   }
 
-  async diff(id: string, file?: string) {
+  private async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
     const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
     return diffText(ws.path, since, file)
   }
 
-  async hunks(id: string, path?: string) {
+  private async hunks(id: string, path?: string) {
     const ws = this.mustWs(id)
     return listHunks(ws.path, { baselineRef: ws.mode === 'current' ? ws.baselineRef : undefined }, path)
   }
