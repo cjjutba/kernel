@@ -223,6 +223,25 @@ describe('renderer store', () => {
     expect(getState().ui.foldedChats).toEqual([])
   })
 
+  it('keeps the threads the thread push brings, closed ones too', () => {
+    apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1 } })
+    apply({ type: 'thread', thread: { id: 't1', roomId: 'a', title: 'Plan the login', createdAt: 1, closedAt: 5 } })
+    apply({ type: 'thread', thread: { id: 't2', roomId: 'a', title: 'Fix the build', createdAt: 2 } })
+    expect(Object.keys(getState().threads).sort()).toEqual(['t1', 't2'])
+    expect(getState().threads.t1.closedAt).toBe(5)
+  })
+
+  it('remembers the last tab shown in each thread, and leaves it alone for file tabs', () => {
+    const tab = (id: string, threadId?: string) => ({ id, workspaceId: 'lead-ws', title: id, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: 1, ...(threadId ? { threadId } : {}) })
+    for (const c of [tab('a1', 't1'), tab('a2', 't1'), tab('b1', 't2')]) apply({ type: 'chat', chat: c })
+    actions.ui.openTab('lead-ws', 'a2')
+    actions.ui.openTab('lead-ws', 'b1')
+    actions.ui.openTab('lead-ws', 'file:src/a.ts')
+    expect(getState().lastTabs).toMatchObject({ t1: 'a2', t2: 'b1' })
+    actions.ui.openTab('lead-ws', 'a1')
+    expect(getState().lastTabs).toMatchObject({ t1: 'a1', t2: 'b1' })
+  })
+
   it('applies push events to their slices', () => {
     const ws = fixtures.Workspace.workspaces[1]
     apply({ type: 'workspace', workspace: ws })

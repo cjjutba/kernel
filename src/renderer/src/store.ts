@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
 import { keepLine, scriptKey, TERMINAL_KEEP } from '@shared/scriptLog'
@@ -45,6 +45,10 @@ export interface State {
   // chats
   /** By workspace id. */
   chats: Record<string, Chat[]>
+  /** By thread id. The Lead chats, each holding the Lead tabs whose `threadId` names it, open or closed (KERNEL-337). */
+  threads: Record<string, Thread>
+  /** By thread id. The tab last shown in each Lead chat, so the sidebar row and a switch back open where you left off. Kept across launches (KERNEL-338). */
+  lastTabs: Record<string, string>
   /** By chat id. */
   items: Record<string, ChatItem[]>
   /** By chat id. */
@@ -105,6 +109,18 @@ function foldedChats(): string[] {
 function keepFoldedChats(ids: string[]) {
   try { localStorage.setItem(FOLDED_CHATS, JSON.stringify(ids)) } catch { /* not remembered */ }
 }
+/** The tab last shown in each Lead chat, by thread id, kept across launches like `lastChat`. localStorage may be missing or blocked, and its value may not be a map of strings. */
+const LAST_TABS = 'kernel.lastTabs'
+function lastTabs(): Record<string, string> {
+  try {
+    const map: unknown = JSON.parse(localStorage.getItem(LAST_TABS) ?? '{}')
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return {}
+    return Object.fromEntries(Object.entries(map).filter((e): e is [string, string] => typeof e[1] === 'string'))
+  } catch { return {} }
+}
+function keepLastTabs(map: Record<string, string>) {
+  try { localStorage.setItem(LAST_TABS, JSON.stringify(map)) } catch { /* not remembered */ }
+}
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
 const folded = new Set<keyof typeof HIDDEN>()
 
@@ -112,7 +128,7 @@ let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
-  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
@@ -182,6 +198,13 @@ function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
 /** Selects the tab without recording a step. */
 function selectTab(workspaceId: string, tab: string) {
   setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } }))
+  // A Lead tab is also the last one shown in its Lead chat. A file or diff tab leaves the memory alone.
+  const threadId = state.chats[workspaceId]?.find((c) => c.id === tab)?.threadId
+  if (threadId && state.lastTabs[threadId] !== tab) {
+    const next = { ...state.lastTabs, [threadId]: tab }
+    setState({ lastTabs: next })
+    keepLastTabs(next)
+  }
 }
 /** Where the app is now. */
 const placeNow = (): Place => {
@@ -491,6 +514,10 @@ export const actions = {
     set: (list: Approval[]) => setState({ approvals: byRecent(list) }),
     upsert: (a: Approval) => setState((s) => ({ approvals: byRecent(upsert(s.approvals, a)) }))
   },
+  threads: {
+    set: (list: Thread[]) => setState({ threads: Object.fromEntries(list.map((t) => [t.id, t])) }),
+    upsert: (thread: Thread) => setState((s) => ({ threads: { ...s.threads, [thread.id]: thread } }))
+  },
   tasks: {
     set: (roomId: string, list: Task[]) => setState((s) => ({ tasks: { ...s.tasks, [roomId]: list } })),
     upsert: (t: Task) => setState((s) => ({ tasks: { ...s.tasks, [t.roomId]: upsert(s.tasks[t.roomId] ?? [], t) } }))
@@ -570,6 +597,7 @@ export function apply(e: PushEvent) {
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
+    case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)
     case 'update': return actions.system.setUpdate(e.update)
@@ -595,16 +623,18 @@ async function start() {
   // loaded would look stopped until its turn ended (KERNEL-340). An older main (a dev build mid-pull) has no such channel.
   pushedLive = { running: new Set(), retry: new Set() }
   void call('chats.live', undefined).then(applyLive, () => applyLive(null))
-  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared] = await Promise.all([
+  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared, threads] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined),
     // Cards and the Shared panel read these. A failed load only leaves them out until a push brings a file in.
-    call('shared.list', {}).catch((): SharedFile[] => [])
+    call('shared.list', {}).catch((): SharedFile[] => []),
+    // The sidebar lists Lead chats from these. A failed load leaves the rows to the tabs alone until a push brings a thread in.
+    call('threads.list', {}).catch((): Thread[] => [])
   ])
   fixtureMode = !!fixture
   // A retry that works drops the error here, so the error screen keeps its busy button until the lists are in.
   actions.ui.setStartError(undefined)
-  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])) })
+  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])), threads: Object.fromEntries(threads.map((t) => [t.id, t])) })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
