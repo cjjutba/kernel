@@ -91,6 +91,11 @@ export interface AgentWarning {
   kind: AgentWarningKind
   /** Shown on Team. Never sent anywhere. */
   detail?: string
+  /**
+   * For `mcp-missing`: a server the room has whose name contains the one the file lists. Kernel only offers it. The user
+   * confirms it as `[mcp.aliases]` with `settings.setRoom` (KERNEL-464).
+   */
+  suggestion?: string
 }
 
 /**
