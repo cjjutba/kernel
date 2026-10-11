@@ -10,6 +10,7 @@ import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './
 // Check copy matches src/main/services/preflight.ts.
 
 const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
+const permissionStep = { route: { name: 'onboarding', step: 'permissions' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
@@ -317,6 +318,9 @@ export const platformFixtures: Record<string, Fixture> = {
   // KERNEL-217: what a failing gh really looks like. A warning icon and Continue on. No PNG.
   SetupGhWarning: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
   SetupPortBusy: setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
+  // KERNEL-457: the step after the checks. The Lead runs on Claude Code in the first and on Codex in the second, where the fixture's availability answer turns Auto off (src/main/fixtures.ts).
+  SetupPermissions: scene(() => ({ ...empty, ui: permissionStep })),
+  SetupPermissionsNoAuto: scene(() => ({ ...empty, settings: withRoles({ lead: { provider: 'codex', model: 'gpt-6-astra', effort: 'medium' } }), ui: permissionStep })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   // KERNEL-406: Kai on Claude hit its 5-hour limit while Codex runs other roles, and a second Claude account has room.
