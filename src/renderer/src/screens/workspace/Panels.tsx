@@ -171,15 +171,17 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Worksp
   // The Shared tab is there once a file has been shared, or while sharing is on, so a room that never shares one sees nothing of it.
   const sharing = useStore((s) => !!s.settings?.experimental.sharing) || shared > 0
   const right = (shown === 'shared' && !sharing) || (shown === 'prs' && !isLead) ? 'changes' : shown
+  // The Lead's strip takes LeadPrs.png's tabs: a plain faint count, where a teammate's keeps the mono one.
+  const count = (n: number) => <span className={isLead ? 'tab-count' : 'mono muted'} style={isLead ? undefined : { fontSize: 11.5 }}>{n}</span>
   return (
     <div className="col grow" style={{ minHeight: 0 }}>
-      <div className="panel-tabs">
+      <div className="panel-tabs" data-lead={isLead || undefined}>
         <Tabs label="Workspace panel" value={right} onChange={(id) => actions.ui.setWorkspaceView(isLead ? { leadRight: id as typeof right } : { right: id as typeof right })} tabs={[
-          ...(isLead ? [{ id: 'prs', label: <>PRs <span className="mono muted" style={{ fontSize: 11.5 }}>{ready}</span></> }] : []),
+          ...(isLead ? [{ id: 'prs', label: <>PRs {count(ready)}</> }] : []),
           { id: 'files', label: 'All files' },
-          { id: 'changes', label: <>Changes <span className="mono muted" style={{ fontSize: 11.5 }}>{changes.length}</span></> },
+          { id: 'changes', label: <>Changes {count(changes.length)}</> },
           { id: 'checks', label: 'Checks' },
-          ...(sharing ? [{ id: 'shared', label: <>Shared <span className="mono muted" style={{ fontSize: 11.5 }}>{shared}</span></> }] : [])
+          ...(sharing ? [{ id: 'shared', label: <>Shared {count(shared)}</> }] : [])
         ]} />
       </div>
       {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
