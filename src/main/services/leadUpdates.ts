@@ -275,6 +275,8 @@ export class LeadUpdates {
   private timers = new Map<string, NodeJS.Timeout>()
   /** The last PR state seen per workspace, to tell "opened" from a later change. */
   private prev = new Map<string, PrState>()
+  /** The head commit each PR was on when an update told the Lead it was ready, until the PR leaves ready and checks. */
+  private toldReady = new Map<string, string>()
   /**
    * Lead chats the user stopped. Stop means stop: their updates wait for the chat's next turn that ends normally,
    * usually the user's next message, instead of starting a Kernel turn right after the Stop (KERNEL-122).
@@ -440,7 +442,11 @@ export class LeadUpdates {
     const opened = (before === 'none' || before === 'creating') && ON_GITHUB.includes(state) && state !== 'merged' && state !== 'closed'
     if (opened) this.add(ws, { kind: 'pr.opened' })
     const kind = PR_EVENT[state]
-    if (kind) this.add(ws, { kind })
+    // Ready again on the commit the Lead already heard was ready, after only checks, is old news. GitHub checks a PR for
+    // conflicts again each time its base moves, and it reads as checks until then (KERNEL-283).
+    const again = state === 'ready' && before === 'checks' && !!ws.prHead && this.toldReady.get(workspaceId) === ws.prHead
+    if (state !== 'ready' && state !== 'checks') this.toldReady.delete(workspaceId)
+    if (kind && !again) this.add(ws, { kind })
     // A PR that moved on without news, as checks starting again, still waits for things to settle before its events go.
     else if (!opened) this.rearm(ws)
   }
@@ -508,6 +514,10 @@ export class LeadUpdates {
       if (!message.wakes) continue
       if (!this.d.post(g.chat.id, message.text, message.update)) continue
       for (const key of g.keys) drop(key)
+      for (const row of message.update.rows) {
+        const head = this.d.store.workspace(row.workspaceId)?.prHead
+        if (head && row.events.some((e) => e.kind === 'pr.ready')) this.toldReady.set(row.workspaceId, head)
+      }
       this.d.delivered?.(roomId, g.chat, message.update)
     }
   }

@@ -66,8 +66,12 @@ export function prStateOf(pr: PrView | null): PrState {
   if (checks.some((c) => c.state === 'fail')) return 'cifail'
   if (checks.some((c) => c.state === 'running' || c.state === 'queued')) return 'checks'
   if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
-  return 'ready'
+  // GitHub works out again whether the PR conflicts each time the base moves, and until then it isn't ready (KERNEL-283).
+  return pr.mergeable === 'UNKNOWN' ? 'checks' : 'ready'
 }
+
+/** An open PR GitHub is still checking for conflicts. Kernel reads it again soon (features/prs.ts). */
+const conflictsUnknown = (pr: PrView) => pr.state === 'OPEN' && !pr.isDraft && pr.mergeable === 'UNKNOWN'
 
 /** Every check passed or was skipped. A PR without checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
@@ -126,7 +130,7 @@ export function infoOf(workspaceId: string, view: PrView, comments: ReviewCommen
   return {
     workspaceId, number: view.number, url: view.url, title: view.title ?? '', state: prStateOf(view), baseRef: view.baseRefName ?? '',
     checks: (view.statusCheckRollup ?? []).map(checkOf), comments, conflicts, ...(decision ? { reviewDecision: decision } : {}),
-    ...(view.headRefOid ? { head: view.headRefOid } : {})
+    ...(view.headRefOid ? { head: view.headRefOid } : {}), ...(conflictsUnknown(view) ? { conflictsUnknown: true } : {})
   }
 }
 

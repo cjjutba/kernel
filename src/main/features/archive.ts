@@ -72,6 +72,7 @@ export class Archive extends Feature {
     const archived = this.updateWs(id, { status: 'archived', archivedAt: Date.now(), waitsFor: undefined }, { archived: true })
     if (moved) this.throwAway(moved)
     this.k.waits.releaseSent.delete(id)
+    this.k.prs.cancelRecheck(id)
     // Work archived without merging never will, so whoever waits for it is stuck. A closed PR already said so.
     if (archived.prState !== 'merged' && archived.prState !== 'closed') for (const w of this.k.waits.waitersOn(id)) this.k.waits.breakWait(w, archived, 'archived')
     // Only once it is archived: an archive that fails keeps the brief for Run again.

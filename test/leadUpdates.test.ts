@@ -283,6 +283,36 @@ describe('teammate updates to the Lead', () => {
     await wait(160)
     expect(s.posts).toHaveLength(1)
   })
+
+  it('says nothing when a PR it said was ready reads as checks and ready again on the same commit (KERNEL-283)', async () => {
+    const { store, s, pr } = await setup()
+    const head = (prHead: string) => store.saveWorkspace({ ...store.workspace('w1')!, prHead })
+    const readyLine = '- PR #54 passed checks and has no conflicts.'
+    head('abc')
+    pr('w1', 'checks')
+    pr('w1', 'ready')
+    await wait()
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, OPENED_54, readyLine])
+    // Main moved, and GitHub checked the PR for conflicts again.
+    pr('w1', 'checks')
+    pr('w1', 'ready')
+    await wait()
+    expect(s.posts).toEqual([])
+    // A conflict on the way is news, and so is ready after it.
+    pr('w1', 'conflict')
+    await wait()
+    s.posts.length = 0
+    pr('w1', 'checks')
+    pr('w1', 'ready')
+    await wait()
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, readyLine])
+    // So is ready on a new commit.
+    head('def')
+    pr('w1', 'checks')
+    pr('w1', 'ready')
+    await wait()
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, readyLine])
+  })
 })
 
 describe('what wakes the Lead (KERNEL-121)', () => {

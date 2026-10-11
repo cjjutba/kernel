@@ -3,6 +3,8 @@ import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ChatItem, ChatPart, PrInfo, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import { bus } from '../src/main/bus'
 import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
@@ -151,6 +153,7 @@ describe('PR header and toasts', () => {
 })
 
 describe('PR flow in the kernel (gh and the session stubbed)', () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
   async function setup(settings: object = {}) {
     const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend engineer.\n---\nYou are Kai.' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -200,6 +203,81 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     gh.pr = { ...info({ state: 'checks' }), head: 'def' }
     expect((await k.refreshPr(ws.id)).prHead).toBe('def')
     await k.stop()
+  })
+
+  it('never reads a PR GitHub is still checking for conflicts as ready (KERNEL-283)', () => {
+    const view: PrView = { number: 42, url: 'u', state: 'OPEN', isDraft: false, mergeable: 'UNKNOWN', reviewDecision: null, statusCheckRollup: [{ name: 'e2e', status: 'COMPLETED', conclusion: 'SUCCESS' }] }
+    expect(prStateOf(view)).toBe('checks')
+    expect(infoOf('w', view, [], [])).toMatchObject({ state: 'checks', conflictsUnknown: true })
+    // The rest of the read is real.
+    expect(prStateOf({ ...view, statusCheckRollup: [{ name: 'e2e', status: 'COMPLETED', conclusion: 'FAILURE' }] })).toBe('cifail')
+    expect(prStateOf({ ...view, reviewDecision: 'CHANGES_REQUESTED' })).toBe('changes')
+    // Settled, draft or closed PRs aren't waiting on GitHub.
+    for (const v of [{ ...view, mergeable: 'MERGEABLE' as const }, { ...view, isDraft: true }, { ...view, state: 'MERGED' as const }]) expect(infoOf('w', v, [], [])).not.toHaveProperty('conflictsUnknown')
+  })
+
+  it('holds a conflict and leaves ready while GitHub checks for conflicts, then follows it after one quick read (KERNEL-283)', async () => {
+    const { k, ws, gh } = await setup()
+    const states: string[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'pr' && e.workspaceId === ws.id) states.push(e.state) }
+    bus.on('push', onPush)
+    let reads = 0
+    const read = k.github.info
+    k.github = { ...k.github, info: async (...a) => { reads++; return read(...a) } }
+    k.prs.recheckMs = 30
+    const unknown = (o: Partial<PrInfo> = {}) => info({ state: 'checks', conflictsUnknown: true, ...o })
+
+    // Ready, then main moves: checks until GitHub settles, and one quick read follows it back to ready.
+    gh.pr = info({ state: 'ready' })
+    await k.refreshPr(ws.id)
+    gh.pr = unknown()
+    expect((await k.refreshPr(ws.id)).prState).toBe('checks')
+    // A second unknown read before the quick one doesn't queue another.
+    await k.refreshPr(ws.id)
+    gh.pr = info({ state: 'ready' })
+    reads = 0
+    await wait(100)
+    expect(reads).toBe(1)
+    expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+
+    // A conflict stays a conflict, even with checks failing meanwhile, until GitHub says it is gone.
+    gh.pr = info({ state: 'conflict' })
+    await k.refreshPr(ws.id)
+    gh.pr = unknown({ state: 'cifail', checks: [{ name: 'e2e', state: 'fail' }] })
+    expect((await k.refreshPr(ws.id)).prState).toBe('conflict')
+    gh.pr = unknown()
+    reads = 0
+    await wait(100)
+    // Still unknown after the quick read: the poll takes it from there.
+    expect(reads).toBe(1)
+    expect(k.store.workspace(ws.id)?.prState).toBe('conflict')
+    gh.pr = info({ state: 'ready' })
+    expect((await k.refreshPr(ws.id)).prState).toBe('ready')
+    expect(states).toEqual(['ready', 'checks', 'ready', 'conflict', 'ready'])
+
+    // Archiving drops a pending quick read.
+    gh.pr = unknown()
+    await k.refreshPr(ws.id)
+    await k.archiveWorkspace(ws.id)
+    reads = 0
+    await wait(100)
+    expect(reads).toBe(0)
+    bus.off('push', onPush)
+    await k.stop()
+  })
+
+  it('drops the quick read on stop (KERNEL-283)', async () => {
+    const { k, ws, gh } = await setup()
+    let reads = 0
+    const read = k.github.info
+    k.github = { ...k.github, info: async (...a) => { reads++; return read(...a) } }
+    k.prs.recheckMs = 30
+    gh.pr = info({ state: 'checks', conflictsUnknown: true })
+    await k.refreshPr(ws.id)
+    await k.stop()
+    reads = 0
+    await wait(100)
+    expect(reads).toBe(0)
   })
 
   it('goes back to Create PR when the turn ends without a PR', async () => {

@@ -85,6 +85,8 @@ export class Prs extends Feature {
     if (hold) state = ws.prState
     else if (!info) state = ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
     else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
+    // A conflict holds until GitHub has checked the PR again. The rest of the read is real (KERNEL-283).
+    else if (info.conflictsUnknown && ws.prState === 'conflict') state = 'conflict'
     else state = info.state
     const adopt = info && state !== 'none'
     const next = this.updateWs(id, {
@@ -92,6 +94,8 @@ export class Prs extends Feature {
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
+    if (info?.conflictsUnknown) this.recheckSoon(id)
+    else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info)
     if (next.prState !== ws.prState) {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
@@ -200,9 +204,29 @@ export class Prs extends Feature {
   }
 
 
+  /**
+   * One quick read per workspace after GitHub said it was still checking the PR for conflicts, since it settles within
+   * seconds. An entry with no timer is a re-check that ran and still read unknown: the 45 second poll takes over until a
+   * settled read clears it, so a PR GitHub takes long over doesn't cost a read every few seconds (KERNEL-283).
+   */
+  private rechecks = new Map<string, NodeJS.Timeout | undefined>()
+  recheckMs = 15_000
+
+  private recheckSoon(id: string) {
+    if (this.rechecks.has(id)) return
+    this.rechecks.set(id, setTimeout(() => { this.rechecks.set(id, undefined); void this.k.refreshPr(id).catch(() => undefined) }, this.recheckMs))
+  }
+
+  /** Drops the workspace's quick re-check, as when it is archived. */
+  cancelRecheck(id: string) { clearTimeout(this.rechecks.get(id)); this.rechecks.delete(id) }
+
   /** Reads every open PR from GitHub every 45 seconds while Kernel runs. */
   start() { this.prTimer = setInterval(() => void this.pollPrs(), 45_000) }
-  stop() { clearInterval(this.prTimer) }
+  stop() {
+    clearInterval(this.prTimer)
+    for (const t of this.rechecks.values()) clearTimeout(t)
+    this.rechecks.clear()
+  }
   handlers() {
     return {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
