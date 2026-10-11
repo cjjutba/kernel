@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile, mkdir, rename, stat } from 'node:fs/promises'
 import { watch, type FSWatcher } from 'node:fs'
-import { join, basename } from 'node:path'
+import { join, basename, dirname } from 'node:path'
 import type { AgentDef, AgentDraft, AgentEdit, Effort } from '@shared/types'
 import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 
@@ -295,19 +295,31 @@ export async function restoreAgent(repoPath: string, id: string): Promise<string
  * Kernel show up. Works before the folder exists: it waits on `.claude` and arms itself when `agents` appears.
  */
 export function watchAgents(repoPath: string, onChange: () => void, delay = 150): () => void {
-  const dir = join(repoPath, '.claude', 'agents')
+  return watchFolder(join(repoPath, '.claude', 'agents'), onChange, { delay })
+}
+
+/** The same for the room's `.kernel/settings*.toml`, whose `[team]` decides who leads and reviews (KERNEL-397). */
+export function watchTeamSettings(repoPath: string, onChange: () => void, delay = 150): () => void {
+  return watchFolder(join(repoPath, '.kernel'), onChange, { delay, only: (name) => /^settings(\.local)?\.toml$/.test(name) })
+}
+
+/** Watches `dir`, or its parent until `dir` appears. `only` picks the file names that count. */
+function watchFolder(dir: string, onChange: () => void, o: { delay: number; only?: (name: string) => boolean }): () => void {
   let timer: NodeJS.Timeout | undefined
   let watcher: FSWatcher | undefined
   let parent: FSWatcher | undefined
   let closed = false
-  const fire = () => { clearTimeout(timer); timer = setTimeout(() => { if (!closed) onChange() }, delay) }
+  const fire = () => { clearTimeout(timer); timer = setTimeout(() => { if (!closed) onChange() }, o.delay) }
   const arm = () => {
     if (closed || watcher) return
-    try { watcher = watch(dir, { persistent: false }, fire); watcher.on('error', () => { watcher?.close(); watcher = undefined }) } catch { watcher = undefined }
+    try {
+      watcher = watch(dir, { persistent: false }, (_e, name) => { if (!o.only || !name || o.only(String(name))) fire() })
+      watcher.on('error', () => { watcher?.close(); watcher = undefined })
+    } catch { watcher = undefined }
     if (watcher) { parent?.close(); parent = undefined; return }
     if (parent) return
     try {
-      parent = watch(join(repoPath, '.claude'), { persistent: false }, (_e, name) => { if (!name || name === 'agents') { arm(); if (name || watcher) fire() } })
+      parent = watch(dirname(dir), { persistent: false }, (_e, name) => { if (!name || name === basename(dir)) { arm(); if (name || watcher) fire() } })
       parent.on('error', () => { parent?.close(); parent = undefined })
     } catch { parent = undefined }
   }

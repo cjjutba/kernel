@@ -104,7 +104,7 @@ describe('Kernel orchestration (Claude session stubbed)', () => {
     const start = k.handlers()['lead.start']
 
     const solo = await k.addRoom(leadless)
-    await expect(start({ roomId: solo.id, prompt: 'Hello' })).rejects.toThrow('No lead agent. Mark one agent with "lead: true".')
+    await expect(start({ roomId: solo.id, prompt: 'Hello' })).rejects.toThrow('No Lead in this room. Mark one agent with "lead: true", or pick one in Settings, Agents.')
 
     const room = await k.addRoom(repo)
     const chats = (wsId: string) => k.store.chats(wsId).filter((c) => c.kind !== 'terminal')

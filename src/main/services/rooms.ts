@@ -92,24 +92,28 @@ export async function initGit(path: string) {
   await git(path, '-c', 'user.name=Kernel', '-c', 'user.email=kernel@localhost', 'commit', '-q', '--allow-empty', '-m', 'Initial commit')
 }
 
-export const STARTER_IDS = ['rowan', 'kai', 'noor', 'ivy', 'theo'] as const
+/**
+ * The starter teammates New room and Team can seat. Kernel's own Rowan and Theo lead and review without a file, so they
+ * aren't seated (KERNEL-397). Customize on their profile copies them in.
+ */
+export const STARTER_IDS = ['kai', 'noor', 'ivy'] as const
 
 /** Agent file names in .claude/agents. Empty when the folder is missing. */
 export async function agentFiles(repoPath: string): Promise<string[]> {
   return (await readdir(join(repoPath, '.claude', 'agents')).catch(() => [] as string[])).filter((f) => f.endsWith('.md'))
 }
 
-/** Copy starter agent files into .claude/agents. The Lead is always seated. Returns the ids written. */
+/** Copy starter teammates into .claude/agents. A file the repo already has is left as it is. Returns the ids written. */
 export async function seatStarterTeam(starterDir: string, repoPath: string, ids: string[]): Promise<string[]> {
-  const wanted = [...new Set(['rowan', ...ids])]
   const dir = join(repoPath, '.claude', 'agents')
-  await mkdir(dir, { recursive: true })
   const seated: string[] = []
-  for (const id of wanted) {
-    if (!/^[a-z0-9-]+$/.test(id)) continue
+  for (const id of new Set(ids)) {
+    if (!(STARTER_IDS as readonly string[]).includes(id)) continue
     const from = join(starterDir, `${id}.md`)
-    if (!(await exists(from))) continue
-    await copyFile(from, join(dir, `${id}.md`))
+    const to = join(dir, `${id}.md`)
+    if (!(await exists(from)) || await exists(to)) continue
+    await mkdir(dir, { recursive: true })
+    await copyFile(from, to)
     seated.push(id)
   }
   return seated

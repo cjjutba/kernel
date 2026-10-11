@@ -1,17 +1,33 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, ModelId, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, ModelId, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
+import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
+import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, updateAgent, watchAgents } from '../services/agents'
-import { agentFiles, copyAgentFiles, seatStarterTeam } from '../services/rooms'
+import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, updateAgent, watchAgents, watchTeamSettings } from '../services/agents'
+import { canOpenPr } from '../services/agentTools'
+import { builtinFile, loadBuiltins, type Builtins } from '../services/builtins'
+import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/rooms'
+import { loadRepoSettings, saveTeamSettings } from '../services/settings'
+import { resolveTeam, type Resolved } from '../services/teamResolve'
 import { Feature } from './feature'
 
-/** Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). */
+/**
+ * Each room's team: the agent files in .claude/agents, their statuses, and hiring and retiring (KERNEL-326). Who leads,
+ * who reviews and who takes tasks come from the files, the room's `[team]` settings and Kernel's own Rowan and Theo
+ * (KERNEL-397).
+ */
 export class Team extends Feature {
   readonly agentCache = new Map<string, AgentDef[]>()
+  /** Each room's built-in Lead and reviewer as last resolved, so a workspace on one still finds its agent once the room has its own. */
+  private builtins = new Map<string, Builtins>()
   private agentWatchers = new Map<string, () => void>()
   readonly statuses = new Map<string, Record<string, AgentStatus>>()
+  /** The shape last reported for each room, so `team.resolved` goes out once per change. */
+  private shapes = new Map<string, string>()
 
   stop() {
     for (const close of this.agentWatchers.values()) close()
@@ -23,14 +39,19 @@ export class Team extends Feature {
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
+    this.builtins.delete(roomId)
     this.statuses.delete(roomId)
+    this.shapes.delete(roomId)
   }
 
   onStatus(e: Extract<PushEvent, { type: 'agent.status' }>) {
     this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
   }
 
-  /** Empty room: write a team into .claude/agents and seat it. Refuses a room that already has agents. */
+  /**
+   * Empty room: write a team into .claude/agents and seat it. Refuses a room that already has agents. The starter templates
+   * seat teammates only: Kernel's own Rowan and Theo lead and review (KERNEL-397).
+   */
   private async seedAgents(roomId: string, template: TeamTemplate): Promise<AgentDef[]> {
     const room = this.mustRoom(roomId)
     if ((await agentFiles(room.path)).length) throw new Error('This room already has agents.')
@@ -40,7 +61,7 @@ export class Team extends Feature {
       if (!(await copyAgentFiles(from.path, room.path))) throw new Error(`${from.name} has no agents to copy.`)
     } else {
       if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-      await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : ['kai', 'noor', 'ivy', 'theo'])
+      await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : [...STARTER_IDS])
     }
     const list = await this.agents(roomId)
     bus.push({ type: 'agents', roomId, agents: list })
@@ -48,28 +69,76 @@ export class Team extends Feature {
     return list
   }
 
+  /** The room's team as Kernel resolves it now (KERNEL-397). Every caller reads the team through here or `agentsSync`. */
   async agents(roomId: string): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    const list = await loadAgents(room.path)
-    this.agentCache.set(roomId, list)
+    const r = await this.resolve(roomId)
     this.watchTeam(roomId)
-    return list
+    return r.agents
   }
 
-  /** Files in .claude/agents changed from outside Kernel (or from here). Reload, and tell the renderer when the team differs. */
+  private async resolve(roomId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
+    const room = this.mustRoom(roomId)
+    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    const builtins = await loadBuiltins(this.o.starterDir, files)
+    const r = resolveTeam({ files, config: config ?? repo.team, builtins })
+    if (config) return { ...r, builtins }
+    this.agentCache.set(roomId, r.agents)
+    this.builtins.set(roomId, builtins)
+    this.adoptLead(roomId, r.agents.find((a) => a.lead))
+    this.report(roomId, r)
+    return { ...r, builtins }
+  }
+
+  /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
+  private adoptLead(roomId: string, lead: AgentDef | undefined) {
+    const moved = lead ? this.k.lead.adoptLeadWorkspace(roomId, lead.id) : undefined
+    if (moved) this.sessions.restartIdle([moved.id])
+  }
+
+  /** `team.resolved` once per change in the room's shape, and one `agent.warning` per kind of warning it has. */
+  private report(roomId: string, r: Resolved) {
+    const files = r.agents.filter((a) => !a.builtIn)
+    const kinds = [...new Set(r.agents.flatMap((a) => a.warnings ?? []).map((w) => w.kind))].sort()
+    const event = {
+      name: 'team.resolved' as const, leadFrom: r.leadFrom, reviewerFrom: r.reviewerFrom, agents: countRange(files.length),
+      helpers: countRange(files.filter((a) => !a.lead && !a.member).length), warnings: countRange(r.agents.reduce((n, a) => n + (a.warnings?.length ?? 0), 0))
+    }
+    const shape = JSON.stringify([event, kinds])
+    if (this.shapes.get(roomId) === shape) return
+    this.shapes.set(roomId, shape)
+    bus.track(event)
+    for (const kind of kinds) bus.track({ name: 'agent.warning', kind })
+  }
+
+  /**
+   * Files in .claude/agents, or the room's `[team]` settings, changed from outside Kernel (or from here). Reload, and tell
+   * the renderer when the team differs.
+   */
   private watchTeam(roomId: string) {
     if (this.agentWatchers.has(roomId)) return
     const room = this.store.room(roomId)
     if (!room) return
-    this.agentWatchers.set(roomId, watchAgents(room.path, () => {
+    const reload = () => {
       void (async () => {
         if (!this.store.room(roomId)) return
         const was = this.agentCache.get(roomId)
         const before = JSON.stringify(was)
         const list = await this.agents(roomId)
-        if (JSON.stringify(list) !== before) this.announceTeam(roomId, list, was)
+        if (JSON.stringify(list) !== before) this.changed(roomId, list, was)
       })().catch(() => undefined)
-    }))
+    }
+    const files = watchAgents(room.path, reload)
+    const settings = watchTeamSettings(room.path, reload)
+    this.agentWatchers.set(roomId, () => { files(); settings() })
+  }
+
+  /** The team changed: the renderer hears, and agents whose definition changed start fresh at their next turn. */
+  private changed(roomId: string, list: AgentDef[], was?: AgentDef[]) {
+    this.announceTeam(roomId, list, was)
+    const before = new Map((was ?? []).map((a) => [a.id, JSON.stringify(a)]))
+    const moved = new Set(list.filter((a) => before.has(a.id) && before.get(a.id) !== JSON.stringify(a)).map((a) => a.id))
+    const open = this.store.workspaces(roomId).filter((w) => w.status !== 'archived' && moved.has(w.agentId))
+    if (open.length) this.sessions.restartIdle(open.map((w) => w.id))
   }
 
   /** `was` is the team before the change: whoever is new walks in. Leave it out to announce no one. */
@@ -82,16 +151,20 @@ export class Team extends Feature {
       if (known[a.id]) continue
       bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
       // A new agent file, from hire_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
-      if (!a.retired && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
+      // Kernel's own Rowan and Theo have no file to come from.
+      if (!a.retired && !a.builtIn && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
     }
   }
 
   /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
   private async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit): Promise<AgentDef> {
     const room = this.mustRoom(roomId)
+    if (this.agentOf(roomId, agentId)?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
+    const was = this.agentCache.get(roomId)
     const saved = await updateAgent(room.path, agentId, patch)
-    this.announceTeam(roomId, await this.agents(roomId))
-    return saved
+    const list = await this.agents(roomId)
+    this.changed(roomId, list, was)
+    return list.find((a) => a.id === saved.id) ?? saved
   }
 
   /** New agent > Create agent. The file joins .claude/agents and the agent takes a desk (the next free one, or the end of `room.desks`). */
@@ -106,26 +179,117 @@ export class Team extends Feature {
   }
 
   /**
-   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo` or the Lead, and the desk frees up.
-   * A turn already running keeps its own copy of the agent and finishes. The Lead cannot be retired, because nobody would plan.
+   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo`, else the reviewer that
+   * takes over for a retired reviewer, else the Lead, and the desk frees up. A turn already running keeps its own copy of
+   * the agent and finishes. The Lead cannot be retired, because nobody would plan, and Kernel's own agents have no file.
    */
   private async retire(roomId: string, agentId: string, handoffTo?: string): Promise<void> {
     const room = this.mustRoom(roomId)
     const team = await this.agents(roomId)
     const agent = team.find((a) => a.id === agentId)
     if (!agent) throw new Error(`${agentId} is not on this team.`)
-    if (agent.lead) throw new Error(`${agent.name} leads this room. Mark another agent with "lead: true" first.`)
-    const heir = team.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId) ?? team.find((a) => a.lead)
+    if (agent.builtIn) throw new Error(`${agent.name} is Kernel's own ${agent.lead ? 'Lead' : 'reviewer'}. Pick another one in Settings, Agents instead.`)
+    if (agent.lead) throw new Error(`${agent.name} leads this room. Pick another Lead in Settings, Agents first.`)
     await retireAgent(room.path, agentId)
+    const list = await this.agents(roomId)
+    const heir = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId) ?? (isReviewer(agent) ? list.find(isReviewer) : undefined) ?? list.find((a) => a.lead)
     for (const ws of this.store.workspaces(roomId)) {
       if (ws.agentId === agentId && ws.status !== 'archived' && heir) this.saveWs({ ...ws, agentId: heir.id })
     }
     if (room.desks?.includes(agentId)) await this.k.rooms.updateRoom(roomId, { desks: room.desks.filter((d) => d !== agentId) })
     const statuses = this.statuses.get(roomId)
     if (statuses) delete statuses[agentId]
-    const list = await this.agents(roomId)
-    bus.push({ type: 'agents', roomId, agents: list })
+    this.announceTeam(roomId, list, team)
     bus.activity({ kind: 'agent.retired', roomId, agentId, actor: 'you', text: 'retired', object: agent.name })
+  }
+
+  /**
+   * Settings, Agents and Room setup: who leads, who reviews and who takes tasks (KERNEL-397). The change goes to `[team]` in
+   * the shared settings.toml, holding only what differs from what Kernel works out from the files, so a team that agrees
+   * with Kernel writes nothing. `members` and `helpers` may list every agent; only the exceptions are kept.
+   */
+  private async setTeam(roomId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
+    const room = this.mustRoom(roomId)
+    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    const ids = new Set(files.map((a) => a.id))
+    const want: TeamConfig = { ...repo.team }
+    for (const [k, v] of Object.entries(patch) as [keyof TeamConfig, TeamPatch[keyof TeamConfig]][]) {
+      if (v === undefined) continue
+      if (v === null) delete want[k]
+      else (want as Record<string, unknown>)[k] = v
+    }
+    if (want.lead && want.lead !== KERNEL_LEAD && !ids.has(want.lead)) throw new Error(`${want.lead} is not on this team.`)
+    if (want.reviewer && want.reviewer !== KERNEL_REVIEWER && want.reviewer !== NO_REVIEWER && !ids.has(want.reviewer)) throw new Error(`${want.reviewer} is not on this team.`)
+    if (want.reviewer && want.reviewer === want.lead) throw new Error("The Lead can't also review. Pick another reviewer.")
+    // A choice Kernel would make anyway is left out, so the file only holds what the team decided.
+    if (want.lead && (await this.resolve(roomId, { ...want, lead: undefined })).agents.find((a) => a.lead)?.id === want.lead) delete want.lead
+    if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? NO_REVIEWER) === want.reviewer) delete want.reviewer
+    const opens = (id: string) => canOpenPr(files.find((a) => a.id === id)?.tools)
+    want.members = want.members?.filter((id) => ids.has(id) && !opens(id))
+    want.helpers = want.helpers?.filter((id) => ids.has(id) && opens(id))
+    const next: TeamPatch = {}
+    for (const k of ['lead', 'reviewer', 'members', 'helpers'] as const) {
+      const value = Array.isArray(want[k]) && !(want[k] as string[]).length ? undefined : want[k]
+      if (JSON.stringify(value ?? null) !== JSON.stringify(repo.team?.[k] ?? null)) (next as Record<string, unknown>)[k] = value ?? null
+    }
+    if (Object.keys(next).length) await saveTeamSettings(room.path, next)
+    if (from === 'setup') bus.track({ name: 'setup.team_review', choice: Object.keys(next).length ? 'changed' : 'kept' })
+    const was = this.agentCache.get(roomId)
+    const list = await this.agents(roomId)
+    this.changed(roomId, list, was)
+    return list
+  }
+
+  /**
+   * Customize on a built-in agent's profile: Kernel's Rowan or Theo becomes a file in .claude/agents the user can edit, named
+   * `rowan.md` or `theo.md` when free (KERNEL-397). The copy keeps the built-in's instructions and leaves its model to
+   * Settings, Models as before. `[team]` and the open workspaces follow it.
+   */
+  private async customize(roomId: string, agentId: string): Promise<AgentDef> {
+    const room = this.mustRoom(roomId)
+    const agent = this.agentOf(roomId, agentId) ?? (await this.agents(roomId)).find((a) => a.id === agentId)
+    if (!agent?.builtIn) throw new Error(`${agent?.name ?? agentId} already has a file in .claude/agents.`)
+    if (!this.o.starterDir) throw new Error("Kernel's own agents aren't available in this build.")
+    const which = agent.builtIn
+    const files = await loadAgents(room.path)
+    const free = async (id: string) => !files.some((a) => a.id === id) && !(await readFile(join(room.path, '.claude', 'agents', `${id}.md`)).then(() => true, () => false))
+    const names = which === 'lead' ? ['rowan', 'lead', 'rowan-lead'] : ['theo', 'reviewer', 'theo-reviewer']
+    let id: string | undefined
+    for (const n of names) if (await free(n)) { id = n; break }
+    if (!id) throw new Error(`.claude/agents already has ${names.map((n) => `${n}.md`).join(', ')}. Rename one first.`)
+    const src = await readFile(builtinFile(this.o.starterDir, which), 'utf8')
+    const end = src.indexOf('\n---', 3)
+    const head = src.slice(0, end).replace(/^name:.*$/m, `name: ${id}`).replace(/^model:.*\n/m, '')
+    const text = `${head}\n---\n${agent.prompt.trim()}\n`
+    const was = await this.agents(roomId)
+    await createAgent(room.path, { id, name: id, description: agent.description, model: '', tools: agent.tools ?? [], text, file: `.claude/agents/${id}.md` })
+    const key = which === 'lead' ? 'lead' : 'reviewer'
+    const repo = await loadRepoSettings(room.path)
+    if (repo.team?.[key] === agent.id) await saveTeamSettings(room.path, { [key]: id })
+    const moved = this.store.workspaces(roomId).filter((w) => w.agentId === agent.id && w.status !== 'archived')
+    for (const ws of moved) this.saveWs({ ...ws, agentId: id })
+    if (moved.length) this.sessions.restartIdle(moved.map((w) => w.id))
+    const list = await this.agents(roomId)
+    this.announceTeam(roomId, list, was)
+    bus.track({ name: 'builtin.customized', which })
+    const def = list.find((a) => a.id === id)
+    if (!def) throw new Error(`${id} could not be added.`)
+    return def
+  }
+
+  /** Team > Add a starter agent: one of Kernel's starter teammates joins a team that already has agents (KERNEL-397). */
+  private async addStarter(roomId: string, id: string): Promise<AgentDef> {
+    const room = this.mustRoom(roomId)
+    if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
+    if (!(STARTER_IDS as readonly string[]).includes(id)) throw new Error(`${id} isn't one of Kernel's starter agents.`)
+    const was = await this.agents(roomId)
+    if (was.some((a) => a.id === id)) throw new Error(`${was.find((a) => a.id === id)!.name} is already on the team.`)
+    if (!(await seatStarterTeam(this.o.starterDir, room.path, [id])).length) throw new Error(`.claude/agents already has a file named ${id}.md.`)
+    const list = await this.agents(roomId)
+    this.announceTeam(roomId, list, was)
+    const def = list.find((a) => a.id === id)
+    if (!def) throw new Error(`${id} could not be added.`)
+    return def
   }
 
   private async restore(roomId: string, agentId: string): Promise<AgentDef> {
@@ -139,6 +303,18 @@ export class Team extends Feature {
   }
 
   agentsSync(roomId: string) { return this.agentCache.get(roomId) ?? [] }
+
+  /**
+   * The agent a workspace runs, by id: the team's, else Kernel's own Rowan or Theo for a workspace made while they led or
+   * reviewed, so it keeps its prompt and tools after the room gets its own (KERNEL-397).
+   */
+  agentOf(roomId: string, agentId: string): AgentDef | undefined {
+    const b = this.builtins.get(roomId)
+    return this.agentsSync(roomId).find((a) => a.id === agentId) ?? (agentId === KERNEL_LEAD ? b?.lead : agentId === KERNEL_REVIEWER ? b?.reviewer : undefined)
+  }
+
+  /** The room's reviewer, if it has one. */
+  reviewerOf(roomId: string): AgentDef | undefined { return this.agentsSync(roomId).find(isReviewer) }
   /**
    * The Lead's own workspace, archived or not (KERNEL-353): History and comments on an archived Lead's files ask too. The shared
    * `isLeadWorkspace` is the same check for open workspaces.
@@ -157,8 +333,8 @@ export class Team extends Feature {
     const alias = MODELS.find((x) => x.id.split('-')[1] === agent.model?.toLowerCase())
     if (alias) return alias.id
     if (agent.lead) return m.lead
+    if (isReviewer(agent)) return m.reviewer
     if (/qa/i.test(agent.role)) return m.qa
-    if (/review/i.test(agent.role)) return m.reviewer
     return m.engineers
   }
 
@@ -172,9 +348,9 @@ export class Team extends Feature {
       'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
       'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'agents.setTeam': async () => { throw new Error('Not built yet.') },
-      'agents.customize': async () => { throw new Error('Not built yet.') },
-      'agents.addStarter': async () => { throw new Error('Not built yet.') }
+      'agents.setTeam': async ({ roomId, team, from }) => this.setTeam(roomId, team, from),
+      'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),
+      'agents.addStarter': async ({ roomId, id }) => this.addStarter(roomId, id)
     } satisfies Partial<Handlers>
   }
 }

@@ -173,6 +173,8 @@ export class Sessions {
   private turns = new Map<string, Turns>()
   /** Idle clocks of live chats between turns. One that runs out stops the process (KERNEL-183). */
   private idle = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Chats whose agent changed during a turn or a background task. Their process ends once nothing runs (KERNEL-397). */
+  private stale = new Set<string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
@@ -804,6 +806,7 @@ export class Sessions {
   /** Close the process's input and abort it. `consume` sees the abort and reports nothing: no offline, no crash. */
   private end(chatId: string, live: Live) {
     this.stopIdle(chatId)
+    this.stale.delete(chatId)
     live.input.close()
     live.abort.abort()
     this.live.delete(chatId)
@@ -818,6 +821,7 @@ export class Sessions {
     this.stopIdle(chatId)
     const live = this.live.get(chatId)
     if (!live || live.running) return
+    if (this.stale.has(chatId) && !live.tasks.size) { this.stale.delete(chatId); this.end(chatId, live); return }
     const clock = setTimeout(() => {
       this.idle.delete(chatId)
       if (this.live.get(chatId) !== live || live.running) return
@@ -857,6 +861,22 @@ export class Sessions {
   }
 
   stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
+
+  /**
+   * The agent behind these workspaces changed: its file, its tools, or who leads (KERNEL-397). A process only reads its
+   * agent when it starts, so an idle one ends now and a busy one when its turn and background tasks end. The next message
+   * resumes the conversation with the agent as it is now, and nothing waiting in the queue is lost.
+   */
+  restartIdle(workspaceIds: string[]) {
+    for (const id of workspaceIds) {
+      for (const c of this.d.store.chats(id)) {
+        const live = this.live.get(c.id)
+        if (!live) continue
+        if (live.running || live.tasks.size) this.stale.add(c.id)
+        else this.end(c.id, live)
+      }
+    }
+  }
 
   /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
   dropHeld(workspaceId: string) {
