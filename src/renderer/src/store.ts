@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
@@ -19,6 +19,8 @@ export interface State {
   rooms: Room[]
   /** By room id. Progress of a room being set up (RoomSetup.png). */
   roomSetup: Record<string, RoomSetupStep[]>
+  /** By room id. The scripts and files.copy list a room waits on the user to trust. A room with nothing to trust has no entry (KERNEL-218). */
+  scriptTrust: Record<string, ScriptTrust>
   /** By room id. */
   overlaps: Record<string, Overlap[]>
   // agents
@@ -103,7 +105,7 @@ function keepFoldedChats(ids: string[]) {
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
-  rooms: [], roomSetup: {}, overlaps: {},
+  rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
@@ -408,6 +410,10 @@ export const actions = {
       ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
     })),
     setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
+    setTrust: (roomId: string, trust: ScriptTrust | null) => setState((s) => {
+      const { [roomId]: _, ...rest } = s.scriptTrust
+      return { scriptTrust: trust ? { ...rest, [roomId]: trust } : rest }
+    }),
     setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
   },
@@ -555,6 +561,7 @@ export function apply(e: PushEvent) {
     case 'approval': return actions.approvals.upsert(e.approval)
     case 'room': return actions.rooms.upsert(e.room)
     case 'room.setup': return actions.rooms.setSetup(e.roomId, e.steps)
+    case 'room.trust': return actions.rooms.setTrust(e.roomId, e.trust)
     case 'overlap': return actions.rooms.upsertOverlap(e.overlap)
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
@@ -656,6 +663,8 @@ export async function loadRoom(roomId: string) {
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
+  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `room.trust` clears it (KERNEL-218).
+  void call('rooms.scriptTrust', { roomId }).then((trust) => { if (trust) actions.rooms.setTrust(roomId, trust) }).catch(() => undefined)
 }
 
 export async function loadWorkspace(workspaceId: string) {

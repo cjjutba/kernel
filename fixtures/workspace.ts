@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ScriptTrust, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -481,6 +481,14 @@ const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
   return { ...rest, shared: sharedFiles(), sharedData: sharedStills }
 }
 
+/** What a freshly cloned repo's settings.toml asks the user to trust (KERNEL-209, KERNEL-218). */
+export const scriptTrust: ScriptTrust = {
+  roomId: ids.roomA, hash: 'a41f0c9e', workspaceIds: [ids.table],
+  scripts: { setup: 'pnpm install --frozen-lockfile\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'pnpm clean' },
+  runScripts: [{ name: 'storybook', command: 'pnpm storybook --port $KERNEL_PORT' }],
+  copy: ['.env.local', 'certs/*.pem']
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -493,6 +501,17 @@ export const workspaceFixtures: Record<string, Fixture> = {
     workspaces: withWorkspace(f, ids.table, { branch: 'feat/kernel-24-invoice-table', source: { kind: 'issue', id: 'KERNEL-24', title: 'Invoice table', url: 'https://linear.app/cj-jutba/issue/KERNEL-24' } }),
     ui: open
   })),
+  // KERNEL-218: KERNEL-209 holds the workspace until the room's scripts are trusted. The brief waits in the queue.
+  WorkspaceTrustHeld: scene((f) => {
+    const queue = [{ id: 'q-trust', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Build the invoice table.' }], ts: at(10, 2) }]
+    return {
+      workspaces: withWorkspace(f, ids.table, { status: 'trust' }),
+      items: { [ids.tableChat]: [] },
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'room.trust', roomId: ids.roomA, trust: scriptTrust }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'setup' }],
+      ui: open
+    }
+  }),
   WorkspaceLoading: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { status: 'setup' }),
     items: { [ids.tableChat]: [] },

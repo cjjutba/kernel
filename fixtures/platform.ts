@@ -257,6 +257,8 @@ export const platformFixtures: Record<string, Fixture> = {
   }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
+  // KERNEL-218: the dialog the banner's Review opens, over the held workspace.
+  TrustScripts: scene(() => ({ ...workspaceFixtures.WorkspaceTrustHeld, ui: { ...open, modal: { name: 'confirm', kind: 'trust', roomId: ids.roomA } } })),
   WorkspaceSetupFailed: scene((f) => ({
     ...clientA({ scripts: { ...kernelFiles.scripts, setup: 'pnpm install --frozen-lockfile' } }),
     workspaces: withWorkspace(f, ids.table, { status: 'failed' }),

@@ -104,3 +104,9 @@
   .rm-head, .rm-row { grid-template-columns: minmax(0, 1fr) 110px 80px; }
   .rm-head > :nth-child(3), .rm-row > :nth-child(3) { display: none; }
 }
+
+/* TrustScripts: the scripts a room waits on (KERNEL-218) */
+.ts-list { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; }
+.ts-item { display: flex; flex-direction: column; gap: 6px; }
+.ts-label { margin: 0; font-size: 12px; font-weight: 500; color: var(--ink-2); }
+.ts-error { margin: 0; font-size: 13px; color: var(--ink); }

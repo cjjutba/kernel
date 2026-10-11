@@ -92,6 +92,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         actions.ui.setWorkspaceView({ bottom: 'setup' })
         await call('scripts.run', { workspaceId: ws.id, kind: 'setup' })
       })
+      case 'review': return actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: ws.roomId })
       case 'checkHooks': return actions.ui.openModal({ name: 'checkHooks' })
       case 'reconnect': return run(id, 'Could not restart the hook server', async () => actions.system.setHooks(await call('hooks.restart', {})))
     }

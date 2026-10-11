@@ -5,7 +5,7 @@ import type { BannerKind, DevUiPage } from '@shared/types'
 const kinds = Object.keys(bannerIcon) as BannerKind[]
 const bannerCopy: Record<BannerKind, string> = {
   limit: 'Session limit reached', context: 'Context is nearly full', offline: 'You are offline', auth: 'Sign in to Claude again',
-  setup: 'Setup failed', hooks: 'Hooks are not connected', retry: 'Retrying the request'
+  setup: 'Setup failed', hooks: 'Hooks are not connected', retry: 'Retrying the request', trust: 'Waiting for you to trust scripts'
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
