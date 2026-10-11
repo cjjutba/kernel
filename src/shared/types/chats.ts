@@ -59,6 +59,9 @@ export interface Thread {
   renamed?: boolean
 }
 
+/** Words in a note that open a workspace: "PR #164 by Noor" in "Waiting for PR #164 by Noor to merge." */
+export interface NoteRef { text: string; workspaceId: string }
+
 /** One rendered row in a chat transcript. Mirrors the kinds drawn on the canvas. */
 export type ChatItem =
   /** `from` marks a message the user didn't type: Kernel's own, or the Lead's in a teammate's chat. `update` is the Team update card (KERNEL-111). */
@@ -69,8 +72,11 @@ export type ChatItem =
   | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
   /** End of a turn. `files` is the "Changed" chip row under the reply. */
   | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
-  /** `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none. */
-  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail' }
+  /**
+   * `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none.
+   * `refs` are spans of `text`, in the order they appear, that open another workspace, such as the PRs a held brief waits for.
+   */
+  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail'; refs?: NoteRef[] }
   | { kind: 'interrupted'; id: string; ts: number }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }

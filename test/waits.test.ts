@@ -152,6 +152,8 @@ describe('a hand-off that waits for a merge', () => {
     expect(queue(k, chat)).toEqual([['Build T-15', 'lead']])
     expect(users(k, chat)).toEqual([])
     expect(notes(k, chat)).toContain('Waiting for PR #164 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.')
+    // "PR #164 by Noor" in the note opens Noor's workspace.
+    expect(k.store.items(chat.id).find((i) => i.kind === 'note' && i.text.startsWith('Waiting for'))).toMatchObject({ refs: [{ text: 'PR #164 by Noor', workspaceId: noor.id }] })
     expect(callsIn(w)).toEqual([])
     expect(existsSync(join(w.path, 'ran.txt'))).toBe(false)
     expect(await listCheckpoints(w)).toEqual([])

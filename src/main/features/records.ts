@@ -1,4 +1,4 @@
-import type { Chat, ChatItem, Effort, ModelId, Workspace } from '@shared/types'
+import type { Chat, ChatItem, Effort, ModelId, NoteRef, Workspace } from '@shared/types'
 import { newId, type Store } from '../db'
 import { bus } from '../bus'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
@@ -52,11 +52,11 @@ export function prChat(store: Store, id: string): Chat | undefined {
   return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
 }
 
-/** `pr` is the PR state the note is about, which draws that state's icon before the text. */
-export function note(store: Store, workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') {
+/** `pr` is the PR state the note is about, which draws that state's icon before the text. `refs` are words in it that open a workspace. */
+export function note(store: Store, workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail', refs?: NoteRef[]) {
   const chat = prChat(store, workspaceId)
   if (!chat) return
-  const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}) }
+  const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}), ...(refs?.length ? { refs } : {}) }
   store.saveItem(chat.id, item)
   bus.push({ type: 'chat.item', chatId: chat.id, item })
 }

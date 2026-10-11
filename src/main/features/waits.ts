@@ -1,4 +1,5 @@
-import type { ChatPart, PrState, Workspace } from '@shared/types'
+import type { ChatPart, NoteRef, PrState, Workspace } from '@shared/types'
+import { waitersOf } from '@shared/waits'
 import type { TeammateToolDeps } from '../services/teammateMcp'
 import { fastForward, fetchOrigin, stripRemote } from '../services/worktrees'
 import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from '../services/waits'
@@ -16,14 +17,19 @@ export class Waits extends Feature {
   readonly releaseSent = new Set<string>()
 
   /** The open workspaces that wait for `id`. */
-  waitersOn(id: string) { return this.store.workspaces().filter((w) => w.status !== 'archived' && w.waitsFor?.on.includes(id)) }
+  waitersOn(id: string) { return waitersOf(id, this.store.workspaces()) }
 
   nameOf(ws: Workspace) { return this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.name ?? ws.agentId }
 
   /** "PR #164 by Noor and PR #170 by Ivy": what the workspace waits for. */
   waitLabelOf(ws: Workspace) {
+    return joinLabels(this.waitRefsOf(ws).map((r) => r.text)) || 'another PR'
+  }
+
+  /** Each target's label and workspace, so a note's "PR #164 by Noor" opens Noor's workspace. */
+  waitRefsOf(ws: Workspace): NoteRef[] {
     const targets = (ws.waitsFor?.on ?? []).map((id) => this.store.workspace(id)).filter((t): t is Workspace => !!t)
-    return joinLabels(targets.map((t) => waitLabel(t, this.nameOf(t)))) || 'another PR'
+    return targets.map((t) => ({ text: waitLabel(t, this.nameOf(t)), workspaceId: t.id }))
   }
 
   /** A PR merged or closed. Its own wait ends, its waiters whose targets all merged go on, and a close breaks their wait. */
@@ -90,12 +96,14 @@ export class Waits extends Feature {
       const merged = wait.on.filter((t) => isMerged(all.find((w) => w.id === t)))
       if (merged.length) {
         const rest = wait.on.filter((t) => !merged.includes(t))
-        if (rest.length) this.note(id, `Started without waiting for ${this.waitLabelOf({ ...ws, waitsFor: { ...wait, on: rest } })}.`)
+        const skipped = { ...ws, waitsFor: { ...wait, on: rest } }
+        if (rest.length) this.note(id, `Started without waiting for ${this.waitLabelOf(skipped)}.`, undefined, this.waitRefsOf(skipped))
         wait = this.updateWs(id, { waitsFor: { ...wait, on: merged } }).waitsFor!
         now = false
       }
     }
     const label = this.waitLabelOf(this.mustWs(id))
+    const refs = this.waitRefsOf(this.mustWs(id))
     if (!wait.held) {
       if (now) { this.clearWait(id); return }
       this.updateWs(id, { waitsFor: { ...wait, releasing: true } })
@@ -121,10 +129,10 @@ export class Waits extends Feature {
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
     if (!now && !waitMet(current.waitsFor, this.store.workspaces(current.roomId))) return
-    if (now) this.note(id, `Started without waiting for ${label}.`)
+    if (now) this.note(id, `Started without waiting for ${label}.`, undefined, refs)
     else {
       if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
-      this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`)
+      this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`, undefined, refs)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
@@ -188,7 +196,7 @@ export class Waits extends Feature {
     this.releaseSent.delete(id)
     const next = this.updateWs(id, { waitsFor: { on: left, held, ...(was?.base ? { base: was.base } : {}) } })
     const label = this.waitLabelOf(next)
-    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`)
+    if (next.status === 'ready') this.note(id, held ? `Waiting for ${label} to merge. Kernel sends this brief then. Send now starts it sooner.` : `Waiting for ${label} to merge. Kernel asks ${this.nameOf(next)} to rebase onto it then.`, undefined, this.waitRefsOf(next))
     // The Lead set it, and reads what happened in the tool's result. A teammate's own wait is news for the Lead (KERNEL-262).
     this.leadUpdates.waits(next, 'wait.started', { on: left, label, held, ...(o.told === false ? {} : { told: true }), ...(o.why ? { why: o.why } : {}) })
     return next
