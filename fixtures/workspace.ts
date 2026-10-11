@@ -32,6 +32,26 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false }, ...extra.ui }
   }))
 
+/**
+ * KERNEL-413: the header as design/redesign/ draws it. Noor's PR #147 for KERNEL-155 in the room Kernel, with the issue's title where
+ * the workspace's name was, in one PR state. The right panel is hidden unless `panel`, which puts the PR cluster in the panel head.
+ */
+const HEADER_BRANCH = 'cjjutbaofficial/kernel-155-home-and-inbox-keep-asking-about-requests-and-prs'
+const headerScene = (prState: Workspace['prState'], note: ChatItem[], opts: { panel?: boolean; title?: string } = {}) =>
+  scene((f) => ({
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, name: 'Kernel' } : r)),
+    workspaces: withWorkspace(f, ids.table, {
+      name: 'kernel-155-home-and-inbox-keep-asking-about-requests-and-prs', branch: HEADER_BRANCH, agentId: 'noor', prState,
+      title: opts.title ?? 'KERNEL-155 Home and Inbox keep asking about requests and the PRs',
+      source: { kind: 'issue', id: 'KERNEL-155', title: 'Home and Inbox keep asking about requests and the PRs' },
+      prNumber: 147, prUrl: 'https://github.com/samrivera/client-a/pull/147', prTitle: 'feat(home): ask about requests and PRs'
+    }),
+    chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'KERNEL-155 Home and Inbox' } : c)),
+    items: { [ids.tableChat]: [...tableItems, ...note] },
+    prs: prInfo(prState, { number: 147, url: 'https://github.com/samrivera/client-a/pull/147', title: 'feat(home): ask about requests and PRs' }),
+    ui: { ...open, rightPanel: !!opts.panel, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  }))
+
 /** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
 function runScripts(): Fixture {
   const open = prScene('open', [], { prs: prInfo('open') })
@@ -1241,6 +1261,13 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
+  // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the panel head when it is open and the header when hidden.
+  PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
+  PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
+  PrReadyHidden: headerScene('ready', []),
+  PrCiFailHidden: headerScene('cifail', [prNote('h-note', 'Checks failed on PR #147.', 'cifail')]),
+  PrMergedHiddenLong: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { title: 'KERNEL-155 Home and Inbox keep asking about requests and the PRs, and show the team when a merge is waiting' }),
+  HeaderBranchTooltip: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),
     ui: { toasts: [

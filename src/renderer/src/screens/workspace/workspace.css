@@ -7,13 +7,19 @@
 /* 28% of the window between 320 and 400px, so 400px at 1440 as on the canvas. The panel folds below 1024px (D-080). A dragged width
    is inline over this (Workspace.tsx), and its resize handle sits on the left border (components/resize.css). */
 .ws-aside { position: relative; grid-column: 2; grid-row: 1 / span 2; width: clamp(320px, 28vw, 400px); display: flex; flex-direction: column; border-left: 1px solid var(--line); min-height: 0; background: var(--aside); }
-.ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); }
+.ws-aside-head { height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 12px; border-bottom: 1px solid var(--line); }
 .crumb-avatar { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; border: 1px solid var(--line-3); background: var(--surface-3); font-size: 10px; font-weight: 600; }
 .crumb { flex-shrink: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; padding: 0; border: 0; background: transparent; color: var(--ink-2); }
 .crumb:hover { color: var(--ink); }
-/* The branch gives way before the workspace name, then goes once the header is narrow. */
-.ws-branch { flex-shrink: 4; min-width: 0; font-size: 12px; }
-@container ws-head (max-width: 480px) { .ws-branch { display: none; } }
+/* The title is the only thing in the header that shrinks, and it cuts off with an ellipsis. Its hover box reaches 6px into the gaps on
+   both sides, as on the canvas. The room, chip, editor icon, PR capsule and panel toggle keep their size. */
+.header .ws-title { display: flex; flex: 0 1 auto; min-width: 0; margin: 0 -6px; }
+.ws-title-btn { display: flex; min-width: 0; padding: 3px 6px; border: 0; border-radius: 5px; background: transparent; color: var(--ink); font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+.ws-title-btn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ws-title-btn:hover { background: var(--hover); }
+/* What Rowan's workspace and a current-branch workspace follow. A label, not a branch to copy. */
+.ws-label { flex-shrink: 4; min-width: 0; font-size: 12px; }
+.header .icon-btn, .ws-aside-head .icon-btn { flex-shrink: 0; }
 .ws-issue { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 5px; background: transparent; color: var(--ink-2); font-family: var(--mono); font-size: 11.5px; }
 button.ws-issue { cursor: pointer; }
 button.ws-issue:hover { background: var(--surface-3); }

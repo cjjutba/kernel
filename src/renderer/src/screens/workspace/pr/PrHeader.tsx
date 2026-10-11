@@ -17,8 +17,12 @@ export const request: Record<PrAction,(workspaceId: string) => Promise<unknown>>
   reopen: (workspaceId) => call('pr.reopen', { workspaceId })
 }
 
-async function copyBranch(branch: string) {
-  try { await navigator.clipboard.writeText(branch) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' }) }
+/** Also what the workspace header's title does on click. */
+export async function copyBranch(branch: string) {
+  try {
+    await navigator.clipboard.writeText(branch)
+    actions.ui.toast({ title: 'Branch copied', sub: branch })
+  } catch { actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' }) }
 }
 
 /** The caret on Create PR (10px, as on the canvas). */
@@ -28,9 +32,10 @@ const Caret = () => <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden=
  * The pull request actions, one layout per PR state (WorkspacePRMenu, WorkspaceDraftPR, WorkspaceCIFailed, WorkspaceChangesRequested,
  * WorkspaceMerged, WorkspacePRClosed). The agent creates and fixes the PR; Kernel reads state and merges (D-008).
  * They top the right panel, where `spread` keeps the link and status left and the buttons right (D-071), on a band in the
- * state's tone (KERNEL-274). design/redesign/Pr*.png draws every state.
+ * state's tone (KERNEL-274). With the panel hidden they move into the chat header, where `capsule` wraps them in a pill that takes
+ * the band's own tint and line (KERNEL-413, PrMergedHidden.png). design/redesign/Pr*.png draws every state.
  */
-export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
+export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: boolean; capsule?: boolean }) {
   // The key is the spinner's label, such as "Merging".
   const [busy, run] = useBusy()
   const menuOpen = useStore((s) => s.ui.menu === 'pr')
@@ -96,11 +101,11 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
   const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
-  // The band's tone, in the right panel. In the chat header (panel hidden) there's no band, so the header stays neutral,
-  // except merged, which was already purple there.
-  const band = spread || view.state.tone === 'merged' ? view.state.tone : 'idle'
-  // `display: contents` keeps the parent's flex layout and hands the band's tone to everything inside.
-  const tone = (children: ReactNode) => <span className="pr-tone" data-tone={band}>{children}</span>
+  // The band's tone: the right panel's head is the band, and in the chat header the capsule has the same tint and line.
+  const band = view.state.tone
+  // `display: contents` keeps the parent's flex layout and hands the band's tone to everything inside. The capsule is the one
+  // wrapper that is a box of its own.
+  const tone = (children: ReactNode) => <span className={capsule ? 'pr-tone pr-cap' : 'pr-tone'} data-tone={band}>{children}</span>
 
   if (busy) return tone(<>{link}{state}{gap}{spinner(busy)}</>)
 
