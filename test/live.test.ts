@@ -276,8 +276,10 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
         const items = () => k.store.items(chat.id)
         expect(items().filter((i) => i.kind === 'note').map((i) => (i as { text: string }).text)).toContain(QUIT_NOTE)
         expect(items().find((i) => i.kind === 'tool' && i.detail === 'sleep 20')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
-        const nudge = items().findIndex((i) => i.kind === 'user' && (i.parts[0] as { text?: string }).text === RELAUNCH_NUDGE)
-        expect(nudge).toBeGreaterThan(-1)
+        // The nudge goes out once the launch check (`claude auth status`) finishes, which start() doesn't wait for (KERNEL-396).
+        const isNudgeRow = (i: ChatItem) => i.kind === 'user' && (i.parts[0] as { text?: string }).text === RELAUNCH_NUDGE
+        await waitFor('the nudge', () => items().some(isNudgeRow), 30_000)
+        const nudge = items().findIndex(isNudgeRow)
         const after = () => items().slice(nudge)
         await waitFor('the nudge turn', () => after().some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
         evidence.nudgeTurn = after().map((i) => ({ kind: i.kind, ...(i.kind === 'text' ? { text: i.text.slice(0, 200) } : {}), ...(i.kind === 'result' ? { ok: i.ok, error: i.error } : {}), ...(i.kind === 'note' ? { text: i.text } : {}) }))

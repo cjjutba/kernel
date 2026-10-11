@@ -15,21 +15,22 @@ import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/h
 import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
-// After an abort it yields what was already fed, then throws, as the real one does.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[] }[] }))
+// After an abort it yields what was already fed, then throws, as the real one does. A `late` session keeps its stream
+// open after the abort until the test ends it, as a real process does while it exits.
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[]; late: boolean }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: ({ prompt, options }: { prompt: AsyncIterable<unknown>; options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
     const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
-    signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
+    signal?.addEventListener('abort', () => { if (!call.late) for (const w of waiters.splice(0)) w.reject(aborted()) })
     // end() is the process exiting on its own: the stream finishes once what was fed is read. fail() is the SDK
     // throwing instead, as after an error result.
     let ended = false
     let failed: Error | undefined
     const call = {
-      options, prompt, interrupts: 0, flags: [] as unknown[],
+      options, prompt, interrupts: 0, flags: [] as unknown[], late: false,
       feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
       end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) },
       fail: (e: Error) => { failed = e; for (const w of waiters.splice(0)) w.reject(e) }
@@ -38,7 +39,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     return {
       [Symbol.asyncIterator]: () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
-          : signal?.aborted ? Promise.reject(aborted()) : failed ? Promise.reject(failed) : ended ? Promise.resolve({ value: undefined, done: true })
+          : signal?.aborted && !call.late ? Promise.reject(aborted()) : failed ? Promise.reject(failed) : ended ? Promise.resolve({ value: undefined, done: true })
           : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
       }),
       interrupt: async () => { call.interrupts++ },
@@ -1020,6 +1021,37 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     await s.sessions.shutdown(50)
     expect(s.options.abortController?.signal.aborted).toBe(true)
     expect(s.store.meta('working')).toEqual(['chat'])
+  })
+
+  it("saves a tool the quit's interrupt cut off as stopped by the quit, not with Claude Code's rejection (KERNEL-396)", async () => {
+    const s = await midTurn()
+    const quit = s.sessions.shutdown(5_000)
+    // What Claude Code answers the running Bash call with when it gets the interrupt.
+    const rejected = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."
+    s.call.feed({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: rejected }] } })
+    s.call.feed(result('r1', 'error_during_execution'))
+    await quit
+    expect(s.store.items('chat').find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
+    relaunch(s, { clean: true })
+    expect(s.store.items('chat').find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
+  })
+
+  it('leaves the store alone once the quit ended a process, however late its stream ends (KERNEL-396)', async () => {
+    const s = await midTurn()
+    s.call.late = true
+    const rejections: unknown[] = []
+    const onRejection = (e: unknown) => { rejections.push(e) }
+    process.on('unhandledRejection', onRejection)
+    onTestFinished(() => { process.off('unhandledRejection', onRejection) })
+    await s.sessions.shutdown(0)
+    // Kernel closes the database right after the quit, while the process is still exiting.
+    s.store.db.close()
+    // Lines it had already written, then the SDK's throw once the process is gone.
+    s.call.feed({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'Interrupted' }] } })
+    s.call.feed(result('r1', 'error_during_execution'))
+    s.call.fail(new Error('Claude Code process aborted by user'))
+    await flush()
+    expect(rejections).toEqual([])
   })
 
   it('carries on after a quit: stuck tool rows fail, the note says Kernel quit, and what was queued goes before the nudge', async () => {
