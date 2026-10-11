@@ -68,7 +68,6 @@ describe('create_workspace with a reviewer on another workspace\'s branch (KERNE
     await k.refreshPr(author.id)
     await until(() => status(review) === 'archived')
     expect(status(review)).toBe('archived')
-    expect(status(author)).not.toBe('archived')
   })
 
   it('keeps an origin/ base and a short branch name, on a long reviewed branch', async () => {
@@ -165,6 +164,5 @@ describe('at start, reviews made with base_ref (KERNEL-299)', () => {
     expect(now(openReview).status).not.toBe('archived')
     expect(now(task).reviewOf).toBeUndefined()
     expect(now(task).status).not.toBe('archived')
-    expect(now(author).status).not.toBe('archived')
   }, 40_000)
 })

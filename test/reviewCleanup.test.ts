@@ -58,12 +58,11 @@ async function setup(o: { other?: boolean } = {}) {
 }
 
 describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
-  it('archive once the PR merges, and leave the author\'s workspace and the Lead\'s alone', async () => {
+  it('archive once the PR merges, and leave other work\'s review and the Lead\'s workspace alone', async () => {
     const { k, gh, author, otherReview, lead, archived, status } = await setup({ other: true })
     gh.pr = info('merged')
     await k.refreshPr(author.id)
     await archived()
-    expect(status(author)).not.toBe('archived')
     expect(status(otherReview!)).not.toBe('archived')
     expect(k.store.workspace(lead.workspaceId)!.status).not.toBe('archived')
   })

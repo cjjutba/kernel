@@ -117,9 +117,10 @@ export class Kernel {
    */
   private setups = new Map<string, SetupHold>()
   /**
-   * Review workspaces whose reviewed work merged or closed and that Kernel hasn't archived yet, most often because they
-   * were working. They go when their turn ends. Saved under the meta key `reviewsToArchive`, so a quit doesn't keep them
-   * open, and only these are swept at start, so a review the user restored stays restored.
+   * Workspaces Kernel archives on its own and hasn't yet, most often because they were working: reviews whose reviewed
+   * work merged or closed (KERNEL-131), and work whose PR merged (KERNEL-114). They go when their turn ends. Saved under
+   * the meta key `reviewsToArchive`, so a quit doesn't keep them open, and only these are swept at start, so a workspace
+   * the user restored stays restored.
    */
   private reviewsToArchive = new Set<string>()
   /** Archives under way, so a second call for the same workspace waits for the first. */
@@ -271,8 +272,8 @@ export class Kernel {
         const teammate = !this.isLeadWorkspace(ws)
         if (teammate) this.leadUpdates.readingPr(ws.id)
         this.leadUpdates.turnDone(ws, chat, done)
-        // A review workspace that was still working when its work merged or closed goes now (KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
+        // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
         void this.changes(ws.id).catch(() => undefined)
         if (teammate) void this.refreshPr(ws.id).catch(() => undefined).then(() => this.leadUpdates.readPr(ws.id)).catch(() => undefined)
         void this.overlaps.check(ws.roomId).catch(() => undefined)
@@ -285,8 +286,8 @@ export class Kernel {
       // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
       onExit: (ws, _chat, reason, midTurn, resumed) => {
         if (midTurn) this.leadUpdates.crashed(this.store.workspace(ws.id) ?? ws, reason, { resumed })
-        // A review waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id) && ws.reviewOf) void this.archiveReviews(ws.reviewOf, ws.id).catch(() => undefined)
+        // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
+        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
       },
       onLimits: (limits) => this.applyLimits(limits),
       onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
@@ -338,11 +339,14 @@ export class Kernel {
       // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
       if (e.type === 'pr' && e.state === 'merged') this.nudges.reset(e.workspaceId, ...this.reviewsOf(e.workspaceId))
       // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
-      if (e.type === 'pr' && (e.state === 'merged' || e.state === 'closed')) void this.archiveReviews(e.workspaceId).catch(() => undefined)
-      else if (e.type === 'pr') this.unmarkReviews(...this.reviewsOf(e.workspaceId))
+      const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? this.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
+      if (e.type === 'pr' && !reviews) this.unmarkReviews(...this.reviewsOf(e.workspaceId), e.workspaceId)
       // A merge releases the workspaces that wait for it, and a close breaks their wait (KERNEL-259). Here, not in
-      // LeadUpdates, which drops events while Lead updates are off.
-      if (e.type === 'pr') void this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
+      // LeadUpdates, which drops events while Lead updates are off. The work itself is archived after both (KERNEL-114).
+      if (e.type === 'pr') {
+        const waits = this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
+        if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => this.archiveMerged(e.workspaceId)).catch(() => undefined)
+      }
     }
     bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
     // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
@@ -387,7 +391,8 @@ export class Kernel {
     this.recoverSetups()
     for (const id of this.store.meta<string[]>('reviewsToArchive') ?? []) this.reviewsToArchive.add(id)
     void this.sweepReviews()
-    void this.sweepWaits().catch(() => undefined)
+    // After the waits, which read each room's team first, so the Lead's workspace is known.
+    void this.sweepWaits().catch(() => undefined).then(() => this.sweepMerged()).catch(() => undefined)
     for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
     if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
@@ -2032,40 +2037,112 @@ export class Kernel {
     const of = this.store.workspace(ofId)
     const reviews = this.store.workspaces().filter((w) => w.reviewOf === ofId && w.status !== 'archived' && (!only || w.id === only))
     if (!of || (of.prState !== 'merged' && of.prState !== 'closed')) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
+    // Archive on merge covers review cleanup too: off, nothing archives on its own (KERNEL-114).
+    if (!reviews.length) return
+    if (!(await this.archiveOnMerge(of.roomId))) { this.unmarkReviews(...reviews.map((r) => r.id)); return }
     for (const r of reviews) this.markReview(r.id)
-    for (const r of reviews) {
-      // A review with a turn running, or a message about to start one, goes when that turn ends.
-      if (this.working(r.id)) continue
-      const keep = (reason: string) => {
-        this.unmarkReviews(r.id)
-        bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text: 'kept the review workspace', object: r.name, warn: true, quote: `The work it reviewed is done, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
-      }
-      const why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.working(id), latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
-      if (why === 'its agent is still working') continue
-      if (why) { keep(why); continue }
-      // Checked again after the git call: a message may have started a turn meanwhile, the user may have restored it,
-      // or another archive got there first.
-      if (this.working(r.id) || !this.reviewsToArchive.has(r.id)) continue
-      if (this.store.workspace(r.id)?.status === 'archived') { this.unmarkReviews(r.id); continue }
-      try { await this.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
-    }
+    for (const r of reviews) await this.archiveDone(r, 'kept the review workspace', 'The work it reviewed is done')
   }
 
   /**
-   * At start: the reviews Kernel meant to archive when it quit, as one whose turn was still running, are archived now
-   * (KERNEL-131). Work that merged or closed while Kernel was closed reaches `archiveReviews` through the first PR poll,
+   * Settings, Git's Archive on merge, with the room's own value first (KERNEL-114). It covers the work whose PR merged and
+   * the reviews of work that merged or closed.
+   */
+  private async archiveOnMerge(roomId: string) {
+    const room = this.store.room(roomId)
+    const own = room ? (await loadRepoSettings(room.path).catch(() => undefined))?.workspace.archiveOnMerge : undefined
+    return typeof own === 'boolean' ? own : this.settings.workspace.archiveOnMerge
+  }
+
+  /**
+   * The workspace's PR merged, so with Archive on merge on it is done (KERNEL-114). It goes through the same checks as a
+   * review, and is also kept when its branch has commits GitHub doesn't. The Lead's workspace never goes. A closed PR keeps
+   * its workspace, because its author may reopen it. Reviews go through `archiveReviews`.
+   */
+  private async archiveMerged(id: string) {
+    const ws = this.store.workspace(id)
+    if (!ws || ws.status === 'archived' || ws.reviewOf) return
+    const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+    if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.roomId))) { this.unmarkReviews(id); return }
+    this.markReview(id)
+    await this.archiveDone(ws, 'kept the workspace', `Its PR${ws.prNumber ? ' #' + ws.prNumber : ''} merged`)
+  }
+
+  /** A marked workspace whose turn ended, or whose session died, or that a quit left marked. */
+  private archiveMarked(id: string) {
+    const ws = this.store.workspace(id)
+    if (!ws || ws.status === 'archived') { this.unmarkReviews(id); return Promise.resolve() }
+    return ws.reviewOf ? this.archiveReviews(ws.reviewOf, id) : this.archiveMerged(id)
+  }
+
+  /**
+   * Archives a marked workspace through the same checks as archive_workspace. One still working goes when its turn ends.
+   * One that would lose work is kept, with `text` and `done` in the log, and Kernel doesn't try again.
+   */
+  private async archiveDone(r: Workspace, text: string, done: string) {
+    // A turn running, or a message about to start one: it goes when that turn ends.
+    if (this.working(r.id)) return
+    const keep = (reason: string) => {
+      this.unmarkReviews(r.id)
+      bus.activity({ kind: 'note', roomId: r.roomId, workspaceId: r.id, agentId: r.agentId, actor: 'kernel', text, object: r.name, warn: true, quote: `${done}, but it wasn't archived: ${/[.!?…]$/.test(reason) ? reason : reason + '.'}` })
+    }
+    let why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.working(id), latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
+    if (why === 'its agent is still working') return
+    // Archive keeps a branch with unpushed commits, but the work would leave the sidebar unfinished (KERNEL-114).
+    if (!why && !r.reviewOf) {
+      const unpushed = await this.unpushedOf(this.store.workspace(r.id) ?? r)
+      if (unpushed === null) why = 'its commits could not be counted'
+      else if (unpushed > 0) why = `it has ${unpushed === 1 ? 'a commit' : `${unpushed} commits`} that GitHub doesn't`
+    }
+    if (why) { keep(why); return }
+    // Checked again after the git calls: a message may have started a turn meanwhile, the user may have restored it,
+    // or another archive got there first.
+    if (this.working(r.id) || !this.reviewsToArchive.has(r.id)) return
+    if (this.store.workspace(r.id)?.status === 'archived') { this.unmarkReviews(r.id); return }
+    try { await this.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
+  }
+
+  /**
+   * Commits on the workspace's branch that GitHub doesn't have, or null when they can't be counted. As `unpushedCommits`,
+   * except that what the PR's head had counts as on GitHub: a squash merge leaves the commits off the base, and GitHub may
+   * have deleted the branch.
+   */
+  private async unpushedOf(ws: Workspace): Promise<number | null> {
+    const room = this.store.room(ws.roomId)
+    if (!room) return null
+    const counted = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path))
+    if (counted === 0 || !ws.prHead) return counted
+    const r = await exec('git', ['-C', room.path, 'rev-list', '--count', `refs/heads/${ws.branch}`, '--not', ws.prHead])
+    const n = Number(r.stdout.trim())
+    if (r.code !== 0 || r.stdout.trim() === '' || !Number.isInteger(n)) return counted
+    return counted === null ? n : Math.min(counted, n)
+  }
+
+  /**
+   * At start: the workspaces Kernel meant to archive when it quit, as one whose turn was still running, are archived now
+   * (KERNEL-131, KERNEL-114). Work that merged or closed while Kernel was closed reaches them through the first PR poll,
    * since its saved PR state is still open.
    */
   private async sweepReviews() {
-    for (const id of [...this.reviewsToArchive]) {
-      const r = this.store.workspace(id)
-      if (!r?.reviewOf || r.status === 'archived') { this.unmarkReviews(id); continue }
-      await this.archiveReviews(r.reviewOf, id).catch(() => undefined)
-    }
+    for (const id of [...this.reviewsToArchive]) await this.archiveMarked(id).catch(() => undefined)
     // Reviews the Lead started with base_ref instead of review_of are linked now (KERNEL-299). Those whose work already
     // merged or closed get no PR event, so they are archived here. Each is linked once, so a kept one is noted once. A quit
     // right after start closes the database under it.
     for (const r of await this.linkReviews().catch(() => [])) await this.archiveReviews(r.reviewOf!, r.id).catch(() => undefined)
+  }
+
+  /**
+   * Once, at the first start with Archive on merge working (KERNEL-114): work whose PR merged before then gets no PR event,
+   * so it is archived here, with the same checks. After that a merge archives as it lands, so a workspace the user restores
+   * stays, and a kept one is noted once. Saved under the meta key `mergedSwept`.
+   */
+  private async sweepMerged() {
+    if (this.store.meta<boolean>('mergedSwept')) return
+    for (const ws of this.store.workspaces()) {
+      if (this.stopped) return
+      if (ws.status !== 'archived' && ws.prState === 'merged' && !ws.reviewOf) await this.archiveMerged(ws.id).catch(() => undefined)
+    }
+    if (!this.stopped) this.store.saveMeta('mergedSwept', true)
   }
 
   /** Links each open reviewer workspace with no `reviewOf` to the workspace whose branch its base names (KERNEL-299). */
