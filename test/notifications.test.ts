@@ -93,6 +93,34 @@ describe('notifications service', () => {
     expect(n.list().some((x) => x.needsYou)).toBe(false)
   })
 
+  it('alerts once per head commit when a ready PR reads as checks and ready again, as each time main moves (KERNEL-283)', async () => {
+    const { store, n, shown } = await setup()
+    const head = (prHead: string) => store.saveWorkspace({ ...store.workspace('w')!, prState: 'ready', prHead })
+    head('abc')
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(shown.map((x) => x.title)).toEqual(['PR #41 is ready to merge'])
+    const row = n.list()[0]
+    // Main moved: GitHub checks the PR for conflicts again, then says it is still fine.
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'checks' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(shown).toHaveLength(1)
+    expect(n.list()).toEqual([row])
+    // Kernel restarted: the row it already has still counts.
+    n.detach()
+    const again = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, show: (x) => { shown.push(x) }, inBackground: () => true, now: () => new Date(2026, 0, 1, 12, 5).getTime() })
+    again.attach()
+    open.push(again)
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'checks' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(shown).toHaveLength(1)
+    // A new commit that is ready is news.
+    head('def')
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'checks' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(shown).toHaveLength(2)
+    expect(again.list().filter((x) => x.needsYou).map((x) => x.kind)).toEqual(['merge'])
+  })
+
   it('marks rows read, one or all', async () => {
     const { n } = await setup()
     bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })

@@ -70,9 +70,14 @@ export class Notifications {
   /** Idle checks waiting to fire, by workspace. The workspace's next turn cancels its check. */
   private idle = new Map<string, NodeJS.Timeout>()
   private pruneTimer?: NodeJS.Timeout
+  /** The head commit each PR was on when its ready row was made, until the PR leaves ready and checks (KERNEL-283). */
+  private readyOn = new Map<string, string>()
   constructor(private d: Deps) {}
 
   attach() {
+    // A ready PR that already has its row keeps it across a restart, so the next base move doesn't alert again.
+    const rows = this.d.store.notifications()
+    for (const w of this.d.store.workspaces()) if (w.prState === 'ready' && w.prHead && rows.some((n) => n.workspaceId === w.id && n.kind === 'merge')) this.readyOn.set(w.id, w.prHead)
     const on = (e: PushEvent) => {
       if (e.type === 'approval') this.onApproval(e.approval)
       else if (e.type === 'pr') this.onPr(e.workspaceId, e.state)
@@ -213,6 +218,11 @@ export class Notifications {
       const n = this.save({ id: `n-pr-${workspaceId}-${state}-${this.d.now?.() ?? Date.now()}`, kind, roomId: ws.roomId, workspaceId, agentId: ws.agentId, title, sub: `${kind === 'merge' ? 'Merge' : 'Check failed'}${room ? ` · ${room.name}` : ''}`, heading, body, needsYou: true, read: false, createdAt: this.d.now?.() ?? Date.now() })
       this.alert(n, gate)
     }
+    // Ready again on the commit its row is for, after only checks, isn't news. GitHub checks a PR for conflicts again
+    // each time its base moves, and it reads as checks until then (KERNEL-283).
+    if (state !== 'ready' && state !== 'checks') this.readyOn.delete(workspaceId)
+    if (state === 'ready' && ws.prHead && this.readyOn.get(workspaceId) === ws.prHead) return
+    if (state === 'ready' && ws.prHead) this.readyOn.set(workspaceId, ws.prHead)
     if (state === 'ready') make('merge', `PR ${num} is ready to merge`, `PR ${num} is ready to merge`, `${ws.prTitle ?? ws.name} has passing checks and no open review comments.`, 'merge')
     else if (state === 'cifail') make('check', `Checks failed on PR ${num}`, `Checks failed on PR ${num}`, `${ws.prTitle ?? ws.name} has a failing check. Open the workspace to see which one.`, 'checkFailed')
     else if (state === 'changes') make('check', `Changes requested on PR ${num}`, `Changes requested on PR ${num}`, `A reviewer asked for changes on ${ws.prTitle ?? ws.name}.`, 'checkFailed')

@@ -311,8 +311,8 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
 
   /** GitHub as the PR is now: its state and the checks on its head commit. */
   function github(k: Kernel) {
-    const pr = { state: 'cifail' as PrState, checks: [{ name: 'test', state: 'fail' }] as PrCheck[] }
-    k.github = { info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 7, url: 'https://github.com/o/r/pull/7', title: 't', state: pr.state, baseRef: 'main', checks: pr.checks, comments: [], conflicts: [] }), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
+    const pr = { state: 'cifail' as PrState, checks: [{ name: 'test', state: 'fail' }] as PrCheck[], head: undefined as string | undefined, conflictsUnknown: false }
+    k.github = { info: async (_cwd, _ref, workspaceId) => ({ workspaceId, number: 7, url: 'https://github.com/o/r/pull/7', title: 't', state: pr.state, baseRef: 'main', checks: pr.checks, comments: [], conflicts: [], head: pr.head, conflictsUnknown: pr.conflictsUnknown }), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
     return pr
   }
 
@@ -347,6 +347,27 @@ describe('the loop guard on automatic requests (KERNEL-125)', () => {
     await spend()
     pr.state = 'ready'
     await k.refreshPr(ws.id)
+    expect((await ask()).isError).toBe(false)
+  })
+
+  it("doesn't start over when a ready PR reads as checks and ready again on the same commit, as each time main moves (KERNEL-283)", async () => {
+    const { k, first, ws, ask, spend } = await guarded()
+    k.sessions.kernelTurn = (id) => id === first.id
+    const pr = github(k)
+    Object.assign(pr, { state: 'ready', checks: [{ name: 'test', state: 'pass' }], head: 'abc' })
+    await k.prs.refreshPr(ws.id)
+    await spend()
+    // Main moved: GitHub checks the PR for conflicts again, then says it is still fine. Nothing moved on.
+    Object.assign(pr, { state: 'checks', conflictsUnknown: true })
+    await k.prs.refreshPr(ws.id)
+    Object.assign(pr, { state: 'ready', conflictsUnknown: false })
+    await k.prs.refreshPr(ws.id)
+    expect((await ask()).isError).toBe(true)
+    // A new commit whose checks pass is the work moving on.
+    Object.assign(pr, { state: 'checks', checks: [{ name: 'test', state: 'running' }], head: 'def' })
+    await k.prs.refreshPr(ws.id)
+    Object.assign(pr, { state: 'ready', checks: [{ name: 'test', state: 'pass' }] })
+    await k.prs.refreshPr(ws.id)
     expect((await ask()).isError).toBe(false)
   })
 
