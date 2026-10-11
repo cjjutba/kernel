@@ -83,10 +83,9 @@ describe('session env', () => {
     expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, {})).toEqual({ PATH: '/bin', CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' })
   })
 
-  it("sets the window a chat compacts against, unless the user set their own (KERNEL-226)", () => {
-    expect(sessionEnv({ PATH: '/bin' }, {}, { compact: true })).toEqual({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '200000' })
-    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {}, { compact: true })).toEqual({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
+  it("leaves the window a chat compacts against to the model, or to the user's own setting (context-window-follows-model)", () => {
     expect(sessionEnv({ PATH: '/bin' }, {})).toEqual({ PATH: '/bin' })
+    expect(sessionEnv({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' }, {})).toEqual({ PATH: '/bin', CLAUDE_CODE_AUTO_COMPACT_WINDOW: '500000' })
   })
 })
 

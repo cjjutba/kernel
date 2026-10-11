@@ -15,7 +15,10 @@ export function formatTokens(n: number): string {
 
 const R = 6
 const C = 2 * Math.PI * R
-/** From this much context use the ring turns amber. Claude Code auto compacts near 83% (KERNEL-226), so amber means a compact is coming. */
+/**
+ * From this much context use the ring turns amber. Claude Code auto compacts about 33k below the model's window, near 83% of
+ * 200k and near 97% of 1M, so amber means a compact is coming (context-window-follows-model).
+ */
 const CONTEXT_NEAR = 75
 
 /** The class that colors the ring and the popover's top meter: red from the banner's threshold, amber from `CONTEXT_NEAR`. */

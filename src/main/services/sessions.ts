@@ -913,7 +913,7 @@ export class Sessions {
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams, compact: true }),
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams }),
       pathToClaudeCodeExecutable: packagedClaude(),
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
@@ -1596,27 +1596,19 @@ export function roomRule(command: string, suggestions?: PermissionUpdate[], supp
 }
 
 /** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean; compact?: boolean } = {}): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
-  // A chat on a 1M model compacts near 200k instead of near 1M. A window the user set themselves wins (KERNEL-226).
-  if (o.compact && !env[COMPACT_WINDOW]) env[COMPACT_WINDOW] = String(COMPACT_AT)
+  // No compact window: a chat uses its model's whole context window, 1M on a 1M model (context-window-follows-model).
   return env
 }
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
-
-/**
- * The window Claude Code compacts against. It compacts about 33k tokens below it, and a model's own smaller window still
- * applies. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` didn't move the threshold in the pinned CLI (KERNEL-226).
- */
-export const COMPACT_WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
-export const COMPACT_AT = 200_000
 
 /**
  * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
