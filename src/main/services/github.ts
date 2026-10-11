@@ -1,5 +1,6 @@
-import { exec, run, SLOW_MS } from './exec'
-import type { IssueSummary, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import { exec, run, SLOW_MS, type ExecResult } from './exec'
+import type { IssueSummary, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
+import { gatingChecks } from '@shared/merge'
 import { stripRemote } from './worktrees'
 
 // Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
@@ -16,6 +17,8 @@ export interface RollupItem {
   detailsUrl?: string
   targetUrl?: string
   description?: string
+  /** Whether the base branch's rules require this check on this PR. Missing where GitHub doesn't say (KERNEL-388). */
+  isRequired?: boolean
 }
 
 export interface PrView {
@@ -30,9 +33,12 @@ export interface PrView {
   statusCheckRollup: RollupItem[]
   /** The PR's head commit. A reviewer's verdict on another commit is stale (KERNEL-130). */
   headRefOid?: string
+  /** GitHub's verdict on merging it under the base branch's rules. Missing on a GitHub that doesn't report it. */
+  mergeStateStatus?: 'BEHIND' | 'BLOCKED' | 'CLEAN' | 'DIRTY' | 'DRAFT' | 'HAS_HOOKS' | 'UNKNOWN' | 'UNSTABLE'
+  /** When GitHub last saw the PR change: a push, a review, a comment. */
+  updatedAt?: string
 }
 
-const FIELDS = 'number,url,title,baseRefName,state,isDraft,mergeable,reviewDecision,statusCheckRollup,headRefOid'
 const FAILED = ['FAILURE', 'ERROR', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
 const SKIPPED = ['SKIPPED', 'NEUTRAL', 'STALE']
 const QUEUED = ['QUEUED', 'PENDING', 'WAITING', 'REQUESTED', 'EXPECTED']
@@ -55,19 +61,53 @@ export function checkOf(c: RollupItem): PrCheck {
   return { name, state: 'running', ...(url ? { url } : {}) }
 }
 
-/** Collapse GitHub's PR fields into the one state the workspace header shows. */
-export function prStateOf(pr: PrView | null): PrState {
+/** `*` in a room's `optionalChecks` matches any run of characters, and names compare without case (KERNEL-388). */
+export function matchesCheck(patterns: string[], name: string): boolean {
+  const escape = (t: string) => t.replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+  return patterns.some((p) => p.trim() && new RegExp(`^${p.trim().split('*').map(escape).join('.*')}$`, 'i').test(name))
+}
+
+/**
+ * The PR's checks, each marked optional when it doesn't decide the PR. When the repo requires some checks, those decide and
+ * the rest are optional. When it requires none, every check decides except the ones the room's `optionalChecks` names. A
+ * check the repo requires is never optional (KERNEL-388).
+ */
+export function checksOf(items: RollupItem[], optional: string[] = []): PrCheck[] {
+  const required = items.some((c) => c.isRequired === true)
+  return items.map((c) => {
+    const check = checkOf(c)
+    const skip = c.isRequired !== true && (required || matchesCheck(optional, check.name))
+    return skip ? { ...check, optional: true as const } : check
+  })
+}
+
+/**
+ * Collapse GitHub's PR fields into the one state the workspace header shows. Only the checks that decide the PR count: a
+ * failing check the repo doesn't require leaves it ready (KERNEL-388). `optional` is the room's list of checks to ignore.
+ */
+export function prStateOf(pr: PrView | null, o: { optional?: string[] } = {}): PrState {
   if (!pr) return 'none'
   if (pr.state === 'MERGED') return 'merged'
   if (pr.state === 'CLOSED') return 'closed'
   if (pr.isDraft) return 'draft'
-  if (pr.mergeable === 'CONFLICTING') return 'conflict'
-  const checks = (pr.statusCheckRollup ?? []).map(checkOf)
+  if (pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY') return 'conflict'
+  const checks = gatingChecks(checksOf(pr.statusCheckRollup ?? [], o.optional))
   if (checks.some((c) => c.state === 'fail')) return 'cifail'
   if (checks.some((c) => c.state === 'running' || c.state === 'queued')) return 'checks'
   if (pr.reviewDecision === 'CHANGES_REQUESTED') return 'changes'
   // GitHub works out again whether the PR conflicts each time the base moves, and until then it isn't ready (KERNEL-283).
-  return pr.mergeable === 'UNKNOWN' ? 'checks' : 'ready'
+  return pr.mergeable === 'UNKNOWN' || pr.mergeStateStatus === 'UNKNOWN' ? 'checks' : 'ready'
+}
+
+/**
+ * Why GitHub won't merge a PR that reads ready: BEHIND under the "up to date" rule, BLOCKED for a required review, or
+ * BLOCKED for another rule. The PR stays ready, so its review flow goes on, and the header and Merge PR say it (KERNEL-388).
+ */
+export function blockedOf(pr: PrView, state: PrState): PrBlocked | undefined {
+  if (state !== 'ready') return undefined
+  if (pr.mergeStateStatus === 'BEHIND') return 'behind'
+  if (pr.mergeStateStatus === 'BLOCKED') return pr.reviewDecision === 'REVIEW_REQUIRED' ? 'review' : 'rules'
+  return undefined
 }
 
 /** An open PR GitHub is still checking for conflicts. Kernel reads it again soon (features/prs.ts). */
@@ -80,8 +120,12 @@ export const REVIEWS_QUERY = 'query($owner:String!,$name:String!,$number:Int!){r
 
 /** Review comments from the GraphQL reply: one per thread, plus the body of each "changes requested" review. */
 export function parseReviews(json: string): ReviewComment[] {
+  try { return reviewsOf(JSON.parse(json)?.data?.repository?.pullRequest) } catch { return [] }
+}
+
+/** The review comments of one `pullRequest` node that has `reviewThreads` and `latestReviews`. */
+export function reviewsOf(pr: any): ReviewComment[] {
   try {
-    const pr = JSON.parse(json)?.data?.repository?.pullRequest
     if (!pr) return []
     type Thread = { isResolved: boolean; path?: string; line?: number | null; originalLine?: number | null; comments?: { nodes?: { id: string; body: string; author?: { login?: string } | null }[] } }
     type Review = { id: string; state: string; body?: string; author?: { login?: string } | null }
@@ -98,10 +142,129 @@ export function parseReviews(json: string): ReviewComment[] {
   } catch { return [] }
 }
 
+/**
+ * A read GitHub couldn't do. `rateLimited` is GitHub's rate limit, `secondary` its "slow down" limit; anything else is a
+ * network, auth or gh failure. A read that fails changes no PR's state (KERNEL-388).
+ */
+export class GhReadError extends Error {
+  constructor(message: string, readonly rateLimited = false, readonly secondary = false) {
+    super(message)
+    this.name = 'GhReadError'
+  }
+}
+
+/** What gh says when there is no PR to read: no PR on the branch, no such number, or a folder with no GitHub remote. */
+const NO_PR = /no pull requests found|Could not resolve to a (PullRequest|Repository)|not a git repository|none of the git remotes|no git remotes/i
+
+/** A failed gh read: `none` when there is simply no PR, else the error, with GitHub's rate limits told apart. */
+export function readFailure(r: ExecResult): 'none' | GhReadError {
+  if (r.code === 127) return 'none'
+  const text = `${r.stderr}\n${r.stdout}`
+  if (/secondary rate limit|abuse detection/i.test(text)) return new GhReadError('GitHub asked Kernel to slow down.', true, true)
+  if (/rate limit|RATE_LIMITED/i.test(text)) return new GhReadError("GitHub's rate limit is used up.", true)
+  if (NO_PR.test(text)) return 'none'
+  const said = r.stderr.trim().split('\n')[0]
+  return new GhReadError(r.timedOut ? 'gh timed out.' : said || `gh exited with ${r.code}.`)
+}
+
+const parsed = (text: string): any => { try { return JSON.parse(text) } catch { return undefined } }
+
+/**
+ * A GraphQL query against the repo gh finds at `cwd`, as its JSON. A PR number GitHub can't find comes back null with an
+ * error, and gh exits 1 with the rest of the data on stdout, so data counts whatever the exit code. Null when there's no
+ * repo or PR to read; throws GhReadError when GitHub couldn't be read.
+ */
+async function graphql(cwd: string, query: string): Promise<any> {
+  const r = await exec('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-f', `query=${query}`], { cwd, timeoutMs: 20000 })
+  const json = parsed(r.stdout)
+  const limited = (json?.errors ?? []).some((e: { type?: string }) => e?.type === 'RATE_LIMITED')
+  if (json?.data && !limited) return json
+  const failure = limited ? new GhReadError("GitHub's rate limit is used up.", true) : readFailure(r)
+  if (failure === 'none') return null
+  throw failure
+}
+
+const CHECK_FIELDS = (n: number) => '__typename'
+  + ` ... on CheckRun{name status conclusion startedAt completedAt detailsUrl isRequired(pullRequestNumber:${n})}`
+  + ` ... on StatusContext{context state targetUrl description isRequired(pullRequestNumber:${n})}`
+
+const REVIEW_FIELDS = 'reviewThreads(first:100){nodes{isResolved path line originalLine comments(first:1){nodes{id body author{login}}}}}'
+  + ' latestReviews(first:20){nodes{id state body author{login}}}'
+
+/** One PR's fields: its state, GitHub's merge verdict and its head commit's checks, each saying whether it is required. */
+export function prFields(n: number, o: { reviews?: boolean } = {}): string {
+  return 'number url title state isDraft mergeable mergeStateStatus reviewDecision headRefOid updatedAt baseRefName'
+    + ` commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{${CHECK_FIELDS(n)}}}}}}}`
+    + (o.reviews ? ` ${REVIEW_FIELDS}` : '')
+}
+
+const QUERY = 'query($owner:String!,$name:String!){'
+const prNumber = (n: number) => { if (!Number.isSafeInteger(n) || n < 1) throw new Error(`Not a PR number: ${n}`); return n }
+
+/** One PR with its review comments, for the full read. */
+export const prQuery = (n: number) => `${QUERY}repository(owner:$owner,name:$name){pullRequest(number:${prNumber(n)}){${prFields(n, { reviews: true })}}}}`
+
+/** Many PRs of one repo in one read, without review comments, plus what's left of the rate limit (KERNEL-388). */
+export const batchQuery = (numbers: number[]) => `${QUERY}rateLimit{cost remaining limit resetAt} repository(owner:$owner,name:$name){`
+  + numbers.map((n) => `p${prNumber(n)}: pullRequest(number:${n}){${prFields(n)}}`).join(' ') + '}}'
+
+/** A `pullRequest` node as a PrView, its head commit's checks flattened into `statusCheckRollup`. */
+export function viewOf(node: any): PrView {
+  const { commits, reviewThreads: _t, latestReviews: _r, ...rest } = node
+  return { ...rest, statusCheckRollup: commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [] }
+}
+
+/** GitHub's GraphQL rate limit: points left of `limit` until `resetAt` (ms). */
+export interface RateLimit { remaining: number; limit: number; resetAt: number; cost?: number }
+
+const rateOf = (r: any): RateLimit | undefined => (r && typeof r.remaining === 'number' && typeof r.limit === 'number'
+  ? { remaining: r.remaining, limit: r.limit, resetAt: typeof r.resetAt === 'string' ? Date.parse(r.resetAt) : r.reset * 1000, ...(typeof r.cost === 'number' ? { cost: r.cost } : {}) }
+  : undefined)
+
+/** A batch read's PRs by number, and the rate limit. A number GitHub couldn't find is left out. */
+export function parseBatch(json: any): { views: Map<number, PrView>; rate?: RateLimit } {
+  const views = new Map<number, PrView>()
+  for (const node of Object.values<any>(json?.data?.repository ?? {})) if (node && typeof node.number === 'number') views.set(node.number, viewOf(node))
+  const rate = rateOf(json?.data?.rateLimit)
+  return { views, ...(rate ? { rate } : {}) }
+}
+
+/**
+ * The PR for `ref` (a branch, a number, or none for the folder's branch) and its review comments, in one GraphQL read once
+ * its number is known. Null when there is no PR; throws GhReadError when GitHub couldn't be read.
+ */
+async function readPr(cwd: string, ref?: string): Promise<{ view: PrView; comments: ReviewComment[] } | null> {
+  let n = ref && /^\d+$/.test(ref) ? Number(ref) : undefined
+  if (n === undefined) {
+    const r = await exec('gh', ['pr', 'view', ...(ref ? [ref] : []), '--json', 'number'], { cwd, timeoutMs: 20000 })
+    if (r.code !== 0) { const failure = readFailure(r); if (failure === 'none') return null; throw failure }
+    n = parsed(r.stdout)?.number
+    if (typeof n !== 'number') return null
+  }
+  const node = (await graphql(cwd, prQuery(n)))?.data?.repository?.pullRequest
+  return node ? { view: viewOf(node), comments: node.state === 'OPEN' ? reviewsOf(node) : [] } : null
+}
+
 export async function prView(cwd: string, ref?: string): Promise<PrView | null> {
-  const r = await exec('gh', ['pr', 'view', ...(ref ? [ref] : []), '--json', FIELDS], { cwd, timeoutMs: 20000 })
-  if (r.code !== 0) return null
-  try { return JSON.parse(r.stdout) } catch { return null }
+  return (await readPr(cwd, ref))?.view ?? null
+}
+
+/** Many PRs of the repo at `cwd` by number, in reads of 50, with what's left of the rate limit (KERNEL-388). */
+export async function prBatch(cwd: string, numbers: number[]): Promise<{ views: Map<number, PrView>; rate?: RateLimit }> {
+  const views = new Map<number, PrView>()
+  let rate: RateLimit | undefined
+  for (let i = 0; i < numbers.length; i += 50) {
+    const read = parseBatch(await graphql(cwd, batchQuery(numbers.slice(i, i + 50))))
+    for (const [n, v] of read.views) views.set(n, v)
+    rate = read.rate ?? rate
+  }
+  return { views, ...(rate ? { rate } : {}) }
+}
+
+/** GraphQL's rate limit from `gh api rate_limit`, which costs nothing. Undefined when gh can't say. */
+export async function ghRateLimit(cwd: string): Promise<RateLimit | undefined> {
+  const r = await exec('gh', ['api', 'rate_limit'], { cwd, timeoutMs: 15000 })
+  return r.code === 0 ? rateOf(parsed(r.stdout)?.resources?.graphql) : undefined
 }
 
 /** Review comments for the "Changes requested" card and the address-review instructions. Empty when gh fails. */
@@ -121,29 +284,42 @@ export async function conflictFiles(cwd: string, base: string, remote = 'origin'
 const reviewDecision = (d: PrView['reviewDecision']): PrInfo['reviewDecision'] =>
   d === 'APPROVED' ? 'approved' : d === 'CHANGES_REQUESTED' ? 'changes' : d === 'REVIEW_REQUIRED' ? 'pending' : undefined
 
-/** What the header, the Checks tab and the review card show. */
-export function infoOf(workspaceId: string, view: PrView, comments: ReviewComment[], conflicts: string[]): PrInfo {
+/** What the header, the Checks tab and the review card show. `optional` is the room's list of checks to ignore. */
+export function infoOf(workspaceId: string, view: PrView, comments: ReviewComment[], conflicts: string[], o: { optional?: string[] } = {}): PrInfo {
   const decision = reviewDecision(view.reviewDecision)
+  const state = prStateOf(view, o)
+  const blocked = blockedOf(view, state)
   return {
-    workspaceId, number: view.number, url: view.url, title: view.title ?? '', state: prStateOf(view), baseRef: view.baseRefName ?? '',
-    checks: (view.statusCheckRollup ?? []).map(checkOf), comments, conflicts, ...(decision ? { reviewDecision: decision } : {}),
-    ...(view.headRefOid ? { head: view.headRefOid } : {}), ...(conflictsUnknown(view) ? { conflictsUnknown: true } : {})
+    workspaceId, number: view.number, url: view.url, title: view.title ?? '', state, baseRef: view.baseRefName ?? '',
+    checks: checksOf(view.statusCheckRollup ?? [], o.optional), comments, conflicts, ...(decision ? { reviewDecision: decision } : {}),
+    ...(view.headRefOid ? { head: view.headRefOid } : {}), ...(conflictsUnknown(view) ? { conflictsUnknown: true } : {}),
+    ...(blocked ? { blocked } : {}), ...(view.updatedAt ? { updatedAt: view.updatedAt } : {})
   }
 }
 
 /**
- * The PR for `ref` with its checks, review comments and conflicting files. `conflicts: false` is for a cwd that isn't the
- * PR's checkout (the room, when the worktree is gone): `conflictFiles` merges against cwd's HEAD, which would be main.
+ * What a poll compares to tell whether a PR changed since Kernel last read it in full: its state, head, GitHub's verdict
+ * and each check, but not review comments, which a batch read leaves out (`updatedAt` moves when one is added).
  */
-export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean; remote?: string } = {}): Promise<PrInfo | null> {
-  const view = await prView(cwd, ref)
-  if (!view) return null
-  const open = view.state === 'OPEN'
-  const [comments, conflicts] = await Promise.all([
-    open ? prReviews(cwd, view.number) : Promise.resolve([]),
-    open && o.conflicts !== false && view.mergeable === 'CONFLICTING' && view.baseRefName ? conflictFiles(cwd, view.baseRefName, o.remote) : Promise.resolve([])
-  ])
-  return infoOf(workspaceId, view, comments, conflicts)
+export function fingerprintOf(info: PrInfo): string {
+  return JSON.stringify([info.number, info.state, info.head, info.updatedAt, info.reviewDecision, info.blocked, !!info.conflictsUnknown,
+    info.checks.map((c) => `${c.name}:${c.state}:${c.optional ? 1 : 0}`)])
+}
+
+/**
+ * The PR for `ref` with its checks, review comments and conflicting files. Null when there is no PR; rejects with
+ * GhReadError when GitHub couldn't be read, so a caller never takes a failed read for a missing PR (KERNEL-388).
+ * `conflicts: false` is for a cwd that isn't the PR's checkout (the room, when the worktree is gone): `conflictFiles`
+ * merges against cwd's HEAD, which would be main. `optional` is the room's list of checks to ignore.
+ */
+export async function prInfo(cwd: string, ref: string, workspaceId: string, o: { conflicts?: boolean; remote?: string; optional?: string[] } = {}): Promise<PrInfo | null> {
+  const read = await readPr(cwd, ref)
+  if (!read) return null
+  const { view, comments } = read
+  const conflicts = view.state === 'OPEN' && o.conflicts !== false && view.mergeable === 'CONFLICTING' && view.baseRefName
+    ? await conflictFiles(cwd, view.baseRefName, o.remote)
+    : []
+  return infoOf(workspaceId, view, comments, conflicts, { optional: o.optional })
 }
 
 export async function prCreate(cwd: string, o: { title: string; body: string; base: string; draft?: boolean }, remote = 'origin'): Promise<PrView | null> {
@@ -161,7 +337,15 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
 
 /** The GitHub calls Kernel makes for a workspace's PR. Tests swap it for a stub. */
 export interface GitHub {
-  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string }) => Promise<PrInfo | null>
+  /** The full read of one PR. Null when there is none; rejects with GhReadError when GitHub couldn't be read. */
+  info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string; optional?: string[] }) => Promise<PrInfo | null>
+  /**
+   * Many PRs of the repo at `cwd` in one read, by number, with no review comments or conflicting files, and the rate limit.
+   * A stub without it makes the poll read each PR in full, as before (KERNEL-388).
+   */
+  prs?: (cwd: string, numbers: number[], o?: { optional?: string[] }) => Promise<{ infos: Map<number, PrInfo>; rate?: RateLimit }>
+  /** GraphQL's rate limit, read for free, for when a read hit it without saying when it resets. */
+  rateLimit?: (cwd: string) => Promise<RateLimit | undefined>
   merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
   ready: (cwd: string, ref: string) => Promise<void>
   reopen: (cwd: string, ref: string) => Promise<void>
@@ -169,6 +353,11 @@ export interface GitHub {
 
 export const gh: GitHub = {
   info: prInfo,
+  prs: async (cwd, numbers, o = {}) => {
+    const { views, rate } = await prBatch(cwd, numbers)
+    return { infos: new Map([...views].map(([n, v]) => [n, infoOf('', v, [], [], o)])), ...(rate ? { rate } : {}) }
+  },
+  rateLimit: ghRateLimit,
   merge: (cwd, ref, method) => prMerge(cwd, method, { ref }),
   ready: prReady,
   reopen: prReopen
@@ -186,7 +375,7 @@ export function resolveFile(state: 'conflict' | 'cifail' | 'changes', texts: Pic
     return ['resolve-conflicts.md', texts.resolveInstructions + (files.length ? `\n\nConflicting files:\n${files.map((f) => `- ${f}`).join('\n')}` : '')]
   }
   if (state === 'cifail') {
-    const failed = (info?.checks ?? []).filter((c) => c.state === 'fail')
+    const failed = gatingChecks(info?.checks ?? []).filter((c) => c.state === 'fail')
     return ['fix-checks.md', texts.fixChecksInstructions + (failed.length ? `\n\nFailing checks:\n${failed.map((c) => `- ${c.name}${c.url ? ` ${c.url}` : ''}`).join('\n')}` : '')]
   }
   const open = (info?.comments ?? []).filter((c) => !c.resolved)
@@ -202,7 +391,7 @@ export function prNote(ws: Workspace, info: PrInfo | null, method?: 'squash' | '
   if (ws.prState === 'merged') return method ? `${n} was ${LANDED[method]} ${base}.` : `${n} was merged on GitHub.`
   if (ws.prState === 'closed') return `${n} was closed without merging on GitHub.`
   if (ws.prState === 'cifail') {
-    const names = (info?.checks ?? []).filter((c) => c.state === 'fail').map((c) => c.name)
+    const names = gatingChecks(info?.checks ?? []).filter((c) => c.state === 'fail').map((c) => c.name)
     if (!names.length) return 'Checks failed on the PR.'
     const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
     return `${list} failed on the PR.`

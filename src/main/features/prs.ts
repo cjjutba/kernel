@@ -3,14 +3,17 @@ import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
-import { prNote, resolveFile } from '../services/github'
-import { mergeableState, mergeBlock } from '@shared/merge'
+import { fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
+import { PrCadence } from '../services/prCadence'
+import { mergeableState, mergeBlock, mergeNeedsPr } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
+/** PR states whose next read is likely to differ soon, so the poll runs at its fast rate (KERNEL-388). */
+const MOVING: PrState[] = ['creating', 'checks', 'merging', 'resolving']
+
 /** Each workspace's pull request: opening, reading, merging and following its branch (KERNEL-330). */
 export class Prs extends Feature {
-  private prTimer?: NodeJS.Timeout
 
   /** Workspaces whose merge Kernel is running, so the poll doesn't overwrite `merging`. */
   private merging = new Set<string>()
@@ -40,13 +43,40 @@ export class Prs extends Feature {
     return this.setPrState(ws, 'creating')
   }
 
+  /** The checks a room never counts, from its `[pr] optional_checks` (KERNEL-388). */
+  private async optionalOf(roomId: string): Promise<string[]> {
+    const room = this.store.room(roomId)
+    return room ? (await loadRepoSettings(room.path).catch(() => undefined))?.pr?.optionalChecks ?? [] : []
+  }
+
+  /**
+   * The full read of the workspace's PR, with the room's optional checks. Null when there is no PR; rejects with GhReadError
+   * when GitHub couldn't be read, after telling the poll to hold off when it was the rate limit (KERNEL-388).
+   */
+  private async read(ws: Workspace, cwd: string, ref: string, o: { conflicts?: boolean; remote?: string } = {}): Promise<PrInfo | null> {
+    try {
+      const optional = await this.optionalOf(ws.roomId)
+      return await this.k.github.info(cwd, ref, ws.id, { ...o, ...(optional.length ? { optional } : {}) })
+    } catch (e) {
+      if (e instanceof GhReadError && e.rateLimited) await this.limited(e, cwd)
+      throw e
+    }
+  }
+
+  /** A read GitHub refused for its rate limit. The primary limit's reset comes from `gh api rate_limit`, which costs nothing. */
+  private async limited(e: GhReadError, cwd: string) {
+    const resetAt = e.secondary ? undefined : (await this.k.github.rateLimit?.(cwd).catch(() => undefined))?.resetAt
+    this.cadence.limited({ secondary: e.secondary, resetAt })
+  }
+
   /** One button, three situations: conflicts, failing checks, or review comments. Each sends its own instructions, with what GitHub reports. */
   async resolvePr(id: string) {
     const ws = await this.syncBranch(id)
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
-    const info = await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
+    // A read that failed still sends the instructions, without what GitHub reports.
+    const info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch((e) => { if (e instanceof GhReadError) return null; throw e })
     if (info) bus.push({ type: 'pr.info', info })
     const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
     this.k.lead.userSpoke(chat.id)
@@ -54,13 +84,27 @@ export class Prs extends Feature {
     this.setPrState(ws, 'resolving')
   }
 
-  /** The PR's checks, review comments and conflicts, for the Checks tab and the review card. */
+  /** Each PR's last full read and when, so opening a workspace again within `infoMs` doesn't read GitHub again. */
+  private infos = new Map<string, { info: PrInfo; at: number }>()
+  infoMs = 10_000
+
+  /**
+   * The PR's checks, review comments and conflicts, for the Checks tab and the review card. It goes through `refreshPr`, so
+   * the header moves with what the tab shows (KERNEL-388). Null when there is no PR or GitHub couldn't be read.
+   */
   private async getPr(id: string) {
-    const ws = await this.syncBranch(id)
+    const ws = this.mustWs(id)
     if (!ws.prNumber) return null
-    const info = await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
-    if (info) bus.push({ type: 'pr.info', info })
-    return info
+    // An archived workspace, opened from History, keeps its state and only shows what GitHub says now.
+    if (ws.status === 'archived') {
+      const info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) }).catch(() => null)
+      if (info) bus.push({ type: 'pr.info', info })
+      return info
+    }
+    const last = this.infos.get(id)
+    if (last && Date.now() - last.at < this.infoMs) return last.info
+    await this.k.refreshPr(id).catch(() => undefined)
+    return this.infos.get(id)?.info ?? null
   }
 
   /**
@@ -73,27 +117,32 @@ export class Prs extends Feature {
     const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
     const remote = await this.k.config.remoteOfWs(asked)
-    const info = await folderGone(asked.path)
-      ? await this.k.github.info(this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, id, { conflicts: false })
-      : await this.k.github.info(asked.path, asked.branch, id, { remote })
+    let read: PrInfo | null
+    try {
+      read = await folderGone(asked.path)
+        ? await this.read(asked, this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, { conflicts: false })
+        : await this.read(asked, asked.path, asked.branch, { remote })
+    } catch (e) {
+      // GitHub couldn't be read: the PR stays as it was, and the poll backs off (KERNEL-388).
+      if (e instanceof GhReadError) return this.readFailed(id, o)
+      throw e
+    }
+    const info = read
     if (info) bus.push({ type: 'pr.info', info })
     // gh takes seconds. Decide on the workspace as it is now: it may have been archived, or a merge may have started.
     const ws = this.mustWs(id)
     if (ws.status === 'archived') return ws
     this.noteRead(id, ws, info)
+    if (info) { this.prints.set(id, fingerprintOf(info)); this.infos.set(id, { info, at: Date.now() }); this.cadence.ok() }
     const settle = o.settle ?? !this.agentBusy(ws)
-    const hold = this.merging.has(id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
-    let state: PrState
-    if (hold) state = ws.prState
-    else if (!info) state = ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
-    else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
-    // A conflict holds until GitHub has checked the PR again. The rest of the read is real (KERNEL-283).
-    else if (info.conflictsUnknown && ws.prState === 'conflict') state = 'conflict'
-    else state = info.state
+    const hold = this.held(ws, settle)
+    const state = this.nextState(ws, info, settle)
     const adopt = info && state !== 'none'
     const patch: Partial<Workspace> = {
       prState: state,
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
+      // GitHub's word on merging a ready PR goes with the state, and a held state keeps the last one (KERNEL-388).
+      ...(info && !hold ? { prBlocked: state === 'ready' ? info.blocked : undefined } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     }
     // A read that changes nothing isn't saved or pushed, so each poll doesn't redraw the window and refresh every task (KERNEL-216).
@@ -103,6 +152,7 @@ export class Prs extends Feature {
     else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info)
     if (next.prState !== ws.prState) {
+      this.changedAt = Date.now()
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
       const text = prNote(next, info, this.mergedWith.get(id), remote)
@@ -110,6 +160,35 @@ export class Prs extends Feature {
       if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
     }
     return next
+  }
+
+  /** Creating and Resolving hold while the agent works, and `merging` while Kernel's merge runs. */
+  private held(ws: Workspace, settle: boolean) {
+    return this.merging.has(ws.id) || (!settle && (ws.prState === 'creating' || ws.prState === 'resolving'))
+  }
+
+  /** The state a read moves the workspace to, after the holds. `info` null means GitHub found no PR. */
+  private nextState(ws: Workspace, info: PrInfo | null, settle: boolean): PrState {
+    if (this.held(ws, settle)) return ws.prState
+    if (!info) return ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
+    if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) return 'none'
+    // A conflict holds until GitHub has checked the PR again. The rest of the read is real (KERNEL-283).
+    if (info.conflictsUnknown && ws.prState === 'conflict') return 'conflict'
+    return info.state
+  }
+
+  /**
+   * A read GitHub couldn't do changes no state, so a network blip or a rate limit doesn't turn Creating back into Create PR.
+   * It counts toward the PR's backoff (KERNEL-216). A Creating PR whose turn is over, read and failed three times in a row,
+   * does go back, so its spinner can't stay forever (KERNEL-388).
+   */
+  private readFailed(id: string, o: { settle?: boolean }): Workspace {
+    const ws = this.mustWs(id)
+    const p = this.polls.get(id) ?? { due: 0, failures: 0, changedAt: Date.now() }
+    this.polls.set(id, { ...p, failures: p.failures + 1 })
+    const settle = o.settle ?? !this.agentBusy(ws)
+    if (ws.status !== 'archived' && ws.prState === 'creating' && !ws.prNumber && settle && p.failures + 1 >= 3) return this.setPrState(ws, 'none')
+    return ws
   }
 
   /** Workspaces whose PR has shown checks, so a ready read with none is a push GitHub hasn't checked yet, not a repo without CI. */
@@ -146,9 +225,18 @@ export class Prs extends Feature {
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
     // checking it for conflicts (KERNEL-376). One that isn't, mergeBlock refuses anyway.
-    const info = mergeableState(ws.prState)
-      ? await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
-      : undefined
+    let info: PrInfo | null | undefined
+    if (mergeableState(ws.prState)) {
+      try {
+        info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) })
+      } catch (e) {
+        if (!(e instanceof GhReadError)) throw e
+        // A failed read stops the merge only when a rule needs GitHub's word (KERNEL-376), and says when a rate limit resets.
+        const at = e.rateLimited ? this.cadence.resumesAt() : undefined
+        if (mergeNeedsPr(ws, rules)) throw new Error(`Could not read the pull request from GitHub.${at ? ` GitHub's rate limit resets at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.` : ''}`)
+        info = null
+      }
+    }
     if (info) bus.push({ type: 'pr.info', info })
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name)
@@ -165,6 +253,8 @@ export class Prs extends Feature {
       throw e
     }
     this.merging.delete(id)
+    // GitHub works out again whether every other PR into the base conflicts, so the poll follows them closely (KERNEL-388).
+    this.pollSoon()
     return this.k.refreshPr(id, { settle: true })
   }
 
@@ -213,7 +303,7 @@ export class Prs extends Feature {
     return chat ? this.sessions.isRunning(chat.id) || this.sessions.queued(chat.id).length > 0 : false
   }
 
-  /** How often the poll runs. Each open PR is read on it unless its own wait below says not yet. */
+  /** How often a PR read on its own is read. Each open PR is read on it unless its own wait below says not yet. */
   pollMs = 45_000
   /** The longest a PR whose reads keep failing waits between reads. Each failure in a row doubles the wait up to this. */
   maxBackoffMs = 10 * 60_000
@@ -227,6 +317,8 @@ export class Prs extends Feature {
    */
   private polls = new Map<string, { due: number; failures: number; seen?: string; changedAt: number }>()
   private polling?: Promise<void>
+  /** Each PR's last full read as `fingerprintOf` puts it, which the batch read is compared with (KERNEL-388). */
+  private prints = new Map<string, string>()
 
   /** A read of the PR: gh answered, or it didn't for a workspace that has a PR, which is gh failing or GitHub out of reach. */
   private noteRead(id: string, ws: Workspace, info: PrInfo | null) {
@@ -247,36 +339,98 @@ export class Prs extends Feature {
   }
 
   /**
-   * Reads the open PRs that are due. One poll at a time: a poll still waiting on gh is the one that runs, since another
-   * would only start more gh processes behind it. Nothing is read while the Mac is offline (KERNEL-216).
+   * Reads the open PRs. One poll at a time: a poll still waiting on gh is the one that runs, since another would only start
+   * more gh processes behind it. Nothing is read while the Mac is offline (KERNEL-216) or a rate limit holds the poll off
+   * (KERNEL-388). `chores` also flushes held Lead updates and retries waits, as every call but the timer's own does.
    */
-  pollPrs(): Promise<void> {
-    return (this.polling ??= this.pollOnce().finally(() => { this.polling = undefined }))
+  pollPrs(o: { chores?: boolean } = {}): Promise<void> {
+    return (this.polling ??= this.pollOnce(o).finally(() => { this.polling = undefined }))
   }
 
-  private async pollOnce() {
+  private async pollOnce(o: { chores?: boolean }) {
     const start = Date.now()
-    if (!this.offline()) {
+    if (!this.offline() && !this.cadence.paused()) {
+      const open: Workspace[] = []
       for (const ws of this.store.workspaces()) {
         if (ws.status === 'archived' || ['none', 'merged', 'closed'].includes(ws.prState)) { this.polls.delete(ws.id); continue }
-        if ((this.polls.get(ws.id)?.due ?? 0) > start) continue
-        // The quick re-check reads it within 15 seconds, after this poll (KERNEL-283).
-        if (this.rechecks.get(ws.id) === 'queued') continue
-        await this.k.refreshPr(ws.id).catch(() => {
-          const p = this.polls.get(ws.id) ?? { due: 0, failures: 0, changedAt: Date.now() }
-          this.polls.set(ws.id, { ...p, failures: p.failures + 1 })
-        })
-        // Counted from the poll's start, less a second for a timer that fires a little early, so a PR due every poll is
-        // read every poll however long the reads before it took.
+        open.push(ws)
+      }
+      if (this.k.github.prs) await this.readBatched(open, start)
+      else for (const ws of open) await this.readOne(ws, start)
+    }
+    if (o.chores ?? true) {
+      // Updates held for a busy or paused Lead go out once it can take them.
+      this.leadUpdates.flushAll()
+      // A rebase message that couldn't go out, or a release that failed, tries again (KERNEL-259). After the flush, since a
+      // release can fetch and rerun setup.
+      void this.retryWaits()
+      this.cadence.choresRan()
+    }
+  }
+
+  /** One PR's full read when it is due on its own schedule: its backoff, and the quiet rate of a PR that waits on someone (KERNEL-216). */
+  private async readOne(ws: Workspace, start: number) {
+    if ((this.polls.get(ws.id)?.due ?? 0) > start) return
+    // The quick re-check reads it within 15 seconds, after this poll (KERNEL-283).
+    if (this.rechecks.get(ws.id) === 'queued') return
+    await this.k.refreshPr(ws.id).catch(() => {
+      const p = this.polls.get(ws.id) ?? { due: 0, failures: 0, changedAt: Date.now() }
+      this.polls.set(ws.id, { ...p, failures: p.failures + 1 })
+    })
+    // Counted from the poll's start, less a second for a timer that fires a little early, so a PR due every poll is
+    // read every poll however long the reads before it took.
+    const p = this.polls.get(ws.id)
+    if (p) p.due = start + this.waitFor(this.store.workspace(ws.id) ?? ws, p) - 1000
+  }
+
+  /**
+   * One read per room for every PR it has open, then the full read, with review comments and conflicting files, only for a
+   * PR whose batch read differs from Kernel's last full read or moves its state (KERNEL-388). A workspace with no PR number
+   * yet, or whose PR the batch didn't return, is read on its own schedule. A PR whose full reads fail keeps its backoff.
+   */
+  private async readBatched(open: Workspace[], start: number) {
+    const rooms = new Map<string, Workspace[]>()
+    for (const ws of open) rooms.set(ws.roomId, [...(rooms.get(ws.roomId) ?? []), ws])
+    for (const [roomId, list] of rooms) {
+      const room = this.store.room(roomId)
+      if (!room || this.cadence.paused()) continue
+      // A branch switched by hand drops the old branch's PR, and the workspace is read on its own below (KERNEL-68).
+      const current = await Promise.all(list.map((ws) => this.syncBranch(ws.id).catch(() => ws)))
+      const numbers = [...new Set(current.flatMap((ws) => (ws.prNumber ? [ws.prNumber] : [])))]
+      let probe = new Map<number, PrInfo>()
+      if (numbers.length) {
+        try {
+          const optional = await this.optionalOf(roomId)
+          const read = await this.k.github.prs!(room.path, numbers, optional.length ? { optional } : {})
+          probe = read.infos
+          if (read.rate) this.cadence.rated(read.rate)
+          this.cadence.ok()
+        } catch (e) {
+          if (e instanceof GhReadError && e.rateLimited) await this.limited(e, room.path)
+          // The room is read again on the next poll.
+          continue
+        }
+      }
+      for (const ws of current) {
+        if (ws.status === 'archived' || ['none', 'merged', 'closed'].includes(ws.prState)) continue
+        const got = ws.prNumber ? probe.get(ws.prNumber) : undefined
+        if (!got) { await this.readOne(ws, start); continue }
+        if (!this.changed(ws, got)) continue
         const p = this.polls.get(ws.id)
-        if (p) p.due = start + this.waitFor(this.store.workspace(ws.id) ?? ws, p) - 1000
+        if (p?.failures && p.due > start) continue
+        await this.k.refreshPr(ws.id).catch(() => {
+          const q = this.polls.get(ws.id) ?? { due: 0, failures: 0, changedAt: Date.now() }
+          this.polls.set(ws.id, { ...q, failures: q.failures + 1 })
+        })
+        const after = this.polls.get(ws.id)
+        if (after) after.due = after.failures ? start + this.waitFor(this.store.workspace(ws.id) ?? ws, after) - 1000 : 0
       }
     }
-    // Updates held for a busy or paused Lead go out once it can take them.
-    this.leadUpdates.flushAll()
-    // A rebase message that couldn't go out, or a release that failed, tries again (KERNEL-259). After the flush, since a
-    // release can fetch and rerun setup.
-    void this.retryWaits()
+  }
+
+  /** Whether a batch read says the PR moved since Kernel last read it in full, or would move the workspace's state. */
+  private changed(ws: Workspace, got: PrInfo) {
+    return fingerprintOf(got) !== this.prints.get(ws.id) || this.nextState(ws, got, !this.agentBusy(ws)) !== ws.prState
   }
 
   private retrying?: Promise<void>
@@ -318,14 +472,77 @@ export class Prs extends Feature {
     for (const id of ids) await this.k.refreshPr(id).catch(() => undefined)
   }
 
-  /** Drops the workspace from the quick read, as when it is archived. */
+  /** Drops the workspace from the quick read, as when GitHub has settled on it. */
   cancelRecheck(id: string) { this.rechecks.delete(id) }
 
-  /** Reads the open PRs from GitHub every 45 seconds while Kernel runs, each as often as `waitFor` says. */
-  start() { this.prTimer = setInterval(() => void this.pollPrs(), this.pollMs) }
+  /** Forgets everything the poll kept about the workspace's PR, as when it is archived. */
+  forgetPr(id: string) {
+    this.cancelRecheck(id)
+    this.polls.delete(id)
+    this.prints.delete(id)
+    this.infos.delete(id)
+  }
+
+  /** How often the poll runs and when it holds off for GitHub's rate limit (KERNEL-388). Tests shorten `cadence.c`. */
+  cadence = new PrCadence()
+  private live = false
+  private timer?: NodeJS.Timeout
+  private nextAt = 0
+  private lastPollAt = 0
+  /** When a read last moved a PR's state. The poll stays fast a little after, since one change often brings another. */
+  private changedAt = 0
+
+  /**
+   * Reads the open PRs while Kernel runs: every 10 seconds while one is moving, every 30 when all wait on someone, slower
+   * near the rate limit (KERNEL-388). The first poll comes 30 seconds in, and nothing goes to the Lead before 45.
+   */
+  start() {
+    this.live = true
+    this.cadence.started()
+    this.schedule(this.cadence.c.calmMs)
+  }
+
+  private schedule(ms: number) {
+    clearTimeout(this.timer)
+    this.timer = undefined
+    if (!this.live) return
+    this.nextAt = Date.now() + ms
+    this.timer = setTimeout(() => void this.tick(), ms)
+  }
+
+  private async tick() {
+    this.timer = undefined
+    this.lastPollAt = Date.now()
+    await this.pollPrs({ chores: this.cadence.choresDue() }).catch(() => undefined)
+    // A pollSoon while this poll ran keeps the timer it set.
+    if (!this.timer) this.schedule(this.cadence.delay(this.moving()))
+  }
+
+  /**
+   * Reads the open PRs within a second or so: the window came back, the Mac woke, or a merge moved the base. Never twice
+   * within `minGapMs`, and nothing before `start()` (KERNEL-388).
+   */
+  pollSoon() {
+    if (!this.live) return
+    const at = Math.max(Date.now() + this.cadence.c.soonMs, this.lastPollAt + this.cadence.c.minGapMs)
+    if (this.timer && this.nextAt <= at) return
+    this.schedule(at - Date.now())
+  }
+
+  /** Whether a PR is likely to read differently soon: one changed just now, GitHub is checking one, or one is in motion. */
+  private moving() {
+    if (Date.now() - this.changedAt < 2 * this.cadence.c.fastMs) return true
+    if ([...this.rechecks.values()].includes('queued')) return true
+    return this.store.workspaces().some((ws) => ws.status !== 'archived' && MOVING.includes(ws.prState))
+  }
+
   stop() {
-    clearInterval(this.prTimer)
+    this.live = false
+    clearTimeout(this.timer)
+    this.timer = undefined
     this.polls.clear()
+    this.prints.clear()
+    this.infos.clear()
     clearTimeout(this.recheckTimer)
     this.recheckTimer = undefined
     this.rechecks.clear()
