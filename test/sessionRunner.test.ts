@@ -9,33 +9,36 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { CRASH_NOTE, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
+import { CRASH_NOTE, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
 
 // The SDK is replaced by a scripted session: each query() records its options and yields whatever the test feeds it.
 // After an abort it yields what was already fed, then throws, as the real one does.
-const sdk = vi.hoisted(() => ({ calls: [] as { options: any; feed: (m: unknown) => void; end: () => void; interrupts: number; flags: unknown[] }[] }))
+const sdk = vi.hoisted(() => ({ calls: [] as { options: any; prompt: AsyncIterable<any>; feed: (m: unknown) => void; end: () => void; fail: (e: Error) => void; interrupts: number; flags: unknown[] }[] }))
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: ({ options }: { options: { abortController?: AbortController } }) => {
+  query: ({ prompt, options }: { prompt: AsyncIterable<unknown>; options: { abortController?: AbortController } }) => {
     const items: unknown[] = []
     const waiters: { resolve: (r: IteratorResult<unknown>) => void; reject: (e: Error) => void }[] = []
     const signal = options.abortController?.signal
     const aborted = () => new Error('Claude Code process aborted by user')
     signal?.addEventListener('abort', () => { for (const w of waiters.splice(0)) w.reject(aborted()) })
-    // end() is the process exiting on its own: the stream finishes once what was fed is read.
+    // end() is the process exiting on its own: the stream finishes once what was fed is read. fail() is the SDK
+    // throwing instead, as after an error result.
     let ended = false
+    let failed: Error | undefined
     const call = {
-      options, interrupts: 0, flags: [] as unknown[],
+      options, prompt, interrupts: 0, flags: [] as unknown[],
       feed: (m: unknown) => { const w = waiters.shift(); if (w) w.resolve({ value: m, done: false }); else items.push(m) },
-      end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) }
+      end: () => { ended = true; for (const w of waiters.splice(0)) w.resolve({ value: undefined, done: true }) },
+      fail: (e: Error) => { failed = e; for (const w of waiters.splice(0)) w.reject(e) }
     }
     sdk.calls.push(call)
     return {
       [Symbol.asyncIterator]: () => ({
         next: () => items.length ? Promise.resolve({ value: items.shift(), done: false })
-          : signal?.aborted ? Promise.reject(aborted()) : ended ? Promise.resolve({ value: undefined, done: true })
+          : signal?.aborted ? Promise.reject(aborted()) : failed ? Promise.reject(failed) : ended ? Promise.resolve({ value: undefined, done: true })
           : new Promise((resolve, reject) => waiters.push({ resolve, reject }))
       }),
       interrupt: async () => { call.interrupts++ },
@@ -47,6 +50,21 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 }))
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
+
+type Call = (typeof sdk.calls)[number]
+
+/** What the SDK gives a resume of a session Claude Code 2.1.292 has no transcript for: this error result, then a throw (KERNEL-286). */
+function gone(call: Call, id: string) {
+  const text = `No conversation found with session ID: ${id}`
+  call.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, duration_ms: 0, session_id: id, uuid: `gone-${id}`, errors: [text] })
+  call.fail(new Error(`Claude Code returned an error result: ${text}`))
+}
+
+/** The text of the next message Kernel sent the session. */
+async function nextSent(call: Call): Promise<string> {
+  const { value } = await call.prompt[Symbol.asyncIterator]().next()
+  return value.message.content[0].text
+}
 
 async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
@@ -1177,6 +1195,52 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     expect(next.sessions.isRunning('chat')).toBe(true)
   })
 
+  it('starts a fresh session for a chat that carries on and finds its session gone, keeping its queue and carry-on (KERNEL-286)', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(0)
+    const next = relaunch(s, { clean: true })
+    const resumed = next.started()[0]
+    expect(resumed.options.resume).toBe('session-1')
+    gone(resumed, 'session-1')
+    await flush()
+    const fresh = next.started()[1]
+    expect(fresh.options.resume).toBeUndefined()
+    expect(await nextSent(fresh)).toBe('Then add a test')
+    expect(notes(s.store)).toEqual([QUIT_NOTE, SESSION_GONE_NOTE])
+    // Still a teammate carrying on: nothing more than the launch's report, the journal stands and the nudge still waits.
+    expect(next.exits).toEqual([{ reason: 'Kernel quit', midTurn: true, resumed: true }])
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(s.store.meta('working')).toEqual(['chat'])
+    expect(next.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual([RELAUNCH_NUDGE])
+    // The fresh session meets a sign-out: the chat waits to carry on, nudge and all, as the resumed one would have.
+    fresh.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
+    fresh.feed(result('r2', 'error_during_execution'))
+    await flush()
+    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    expect(next.sessions.queued('chat')).toHaveLength(1)
+    next.sessions.releaseAll('auth')
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(await nextSent(fresh)).toBe(RELAUNCH_NUDGE)
+  })
+
+  it('leaves a session found gone while Kernel quits to the next launch (KERNEL-286)', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(0)
+    const next = relaunch(s, { clean: true })
+    const quit = next.sessions.shutdown(5_000)
+    gone(next.started()[0], 'session-1')
+    await quit
+    expect(next.started()).toHaveLength(1)
+    expect(s.store.chat('chat')?.sessionId).toBe('session-1')
+    expect(s.store.meta('working')).toEqual(['chat'])
+    const third = relaunch(s, { clean: true })
+    gone(third.started()[0], 'session-1')
+    await flush()
+    expect(third.started()[1].options.resume).toBeUndefined()
+    expect(third.sessions.isRunning('chat')).toBe(true)
+    expect(notes(s.store).at(-1)).toBe(SESSION_GONE_NOTE)
+  })
+
   it('records the pid of every Claude Code process it starts, and ends ones a crash left behind', async () => {
     const s = await setup()
     // A stand-in for the claude binary that the test can name: sleep, through a link (macOS kills a copied system binary).
@@ -1208,5 +1272,118 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
       expect(sameBinary.exitCode).toBeNull()
       expect(s.store.meta('claudePids')).toEqual([])
     } finally { left.kill('SIGKILL'); other.kill('SIGKILL'); sameBinary.kill('SIGKILL') }
+  })
+})
+
+describe('a chat whose Claude Code session is gone (KERNEL-286)', () => {
+  const texts = (store: Store, kind: 'user' | 'note') => store.items('old').flatMap((i) => (i.kind === 'user' && kind === 'user' ? [(i.parts[0] as { text: string }).text] : i.kind === 'note' && kind === 'note' ? [i.text] : []))
+
+  /** A teammate's chat whose saved session Claude Code no longer has, with the Lead's message going out and one queued behind it. */
+  async function lost() {
+    const turns: string[] = []
+    const exits: string[] = []
+    const s = await setup('acceptEdits', { onTurnDone: (_ws, c, t) => { turns.push(`${c.id}:${t.ok}:${t.by}`) }, onExit: (_ws, c, _reason, midTurn) => { exits.push(`${c.id}:${midTurn}`) } })
+    s.store.saveChat({ ...s.chat, id: 'old', sessionId: 'gone-1', model: 'claude-opus-5-5', effort: 'high', plan: true })
+    const running: boolean[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.running' && e.chatId === 'old') running.push(e.running) }
+    bus.on('push', onPush)
+    await s.sessions.send('old', [{ type: 'text', text: 'Build T-14' }], { from: 'lead' })
+    const first = sdk.calls.at(-1)!
+    expect(await s.sessions.send('old', [{ type: 'text', text: 'Then add a test' }], { from: 'lead' })).toEqual({ queued: true, why: 'running' })
+    return { ...s, first, turns, exits, running, done: () => bus.off('push', onPush) }
+  }
+
+  it('starts a fresh session with the same model, effort and plan mode, sends the same message, then the queue, and adds a note', async () => {
+    const s = await lost()
+    expect(s.first.options.resume).toBe('gone-1')
+    gone(s.first, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh).not.toBe(s.first)
+    expect(fresh.options).toMatchObject({ model: 'claude-opus-5-5', effort: 'high', permissionMode: 'plan', sessionId: expect.any(String) })
+    expect(fresh.options.resume).toBeUndefined()
+    expect(s.store.chat('old')?.sessionId).toBeUndefined()
+    expect(await nextSent(fresh)).toBe('Build T-14')
+    // The message shows once and the note follows it. The old session's error shows nowhere and reaches no one.
+    expect(s.store.items('old').map((i) => i.kind)).toEqual(['user', 'note'])
+    expect(texts(s.store, 'note')).toEqual([SESSION_GONE_NOTE])
+    expect(s.turns).toEqual([])
+    expect(s.exits).toEqual([])
+    // The turn never stopped: no running flicker, the journal keeps the chat, and it is still the Lead's turn.
+    expect(s.sessions.isRunning('old')).toBe(true)
+    expect(s.running).not.toContain(false)
+    expect(s.store.meta<string[]>('working')).toContain('old')
+    expect(s.sessions.turnFrom('old')).toBe('lead')
+    // The fresh session answers, keeps its own id, and the queued message goes next in the same process.
+    fresh.feed({ type: 'system', subtype: 'init', session_id: 'session-2', apiKeySource: 'none' })
+    fresh.feed({ type: 'result', subtype: 'success', uuid: 'r2', duration_ms: 5 })
+    await flush()
+    expect(s.store.chat('old')?.sessionId).toBe('session-2')
+    expect(s.turns).toEqual(['old:true:lead'])
+    expect(sdk.calls.at(-1)).toBe(fresh)
+    expect(await nextSent(fresh)).toBe('Then add a test')
+    expect(texts(s.store, 'user')).toEqual(['Build T-14', 'Then add a test'])
+    s.done()
+  })
+
+  it('does the same for Restart session', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    s.call.end()
+    await flush()
+    await s.sessions.restart('chat')
+    const resumed = sdk.calls.at(-1)!
+    expect(resumed.options.resume).toBe('session-1')
+    gone(resumed, 'session-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh.options.resume).toBeUndefined()
+    expect(await nextSent(fresh)).toBe(RESTART_NUDGE)
+    expect(s.store.items('chat').at(-1)).toMatchObject({ kind: 'note', text: SESSION_GONE_NOTE })
+    expect(s.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it("shows a fresh session's own failure once, starts nothing more, and wakes the Lead", async () => {
+    const s = await lost()
+    gone(s.first, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    const calls = sdk.calls.length
+    fresh.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, duration_ms: 0, uuid: 'r2', errors: ['cwd_unavailable'] })
+    fresh.fail(new Error('Claude Code returned an error result: cwd_unavailable'))
+    await flush()
+    expect(sdk.calls.length).toBe(calls)
+    expect(s.sessions.isRunning('old')).toBe(false)
+    expect(texts(s.store, 'note')).toEqual([SESSION_GONE_NOTE, 'Session stopped: Claude Code returned an error result: cwd_unavailable'])
+    // A turn the Lead started ended with an error and the session died mid-turn, which is what wakes the Lead.
+    expect(s.turns).toEqual(['old:false:lead'])
+    expect(s.exits).toEqual(['old:true'])
+    s.done()
+  })
+
+  it('gives a chat one fresh session until a turn there ends well, so a broken setup cannot loop', async () => {
+    const s = await lost()
+    gone(s.first, 'gone-1')
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    fresh.feed({ type: 'system', subtype: 'init', session_id: 'session-2', apiKeySource: 'none' })
+    fresh.feed({ type: 'result', subtype: 'error_during_execution', uuid: 'r2', duration_ms: 5, errors: ['API Error: 500'] })
+    await flush()
+    s.sessions.stop('old')
+    // The fresh session never finished a turn, and its conversation is gone as well: the error shows and nothing new starts.
+    await s.sessions.send('old', [{ type: 'text', text: 'Try again' }])
+    const again = sdk.calls.at(-1)!
+    expect(again.options.resume).toBe('session-2')
+    gone(again, 'session-2')
+    await flush()
+    expect(sdk.calls.at(-1)).toBe(again)
+    expect(s.sessions.isRunning('old')).toBe(false)
+    expect(texts(s.store, 'note')).toEqual([SESSION_GONE_NOTE, 'Session stopped: Claude Code returned an error result: No conversation found with session ID: session-2'])
+    // The id is forgotten all the same, so the next send starts a new session instead of failing again.
+    expect(s.store.chat('old')?.sessionId).toBeUndefined()
+    await s.sessions.send('old', [{ type: 'text', text: 'Once more' }])
+    expect(sdk.calls.at(-1)!.options.resume).toBeUndefined()
+    s.done()
   })
 })
