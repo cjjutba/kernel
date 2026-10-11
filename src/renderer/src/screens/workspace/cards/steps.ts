@@ -98,7 +98,10 @@ export interface Picked { sel: string[]; other: boolean; text: string }
 
 export const emptyPick = (): Picked => ({ sel: [], other: false, text: '' })
 
-/** Several questions, or any that takes more than one answer, step one at a time. One single-select question is one click. */
+/**
+ * Several questions, or any that takes more than one answer, step with tabs, Back and Next. One single-select question has none of
+ * those: you pick a row and press Send, like the last step of a longer one. Every pending question renders as the same card.
+ */
 export const isStepped = (a: Pick<Approval, 'questions'>): boolean => (a.questions?.length ?? 0) > 1 || !!a.questions?.some((q) => q.multiSelect)
 
 /** Next or Send waits until something is checked, and until Something else has text. */
