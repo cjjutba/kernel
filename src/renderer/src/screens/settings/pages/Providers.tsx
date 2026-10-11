@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { type AccountProfile, type AppSettings, type CodexPersonality, type Provider, type ProviderStatus, type RateLimit } from '@shared/types'
 import { limitProvider } from '@shared/providers'
+import { clock } from '@shared/usage'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, SegmentedControl, Tabs, useBusy } from '../../../ui'
@@ -18,16 +19,29 @@ const PERSONALITIES: { value: CodexPersonality; label: string }[] = [{ value: 'p
 /** A path under the home folder as Terminal shows it: `~/.codex/config.toml`. */
 export const tilde = (path: string) => path.replace(/^\/Users\/[^/]+/, '~')
 
-/** The account's 5-hour window, when Kernel has heard of it: "62% of the 5-hour limit used". */
-export function accountUsage(a: AccountProfile, usage: RateLimit[]): string | undefined {
-  const l = usage.find((u) => u.type === 'five_hour' && limitProvider(u) === a.provider && (u.accountId ?? 'cli') === a.id)
-  return l?.utilization !== undefined ? `${Math.round(l.utilization * 100)}% of the 5-hour limit used` : undefined
+/** "3:40 PM" today, else "Oct 9". */
+const when = (ms: number, now: number) => (new Date(ms).toDateString() === new Date(now).toDateString() ? `at ${clock(ms)}` : `on ${new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`)
+
+/**
+ * The account's usage, when Kernel has heard of it: "62% of the 5-hour limit used". An account whose usage comes only from
+ * its turns (a Claude token) gives both windows and when its last turn read them, since nothing reads them between turns.
+ */
+export function accountUsage(a: AccountProfile, usage: RateLimit[], now = Date.now()): string | undefined {
+  const mine = usage.filter((u) => limitProvider(u) === a.provider && (u.accountId ?? 'cli') === a.id)
+  const pct = (type: RateLimit['type']) => { const u = mine.find((l) => l.type === type)?.utilization; return u === undefined ? undefined : Math.round(u * 100) }
+  const hour = pct('five_hour')
+  if (!a.usageFromTurns) return hour !== undefined ? `${hour}% of the 5-hour limit used` : undefined
+  const week = pct('seven_day')
+  const read = Math.max(0, ...mine.filter((l) => l.type === 'five_hour' || l.type === 'seven_day').map((l) => l.readAt ?? 0))
+  if (hour === undefined && week === undefined) return 'Usage shows after its first turn'
+  const used = [hour !== undefined ? `${hour}% of the 5-hour limit` : undefined, week !== undefined ? `${week}% of the weekly limit` : undefined].filter(Boolean).join(' and ')
+  return `${used} used${read ? `, as of its last turn ${when(read, now)}` : ''}`
 }
 
 /** What an account row says under its name: the email when the name isn't it, the plan, the CLI login, and its usage. */
-export function accountLine(a: AccountProfile, usage: RateLimit[]): string {
+export function accountLine(a: AccountProfile, usage: RateLimit[], now = Date.now()): string {
   if (!a.signedIn) return 'Not signed in'
-  return [a.email && a.email !== a.label ? a.email : undefined, a.plan, a.cli ? `${NAME[a.provider]}’s own login` : undefined, accountUsage(a, usage)].filter(Boolean).join(' · ')
+  return [a.email && a.email !== a.label ? a.email : undefined, a.plan, a.cli ? `${NAME[a.provider]}’s own login` : undefined, accountUsage(a, usage, now)].filter(Boolean).join(' · ')
 }
 
 /** The page. The route's `tab` picks Claude Code or Codex. */
@@ -49,6 +63,9 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
   const usage = useStore((st) => st.usage)
   const [status, setStatus] = useState<ProviderStatus | null>(null)
   const [adding, setAdding] = useState(false)
+  // An added Claude account signs in again with a new token, through the same sheet, which shows the code field if asked.
+  const [renewing, setRenewing] = useState<string | null>(null)
+  const addedClaude = provider === 'claude' ? accounts.find((a) => a.active && !a.cli) : undefined
   const [busy, run] = useBusy<string>()
   const read = () => call('providers.status', { provider }).then(setStatus)
   useEffect(() => { void read().catch(() => undefined) }, [provider])
@@ -56,7 +73,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
   })
   const accountsCall = (key: string, title: string, fn: () => Promise<AccountProfile[]>) => act(key, title, async () => { actions.accounts.set(await fn()); await read() })
-  const signIn = () => act('signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider })); actions.accounts.set(await call('accounts.list', undefined)) })
+  const signIn = () => addedClaude ? setRenewing(addedClaude.label) : act('signin', 'Could not sign in', async () => { setStatus(await call('providers.signIn', { provider })); actions.accounts.set(await call('accounts.list', undefined)) })
   const binary = s.providers[provider]
   const setPath = (key: string, o: { path?: string; useSystem?: boolean }) => act(key, 'Could not change the executable', async () => {
     setStatus(await call('providers.setPath', { provider, ...o }))
@@ -73,7 +90,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
     <>
       <Section
         title="Accounts"
-        action={<Button disabled={busy !== null || adding} onClick={() => setAdding(true)}>Add account</Button>}
+        action={<Button disabled={busy !== null || adding || !!renewing} onClick={() => setAdding(true)}>Add account</Button>}
         note={accounts.some((a) => a.signedIn) ? 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.' : provider === 'codex' ? 'Sign in with your ChatGPT plan to run agents on Codex.' : 'Sign in with your Claude plan to run agents on Claude Code.'}
       >
         {accounts.map((a) => (
@@ -119,6 +136,7 @@ function ProviderTab({ provider, s }: { provider: Provider; s: AppSettings }) {
         </Row>
       </Section>
       {adding && <AddAccount provider={provider} onClose={() => { setAdding(false); void read().catch(() => undefined) }} />}
+      {renewing && <AddAccount provider={provider} signIn={{ label: renewing }} onClose={() => { setRenewing(null); void read().catch(() => undefined) }} />}
     </>
   )
 }

@@ -253,7 +253,7 @@ class Component extends DCLogic {
       providers: { title: 'Providers', tabs: providerTabs(0), sections: [
         { title: 'Accounts', action: 'Add account', note: 'Accounts share your MCP servers, plugins, skills and chat history. A switch applies from the next turn.', rows: [
           account('cj@example.com', 'Claude Max \u00b7 Claude Code\u2019s own login \u00b7 62% of the 5-hour limit used', true, ['Sign out']),
-          account('Work', 'cj@acme.dev \u00b7 Claude Team \u00b7 12% of the 5-hour limit used', false, ['Use', 'Sign out', 'Remove'])
+          account('Work', 'Claude Team \u00b7 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM', false, ['Use', 'Sign out', 'Remove'])
         ] },
         { title: 'Status', action: 'Refresh', rows: [val('Version', '2.1.292'), val('Login method', 'Claude account'), val('Plan', 'Claude Max'), val('Email', 'cj@example.com'), btn('Sign in again', 'Run login', 'Opens Claude\u2019s sign-in in your browser, for the active account')] },
         { title: 'Executable', rows: [path('Claude Code', 'Bundled with Kernel', 'Agents run on this copy of Claude Code', ['Choose', 'Use system Claude']), Object.assign(btn('CLI config file', 'Open'), { mono: '~/.claude/settings.json' })] }

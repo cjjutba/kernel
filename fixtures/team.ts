@@ -497,7 +497,7 @@ export const teamFixtures: Record<string, Fixture> = {
   // KERNEL-406: an added Claude account and Codex signed in, so the menu names each provider's active account.
   AccountMenu: scene((f) => ({ ...homeScene(f), accounts: [
     { id: 'cli', provider: 'claude', label: 'sam@example.com', email: 'sam@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-    { id: 'work', provider: 'claude', label: 'Work', email: 'sam@acme.dev', plan: 'Claude Team', cli: false, active: false, signedIn: true },
+    { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, active: false, signedIn: true, usageFromTurns: true },
     { id: 'cli', provider: 'codex', label: 'samrivera', email: 'sam@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }
   ], ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),

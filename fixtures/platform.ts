@@ -39,6 +39,8 @@ const hookEvents: HookStatus['events'] = [
 const secs = (ms: number) => Math.round(ms / 1000)
 /** The next h:m from now, so a reset is always ahead and within a day ("Resets at 3:40 PM"). */
 const next = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1); return d.getTime() }
+/** Today at `h`:`m`, past or not: when a token account's last turn read its usage. */
+const todayAt = (h: number, m: number) => { const d = new Date(); d.setHours(h, m, 0, 0); return d.getTime() }
 const nextMonday = () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(9, 0, 0, 0); return d.getTime() }
 /** The invoice table chat with a change. */
 const withChat = (f: Fixture, change: Partial<Fixture['chats'][number]>) => f.chats.map((c) => (c.id === ids.tableChat ? { ...c, ...change } : c))
@@ -64,20 +66,21 @@ const codexModels: ProviderModel[] = [
 ]
 const claudeAccounts: AccountProfile[] = [
   { id: 'cli', provider: 'claude', label: 'cj@example.com', email: 'cj@example.com', plan: 'Claude Max', cli: true, active: true, signedIn: true },
-  { id: 'work', provider: 'claude', label: 'Work', email: 'cj@acme.dev', plan: 'Claude Team', cli: false, active: false, signedIn: true }
+  { id: 'work', provider: 'claude', label: 'Work', plan: 'Claude Team', cli: false, active: false, signedIn: true, usageFromTurns: true }
 ]
 const codexAccounts: AccountProfile[] = [{ id: 'cli', provider: 'codex', label: 'cj@example.com', email: 'cj@example.com', plan: 'ChatGPT Plus', cli: true, active: true, signedIn: true }]
 const providerStatus: Fixture['providerStatus'] = {
   claude: { provider: 'claude', source: 'bundled', version: '2.1.292', signedIn: true, loginMethod: 'Claude account', plan: 'Claude Max', email: 'cj@example.com', configFile: '/Users/you/.claude/settings.json' },
   codex: { provider: 'codex', source: 'bundled', version: '0.153.4', signedIn: true, loginMethod: 'ChatGPT', plan: 'ChatGPT Plus', email: 'cj@example.com', configFile: '/Users/you/.codex/config.toml' }
 }
-/** Settings, Providers on one tab, with each account's 5-hour window. */
+/** Settings, Providers on one tab, with each account's 5-hour window, and the weekly one of Work, a token account. */
 const providersPage = (tab: Provider, extra: Partial<Fixture> = {}) => scene(() => ({
   accounts: [...claudeAccounts, ...codexAccounts],
   providerStatus,
   usage: [
     { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
-    { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work' },
+    { type: 'five_hour', status: 'allowed', utilization: 0.12, resetsAt: secs(next(15, 40)), accountId: 'work', readAt: todayAt(14, 10) },
+    { type: 'seven_day', status: 'allowed', utilization: 0.3, resetsAt: secs(nextMonday()), accountId: 'work', readAt: todayAt(14, 10) },
     { type: 'five_hour', status: 'allowed', utilization: 0.07, resetsAt: secs(next(15, 40)), provider: 'codex' }
   ],
   ...extra,
