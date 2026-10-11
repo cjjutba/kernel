@@ -80,9 +80,32 @@ async function crashPage(page: Page, app: ElectronApplication) {
   await page.waitForTimeout(300)
 }
 
+// The comment shots are comment mode partway through a comment: Comment is pressed, a spot is clicked and the note typed. The click is
+// measured from the layer's box, in the layer's own pixels as the canvas draws them. A page then shows what the pointer is over.
+async function commentAt(page: Page, spot: { x: number; y: number }, note: string, over?: { x: number; y: number }) {
+  await page.getByRole('button', { name: 'Comment', exact: true }).click()
+  const layer = page.locator('.cm-layer')
+  await layer.waitFor()
+  const picture = page.locator('.shared-area > img')
+  const image = (await picture.count()) ? await picture.boundingBox() : null
+  const box = (await layer.boundingBox())!
+  // Over an image the spot is in its picture, inside the 1px border.
+  const at = image ? { x: image.x + 1 + spot.x, y: image.y + 1 + spot.y } : { x: box.x + spot.x, y: box.y + spot.y }
+  await page.mouse.click(at.x, at.y)
+  await page.getByRole('textbox', { name: 'Comment' }).fill(note)
+  if (over) {
+    await page.mouse.move(box.x + over.x, box.y + over.y)
+    await page.waitForTimeout(300)
+  }
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
+  WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
+  WorkspaceSharedCommentImage: (page) => commentAt(page, { x: 117, y: 70 }, 'Make this specimen bigger.'),
+  WorkspaceSharedCommentArchived: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
+  WorkspaceSharedCommentOlder: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
   WorkspaceSharedCrashed: crashPage,
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
