@@ -8,8 +8,24 @@ import { Feature } from './feature'
 
 /** The saves Kernel takes of a workspace after each turn, and going back to one (KERNEL-325). */
 export class Checkpoints extends Feature {
+  /** Checkpoints being taken, by workspace, so a worktree folder that moves waits for them (KERNEL-424). */
+  private taking = new Map<string, Set<Promise<unknown>>>()
+
+  /** Once the checkpoints being taken of the workspace are saved or failed. */
+  async settled(workspaceId: string) {
+    for (let now = this.taking.get(workspaceId); now?.size; now = this.taking.get(workspaceId)) await Promise.allSettled([...now])
+  }
+
   /** Save the worktree after a turn, titled with the prompt that started the turn. */
-  async checkpoint(ws: Workspace, chat: Chat) {
+  checkpoint(ws: Workspace, chat: Chat) {
+    const run = this.take(ws, chat)
+    const set = this.taking.get(ws.id) ?? new Set()
+    this.taking.set(ws.id, set.add(run))
+    void run.catch(() => undefined).finally(() => { set.delete(run); if (!set.size && this.taking.get(ws.id) === set) this.taking.delete(ws.id) })
+    return run
+  }
+
+  private async take(ws: Workspace, chat: Chat) {
     const items = this.store.items(chat.id)
     // A first turn that carried several messages is titled for the one that started it, the brief (KERNEL-393).
     const user = this.sessions.turnRow(chat.id) ?? [...items].reverse().find((i) => i.kind === 'user')

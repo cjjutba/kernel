@@ -56,6 +56,12 @@ export interface Workspace {
    * `lead` workspace, the chat it hosts (KERNEL-405).
    */
   threadId?: string
+  /**
+   * What of a new chat with Rowan's worktree still takes its name from the chat's first title, once (KERNEL-424): `branch` until
+   * that title arrives and names the branch, then `folder` until the folder moves to match, which waits for the chat to be idle.
+   * Unset once both are named, and on chats from before, which keep their branch and folder.
+   */
+  naming?: 'branch' | 'folder'
   /** The worktree's folder was deleted outside Kernel. Checked at launch and when the workspace is opened (KERNEL-291). */
   folderGone?: true
   /** On a review workspace: the workspace whose work it reviews. */

@@ -5,6 +5,7 @@ import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { chatProvider, providerOf } from '@shared/providers'
 import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
+import { shellId } from '../services/pty'
 import { titleText } from '../services/titles'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
 import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
@@ -15,6 +16,9 @@ const COPY = 'fork:'
 
 /** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
 const RENAME_AT = [1, 3, 10, 30]
+
+/** The SDK found no session by that id in the folder it looked in. */
+const notFound = (e: unknown) => /not found/i.test((e as Error)?.message ?? '')
 
 /** Chat tabs, their names, forks and big terminals (KERNEL-329). */
 export class Chats extends Feature {
@@ -91,7 +95,10 @@ export class Chats extends Feature {
       const last = this.titleChecked.get(chat.id) ?? 0
       if (turnEnded || Date.now() - last >= 3000) {
         this.titleChecked.set(chat.id, Date.now())
-        const title = (await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.customTitle?.trim().slice(0, 60)
+        // A chat with Rowan whose folder moved keeps its transcript in the old folder's project, which only a search of every
+        // project finds (KERNEL-424).
+        const info = await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined) ?? await this.k.sessionInfo(chat.sessionId).catch(() => undefined)
+        const title = info?.customTitle?.trim().slice(0, 60)
         if (this.stopped || resets !== (this.nameResets.get(chat.id) ?? 0)) return
         const now = this.store.chat(chat.id)
         if (title && now && this.autoNamed(now) && this.unnamed(now)) {
@@ -238,8 +245,13 @@ export class Chats extends Feature {
         lastTurnId = end?.id.slice(0, -'-result'.length)
       }
       if (chat.sessionId && (!itemId || lastTurnId)) sessionId = await this.k.providers.forkCodex(chat.sessionId, ws.path, lastTurnId)
-    } else if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
-    const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => undefined); throw e }) : chat.workspaceId
+    } else if (chat.sessionId && (!itemId || upTo)) {
+      // A chat with Rowan whose folder moved keeps its transcript in the old folder's project, so the SDK finds it only when it
+      // searches every project (KERNEL-424).
+      const o = { upToMessageId: upTo, title: `Fork of ${chat.title}` }
+      sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, ...o }).catch((e) => (notFound(e) ? this.k.forkSession(chat.sessionId!, o) : Promise.reject(e)))).sessionId
+    }
+    const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => this.k.deleteSession(sessionId!)).catch(() => undefined); throw e }) : chat.workspaceId
     // A fork of a Lead tab is another tab of its Lead chat (KERNEL-337), the one its workspace hosts (KERNEL-405). Fork into new
     // workspace refuses the Lead's workspace.
     const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { provider: chat.provider, model: chat.model, effort: chat.effort, plan: chat.plan, threadId: into ? chat.threadId : ws.threadId ?? chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
@@ -250,16 +262,35 @@ export class Chats extends Feature {
   /** Starts the pty for a big terminal chat, or the workspace's plain shell (`shell:<workspaceId>`), the first time it is used. */
   private ensurePty(id: string, size?: { cols: number; rows: number }) {
     if (this.ptys.has(id)) return
+    this.ptys.start(id, { ...this.ptyOptions(id), ...size })
+  }
+
+  /** Where a terminal starts, with what, and the command it types: its workspace's folder as it is now. */
+  private ptyOptions(id: string) {
     const plain = id.startsWith('shell:')
     const chat = plain ? undefined : this.mustChat(id)
     if (chat && (chat.kind !== 'terminal' || chat.closed)) throw new Error('That tab is not a terminal.')
     const ws = this.mustWs(plain ? id.slice('shell:'.length) : chat!.workspaceId)
-    this.ptys.start(id, {
+    return {
       cwd: ws.path,
       env: sessionEnv(this.k.env.envFor(ws), {}, { agentTeams: this.settings.models.agentTeams }),
-      command: (plain ? null : terminalCommand(chat!)) ?? undefined,
-      ...size
-    })
+      command: (plain ? null : terminalCommand(chat!)) ?? undefined
+    }
+  }
+
+  /** The workspace's terminals that run a command now, which a folder move waits for (KERNEL-424). */
+  busyTerminals(workspaceId: string): boolean {
+    return this.terminalIds(workspaceId).some((id) => this.ptys.busy(id))
+  }
+
+  /** The workspace's running terminals start again in its folder as it is now, after the folder moved (KERNEL-424). */
+  restartTerminals(workspaceId: string) {
+    for (const id of this.terminalIds(workspaceId)) if (this.ptys.has(id)) this.ptys.restart(id, this.ptyOptions(id))
+  }
+
+  /** The ids of the workspace's terminals: its open big terminal tabs and its plain shell. */
+  private terminalIds(workspaceId: string) {
+    return [...this.chatTabs(workspaceId).filter((c) => c.kind === 'terminal').map((c) => c.id), shellId(workspaceId)]
   }
 
   /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
