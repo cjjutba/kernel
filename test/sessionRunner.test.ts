@@ -91,7 +91,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
 
 describe('questions to the user', () => {
   it('sends ExitPlanMode to the user as a plan card even when worktrees bypass permissions, and keeps the card in the chat', async () => {
-    const { options, approvals, store, kinds } = await setup('bypassInWorktrees')
+    const { options, approvals, store, kinds } = await setup('bypassPermissions')
     const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column\n2. Backfill it' }, { signal: new AbortController().signal, toolUseID: 'p1', requestId: 'r1' })
     await flush()
     const pending = store.approvals({ pendingOnly: true })[0]
@@ -150,7 +150,7 @@ describe('questions to the user', () => {
   const ask = (options: Options, id: string) => (options.canUseTool as CanUseTool)('AskUserQuestion', asked, { signal: new AbortController().signal, toolUseID: id, requestId: `r-${id}` })
 
   it('keeps every question of an AskUserQuestion call on one approval, titled with the first', async () => {
-    const { options, store } = await setup('bypassInWorktrees')
+    const { options, store } = await setup('bypassPermissions')
     void ask(options, 'q1')
     await flush()
     const pending = store.approvals({ pendingOnly: true })
@@ -200,7 +200,7 @@ describe('questions to the user', () => {
   })
 
   it('still lets bypass answer an ordinary tool', async () => {
-    const { options } = await setup('bypassInWorktrees')
+    const { options } = await setup('bypassPermissions')
     expect(await (options.canUseTool as CanUseTool)('Edit', { file_path: 'a.ts' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })).toMatchObject({ behavior: 'allow' })
   })
 })
@@ -532,6 +532,14 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     expect(await use(gate, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
     expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
     for (const tool of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'ExitPlanMode', 'ToolSearch']) expect(await use(gate, tool), tool).toEqual({})
+  })
+
+  it("leaves out what disallowedTools takes away, and the gate says which line refused (KERNEL-451)", async () => {
+    const { options } = await setup('acceptEdits', { agent: { ...theo, tools: undefined, disallowedTools: ['WebFetch', 'mcp__github', 'mcp__linear__save_issue'] } })
+    expect(options.disallowedTools).toEqual(['WebFetch', 'mcp__github', 'mcp__linear__save_issue'])
+    const gate = gateOf(options)!
+    expect(await use(gate, 'mcp__github__merge_pull_request')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file's disallowedTools takes away mcp__github__merge_pull_request. Use another tool, or ask the user to take mcp__github__merge_pull_request off disallowedTools in your agent file." } })
+    for (const tool of ['Edit', 'Write', 'mcp__linear__get_issue', 'mcp__kernel__submit_review']) expect(await use(gate, tool), tool).toEqual({})
   })
 
   it('restricts nothing for an agent with no tools line', async () => {

@@ -1,8 +1,8 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
-  PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModeAvailability, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  PermissionMode, PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 import type { TelemetryEvent, TelemetryRecord } from './telemetry'
@@ -37,7 +37,7 @@ export interface KernelApi {
   'rooms.add': { req: { path: string; name?: string }; res: Room }
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
-  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
+  'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow' | 'allowTools' | 'permissionMode' | 'host'>> }; res: Room }
   /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
   'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
   /** The room icon as a data URL, or null for the letter. */
@@ -139,8 +139,11 @@ export interface KernelApi {
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
-  /** Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`). */
-  'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean }; res: Chat }
+  /**
+   * Model and effort move within the chat's provider. The other provider is a new chat (`chats.create` with `provider`).
+   * `mode` is the chat's permission mode (KERNEL-432).
+   */
+  'chats.configure': { req: { chatId: string; model?: string; effort?: Effort; plan?: boolean; mode?: PermissionMode }; res: Chat }
   'chats.rename': { req: { chatId: string; title: string }; res: Chat }
   'chats.close': { req: { chatId: string }; res: Ok }
   /** New chat with the transcript up to `itemId` (the whole chat when unset). */
@@ -356,8 +359,6 @@ export interface KernelApi {
   'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
-  /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
-  'system.trafficLights': { req: { at: 'sidebar' | 'header' }; res: Ok }
   /** Fixture mode only (KERNEL_FIXTURES). The UI to force and push events to replay. Null in a real run. */
   'system.fixture': { req: void; res: { ui: ForcedUi; push: PushEvent[] } | null }
 
@@ -389,6 +390,15 @@ export interface KernelApi {
   'system.preview.scroll': { req: { viewId: string; dx?: number; dy?: number; y?: number }; res: { scrollY: number } | null }
   /** Where each selector's element is now, null for one that matches nothing. Places pins again after a scroll or reload. */
   'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
+}
+
+/**
+ * Channels whose types are settled before anything answers them (KERNEL-432). The ticket that builds one moves it into
+ * KernelApi with its handler, so no window can call it, and no NotImplemented stub is needed, until then.
+ */
+export interface PlannedApi {
+  /** Whether each provider can run Auto and Bypass permissions now, for Settings, Permissions, the composer and onboarding. */
+  'permissions.availability': { req: void; res: Record<Provider, ModeAvailability> }
 }
 
 export type Channel = keyof KernelApi
