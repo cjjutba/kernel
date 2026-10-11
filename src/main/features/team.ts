@@ -1,14 +1,14 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PushEvent } from '@shared/ipc'
-import type { AgentDef, AgentDraft, AgentEdit, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentDraft, AgentEdit, AgentScope, AgentStatus, Role, RoleModel, TeamConfig, TeamPatch, TeamTemplate, Workspace } from '@shared/types'
 import { providerOf } from '@shared/providers'
 import { MODELS } from '@shared/types'
 import { isReviewer, KERNEL_LEAD, KERNEL_REVIEWER, NO_REVIEWER } from '@shared/team'
 import { countRange } from '@shared/telemetry'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, updateAgent, watchAgents, watchTeamSettings } from '../services/agents'
+import { createAgent, draftAgent, loadAgents, watchAgents, watchTeamSettings } from '../services/agents'
 import { canOpenPr } from '../services/agentTools'
 import { builtinFile, loadBuiltins, type Builtins } from '../services/builtins'
 import { agentFiles, copyAgentFiles, seatStarterTeam, STARTER_IDS } from '../services/rooms'
@@ -38,8 +38,9 @@ export class Team extends Feature {
     this.agentWatchers.clear()
   }
 
-  /** A removed room's team: its watcher, the cached agents and their statuses. */
+  /** A removed room's team: its watcher, the cached agents, their statuses and the user's own changes to them. */
   forgetRoom(roomId: string) {
+    void this.k.agentChanges.forgetRoom(roomId).catch(() => undefined)
     this.agentWatchers.get(roomId)?.()
     this.agentWatchers.delete(roomId)
     this.agentCache.delete(roomId)
@@ -82,7 +83,7 @@ export class Team extends Feature {
 
   private async resolve(roomId: string, config?: TeamConfig): Promise<Resolved & { builtins: Builtins }> {
     const room = this.mustRoom(roomId)
-    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    const [files, repo] = await Promise.all([this.ownFiles(roomId), loadRepoSettings(room.path)])
     const builtins = await loadBuiltins(this.o.starterDir, files)
     const r = resolveTeam({ files, config: config ?? repo.team, builtins })
     if (config) return { ...r, builtins }
@@ -91,6 +92,19 @@ export class Team extends Feature {
     this.adoptLead(roomId, r.agents.find((a) => a.lead))
     this.report(roomId, r)
     return { ...r, builtins }
+  }
+
+  /** The room's agent files with the user's own changes on this Mac laid over them (KERNEL-466). */
+  private async ownFiles(roomId: string): Promise<AgentDef[]> {
+    return this.k.agentChanges.apply(roomId, await loadAgents(this.mustRoom(roomId).path))
+  }
+
+  /** Team's retired list: the files in .claude/retired-agents, and the agents the user retired on this Mac (KERNEL-466). */
+  private async retiredOf(roomId: string): Promise<AgentDef[]> {
+    const path = this.mustRoom(roomId).path
+    const here = await this.k.agentChanges.retiredHere(roomId, await loadAgents(path))
+    const files = await loadAgents(path, { retired: true })
+    return [...here, ...files.filter((a) => !here.some((h) => h.id === a.id))]
   }
 
   /** The Lead changed (Settings, a file, an upgrade): its workspace and chats go to the new Lead, which starts fresh (KERNEL-397). */
@@ -160,41 +174,51 @@ export class Team extends Feature {
     }
   }
 
-  /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
-  private async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    if (this.agentOf(roomId, agentId)?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
+  /**
+   * AgentProfile > Save changes. For me, the next turn uses the new model, effort and tools, and the repo's file stays as it is.
+   * For the team, a pull request changes the file and the agent stays as it is until that merges (KERNEL-466).
+   */
+  private async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
     const was = this.agentCache.get(roomId)
-    const saved = await updateAgent(room.path, agentId, patch)
+    const agent = (await this.agents(roomId)).find((a) => a.id === agentId) ?? this.agentOf(roomId, agentId)
+    if (agent?.builtIn) throw new Error("This is Kernel's own agent. Customize it to edit a copy in .claude/agents.")
+    if (!agent) throw new Error(`${agentId} is not in .claude/agents.`)
+    const pr = await this.k.agentChanges.edit(roomId, agent, patch, scope)
+    if (pr) return { ...agent, pr }
     const list = await this.agents(roomId)
     this.changed(roomId, list, was)
-    return list.find((a) => a.id === saved.id) ?? saved
-  }
-
-  /** New agent > Create agent. The file joins .claude/agents and the agent takes a desk (the next free one, or the end of `room.desks`). */
-  private async hireFromDraft(roomId: string, draft: AgentDraft): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
-    const def = await createAgent(room.path, draft)
-    if (room.desks && !room.desks.includes(def.id)) await this.k.rooms.updateRoom(roomId, { desks: [...room.desks, def.id] })
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list, was)
-    return list.find((a) => a.id === def.id) ?? def
+    return list.find((a) => a.id === agentId) ?? agent
   }
 
   /**
-   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo`, else the Lead, and a retired
-   * reviewer's reviews to whoever reviews next, and the desk frees up. A turn already running keeps its own copy of
-   * the agent and finishes. The Lead cannot be retired, because nobody would plan, and Kernel's own agents have no file.
+   * New agent > Create agent. For me, the file goes to ~/.claude/agents and the agent takes a desk (the next free one, or the end
+   * of `room.desks`). For the team, a pull request adds it to .claude/agents, and it joins once that merges (KERNEL-466).
    */
-  private async retire(roomId: string, agentId: string, handoffTo?: string): Promise<void> {
+  private async hireFromDraft(roomId: string, draft: AgentDraft, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
+    const room = this.mustRoom(roomId)
+    const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
+    const { agent, pr } = await this.k.agentChanges.hire(roomId, draft, scope)
+    if (pr) return { ...agent, pr }
+    if (room.desks && !room.desks.includes(agent.id)) await this.k.rooms.updateRoom(roomId, { desks: [...room.desks, agent.id] })
+    const list = await this.agents(roomId)
+    this.announceTeam(roomId, list, was)
+    return list.find((a) => a.id === agent.id) ?? agent
+  }
+
+  /**
+   * Retire: the agent leaves the team on this Mac, and for the team a pull request moves its file to .claude/retired-agents
+   * (D-003, KERNEL-466). Open workspaces go to `handoffTo`, else the Lead, and a retired reviewer's reviews to whoever reviews
+   * next, and the desk frees up. A turn already running keeps its own copy of the agent and finishes. The Lead cannot be
+   * retired, because nobody would plan, and Kernel's own agents have no file.
+   */
+  private async retire(roomId: string, agentId: string, handoffTo?: string, scope: AgentScope = 'me'): Promise<AgentChangePr | undefined> {
     const room = this.mustRoom(roomId)
     const team = await this.agents(roomId)
     const agent = team.find((a) => a.id === agentId)
     if (!agent) throw new Error(`${agentId} is not on this team.`)
     if (agent.builtIn) throw new Error(`${agent.name} is Kernel's own ${agent.lead ? 'Lead' : 'reviewer'}. Pick another one in Settings, Agents instead.`)
     if (agent.lead) throw new Error(`${agent.name} leads this room. Pick another Lead in Settings, Agents first.`)
-    await retireAgent(room.path, agentId)
+    const pr = await this.k.agentChanges.retire(roomId, agent, scope)
     const list = await this.agents(roomId)
     const chosen = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId)
     const reviewer = isReviewer(agent) ? list.find(isReviewer) : undefined
@@ -208,6 +232,7 @@ export class Team extends Feature {
     if (statuses) delete statuses[agentId]
     this.announceTeam(roomId, list, team)
     bus.activity({ kind: 'agent.retired', roomId, agentId, actor: 'you', text: 'retired', object: agent.name })
+    return pr
   }
 
   /**
@@ -217,7 +242,7 @@ export class Team extends Feature {
    */
   private async setTeam(roomId: string, patch: TeamPatch, from?: 'setup' | 'settings'): Promise<AgentDef[]> {
     const room = this.mustRoom(roomId)
-    const [files, repo] = await Promise.all([loadAgents(room.path), loadRepoSettings(room.path)])
+    const [files, repo] = await Promise.all([this.ownFiles(roomId), loadRepoSettings(room.path)])
     const ids = new Set(files.map((a) => a.id))
     const want: TeamConfig = { ...repo.team }
     for (const [k, v] of Object.entries(patch) as [keyof TeamConfig, TeamPatch[keyof TeamConfig]][]) {
@@ -272,7 +297,7 @@ export class Team extends Feature {
     const head = src.slice(0, end).replace(/^name:.*$/m, `name: ${id}`).replace(/^model:.*\n/m, '')
     const text = `${head}\n---\n${agent.prompt.trim()}\n`
     const was = await this.agents(roomId)
-    await createAgent(room.path, { id, name: id, description: agent.description, model: '', tools: agent.tools ?? [], text, file: `.claude/agents/${id}.md` })
+    await createAgent(room.path, { id, text })
     const key = which === 'lead' ? 'lead' : 'reviewer'
     const repo = await loadRepoSettings(room.path)
     if (repo.team?.[key] === agent.id) await saveTeamSettings(room.path, { [key]: id })
@@ -302,12 +327,16 @@ export class Team extends Feature {
     return def
   }
 
-  private async restore(roomId: string, agentId: string): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    await restoreAgent(room.path, agentId)
+  /**
+   * Restore: an agent retired on this Mac comes back. A file the team retired comes back to ~/.claude/agents for me, or in a
+   * pull request for the team (KERNEL-466).
+   */
+  private async restore(roomId: string, agentId: string, scope: AgentScope = 'me'): Promise<AgentDef & { pr?: AgentChangePr }> {
+    const { agent, pr } = await this.k.agentChanges.restore(roomId, agentId, scope)
+    if (agent && pr) return { ...agent, pr }
     const list = await this.agents(roomId)
     this.announceTeam(roomId, list)
-    const def = list.find((a) => a.id === agentId)
+    const def = list.find((a) => a.id === agentId) ?? agent
     if (!def) throw new Error(`${agentId} could not be restored.`)
     return def
   }
@@ -369,12 +398,15 @@ export class Team extends Feature {
   handlers() {
     return {
       'agents.seed': async ({ roomId, template }) => this.seedAgents(roomId, template),
-      'agents.list': async ({ roomId, retired }) => (retired ? loadAgents(this.mustRoom(roomId).path, { retired: true }) : this.agents(roomId)),
-      'agents.save': async ({ roomId, agentId, patch }) => this.saveAgentEdit(roomId, agentId, patch),
+      'agents.list': async ({ roomId, retired }) => (retired ? this.retiredOf(roomId) : this.agents(roomId)),
+      'agents.save': async ({ roomId, agentId, patch, scope }) => this.saveAgentEdit(roomId, agentId, patch, scope),
       'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-      'agents.create': async ({ roomId, draft }) => this.hireFromDraft(roomId, draft),
-      'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
-      'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
+      'agents.create': async ({ roomId, draft, scope }) => this.hireFromDraft(roomId, draft, scope),
+      'agents.retire': async ({ roomId, agentId, handoffTo, scope }) => {
+        const pr = await this.retire(roomId, agentId, handoffTo, scope)
+        return { ok: true as const, ...(pr ? { pr } : {}) }
+      },
+      'agents.restore': async ({ roomId, agentId, scope }) => this.restore(roomId, agentId, scope),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'agents.setTeam': async ({ roomId, team, from }) => this.setTeam(roomId, team, from),
       'agents.customize': async ({ roomId, agentId }) => this.customize(roomId, agentId),

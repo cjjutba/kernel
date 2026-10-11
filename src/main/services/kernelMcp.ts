@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentChangePr, AgentDef, AgentScope, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy, notMergeable } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -44,8 +44,9 @@ export interface KernelToolDeps {
    * `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. `questions` carries a
    * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407).
    */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
-  hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: { path: string; text: string; scope?: AgentScope } }) => Promise<Decision | null>
+  /** Saves a hired agent: the file it wrote for `me`, or the pull request that adds it for `team` (KERNEL-466). */
+  hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }, scope?: AgentScope) => Promise<string | AgentChangePr>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
   /** Merges the workspace's PR as the Merge button does, refusing with the reason when it can't merge (KERNEL-349). */
@@ -442,18 +443,24 @@ export function kernelTools(d: KernelToolDeps) {
       bus.activity({ kind: 'agent.say', roomId: d.roomId, agentId: d.lead?.id, text: t })
       return text('ok')
     }),
-    tool('hire_agent', 'Propose a new agent file for .claude/agents. The user approves before it is saved.', {
+    tool('hire_agent', "Propose a new agent file. The user approves it and picks who gets it: just them (~/.claude/agents on their Mac, in every room) or the team (a pull request that adds .claude/agents/<id>.md). Set scope only when the user said which.", {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
-      model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
-    }, async (a) => {
+      model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional(),
+      scope: z.enum(['me', 'team']).optional()
+    }, async ({ scope: asked, ...a }) => {
       // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
       if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
-      const agentFile = { path: `.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }) }
+      // The card starts on "Just for me" unless the Lead proposes the team, and the user's choice on it wins (KERNEL-466).
+      const proposed = asked ?? 'me'
+      const agentFile = { path: `${proposed === 'me' ? '~/' : ''}.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }), scope: proposed }
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
+      const scope = decision.scope ?? proposed
       try {
-        const file = await d.hireAgent(a)
-        return text(`Saved ${file}. ${a.id} joins the team.`)
+        const done = await d.hireAgent(a, scope)
+        if (typeof done === 'string') return text(`Saved ${done}. ${a.id} joins the user's team on this Mac, in every room.`)
+        if (done.error) return text(`Committed .claude/agents/${a.id}.md in workspace ${done.workspaceId}, but the pull request didn't open: ${done.error} Tell the user to click Create PR there.`)
+        return text(`Opened ${done.number ? `PR #${done.number}` : 'a pull request'}${done.url ? ` (${done.url})` : ''} that adds .claude/agents/${a.id}.md, from workspace ${done.workspaceId}. ${a.id} joins the team once it merges.`)
       } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
     })
   ]

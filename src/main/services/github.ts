@@ -344,6 +344,12 @@ export interface CodeHost {
   merge: (cwd: string, ref: string, method: 'squash' | 'merge' | 'rebase') => Promise<void>
   ready: (cwd: string, ref: string) => Promise<void>
   reopen: (cwd: string, ref: string) => Promise<void>
+  /**
+   * Pushes the branch checked out at `cwd` to `remote` and opens its PR into `base`, for a change Kernel makes itself, such as
+   * an agent file for the team (KERNEL-466). Null when the host took it but can't say which PR it is. A host without it can't
+   * take Kernel's own changes.
+   */
+  create?: (cwd: string, o: { title: string; body: string; base: string; draft?: boolean }, remote: string) => Promise<{ number: number; url: string } | null>
 }
 
 /** The name `CodeHost` had while GitHub was the only host. */
@@ -358,7 +364,11 @@ export const gh: CodeHost = {
   rateLimit: ghRateLimit,
   merge: (cwd, ref, method) => prMerge(cwd, method, { ref }),
   ready: prReady,
-  reopen: prReopen
+  reopen: prReopen,
+  create: async (cwd, o, remote) => {
+    const view = await prCreate(cwd, o, remote)
+    return view ? { number: view.number, url: view.url } : null
+  }
 }
 
 // ---------- what Kernel tells the agent and the chat

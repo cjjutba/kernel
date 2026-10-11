@@ -6,7 +6,7 @@ import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
 import { providerOf } from '@shared/providers'
 import { newId } from '../db'
 import { bus } from '../bus'
-import { saveAgent } from '../services/agents'
+import { renderAgentFile } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
 import { NUDGE_LIMIT } from '../services/nudges'
 import { PLANS_DIR, revisedPlanFile, savePlan } from '../services/plans'
@@ -527,11 +527,12 @@ export class Lead extends Feature {
       unsaved: (id) => this.k.archive.unsavedOf(id),
       planApproved: () => this.sessions.planApproved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
-      hireAgent: async (a) => {
+      hireAgent: async (a, scope) => {
         const was = this.k.team.agentCache.get(roomId) ?? await this.k.team.agents(roomId)
-        const file = await saveAgent(this.mustRoom(roomId).path, a)
+        const { agent, pr } = await this.k.agentChanges.hire(roomId, { id: a.id, text: renderAgentFile(a) }, scope)
+        if (pr) return pr
         this.k.team.announceTeam(roomId, await this.k.team.agents(roomId), was)
-        return file
+        return agent.file
       }
     }
   }
