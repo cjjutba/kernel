@@ -20,6 +20,7 @@ import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
+import { claudeAgents } from './services/pluginAgents'
 import { isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
@@ -311,6 +312,7 @@ app.whenReady().then(async () => {
       inBackground: () => !mainWindow()?.isFocused(),
       probeNetwork: () => probeNetwork(),
       refreshPath,
+      claudeAgents,
       // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
       cipher: safeStorage.isEncryptionAvailable()
         ? { encrypt: (text) => safeStorage.encryptString(text).toString('base64'), decrypt: (data) => safeStorage.decryptString(Buffer.from(data, 'base64')) }
