@@ -42,6 +42,10 @@ describe('telemetry events', () => {
     expect(checkEvent({ name: 'agent.warning', kind: 'mcp-linear' })).toMatch(/kind/)
   })
 
+  it('sends the warning about an agent written as a subagent (KERNEL-465)', () => {
+    expect(checkEvent({ name: 'agent.warning', kind: 'looks-like-subagent' })).toBeUndefined()
+  })
+
   it('sends agent counts as ranges', () => {
     expect([0, 1, 5, 6, 20, 21, 400].map(countRange)).toEqual(['0', '1-5', '1-5', '6-20', '6-20', '21+', '21+'])
   })
