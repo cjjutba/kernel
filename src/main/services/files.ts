@@ -1,7 +1,9 @@
+import { execFile } from 'node:child_process'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { extname, isAbsolute, join, posix, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import type { ChangedFile, FileEntry, Skill } from '@shared/types'
-import { git } from './exec'
+import { EXEC_TIMEOUT_MS, exec, git } from './exec'
 import { PLANS_DIR } from './plans'
 
 const MAX_ENTRIES = 5000
@@ -39,21 +41,64 @@ function compare(a: FileEntry, b: FileEntry): number {
   return x.length - y.length
 }
 
-/** Text of one file in the worktree, for the file viewer. Refuses paths outside it (symlinks included), big files and binaries. */
-export async function readWorkspaceFile(root: string, path: string): Promise<string> {
-  const outside = () => new Error('That file is outside this workspace.')
+const outside = () => new Error('That file is outside this workspace.')
+const isOutside = (rel: string) => !rel || rel.startsWith('..') || isAbsolute(rel)
+
+/** The real path of a file in the worktree, or null when it doesn't exist. Throws for paths outside it, symlinks included. */
+async function insideWorkspace(root: string, path: string): Promise<string | null> {
   if (!path) throw outside()
   const base = await realpath(root)
   const full = await realpath(resolve(base, path)).catch(() => null)
+  if (!full) return null
+  if (isOutside(relative(base, full))) throw outside()
+  return full
+}
+
+/** Text of one file in the worktree, for the file viewer. Refuses paths outside it (symlinks included), big files and binaries. */
+export async function readWorkspaceFile(root: string, path: string): Promise<string> {
+  const full = await insideWorkspace(root, path)
   if (!full) throw new Error(`${path} is not a file in this workspace.`)
-  const rel = relative(base, full)
-  if (!rel || rel.startsWith('..') || isAbsolute(rel)) throw outside()
   const info = await stat(full)
   if (!info.isFile()) throw new Error(`${path} is not a file in this workspace.`)
   if (info.size > MAX_FILE_BYTES) throw new Error(`${path} is too large to preview (${Math.round(info.size / 1024)} KB).`)
   const buf = await readFile(full)
   if (buf.includes(0)) throw new Error(`${path} is a binary file.`)
   return buf.toString('utf8')
+}
+
+const IMAGE_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' }
+/** Images run bigger than the text the file viewer shows. A retina screenshot is often a few MB. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024
+const execFileAsync = promisify(execFile)
+
+/**
+ * An image for the diff tab as a data URL (KERNEL-409). `since` set reads the blob at that commit, the way the diff does,
+ * and leaves it unset to read the worktree. Null when the file isn't there. Refuses paths outside the workspace, other file
+ * types and images over MAX_IMAGE_BYTES.
+ */
+export async function readImage(root: string, path: string, since?: string): Promise<{ dataUrl: string } | null> {
+  const type = IMAGE_TYPES[extname(path).slice(1).toLowerCase()]
+  if (!type) throw new Error(`${path} is not an image Kernel can show.`)
+  const rel = posix.normalize(path.replaceAll('\\', '/'))
+  if (isOutside(rel)) throw outside()
+  const tooBig = (size: number) => new Error(`${path} is too large to preview (${Math.round(size / 1024)} KB).`)
+  let bytes: Buffer
+  if (since === undefined) {
+    const full = await insideWorkspace(root, rel)
+    if (!full) return null
+    const info = await stat(full)
+    if (!info.isFile()) return null
+    if (info.size > MAX_IMAGE_BYTES) throw tooBig(info.size)
+    bytes = await readFile(full)
+  } else {
+    // "<sha> blob <size>", or "<name> missing" when the file didn't exist at `since`.
+    const [, kind, size] = (await exec('git', ['-C', root, 'cat-file', '--batch-check'], { input: `${since}:${rel}\n` })).stdout.trim().split(' ')
+    if (kind !== 'blob') return null
+    if (Number(size) > MAX_IMAGE_BYTES) throw tooBig(Number(size))
+    // exec reads output as text, which would mangle the bytes.
+    bytes = (await execFileAsync('git', ['-C', root, 'cat-file', 'blob', `${since}:${rel}`], { encoding: 'buffer', maxBuffer: MAX_IMAGE_BYTES + 1, timeout: EXEC_TIMEOUT_MS })).stdout
+  }
+  return { dataUrl: `data:${type};base64,${bytes.toString('base64')}` }
 }
 
 /**

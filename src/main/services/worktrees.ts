@@ -394,8 +394,16 @@ export async function mergeBase(path: string, baseRef: string): Promise<string> 
   return (await git(path, 'merge-base', 'HEAD', baseRef)).trim()
 }
 
+/**
+ * The diff since `since`, with every untracked file after it as all added lines, as changedFiles lists them (KERNEL-409).
+ * `git diff --no-index` exits 1 when the files differ, so it runs through exec.
+ */
 export async function diffText(path: string, since: string, file?: string): Promise<string> {
-  return git(path, 'diff', since, ...(file ? ['--', file] : []))
+  let text = await git(path, 'diff', since, ...(file ? ['--', file] : []))
+  for (const f of (await untrackedFiles(path)).filter((f) => !file || f === file)) {
+    text += (await exec('git', ['-C', path, 'diff', '--no-index', '/dev/null', f])).stdout
+  }
+  return text
 }
 
 /** True when two worktrees changed the same file since their bases. Feeds the overlap warning on the floor. */
