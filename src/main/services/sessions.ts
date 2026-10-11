@@ -17,7 +17,7 @@ import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } fro
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
-import { toolKind, toolPolicy, type ToolPolicy } from './agentTools'
+import { missingServers, toolKind, toolPolicy, type ToolPolicy } from './agentTools'
 import { IMAGE_DATA_URL, revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
@@ -193,6 +193,8 @@ export class Sessions {
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
+  /** Chats whose agent file's MCP servers were checked against a session's (once per chat). */
+  private mcpChecked = new Set<string>()
   /** Rooms the user (or a limit) paused. Their agents finish the step they are on, then wait at the next tool call. */
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
@@ -1174,6 +1176,13 @@ export class Sessions {
             bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, sessionId: msg.session_id, text: `is billed through ${msg.apiKeySource}, not the Claude plan` })
           }
           this.billing.set(chatId, msg.apiKeySource)
+          // Claude.ai connectors only show up here, so a tools line naming a server the session lacks is caught at init.
+          if (!this.mcpChecked.has(chatId)) {
+            this.mcpChecked.add(chatId)
+            const missing = missingServers(this.d.agentFor(ws)?.tools, (msg.mcp_servers ?? []).map((s) => s.name))
+            const text = missing.map((m) => `This agent's file lists ${m.entry}, but no MCP server named ${m.server} is connected.${m.suggestion ? ` Did you mean mcp__${m.suggestion}?` : ''}`).join(' ')
+            if (text) this.item(chat, { kind: 'note', id: randomUUID(), ts: now, text })
+          }
           this.setRunning(chat, ws, live, true)
         }
         if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, chatId, msg.hook_event, msg.stderr || msg.output || msg.stdout)
