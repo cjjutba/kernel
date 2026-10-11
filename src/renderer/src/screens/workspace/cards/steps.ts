@@ -4,9 +4,23 @@ import { leadingTitle, parseBlocks, type Block } from '../mdParse'
 
 type PlanSource = Pick<Approval, 'steps' | 'detail' | 'input'>
 
-/** A plan-mode plan's markdown, from `detail` or ExitPlanMode's input. Empty for the Lead's task list, which comes as `steps`. */
+/**
+ * Before KERNEL-373 the Lead stored only its numbered steps in `detail` ("1. task\n2. task"), the same tasks as `steps`.
+ * That is a plain list with one item per step and nothing else, so it adds no write-up and the rows already show it.
+ */
+function restatesSteps(text: string, steps: PlanStep[]): boolean {
+  const blocks = parseBlocks(text)
+  const [list] = blocks
+  return blocks.length === 1 && list.type === 'ol' && list.items.length === steps.length && list.items.every((i) => !i.children.length && i.checked === undefined)
+}
+
+/**
+ * A plan's markdown, from `detail` or ExitPlanMode's input. The Lead's plan carries its write-up here next to `steps`.
+ * Empty for an older Lead plan whose `detail` only restates its steps, so the tasks show once.
+ */
 export function planText(a: PlanSource): string {
-  return a.steps?.length ? '' : a.detail || String((a.input as { plan?: unknown } | undefined)?.plan ?? '')
+  const text = a.detail || String((a.input as { plan?: unknown } | undefined)?.plan ?? '')
+  return a.steps?.length && restatesSteps(text, a.steps) ? '' : text
 }
 
 /** Markdown markers dropped, for one-line rows. */
@@ -15,7 +29,7 @@ export const plain = (text: string) => text.replace(/\[([^\]]+)\]\([^)]*\)/g, '$
 const listItems = (blocks: Block[]) => blocks.flatMap((b) => (b.type === 'ol' || b.type === 'ul' ? b.items : []))
 
 /**
- * The rows of a plan as a task list. Rowan sends `steps`. A plan-mode plan with sections gives one row per section
+ * The rows of a plan as a task list. Rowan sends `steps`, next to the write-up. A plan-mode plan with sections gives one row per section
  * heading; one without gives its list items, and plain lines as a last resort.
  */
 export function planSteps(a: PlanSource): PlanStep[] {
@@ -29,9 +43,9 @@ export function planSteps(a: PlanSource): PlanStep[] {
   return text.split('\n').map((l) => plain(l.replace(/^\s*(\d+[.)]|[-*])\s+/, ''))).filter(Boolean).map((title) => ({ title }))
 }
 
-/** True when the plan is one short list and nothing else, which reads best as numbered rows (WorkspacePlan.png). */
+/** True when the plan is one short list and nothing else, which reads best as numbered rows. A Lead plan with a write-up is a document, then its rows. */
 export function isStepList(a: PlanSource): boolean {
-  if (a.steps?.length) return true
+  if (a.steps?.length) return !planText(a).trim()
   const blocks = parseBlocks(planText(a))
   return blocks.length > 0 && blocks.every((b) => (b.type === 'ol' || b.type === 'ul') && b.items.every((i) => !i.children.length && i.checked === undefined))
 }

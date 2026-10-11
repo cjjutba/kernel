@@ -42,6 +42,7 @@ const noCanvas = [
   'WorkspacePlanModeTyping',
   'WorkspacePlanTyping',
   'WorkspacePlanApproved', // a plan once approved, with its Plan approved line in the chat
+  'WorkspacePlanExit', // Kai's ExitPlanMode plan, which looks as it did before the Lead's write-up and rows (KERNEL-374)
 ]
 
 describe('fixtures', () => {

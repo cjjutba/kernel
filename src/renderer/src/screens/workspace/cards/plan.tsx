@@ -4,7 +4,7 @@ import { call } from '../../../api'
 import { go, useStore } from '../../../store'
 import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
-import { parseBlocks } from '../mdParse'
+import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { outcome, planSteps, planText } from './steps'
 import './cards.css'
@@ -14,37 +14,56 @@ import './cards.css'
 
 const EMPTY: AgentDef[] = []
 
+/** The Copy and Approve strip opens over 1.2s (composer.css), so the chat above it settles a little after that. */
+const STRIP_OPENS_MS = 1500
+
 export const stepLine = (s: PlanStep, agents: AgentDef[]) => {
   const who = agents.find((x) => x.id === s.agentId)?.name
   return who ? `${s.title} · ${who}` : s.title
 }
 
-/** What Copy puts on the clipboard: the plan's markdown, or the Lead's task list as numbered lines. */
+/** What Copy puts on the clipboard: the write-up and the Lead's tasks as numbered lines, or an ExitPlanMode plan's markdown. */
 export function planCopyText(a: Approval, agents: AgentDef[]): string {
-  return planText(a) || [`# ${a.title}`, '', ...planSteps(a).map((s, i) => `${i + 1}. ${stepLine(s, agents)}`)].join('\n')
+  const text = planText(a)
+  if (!a.steps?.length) return text || `# ${a.title}`
+  const doc = leadingTitle(parseBlocks(text)) ? text : [`# ${a.title}`, text].filter(Boolean).join('\n\n')
+  return [doc, planSteps(a).map((s, i) => `${i + 1}. ${stepLine(s, agents)}`).join('\n')].join('\n\n')
 }
 
 const openPlanFile = (a: Approval) =>
   void attempt('Could not open the plan', async () => { await call('system.openInEditor', { path: (await call('approvals.planFile', { id: a.id })).path }) })
 
-/** The Lead's task list as the plan's body, with a way into each workspace once it is handed off. */
-function StepsDoc({ a, agents }: { a: Approval; agents: AgentDef[] }) {
+/** The Lead's tasks as numbered rows, the agent's name muted beside each, with a way into its workspace once the plan is handed off. */
+export function PlanTasks({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const tasks = useStore((s) => (a.roomId ? s.tasks[a.roomId] : undefined))
   return (
-    <div className="md md-doc">
-      <p className="md-h" data-level={1} role="heading" aria-level={4}>{a.title}</p>
-      <ol>
-        {planSteps(a).map((s, i) => {
-          const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
-          const who = agents.find((x) => x.id === s.agentId)?.name
-          return (
-            <li key={i}>
-              {stepLine(s, agents)}
-              {a.status === 'allowed' && ws && <button type="button" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</button>}
-            </li>
-          )
-        })}
-      </ol>
+    <ol className="plan-tasks">
+      {planSteps(a).map((s, i) => {
+        const ws = s.workspaceId ?? (s.taskId ? tasks?.find((t) => t.id === s.taskId)?.workspaceId : undefined)
+        const who = agents.find((x) => x.id === s.agentId)?.name
+        return (
+          <li key={i}>
+            <span className="plan-n mono" aria-hidden="true">{i + 1}</span>
+            <span className="plan-task">{s.title}{who && <span className="plan-who">{who}</span>}</span>
+            {a.status === 'allowed' && ws && <button type="button" className="plan-open" aria-label={`Open ${who ?? 'the'} workspace for ${s.title}`} onClick={() => go({ name: 'workspace', workspaceId: ws })}>Open workspace</button>}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** The Lead's plan as a document: its write-up, headed by the approval's title unless the markdown has its own, then the task rows (PlanWaiting.png). */
+function LeadPlan({ a, agents }: { a: Approval; agents: AgentDef[] }) {
+  const text = planText(a)
+  const blocks = useMemo(() => {
+    const parsed = parseBlocks(text)
+    return leadingTitle(parsed) ? parsed : [{ type: 'h' as const, level: 1, text: a.title }, ...parsed]
+  }, [text, a.title])
+  return (
+    <div className="plan-card">
+      <Markdown blocks={blocks} />
+      <PlanTasks a={a} agents={agents} />
     </div>
   )
 }
@@ -56,14 +75,18 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
   const [copied, copy] = useCopy(planCopyText(a, agents))
   const ref = useRef<HTMLDivElement>(null)
   // The transcript follows its end, which would open a long plan at its last line. One taller than the chat opens at its top.
+  // The Approve strip opens over a second and shortens the chat under it, which would leave a plan that fits with its end
+  // below the fold, so while it opens the end stays in view.
   useEffect(() => {
     if (a.status !== 'pending') return
-    const frame = requestAnimationFrame(() => {
-      const el = ref.current
-      const scroller = el?.closest('.ws-scroll')
-      if (el && scroller && el.offsetHeight > scroller.clientHeight) el.scrollIntoView({ block: 'start' })
-    })
-    return () => cancelAnimationFrame(frame)
+    const el = ref.current
+    const scroller = el?.closest('.ws-scroll')
+    if (!el || !scroller) return
+    const frame = requestAnimationFrame(() => { if (el.offsetHeight > scroller.clientHeight) el.scrollIntoView({ block: 'start' }) })
+    const resize = new ResizeObserver(() => { if (el.offsetHeight <= scroller.clientHeight) el.scrollIntoView({ block: 'end' }) })
+    resize.observe(scroller)
+    const stop = setTimeout(() => resize.disconnect(), STRIP_OPENS_MS)
+    return () => { cancelAnimationFrame(frame); clearTimeout(stop); resize.disconnect() }
   }, [a.id])
   const file = a.planFile?.slice(a.planFile.lastIndexOf('/') + 1)
   return (
@@ -74,7 +97,7 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         {file && <button type="button" className="plan-file mono ellipsis" aria-label={`Open ${file} in editor`} data-tip="Open in editor" onClick={() => openPlanFile(a)}>{file}</button>}
         <IconButton icon={copied ? 'check' : 'copy'} size={13} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
       </div>
-      {text ? <Markdown blocks={blocks} className="md-doc" /> : <StepsDoc a={a} agents={agents} />}
+      {a.steps?.length || !text ? <LeadPlan a={a} agents={agents} /> : <Markdown blocks={blocks} className="md-doc" />}
       {a.status !== 'pending' && <PlanOutcome a={a} />}
     </div>
   )
