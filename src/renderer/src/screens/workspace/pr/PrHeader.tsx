@@ -125,7 +125,6 @@ export function PrHeader({ ws, spread, capsule }: { ws: Workspace; spread?: bool
   const ink = b?.kind === 'primary' && band === 'idle'
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : b.kind === 'note' ? <span className="pr-note">{b.label}</span>
       : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && start(b.action)}>{b.label}</Button>
 
   return tone(
