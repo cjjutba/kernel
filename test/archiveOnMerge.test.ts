@@ -25,10 +25,11 @@ const info = (state: PrInfo['state'], head?: string): PrInfo => ({ workspaceId: 
 
 
 /**
- * A room with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` is the app-wide switch, `room`
- * the room's own value in `.kernel/settings.local.toml`. `origin` gives the repo a bare remote before the work starts.
+ * A room with the Lead, Kai's work and Theo's review of it, its PR open. `archiveOnMerge` and `deleteBranch` are the
+ * app-wide switches, `room` and `roomDelete` the room's own values in `.kernel/settings.local.toml`, written as given, so
+ * a string stays a string. `origin` gives the repo a bare remote before the work starts.
  */
-async function setup(o: { archiveOnMerge?: boolean; room?: boolean; origin?: boolean } = {}) {
+async function setup(o: { archiveOnMerge?: boolean; room?: boolean; deleteBranch?: boolean; roomDelete?: boolean | string; origin?: boolean } = {}) {
   const repo = await tempRepo(REPO)
   if (o.origin) {
     const origin = join(await mkdtemp(join(tmpdir(), 'kernel-origin-')), 'o.git')
@@ -36,13 +37,18 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; origin?: boo
     await run('git', ['-C', repo, 'remote', 'add', 'origin', origin])
     await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
   }
-  if (o.room !== undefined) {
+  const own = [
+    ...(o.room === undefined ? [] : [`archive_on_merge = ${o.room}`]),
+    ...(o.roomDelete === undefined ? [] : [`delete_branch_on_archive = ${JSON.stringify(o.roomDelete)}`])
+  ]
+  if (own.length) {
     await mkdir(join(repo, '.kernel'), { recursive: true })
-    await writeFile(join(repo, '.kernel', 'settings.local.toml'), `[workspace]\narchive_on_merge = ${o.room}\n`)
+    await writeFile(join(repo, '.kernel', 'settings.local.toml'), `[workspace]\n${own.join('\n')}\n`)
   }
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...(o.archiveOnMerge === undefined ? {} : { archiveOnMerge: o.archiveOnMerge }) } }))
+  const app = { ...(o.archiveOnMerge === undefined ? {} : { archiveOnMerge: o.archiveOnMerge }), ...(o.deleteBranch === undefined ? {} : { deleteBranchOnArchive: o.deleteBranch }) }
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...app } }))
   const k = new Kernel({ dataDir, home })
   await k.start()
   onTestFinished(() => k.stop())
@@ -221,6 +227,61 @@ describe('Archive on merge (KERNEL-114)', () => {
     expect(k.store.workspace(waiter.id)!.waitsFor?.releasing).toBe(true)
     expect(posts.some((p) => p.startsWith(`${k.store.chats(waiter.id)[0].id}: PR #42 by Kai merged into main.`))).toBe(true)
     await vi.waitFor(() => expect(posts.some((p) => p.startsWith(`${lead.id}:`) && p.includes('PR #42 was merged.'))).toBe(true), SLOW)
+  })
+})
+
+/** Whether the room's repo still has the workspace's branch. */
+const hasBranch = async (repo: string, ws: Workspace) => (await run('git', ['-C', repo, 'branch', '--list', ws.branch])).trim() !== ''
+
+describe('Delete branch on archive in a room (KERNEL-370)', () => {
+  it('deletes a pushed branch when the room turns it on and the app leaves it off', async () => {
+    const { k, repo, author } = await setup({ origin: true, roomDelete: true })
+    await pushWork(author)
+    await k.archive.archiveWorkspace(author.id)
+    expect(await hasBranch(repo, author)).toBe(false)
+  })
+
+  it('keeps the branch when the room turns it off and the app turns it on', async () => {
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: true, roomDelete: false })
+    await pushWork(author)
+    await k.archive.archiveWorkspace(author.id)
+    expect(await hasBranch(repo, author)).toBe(true)
+  })
+
+  it('uses the app value when the room\'s is not true or false', async () => {
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: true, roomDelete: 'yes' })
+    await pushWork(author)
+    await k.archive.archiveWorkspace(author.id)
+    expect(await hasBranch(repo, author)).toBe(false)
+  })
+
+  it('lets the caller\'s choice win over the room and the app', async () => {
+    const keep = await setup({ origin: true, deleteBranch: true, roomDelete: true })
+    await pushWork(keep.author)
+    await keep.k.archive.archiveWorkspace(keep.author.id, false)
+    expect(await hasBranch(keep.repo, keep.author)).toBe(true)
+    const drop = await setup({ origin: true, deleteBranch: false, roomDelete: false })
+    await pushWork(drop.author)
+    await drop.k.archive.archiveWorkspace(drop.author.id, true)
+    expect(await hasBranch(drop.repo, drop.author)).toBe(false)
+  })
+
+  it('still keeps a branch with a commit that never left the machine', async () => {
+    const { k, repo, author } = await setup({ origin: true, roomDelete: true })
+    await pushWork(author)
+    await writeFile(join(author.path, 'more.ts'), 'export const more = 1\n')
+    await run('git', ['-C', author.path, 'add', '-A'])
+    await run('git', ['-C', author.path, 'commit', '-q', '-m', 'more'])
+    await k.archive.archiveWorkspace(author.id)
+    expect(await hasBranch(repo, author)).toBe(true)
+  })
+
+  it('deletes the branch of work Kernel archives on merge', async () => {
+    const { repo, author, status, land } = await setup({ origin: true, roomDelete: true })
+    const head = await pushWork(author)
+    await land('merged', head)
+    await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
+    expect(await hasBranch(repo, author)).toBe(false)
   })
 })
 

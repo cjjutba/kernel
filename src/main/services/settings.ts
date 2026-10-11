@@ -166,6 +166,15 @@ export async function loadRepoSettings(repo: string): Promise<RepoSettings> {
   return repoSettingsOf(await readToml(repoFile(repo, 'settings.toml')), await readToml(repoFile(repo, 'settings.local.toml')))
 }
 
+/**
+ * A Cleanup switch with the room's own value first (KERNEL-114, KERNEL-370). The room's file keeps the raw TOML value,
+ * so only `true` or `false` counts, and anything else falls back to the app's.
+ */
+export function cleanupSwitch(repo: RepoSettings | undefined, app: AppSettings['workspace'], key: 'archiveOnMerge' | 'deleteBranchOnArchive'): boolean {
+  const own = repo?.workspace[key]
+  return typeof own === 'boolean' ? own : app[key]
+}
+
 /** The same, read synchronously, for a session that starts synchronously and needs the room's env files (KERNEL-247). */
 export function loadRepoSettingsSync(repo: string): RepoSettings {
   return repoSettingsOf(readTomlSync(repoFile(repo, 'settings.toml')), readTomlSync(repoFile(repo, 'settings.local.toml')))
