@@ -4,12 +4,11 @@ export interface Rect { x: number; y: number; width: number; height: number }
 export interface Box { left: number; top: number; right: number; bottom: number }
 
 /**
- * What Kernel draws over the page that the native view would hide: the scrim and every modal, menus, popovers, tooltips, toasts, hover cards
+ * What Kernel draws over the page that the native view would hide: the scrim and every modal, menus, popovers, tooltips, toasts
  * and the dialogs and lists that carry no class of their own (the composer's @ and / list, ModelPicker, the Checkpoints drawer).
  * `test/previewCover.test.ts` fails when `ui/overlays.tsx`, `ui/Tooltips.tsx` or `components/Toasts.tsx` stop using these names.
- * The canvas calls the hover card `.hovercard`, but the app's is `.hover-card` and `role="tooltip"`.
  */
-export const COVER_SELECTOR = '.scrim, .modal, .menu, .popover, .tooltip, .toast, .hover-card, [role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]'
+export const COVER_SELECTOR = '.scrim, .modal, .menu, .popover, .tooltip, .toast, [role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]'
 
 /** The view's own stage holds the page and the crash notice. Nothing in it covers the page. */
 const STAGE = '.sv-stage'

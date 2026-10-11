@@ -53,7 +53,7 @@ describe('the cover list matches what Kernel draws', () => {
 
   it('names each class and role it checks', () => {
     const named = COVER_SELECTOR.split(',').map((s) => s.trim())
-    expect(named.filter((s) => s.startsWith('.')).sort()).toEqual(['.hover-card', '.menu', '.modal', '.popover', '.scrim', '.toast', '.tooltip'])
+    expect(named.filter((s) => s.startsWith('.')).sort()).toEqual(['.menu', '.modal', '.popover', '.scrim', '.toast', '.tooltip'])
     expect(named.filter((s) => s.startsWith('[')).sort()).toEqual(['[role="dialog"]', '[role="listbox"]', '[role="menu"]', '[role="tooltip"]'])
   })
   it('finds the scrim, modal, menu, popover and toast in ui/overlays.tsx', () => {
@@ -72,6 +72,5 @@ describe('the cover list matches what Kernel draws', () => {
     expect(read('screens/workspace/composer/Composer.tsx')).toContain('role="listbox"')
     expect(read('screens/workspace/composer/ModelPicker.tsx')).toContain('role="dialog"')
     expect(read('screens/workspace/checkpoints/Checkpoints.tsx')).toContain('role="dialog"')
-    expect(read('components/sidebar/HoverCard.tsx')).toMatch(/role="tooltip" className="hover-card"/)
   })
 })
