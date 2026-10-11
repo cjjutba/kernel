@@ -16,7 +16,7 @@ import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import type { From } from '../services/leadUpdates'
-import { createWorktree, currentBranch, folderGone, freeWorktreePath, isWorktreeOf, leadBase, listWorktrees, slugify } from '../services/worktrees'
+import { createWorktree, currentBranch, fastForward, fetchOrigin, folderGone, freeWorktreePath, isWorktreeOf, leadBase, listWorktrees, slugify } from '../services/worktrees'
 import { git } from '../services/exec'
 import { LEAD_CHAT, messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -136,6 +136,64 @@ export class Lead extends Feature {
     return back
   }
 
+  /** Syncs of the Lead's worktree, by room, so two never run git in it at once. */
+  private syncing = new Map<string, Promise<void>>()
+  /** The last refusal logged, by room: the target's sha and the reason, so each is logged once per sha. */
+  private refused = new Map<string, string>()
+
+  /**
+   * Keeps the Lead's worktree on the latest main (KERNEL-181): a fast-forward to `<remote>/<default>`, only while no Lead
+   * chat in the room is running or has messages queued, and only when no tracked file changed and it has no commits of its
+   * own. It never merges or rebases. `fetch` fetches first, after a merge. Makes no worktree: a room whose Lead has none yet
+   * starts from the latest base anyway.
+   */
+  async syncLead(roomId: string, o: { fetch?: boolean } = {}): Promise<void> {
+    const failed = (e: unknown) => { if (!this.k.stopped) console.warn("[lead] could not update the Lead's worktree", e) }
+    // The fetch runs outside the queue, so a new chat's sync never waits on the network behind it.
+    if (o.fetch) {
+      const room = this.k.stopped ? undefined : this.store.room(roomId)
+      if (!room) return
+      const fetched = await this.k.config.remoteFor(room.path).then((remote) => fetchOrigin(room.path, remote, { fresh: true })).then(() => true, (e) => { failed(e); return false })
+      if (!fetched) return
+    }
+    const next = (this.syncing.get(roomId) ?? Promise.resolve()).then(() => this.syncNow(roomId)).catch(failed)
+    this.syncing.set(roomId, next)
+    void next.finally(() => { if (this.syncing.get(roomId) === next) this.syncing.delete(roomId) })
+    return next
+  }
+
+  private async syncNow(roomId: string) {
+    // A stopped Kernel's database is closed, so a sync still in flight reads nothing more from it and logs nothing.
+    if (this.k.stopped) return
+    const room = this.store.room(roomId)
+    const lead = this.agentsSync(roomId).find((a) => a.lead)
+    const ws = lead && this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
+    if (!room || room.archived || !lead || !ws || ws.mode !== 'worktree') return
+    // Read again after each step that waits on git: a turn can start while git runs, and the files mustn't move under it.
+    const held = () => this.k.stopped || this.store.chats(ws.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0)
+    if (held() || await folderGone(ws.path).catch(() => true)) return
+    const target = await leadBase(room.path, await this.k.config.remoteFor(room.path))
+    if (!target) return
+    const count = async (range: string) => Number((await git(ws.path, 'rev-list', '--count', range)).trim())
+    const behind = await count(`HEAD..${target}`)
+    if (!behind) return
+    const sha = (await git(room.path, 'rev-parse', target)).trim()
+    const own = await count(`${target}..HEAD`)
+    const changed = !own && (await git(ws.path, 'status', '--porcelain', '--untracked-files=no')).trim() !== ''
+    if (held()) return
+    const why = own ? `it has ${own === 1 ? 'a commit' : `${own} commits`} of its own` : changed ? 'tracked files have changes' : !(await fastForward(ws.path, target)) ? 'git refused the fast-forward' : undefined
+    if (this.k.stopped) return
+    if (why) {
+      if (this.refused.get(roomId) === `${sha} ${why}`) return
+      this.refused.set(roomId, `${sha} ${why}`)
+      bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: lead.id, actor: 'kernel', text: `didn't update ${lead.name}'s worktree to ${target}:`, object: why, warn: true })
+      return
+    }
+    this.refused.delete(roomId)
+    bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: lead.id, actor: 'kernel', text: `updated ${lead.name}'s worktree to ${target}, ${behind === 1 ? '1 new commit' : `${behind} new commits`}` })
+    void this.k.workspaces.changes(ws.id).catch(() => undefined)
+  }
+
   /**
    * Moves each room's Lead off the main checkout into its own worktree, once, at startup after the agents load and before
    * any chat carries on (KERNEL-355). Without a fetch. The plans its chats wrote come along as copies, since current-branch
@@ -168,7 +226,11 @@ export class Lead extends Feature {
    */
   async leadChat(roomId: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.leadTab(ws, LEAD_CHAT, this.leadPick(lead))
+    const open = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+    if (open) return open
+    // A new Lead chat starts on the latest main as last fetched, without waiting on the network (KERNEL-181).
+    await this.syncLead(roomId)
+    return this.leadTab(ws, LEAD_CHAT, this.leadPick(lead))
   }
 
   /** The model, effort and plan mode a Lead tab Kernel opens starts with. */
@@ -184,6 +246,7 @@ export class Lead extends Feature {
   async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }, threadId?: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
     const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    await this.syncLead(roomId)
     const chat = this.saveChat(this.leadTab(ws, NEW_TAB, pick, threadId))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
