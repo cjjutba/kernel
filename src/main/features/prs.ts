@@ -205,26 +205,36 @@ export class Prs extends Feature {
 
 
   /**
-   * One quick read per workspace after GitHub said it was still checking the PR for conflicts, since it settles within
-   * seconds. An entry with no timer is a re-check that ran and still read unknown: the 45 second poll takes over until a
-   * settled read clears it, so a PR GitHub takes long over doesn't cost a read every few seconds (KERNEL-283).
+   * PRs GitHub said it was still checking for conflicts, read once more on one shared timer since GitHub settles within
+   * seconds, as when a merge makes it check every other PR again. `ran` is a quick read that still read unknown: the 45
+   * second poll takes over until a settled read clears it, so a PR GitHub takes long over isn't read every few seconds (KERNEL-283).
    */
-  private rechecks = new Map<string, NodeJS.Timeout | undefined>()
+  private rechecks = new Map<string, 'queued' | 'ran'>()
+  private recheckTimer?: NodeJS.Timeout
   recheckMs = 15_000
 
   private recheckSoon(id: string) {
     if (this.rechecks.has(id)) return
-    this.rechecks.set(id, setTimeout(() => { this.rechecks.set(id, undefined); void this.k.refreshPr(id).catch(() => undefined) }, this.recheckMs))
+    this.rechecks.set(id, 'queued')
+    this.recheckTimer ??= setTimeout(() => void this.recheck(), this.recheckMs)
   }
 
-  /** Drops the workspace's quick re-check, as when it is archived. */
-  cancelRecheck(id: string) { clearTimeout(this.rechecks.get(id)); this.rechecks.delete(id) }
+  private async recheck() {
+    this.recheckTimer = undefined
+    const ids = [...this.rechecks].flatMap(([id, s]) => (s === 'queued' ? [id] : []))
+    for (const id of ids) this.rechecks.set(id, 'ran')
+    for (const id of ids) await this.k.refreshPr(id).catch(() => undefined)
+  }
+
+  /** Drops the workspace from the quick read, as when it is archived. */
+  cancelRecheck(id: string) { this.rechecks.delete(id) }
 
   /** Reads every open PR from GitHub every 45 seconds while Kernel runs. */
   start() { this.prTimer = setInterval(() => void this.pollPrs(), 45_000) }
   stop() {
     clearInterval(this.prTimer)
-    for (const t of this.rechecks.values()) clearTimeout(t)
+    clearTimeout(this.recheckTimer)
+    this.recheckTimer = undefined
     this.rechecks.clear()
   }
   handlers() {

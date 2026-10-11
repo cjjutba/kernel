@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -263,6 +263,32 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await wait(100)
     expect(reads).toBe(0)
     bus.off('push', onPush)
+    await k.stop()
+  })
+
+  it('reads every PR GitHub is still checking on one shared timer (KERNEL-283)', async () => {
+    const { k, ws, gh } = await setup()
+    const other = await k.workspaces.createWorkspace(ws.roomId, { prompt: 'Build the inbox', agentId: 'kai', title: 'Inbox' })
+    const read: string[] = []
+    k.github = { ...k.github, info: async (_cwd, _ref, workspaceId) => { read.push(workspaceId); return gh.pr ? { ...gh.pr, workspaceId } : null } }
+    k.prs.recheckMs = 37
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    // Right after a merge, GitHub checks every other PR for conflicts again.
+    gh.pr = info({ state: 'conflict' })
+    await k.prs.refreshPr(ws.id)
+    await k.prs.refreshPr(other.id)
+    gh.pr = info({ state: 'checks', conflictsUnknown: true })
+    await k.prs.refreshPr(ws.id)
+    await k.prs.refreshPr(other.id)
+    expect(timers.mock.calls.filter(([, ms]) => ms === 37)).toHaveLength(1)
+    timers.mockRestore()
+    // No pr.ready while unknown: both stay in conflict until GitHub says MERGEABLE.
+    expect([k.store.workspace(ws.id)?.prState, k.store.workspace(other.id)?.prState]).toEqual(['conflict', 'conflict'])
+    gh.pr = info({ state: 'ready' })
+    read.length = 0
+    await wait(120)
+    expect(read.sort()).toEqual([ws.id, other.id].sort())
+    expect([k.store.workspace(ws.id)?.prState, k.store.workspace(other.id)?.prState]).toEqual(['ready', 'ready'])
     await k.stop()
   })
 
