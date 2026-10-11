@@ -1335,7 +1335,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
   WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
-  // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the panel head when it is open and the header when hidden.
+  // The header and the PR capsule (KERNEL-413, design/redesign/): the toggle ends the chat header in both states (KERNEL-425).
   PrMergedOpen: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')], { panel: true }),
   PrMergedHidden: headerScene('merged', [prNote('h-note', 'PR #147 was merged on GitHub.', 'merged')]),
   PrReadyHidden: headerScene('ready', []),

@@ -217,8 +217,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
-  // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle ends
-  // whichever of the two is on screen, so it stays in the window's top-right corner.
+  // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle is window
+  // chrome, not a PR action, so it always ends the header, just left of the panel's edge, outside the PR band (KERNEL-425).
   return (
     <div className="panel ws-panel">
       <header className="header">
@@ -232,7 +232,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule />)}
-        {!panels && <RightPanelToggle name="panels" />}
+        <RightPanelToggle name="panels" />
       </header>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
@@ -275,7 +275,6 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
           />
           <div className="ws-aside-head">
             {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
-            <RightPanelToggle name="panels" />
           </div>
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />

@@ -25,8 +25,8 @@
 .pr-state svg { flex-shrink: 0; }
 .pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits the panel toggle beside Continue and Archive
-   at the panel's widest, and leaves the capsule 2px above and below. */
+/* The PR buttons are 26px, 12px type and 10px sides, as the redesign draws them. That fits Continue and Archive side by side at the
+   panel's widest, and leaves the capsule 2px above and below. */
 .pr-tone .btn { height: 26px; gap: 6px; padding: 0 10px; font-size: 12px; }
 .pr-tone .split-caret { height: 26px; }
 /* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR stays ink on the neutral band. */
@@ -41,9 +41,9 @@
 /* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). */
 .pr-word { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
 .pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
-/* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row, with the panel toggle at its end, needs
-   about 372px of the head's content box, which is 377px when the panel is at its widest (400px). */
-@container (max-width: 371px) { .pr-tone .pr-btn-label { display: none; } }
+/* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row needs about 337px of the head's content
+   box, which is 375px when the panel is at its widest (400px). The panel toggle ends the chat header, not this row (KERNEL-425). */
+@container (max-width: 336px) { .pr-tone .pr-btn-label { display: none; } }
 
 /* Create PR: a squared right edge, then the caret that opens the menu. */
 .pr-split { display: inline-flex; align-items: center; }

@@ -36,8 +36,8 @@ export function SidebarToggle() {
   return open ? null : <IconButton icon="sidebar" size={15} label="Show sidebar" data-tip-kbd="⌘B" onClick={() => actions.ui.setSidebar(true)} />
 }
 
-/** Last in the header of a screen with a right panel (Cmd+Option+B). `name` is what the panel holds, for the label. */
+/** Last in the header of a screen with a right panel (Cmd+Shift+B, or Cmd+Option+B). `name` is what the panel holds, for the label. */
 export function RightPanelToggle({ name }: { name: string }) {
   const open = useStore((s) => s.ui.rightPanel)
-  return <IconButton icon="panelRight" size={15} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⌥B" onClick={toggleRightPanel} />
+  return <IconButton icon="panelRight" size={15} label={`${open ? 'Hide' : 'Show'} ${name}`} data-tip-kbd="⌘⇧B" onClick={toggleRightPanel} />
 }
