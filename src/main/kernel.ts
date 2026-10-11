@@ -30,7 +30,7 @@ import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelTo
 import { loadAppSettings, loadRepoSettings, prInstructions, remoteOf, saveAppSettings, type AppSettings } from './services/settings'
 import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount } from './services/account'
-import { blocksOverlap, linkNodeModules, portBlock, replayScripts, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
+import { blocksOverlap, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { EnvStore } from './services/env'
 import { githubAvatar, RoomIcons } from './services/roomIcons'
 import { exec, git } from './services/exec'
@@ -2005,7 +2005,6 @@ export class Kernel {
       'pr.continue': async ({ workspaceId }) => this.continuePr(workspaceId),
       'pr.ready': async ({ workspaceId }) => this.readyPr(workspaceId),
       'pr.reopen': async ({ workspaceId }) => this.reopenPr(workspaceId),
-      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } },
       'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
       'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
       'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),

@@ -2,7 +2,7 @@ import type { Chat, ChatPart, Room, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
-import { copyLocalFiles, runScript, stopRuns, stopScript } from '../services/scripts'
+import { copyLocalFiles, replayScripts, runScript, stopRuns, stopScript } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { waitMet } from '../services/waits'
 import { Feature } from './feature'
@@ -231,7 +231,8 @@ export class Setup extends Feature {
         void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
         return { ok: true }
       },
-      'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } }
+      'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
+      'scripts.replay': async ({ workspaceId }) => { replayScripts(workspaceId); return { ok: true } }
     } satisfies Partial<Handlers>
   }
 }
