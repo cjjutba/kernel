@@ -99,6 +99,10 @@ const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
 
+const EXIT_PLAN = [
+  'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
+].map((t, i) => `${i + 1}. ${t}`).join('\n')
+
 /** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select. */
 const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
   { question: 'Should the download keep the invoice number in the file name?', header: 'File name', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
@@ -271,6 +275,16 @@ const planApproved = (f: Fixture): Partial<Fixture> => {
     items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), reply] }
   }
 }
+
+/** Kai's plan for T-15b from ExitPlanMode, waiting on you in plan mode: markdown in `detail` and `input`, no `steps` (KERNEL-374). */
+const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
+  userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
+  { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
+  tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
+  tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
+], {
+  approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: EXIT_PLAN }, title: 'Plan for invoice-pdf-button', detail: EXIT_PLAN }), ...f.approvals]
+}, { plan: true, model: 'claude-opus-5-5' })
 
 /** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
@@ -749,6 +763,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApproved: scene(planApproved),
+  WorkspacePlanExit: scene(planExit),
   // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
