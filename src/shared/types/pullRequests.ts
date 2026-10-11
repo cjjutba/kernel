@@ -32,6 +32,8 @@ export interface PrInfo {
   reviewDecision?: 'approved' | 'changes' | 'pending'
   /** The head commit (headRefOid). */
   head?: string
+  /** GitHub is still working out whether the open PR conflicts with its base (mergeable UNKNOWN), as after the base moved. */
+  conflictsUnknown?: boolean
 }
 
 /** A PR the new workspace modal can start from. */
