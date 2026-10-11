@@ -99,7 +99,7 @@ const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
 
-const PLAN = [
+const EXIT_PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
 
@@ -252,27 +252,39 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   }
 }
 
-/** Kai's plan for T-15b, waiting on you in plan mode. */
-const planWaiting = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
+/** What Rowan sends with request_plan_approval (KERNEL-373): a write-up in `detail`, next to `steps`. */
+const LEAD_PLAN = [
+  '# Export invoices as PDF',
+  '',
+  'Invoices get a PDF renderer and a Download PDF action in each row. Four tasks, run in parallel, and Theo reviews each PR as it lands.',
+  '',
+  'T-15b needs the renderer from T-15a to merge first, since both change `row-actions.tsx`. Each PR runs `pnpm test`, `pnpm typecheck` and `pnpm shots`.'
+].join('\n')
+
+/** Rowan's plan for T-15 waiting on you in plan mode, in the Lead's chat: its write-up, then one row per task. */
+const planWaiting = (f: Fixture): Partial<Fixture> => leadPlan(f, { agentId: 'rowan' }, { detail: LEAD_PLAN })
+
+/** The same plan once approved: it keeps its place with its Plan approved line, plan mode is off and each task has a workspace to open. */
+const planApproved = (f: Fixture): Partial<Fixture> => {
+  const s = planWaiting(f)
+  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.' }
+  return {
+    ...s,
+    chats: s.chats?.map((c) => (c.id === ids.leadChat ? { ...c, plan: false } : c)),
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'allowed' as const, steps: a.steps?.map((st, j) => ({ ...st, workspaceId: `ws-t15-${j}` })) } : a)),
+    items: { [ids.leadChat]: [...(s.items?.[ids.leadChat] ?? []), reply] }
+  }
+}
+
+/** Kai's plan for T-15b from ExitPlanMode, waiting on you in plan mode: markdown in `detail` and `input`, no `steps` (KERNEL-374). */
+const planExit = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
   userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
   { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
   tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
   tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
 ], {
-  approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
+  approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: EXIT_PLAN }, title: 'Plan for invoice-pdf-button', detail: EXIT_PLAN }), ...f.approvals]
 }, { plan: true, model: 'claude-opus-5-5' })
-
-/** The same plan once approved: it keeps its place with its Plan approved line, plan mode is off and Kai starts building. */
-const planApproved = (f: Fixture): Partial<Fixture> => {
-  const s = planWaiting(f)
-  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Starting on step 1: Download PDF goes into the row actions menu, next to Duplicate.' }
-  return {
-    ...s,
-    chats: s.chats?.map((c) => (c.id === ids.tableChat ? { ...c, plan: false } : c)),
-    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'allowed' as const } : a)),
-    items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), reply] }
-  }
-}
 
 /** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
@@ -326,7 +338,7 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
 }
 
 /** Rowan's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
-const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
+const leadPlan = (f: Fixture, ws: Partial<Workspace>, plan: Partial<Approval> = {}): Partial<Fixture> => ({
   ...scene2(f, { id: ids.lead, stat: { files: 1, added: 64, removed: 0 }, ...ws }, 'Export invoices as PDF', [
     userMsg('l1', 'Add PDF export to invoices. Spec first.'),
     { kind: 'thinking', id: 'l-th', ts: at(10, 28), text: 'Renderer, button, tests and review can run in parallel.' },
@@ -334,10 +346,7 @@ const leadPlan = (f: Fixture, ws: Partial<Workspace>): Partial<Fixture> => ({
     tool('l-t2', 'Write the plan', 'cat > plans/t-15-invoice-pdf.md', { name: 'Write' }),
     { kind: 'text', id: 'l-tx', ts: at(10, 29), text: 'I split PDF export into four tasks that can run in parallel. Approve it and I will hand them out.' }
   ], {
-    approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: [
-      { title: 'T-15a PDF renderer with embedded fonts', taskId: 'T-15a', agentId: 'noor' }, { title: 'T-15b Download PDF in the row actions', taskId: 'T-15b', agentId: 'kai' },
-      { title: 'T-15c Snapshot tests for three invoice types', taskId: 'T-15c', agentId: 'ivy' }, { title: 'T-15d Review each PR as it lands', taskId: 'T-15d', agentId: 'theo' }
-    ] }), ...f.approvals]
+    approvals: [pending('plan', 'rowan', { workspaceId: ids.lead, title: 'Plan for T-15', steps: T15_STEPS, ...plan }), ...f.approvals]
   }, { plan: true, model: 'claude-opus-5-5' }),
   changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] }
 })
@@ -754,6 +763,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspacePlan: scene(planWaiting),
   WorkspacePlanApproved: scene(planApproved),
+  WorkspacePlanExit: scene(planExit),
   // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),

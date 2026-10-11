@@ -86,6 +86,8 @@ export class Prs extends Feature {
     if (hold) state = ws.prState
     else if (!info) state = ws.prState === 'creating' || !ws.prNumber ? 'none' : ws.prState === 'resolving' ? 'open' : ws.prState
     else if (!ws.prNumber && (info.state === 'merged' || info.state === 'closed')) state = 'none'
+    // A conflict holds until GitHub has checked the PR again. The rest of the read is real (KERNEL-283).
+    else if (info.conflictsUnknown && ws.prState === 'conflict') state = 'conflict'
     else state = info.state
     const adopt = info && state !== 'none'
     const next = this.updateWs(id, {
@@ -93,6 +95,8 @@ export class Prs extends Feature {
       ...(adopt ? { prNumber: info.number, prUrl: info.url, prTitle: info.title || ws.prTitle, ...(info.head ? { prHead: info.head } : {}) } : {}),
       ...(state === 'merged' && !ws.mergedAt ? { mergedAt: Date.now() } : {})
     })
+    if (info?.conflictsUnknown) this.recheckSoon(id)
+    else if (info) this.cancelRecheck(id)
     this.guardOnReady(id, ws.prState, next.prState, info)
     if (next.prState !== ws.prState) {
       bus.push({ type: 'pr', workspaceId: id, state: next.prState })
@@ -108,6 +112,8 @@ export class Prs extends Feature {
   private hasChecks = new Set<string>()
   /** Ready reads with none of the checks the PR has had: the work moves on once those checks have run and passed. */
   private readyUnchecked = new Set<string>()
+  /** The head commit each PR was on when the loop guard last started over for it being ready. */
+  private guardReadyOn = new Map<string, string>()
 
   /**
    * The work moved on, so the loop guard starts over for it and its reviews (KERNEL-125): when the PR becomes ready. Right
@@ -116,9 +122,15 @@ export class Prs extends Feature {
    */
   private guardOnReady(id: string, before: PrState, after: PrState, info: PrInfo | null | undefined) {
     if (info?.checks.length) this.hasChecks.add(id)
-    if (after !== 'ready') { this.readyUnchecked.delete(id); return }
+    if (after !== 'ready') { this.readyUnchecked.delete(id); if (after !== 'checks') this.guardReadyOn.delete(id); return }
     if (!info?.checks.length && this.hasChecks.has(id)) { this.readyUnchecked.add(id); return }
-    if (before !== 'ready' || this.readyUnchecked.delete(id)) this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
+    // Ready again on the commit the guard started over on, after only checks, isn't the work moving on. GitHub checks a
+    // PR for conflicts again each time its base moves, and it reads as checks until then (KERNEL-283).
+    const again = before === 'checks' && !!info?.head && this.guardReadyOn.get(id) === info.head
+    if ((before !== 'ready' && !again) || this.readyUnchecked.delete(id)) {
+      this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
+      if (info?.head) this.guardReadyOn.set(id, info.head)
+    }
   }
 
   /**
@@ -206,9 +218,39 @@ export class Prs extends Feature {
   }
 
 
+  /**
+   * PRs GitHub said it was still checking for conflicts, read once more on one shared timer since GitHub settles within
+   * seconds, as when a merge makes it check every other PR again. `ran` is a quick read that still read unknown: the 45
+   * second poll takes over until a settled read clears it, so a PR GitHub takes long over isn't read every few seconds (KERNEL-283).
+   */
+  private rechecks = new Map<string, 'queued' | 'ran'>()
+  private recheckTimer?: NodeJS.Timeout
+  recheckMs = 15_000
+
+  private recheckSoon(id: string) {
+    if (this.rechecks.has(id)) return
+    this.rechecks.set(id, 'queued')
+    this.recheckTimer ??= setTimeout(() => void this.recheck(), this.recheckMs)
+  }
+
+  private async recheck() {
+    this.recheckTimer = undefined
+    const ids = [...this.rechecks].flatMap(([id, s]) => (s === 'queued' ? [id] : []))
+    for (const id of ids) this.rechecks.set(id, 'ran')
+    for (const id of ids) await this.k.refreshPr(id).catch(() => undefined)
+  }
+
+  /** Drops the workspace from the quick read, as when it is archived. */
+  cancelRecheck(id: string) { this.rechecks.delete(id) }
+
   /** Reads every open PR from GitHub every 45 seconds while Kernel runs. */
   start() { this.prTimer = setInterval(() => void this.pollPrs(), 45_000) }
-  stop() { clearInterval(this.prTimer) }
+  stop() {
+    clearInterval(this.prTimer)
+    clearTimeout(this.recheckTimer)
+    this.recheckTimer = undefined
+    this.rechecks.clear()
+  }
   handlers() {
     return {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),

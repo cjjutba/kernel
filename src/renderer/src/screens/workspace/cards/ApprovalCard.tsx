@@ -6,7 +6,7 @@ import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
-import { PlanInline, planCopyText, stepLine } from './plan'
+import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
 import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, isStepped, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
@@ -338,8 +338,8 @@ function PlanSteps({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead:
 }
 
 /**
- * A plan-mode plan as a card, in the Inbox, which has no composer to decide from: its opening heading as the title, the
- * rest as markdown, and the file Kernel saved it to (D-092). A long one that is already decided folds.
+ * A plan with a write-up as a card, in the Inbox, which has no composer to decide from: its opening heading as the title, the
+ * rest as markdown, then the Lead's task rows, and the file Kernel saved it to (D-092). A long one that is already decided folds.
  */
 function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: boolean }) {
   const text = planText(a)
@@ -359,6 +359,7 @@ function PlanDoc({ a, agents, lead }: { a: Approval; agents: AgentDef[]; lead: b
       <h3>{title}</h3>
       <div id={bodyId} className="pcard-body selectable" data-folded={long && !open ? 'true' : undefined}>
         <Markdown blocks={heading ? blocks.slice(1) : blocks} />
+        {!!a.steps?.length && <PlanTasks a={a} agents={agents} />}
       </div>
       {long && (
         <button type="button" className="pcard-more" aria-expanded={open} aria-controls={bodyId} onClick={() => setOpen(!open)}>

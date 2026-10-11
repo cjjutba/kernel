@@ -3,7 +3,7 @@ import { bus } from '../bus'
 import { archiveSkip } from '../services/archiveGuard'
 import { firstLine } from '../services/text'
 import { reviewedByBase } from '../services/kernelMcp'
-import { loadRepoSettings } from '../services/settings'
+import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { exec } from '../services/exec'
 import { unpushedCommits } from '../services/archive'
 import { Feature } from './feature'
@@ -47,8 +47,8 @@ export class AutoArchive extends Feature {
    */
   private async archiveOnMerge(roomId: string) {
     const room = this.store.room(roomId)
-    const own = room ? (await loadRepoSettings(room.path).catch(() => undefined))?.workspace.archiveOnMerge : undefined
-    return typeof own === 'boolean' ? own : this.settings.workspace.archiveOnMerge
+    const repo = room ? await loadRepoSettings(room.path).catch(() => undefined) : undefined
+    return cleanupSwitch(repo, this.settings.workspace, 'archiveOnMerge')
   }
 
   /**
