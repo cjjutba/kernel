@@ -11,6 +11,7 @@ import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { IMAGE_DATA_URL } from '../plans'
 import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from '../bashGuard'
+import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
@@ -391,15 +392,12 @@ export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
 }
 
 /** Every question of an AskUserQuestion call, with what the card needs from each. */
-function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
+export function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
   const list = Array.isArray(input.questions) ? input.questions : []
   return list.filter((q: any) => q && typeof q.question === 'string').map((q: any) => ({
     question: q.question,
     ...(typeof q.header === 'string' ? { header: q.header } : {}),
-    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => ({
-      label: String(o?.label ?? o),
-      ...(typeof o?.description === 'string' ? { description: o.description } : {})
-    })),
+    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => askedOption(o?.label ?? o, o?.description)),
     ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
   }))
 }

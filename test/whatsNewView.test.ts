@@ -14,7 +14,7 @@ describe('whatsNewView (KERNEL-154)', () => {
   it('shows the running version\'s notes with Done when no update is ready', () => {
     for (const status of ['idle', 'checking', 'downloading', 'error'] as const) {
       expect(whatsNewView({ ...idle, status, version: status === 'downloading' ? '0.2.0' : undefined, notes: status === 'downloading' ? next : undefined }))
-        .toEqual({ ready: false, title: "What's new in Kernel 0.1", notes: running })
+        .toEqual({ ready: false, title: "What's new in Kernel 0.1.1", notes: running })
     }
   })
 
@@ -22,8 +22,13 @@ describe('whatsNewView (KERNEL-154)', () => {
     expect(whatsNewView({ status: 'idle', current: '0.2.0', installed: true, version: '0.2.0', notes: next })).toEqual({ ready: false, title: "What's new in Kernel 0.2", notes: next })
   })
 
+  it('keeps a patch release\'s number in the title', () => {
+    expect(whatsNewView({ status: 'idle', current: '0.2.1', currentNotes: running }).title).toBe("What's new in Kernel 0.2.1")
+    expect(whatsNewView({ ...idle, status: 'ready', version: '0.2.1', notes: next }).title).toBe('Kernel 0.2.1 is ready')
+  })
+
   it('still reads when there are no notes or no state yet', () => {
-    expect(whatsNewView({ status: 'idle', current: '0.1.1' })).toEqual({ ready: false, title: "What's new in Kernel 0.1", notes: [] })
+    expect(whatsNewView({ status: 'idle', current: '0.1.1' })).toEqual({ ready: false, title: "What's new in Kernel 0.1.1", notes: [] })
     expect(whatsNewView(undefined)).toEqual({ ready: false, title: "What's new in Kernel", notes: [] })
   })
 })

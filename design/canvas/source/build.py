@@ -146,6 +146,7 @@ WS=[
     ('WorkspacePerm','perm'),
     ('WorkspaceQuestion','question'),
     ('WorkspaceQuestionSteps','questionsteps'),
+    ('WorkspaceQuestionLong','questionlong'),
     ('WorkspaceQuestionOther','questionother'),
     ('WorkspaceQuestionAnswers','questionanswers'),
     ('WorkspaceInterrupted','interrupted'),
@@ -200,7 +201,7 @@ WS=[
     ('WorkspaceSharedCommentOlder','sharedcommentolder'),
 ]
 for n,sc in WS:
-    if n=='WorkspaceLead': continue  # KERNEL-356 draws it with the Grouped set, below
+    if n in ('WorkspaceLead','WorkspaceQuestionLong'): continue  # KERNEL-356 and KERNEL-414 draw them with the Lead workspace, below
     emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks', gh_paused=sc=='ghpaused')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
@@ -535,6 +536,13 @@ var __seed = Component.prototype.seed;
 Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
 '''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
 emit('WorkspaceLead', t, 'lead')
+# KERNEL-414: Rowan asks a question with long options, so the card is drawn in the Lead's chat.
+t=lead_workspace(ws.replace('%%SCENARIO%%','questionlong'), L_PRS[1:])
+t=g_patch(t,'''
+var __seed = Component.prototype.seed;
+Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
+'''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
+emit('WorkspaceQuestionLong', t, 'lead')
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
 p=P+'InboxEmpty.dc.html'; t=open(p).read()

@@ -29,6 +29,7 @@ import type { ToolRequestUserInputResponse } from './protocol/v2/ToolRequestUser
 import type { Turn } from './protocol/v2/Turn'
 import type { TurnStartResponse } from './protocol/v2/TurnStartResponse'
 import type { UserInput } from './protocol/v2/UserInput'
+import { askedOption } from '../questions'
 
 // Codex through `codex app-server`, one process per chat like Claude (KERNEL-406). Kernel speaks its JSON-RPC: a thread per
 // chat (its id is the chat's session id), a turn per message, and Codex's approval requests, questions and tool calls
@@ -438,7 +439,7 @@ export class CodexRunner implements Runner {
 
   /** Codex's questions, as a Kernel question card like AskUserQuestion's. Answers go back by question id. */
   private async question(p: ToolRequestUserInputParams): Promise<ToolRequestUserInputResponse> {
-    const questions = p.questions.map((q) => ({ question: q.question, ...(q.header ? { header: q.header } : {}), options: (q.options ?? []).map((o) => ({ label: o.label, ...(o.description ? { description: o.description } : {}) })) }))
+    const questions = p.questions.map((q) => ({ question: q.question, ...(q.header ? { header: q.header } : {}), options: (q.options ?? []).map((o) => askedOption(o.label, o.description)) }))
     const first = questions[0]
     const result: Decision | undefined = await this.host.ask({ kind: 'question', toolName: 'AskUserQuestion', input: { questions }, title: first?.question ?? 'Question', options: first?.options.map((o) => o.label) ?? [], questions, activity: first?.question ?? 'Question' }, {})
     const answers: ToolRequestUserInputResponse['answers'] = {}

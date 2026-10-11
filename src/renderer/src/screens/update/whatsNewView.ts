@@ -1,7 +1,7 @@
 import type { AppUpdate } from '@shared/types'
 
-/** "0.2.0" reads as "0.2", as on Welcome. */
-export const short = (v: string) => v.replace(/^(\d+\.\d+).*/, '$1')
+/** "0.2.0" reads as "0.2" (WhatsNew.png, Welcome.png). A patch release keeps its number, so 0.2.1 reads as "0.2.1". */
+export const short = (v: string) => v.replace(/^(\d+\.\d+)\.0$/, '$1')
 
 export interface WhatsNewView {
   /** A downloaded update: Later and Restart to update. Otherwise Done. */

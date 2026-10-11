@@ -23,7 +23,7 @@ import { chatProvider, limitProvider } from '@shared/providers'
 import type { Ask, Proc, Runner, RunnerHost } from './providers/types'
 
 // Moved behind the provider seam (KERNEL-406). Exported here too for what imports them from Sessions.
-export { packagedClaude, InputQueue, toUserMessage, builtinCommands, sessionEnv, AGENT_TEAMS, switchedOff, limitsFromEvent, limitsFromUsage, HOLD_TIMEOUT_SEC, SESSION_GONE, TOOL_STOPPED } from './providers/claude'
+export { askedQuestions, packagedClaude, InputQueue, toUserMessage, builtinCommands, sessionEnv, AGENT_TEAMS, switchedOff, limitsFromEvent, limitsFromUsage, HOLD_TIMEOUT_SEC, SESSION_GONE, TOOL_STOPPED } from './providers/claude'
 export { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 
 interface Live {

@@ -170,11 +170,11 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(await ask.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'decline' }])
   })
 
-  it("puts Codex's questions on a question card and sends the answers back by question id", async () => {
+  it("puts Codex's questions on a question card and sends the answers back by question id, with (Recommended) as the card's tag (KERNEL-415)", async () => {
     const t = track(await setup())
-    await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/tool/requestUserInput', params: { threadId: '$thread', turnId: '$turn', itemId: 'q', isBlocking: true, autoResolutionMs: null, questions: [{ id: 'db', header: 'Database', question: 'Which database?', isOther: false, isSecret: false, options: [{ label: 'Postgres', description: 'The one in prod' }, { label: 'SQLite', description: '' }] }] } }) }])
+    await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/tool/requestUserInput', params: { threadId: '$thread', turnId: '$turn', itemId: 'q', isBlocking: true, autoResolutionMs: null, questions: [{ id: 'db', header: 'Database', question: 'Which database?', isOther: false, isSecret: false, options: [{ label: 'Postgres (Recommended)', description: 'The one in prod' }, { label: 'SQLite', description: '' }] }] } }) }])
     const card = await t.pending()
-    expect(card).toMatchObject({ kind: 'question', title: 'Which database?', options: ['Postgres', 'SQLite'], questions: [{ question: 'Which database?', header: 'Database', options: [{ label: 'Postgres', description: 'The one in prod' }, { label: 'SQLite' }] }] })
+    expect(card).toMatchObject({ kind: 'question', title: 'Which database?', options: ['Postgres', 'SQLite'], questions: [{ question: 'Which database?', header: 'Database', options: [{ label: 'Postgres', description: 'The one in prod', recommended: true }, { label: 'SQLite' }] }] })
     t.approvals.decide(card.id, { behavior: 'answer', text: 'Postgres', answers: { 'Which database?': 'Postgres' } })
     await t.idle()
     expect(await t.answers('item/tool/requestUserInput')).toEqual([{ answers: { db: { answers: ['Postgres'] } } }])

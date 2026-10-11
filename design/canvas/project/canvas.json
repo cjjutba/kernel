@@ -1639,6 +1639,15 @@
       "w": 1440,
       "x": 6080,
       "y": 26000
+    },
+    "WorkspaceQuestionLong.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Question with long options",
+      "w": 1440,
+      "x": 13680,
+      "y": 15600
     }
   },
   "createdOnFiles": {
@@ -1922,6 +1931,7 @@
     "WorkspaceQuestion.dc.html",
     "WorkspaceQuestionSteps.dc.html",
     "WorkspaceQuestionOther.dc.html",
+    "WorkspaceQuestionLong.dc.html",
     "WorkspaceQuestionAnswers.dc.html",
     "WorkspaceInterrupted.dc.html",
     "WorkspaceError.dc.html",
