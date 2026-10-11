@@ -27,6 +27,9 @@ interface Saved { version: string; notes: Note[]; shown: boolean }
 /** How often a running Kernel checks for a new release. */
 export const CHECK_EVERY_MS = 4 * 3600_000
 
+/** How long a Kernel that could not start waits for an update to download before it says so (KERNEL-408). */
+export const BOOT_UPDATE_MS = 90_000
+
 /**
  * Auto-update from GitHub Releases (KERNEL-30, UpdateReady.png, WhatsNew.png). A new version downloads in the
  * background; the footer pill appears once it's ready, and Restart to update installs it. After it installs,
@@ -39,6 +42,8 @@ export class Updater {
   private saved: Saved | null
   private timer?: NodeJS.Timeout
   private readonly file: string
+  /** Called after every status change, for `readyWithin`. */
+  private readonly watchers = new Set<() => void>()
 
   /** `notesFile` is the running version's notes in the build, written by scripts/release.sh (KERNEL-154). */
   constructor(private o: { current: string; dataDir: string; engine: UpdateEngine; every?: number; notesFile?: string }) {
@@ -89,6 +94,30 @@ export class Updater {
     return this.state
   }
 
+  /**
+   * A Kernel that could not start checks once and waits for the download, at most `ms`, so a release that crashes at
+   * launch can still install its fix (KERNEL-408). The version once an update is ready; undefined with no update, an error
+   * or no answer in time.
+   */
+  readyWithin(ms: number): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        this.watchers.delete(watch)
+        resolve(this.state.status === 'ready' ? this.state.version : undefined)
+      }
+      // An error or "no update" puts the status back to idle, whether it comes with the check or later in the download.
+      const watch = () => { if (this.state.status === 'ready' || this.state.status === 'idle') finish() }
+      const timer = setTimeout(finish, ms)
+      this.watchers.add(watch)
+      // Once the check is answered, only a download is worth waiting for. A check that failed without an error event leaves `checking`.
+      void this.check().then(() => { if (this.state.status !== 'downloading') finish() })
+    })
+  }
+
   install() {
     if (this.state.status !== 'ready') throw new Error('No update is ready')
     this.o.engine.quitAndInstall()
@@ -109,6 +138,7 @@ export class Updater {
   private set(patch: Partial<AppUpdate>) {
     this.state = { ...this.state, ...patch }
     bus.push({ type: 'update', update: this.state })
+    for (const w of [...this.watchers]) w()
   }
 
   private save(s: Saved) {

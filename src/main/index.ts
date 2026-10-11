@@ -14,7 +14,8 @@ import { hookTokenFile } from './services/hookToken'
 import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
-import { Updater } from './updater'
+import { BOOT_UPDATE_MS, Updater } from './updater'
+import { dataDirs, moveToDev, openBy, type DataDirs } from './dataDir'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
@@ -69,12 +70,39 @@ if (fixtureName) app.setPath('userData', process.env.KERNEL_FIXTURE_DATA ?? join
 const headless = process.env.KERNEL_HEADLESS === '1'
 if (headless) app.setActivationPolicy('accessory')
 
+// The installed app keeps its data in Kernel and a dev run in Kernel Dev, so dev from main never writes data an older
+// release can't read (KERNEL-408). Both share the hook entries in ~/.claude/settings.json, so only one runs at a time:
+// each checks the other's lock before taking its own, and quits before it opens anything. Fixture runs and the smoke test
+// keep their own folder.
+const dirs = smokeTest || fixtureName ? undefined : dataDirs(app.getPath('appData'), app.isPackaged)
+/** Said in a dialog once the app is ready, before Kernel quits without opening its data. */
+let refusal: { message: string; detail?: string } | undefined
+const otherOpen = (d: DataDirs) => ({ message: `${d.otherName} is open. Quit it, then open ${d.name} again.` })
+if (dirs) {
+  app.setPath('userData', dirs.own)
+  if (openBy(dirs.other)) refusal = otherOpen(dirs)
+}
+
 // Two copies would share kernel.db, and the second one's start expires the first one's pending approvals. A second
-// launch (open -n, or a dev build next to the installed app) hands over to the running copy and quits. Fixture runs
-// have no database and a userData of their own, so they skip the lock.
-const primary = !smokeTest && (!!fixtureName || app.requestSingleInstanceLock())
-if (!primary) app.quit()
+// launch (open -n) hands over to the running copy and quits. Fixture runs have no database and a userData of their own,
+// so they skip the lock.
+const primary = !smokeTest && !refusal && (!!fixtureName || app.requestSingleInstanceLock())
+if (!primary && !refusal) app.quit()
 app.on('second-instance', () => focusWindow())
+
+// A dev run's first launch moves the data over from Kernel, once it holds its own lock. The move checks Kernel's lock
+// again first, so an installed app that opened in between stops it.
+let moved: string | undefined
+if (dirs && primary && !app.isPackaged) {
+  try {
+    const r = moveToDev({ from: dirs.other, to: dirs.own })
+    if (r === 'moved') moved = `[kernel] moved the data from ${dirs.other} to ${dirs.own}`
+    if (r === 'in-use') refusal = otherOpen(dirs)
+  } catch (err) {
+    console.error('[kernel] could not move the data', err)
+    refusal = { message: `${dirs.name} could not move its data`, detail: `Your data is still in ${dirs.other}. ${err instanceof Error ? err.message : String(err)}` }
+  }
+}
 
 // Kernel's log (KERNEL-288). Fixture runs leave it off, so screenshots and scripted runs never write to the real one. A dev
 // run can point it at another folder, as test/crash.e2e.test.ts does.
@@ -88,6 +116,7 @@ const redaction = {
 const log = logDir && primary ? new Log({ dir: logDir, ...redaction }) : undefined
 log?.captureConsole()
 log?.info(`[kernel] Kernel ${app.getVersion()} started on macOS ${process.getSystemVersion()}`)
+if (moved) log?.info(moved)
 // With no listener, Electron shows an error nothing caught in a raw dialog. Kernel logs it and keeps running: the database
 // writes in transactions, and a stuck feature beats a window that quits under the user's agents.
 process.on('uncaughtException', (err) => { console.error('[kernel] uncaught exception', err); bus.track(errorEvent('exception', err)) })
@@ -194,14 +223,35 @@ function handle(channel: string, fn: (e: IpcMainInvokeEvent, req: any) => Promis
   })
 }
 
-/** A failed boot leaves nothing for IPC to talk to, so say why and quit instead of showing a broken window. */
-function bootFailed(err: unknown) {
+/**
+ * A failed boot leaves nothing for IPC to talk to, so say why and quit instead of showing a broken window. A packaged
+ * build checks for an update first and offers to install it, so a release that can't start can still get its fix (KERNEL-408).
+ */
+async function bootFailed(err: unknown, rescue?: { updater: Updater; quit: QuitGuard }) {
   console.error('[kernel] boot failed', err)
-  dialog.showErrorBox('Kernel could not start', err instanceof Error ? err.stack ?? err.message : String(err))
+  const detail = err instanceof Error ? err.stack ?? err.message : String(err)
+  try {
+    const version = rescue && (await rescue.updater.readyWithin(BOOT_UPDATE_MS))
+    if (rescue && version) {
+      const r = await dialog.showMessageBox({
+        type: 'error', message: 'Kernel could not start', detail: `Kernel ${version} is ready to install.\n\n${detail}`,
+        buttons: ['Install and restart', 'Quit'], defaultId: 0, cancelId: 1
+      })
+      // Electron closes the windows before before-quit on this path, so the guard settles first, as Restart to update does.
+      if (r.response === 0 && (await rescue.quit.confirmUpdate())) return rescue.updater.install()
+    } else dialog.showErrorBox('Kernel could not start', detail)
+  } catch (e) {
+    console.error('[kernel] could not offer an update after a failed boot', e)
+  }
   app.quit()
 }
 
 app.whenReady().then(async () => {
+  if (refusal) {
+    console.error(`[kernel] ${refusal.message}`)
+    if (!headless) await dialog.showMessageBox({ type: 'info', message: refusal.message, detail: refusal.detail, buttons: ['OK'] })
+    return app.quit()
+  }
   if (!primary) return
   // A packaged app takes its icon from build/icon.icns. Dev runs would show Electron's, so set the same mark here.
   if (!app.isPackaged && !headless) app.dock?.setIcon(join(app.getAppPath(), 'build/icon.png'))
@@ -283,7 +333,7 @@ app.whenReady().then(async () => {
     // The window opens while the kernel boots. Calls made before start() finishes wait for it.
     // PATH comes first so sessions and git calls made during start() find Homebrew and npm tools.
     started = refreshPath().then(() => kernel.start())
-    started.catch((err: unknown) => { quit.bootFailed(); bootFailed(err) })
+    started.catch((err: unknown) => { quit.bootFailed(); void bootFailed(err, updater && { updater, quit }) })
     void started.then(() => updater?.start(), () => undefined)
     // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake, and the PRs
     // are read again, as when the window comes back from another app (KERNEL-388).
@@ -329,6 +379,6 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({ copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)) })))
   createWindow()
   app.on('activate', () => { if (!mainWindow()) createWindow() })
-}).catch(bootFailed)
+}).catch((err: unknown) => void bootFailed(err))
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
