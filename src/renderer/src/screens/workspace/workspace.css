@@ -61,8 +61,15 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .msg-kernel .msg-acts { margin-left: 6px; }
 .msg-acts { display: flex; gap: 2px; height: 24px; opacity: 0; transition: opacity 0.12s; }
 .msg-reply .msg-acts { margin-left: -5px; }
-.msg:hover .msg-acts, .msg:focus-within .msg-acts { opacity: 1; }
+/* An open "..." menu or a fork on its way keeps the row up when the pointer leaves. */
+.msg:hover .msg-acts, .msg:focus-within .msg-acts, .msg-acts:has([aria-expanded='true']), .msg-acts[data-busy] { opacity: 1; }
 .msg-acts .icon-btn { width: 24px; height: 24px; border-radius: 5px; }
+/* The end of a finished turn (KERNEL-346): its time, always shown, then the reply's actions on the same line. */
+.msg-foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+.msg-foot .msg-acts { margin-left: 0; }
+.msg-more { position: relative; display: inline-flex; }
+.msg-more .icon-btn[aria-expanded='true'] { background: var(--surface-3); color: var(--ink); }
+.msg-reply .reply-files { margin-top: 6px; }
 .md { font-size: 14px; line-height: 1.6; color: color-mix(in srgb, var(--ink) 92%, transparent); }
 .md > * { margin: 0 0 8px; }
 .md > *:last-child { margin-bottom: 0; }
