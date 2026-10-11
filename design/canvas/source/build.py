@@ -70,7 +70,19 @@ def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=Fal
 LMAP={'#08090a':'#f3f3f4','#0f1011':'#ffffff','#0b0c0d':'#fafafa','#0a0b0c':'#f5f5f6','#0c0d0e':'#f6f6f7','#111214':'#f6f6f7','#121315':'#f6f6f7','#141516':'#f4f4f5','#141517':'#f4f4f5','#141518':'#f0f0f2','#16171a':'#efeff1','#17181a':'#ececee','#18191a':'#efeff1','#18191b':'#efeff1','#18191c':'#eeeef0','#1a1b1e':'#e8e8eb','#1c1d20':'#eaeaed','#1c1d21':'#eaeaed','#1d1e22':'#e4e4e7','#1f2024':'#e4e4e7','#222327':'#e6e6e9','#232428':'#e6e6e9','#23252a':'#dedee2','#24252a':'#e2e2e5','#26272b':'#e0e0e4','#26272b':'#e0e0e4','#2a2b30':'#d6d6db','#2e3036':'#d2d2d8','#3a3c42':'#c4c4ca','#3e3e44':'#bdbdc3','#4a4c52':'#a8a8b0','#62666d':'#9a9da4','#6b7079':'#8d9098','#8a8f98':'#6b6f77','#b7bcc4':'#4a4d54','#d0d6e0':'#3a3d44','#e3e5e8':'#1f2023','#f7f8f8':'#18191b'}
 def lighten(t):
     return re.sub(r'#[0-9a-fA-F]{6}\b', lambda m: LMAP.get(m.group(0).lower(), m.group(0)), t)
-simple={'Home':'home','Rooms':None,'NewRoom':None,'HomeEmpty':'home','Welcome':None,'CommandPalette':'search','Team':None,'AgentProfile':None,'History':'history','LoadingApp':None}
+# Every screen list below keeps one screen per line, with a trailing comma, so two PRs that add screens don't edit the same line.
+simple={
+    'Home':'home',
+    'Rooms':None,
+    'NewRoom':None,
+    'HomeEmpty':'home',
+    'Welcome':None,
+    'CommandPalette':'search',
+    'Team':None,
+    'AgentProfile':None,
+    'History':'history',
+    'LoadingApp':None,
+}
 # KERNEL-301: the palette lists a Shared group only where files were shared. SearchShared draws it; CommandPalette stays as it was.
 for n,a in simple.items(): emit(n, rd(n+'.dc.html').replace('%%SHARED%%','off'), a, empty=(n=='HomeEmpty'))
 emit('SearchShared', rd('CommandPalette.dc.html').replace('%%SHARED%%','on'), 'search')
@@ -90,38 +102,156 @@ emit('HomeRoomIcon', hi, 'home', icons={'Client B': avatar(16)})
 # The floor and Board screens (Main, Floor*, Board, BoardEmpty, TaskDetail) are hidden (D-104). Their pages keep the sidebar they
 # were drawn with and are not rebuilt, so they still show the screens as they were. Board.dc.html and Main.dc.html stay as templates.
 ib=rd('Inbox.dc.html')
-for n,v in [('Inbox','none'),('InboxEmpty','empty')]: emit(n, ib.replace('%%INBOX%%',v), 'inbox')
+for n,v in [
+    ('Inbox','none'),
+    ('InboxEmpty','empty'),
+]: emit(n, ib.replace('%%INBOX%%',v), 'inbox')
 is_=rd('Issues.dc.html')
-for n,st in [('Issues','list'),('IssuesWorking','working'),('IssuesNoRoom','noroom'),('IssuesEmpty','empty'),('IssuesConnect','connect'),('IssuesError','error')]: emit(n, is_.replace('%%STATE%%',st), 'issues')
+for n,st in [
+    ('Issues','list'),
+    ('IssuesWorking','working'),
+    ('IssuesNoRoom','noroom'),
+    ('IssuesEmpty','empty'),
+    ('IssuesConnect','connect'),
+    ('IssuesError','error'),
+]: emit(n, is_.replace('%%STATE%%',st), 'issues')
 tr=rd('_Try.dc.html')
-for n,mode,title in [('ConnectRepo','repo','Connect a repo'),('OpenFolder','folder','Open a folder'),('CheckHooks','hooks','Check hooks')]:
+for n,mode,title in [
+    ('ConnectRepo','repo','Connect a repo'),
+    ('OpenFolder','folder','Open a folder'),
+    ('CheckHooks','hooks','Check hooks'),
+]:
     emit(n, tr.replace('%%MODE%%',mode).replace('%%TITLE%%',title), None)
 # The app's fixtures open the room menu over Team and Ask Rowan over Home.
 emit('SidebarRoomMenu', rd('Team.dc.html'), None, menu='room')
 emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
-WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceQuestionSteps','questionsteps'),('WorkspaceQuestionAnswers','questionanswers'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
-    ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading'),('WorkspaceIssue','issue'),
-    ('WorkspaceSharedCard','sharedcard'),('WorkspaceSharedHtml','sharedhtml'),('WorkspaceSharedPhone','sharedphone'),('WorkspaceSharedImage','sharedimage'),('WorkspaceSharedMarkdown','sharedmd'),('WorkspaceSharedPdf','sharedpdf'),('WorkspaceSharedVersions','sharedversions'),('WorkspaceSharedCrashed','sharedcrashed'),('WorkspaceSharedPanel','sharedpanel'),('WorkspaceSharedPanelEmpty','sharedpanelempty')]
+WS=[
+    ('Workspace','done'),
+    ('WorkspaceMerged','merged'),
+    ('WorkspacePaste','paste'),
+    ('WorkspaceRunning','running'),
+    ('WorkspacePlan','plan'),
+    ('WorkspacePerm','perm'),
+    ('WorkspaceQuestion','question'),
+    ('WorkspaceQuestionSteps','questionsteps'),
+    ('WorkspaceQuestionAnswers','questionanswers'),
+    ('WorkspaceInterrupted','interrupted'),
+    ('WorkspaceError','error'),
+    ('WorkspaceSessionLimit','session'),
+    ('WorkspaceWeeklyLimit','weekly'),
+    ('WorkspaceModelLimit','model'),
+    ('WorkspaceContext','context'),
+    ('WorkspaceOverloaded','overloaded'),
+    ('WorkspaceOffline','offline'),
+    ('WorkspaceSignedOut','signedout'),
+    ('WorkspaceSetupFailed','setupfail'),
+    ('WorkspaceHooksDown','hooks'),
+    ('WorkspaceNewChat','newchat'),
+    ('WorkspaceTerminal','terminal'),
+    ('WorkspaceLead','lead'),
+    ('WorkspaceHire','hire'),
+    ('WorkspaceToolCalls','tools'),
+    ('WorkspaceCheckpoints','checkpoints'),
+    ('WorkspaceCIFailed','cifail'),
+    ('WorkspaceChangesRequested','changes'),
+    ('WorkspaceDraftPR','draft'),
+    ('WorkspacePRClosed','closed'),
+    ('WorkspacePRMenu','prmenu'),
+    ('WorkspaceFile','file'),
+    ('WorkspaceMention','mention'),
+    ('WorkspaceSlash','slash'),
+    ('WorkspaceActions','actions'),
+    ('WorkspaceQueued','queued'),
+    ('WorkspaceTabMenu','tabmenu'),
+    ('WorkspaceHunks','hunks'),
+    ('WorkspaceToast','toast'),
+    ('WorkspaceLoading','loading'),
+    ('WorkspaceIssue','issue'),
+    ('WorkspaceSharedCard','sharedcard'),
+    ('WorkspaceSharedHtml','sharedhtml'),
+    ('WorkspaceSharedPhone','sharedphone'),
+    ('WorkspaceSharedImage','sharedimage'),
+    ('WorkspaceSharedMarkdown','sharedmd'),
+    ('WorkspaceSharedPdf','sharedpdf'),
+    ('WorkspaceSharedVersions','sharedversions'),
+    ('WorkspaceSharedCrashed','sharedcrashed'),
+    ('WorkspaceSharedPanel','sharedpanel'),
+    ('WorkspaceSharedPanelEmpty','sharedpanelempty'),
+]
 for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
-for n,sc in [('WorkspaceRunScripts','runscripts'),('WorkspacePreview','preview'),('WorkspaceTerminalPresets','presets')]: emit(n, wp.replace('%%SCENARIO%%',sc), None)
+for n,sc in [
+    ('WorkspaceRunScripts','runscripts'),
+    ('WorkspacePreview','preview'),
+    ('WorkspaceTerminalPresets','presets'),
+]: emit(n, wp.replace('%%SCENARIO%%',sc), None)
 emit('WorkspaceLight', ws.replace('%%SCENARIO%%','done'), 'ws', light=True)
 nw=rd('NewWorkspace.dc.html')
-for n,m in [('NewWorkspace','none'),('NewWorkspaceBranch','branch'),('NewWorkspaceFrom','from'),('NewWorkspaceModel','model'),('NewWorkspacePlus','plus')]:
+for n,m in [
+    ('NewWorkspace','none'),
+    ('NewWorkspaceBranch','branch'),
+    ('NewWorkspaceFrom','from'),
+    ('NewWorkspaceModel','model'),
+    ('NewWorkspacePlus','plus'),
+]:
     emit(n, nw.replace('%%MENU%%',m), None)
 na=rd('NewAgent.dc.html')
-for n,st in [('NewAgent','describe'),('NewAgentDraft','draft'),('NewAgentDone','done')]: emit(n, na.replace('%%STEP%%',st), None)
+for n,st in [
+    ('NewAgent','describe'),
+    ('NewAgentDraft','draft'),
+    ('NewAgentDone','done'),
+]: emit(n, na.replace('%%STEP%%',st), None)
 cf=rd('Confirm.dc.html')
-for n,k in [('ConfirmArchive','archive'),('ConfirmRemoveRoom','remove'),('ConfirmDiscard','discard'),('ConfirmRetire','retire')]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
+for n,k in [
+    ('ConfirmArchive','archive'),
+    ('ConfirmRemoveRoom','remove'),
+    ('ConfirmDiscard','discard'),
+    ('ConfirmRetire','retire'),
+]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
 su=rd('Setup.dc.html')
-for n,k in [('SetupClaudeMissing','missing'),('SetupClaudeOld','old'),('SetupTeamsOff','teams'),('SetupGhSignedOut','gh'),('SetupPortBusy','port'),('RoomSetup','room')]: emit(n, su.replace('%%CASE%%',k), None)
+for n,k in [
+    ('SetupClaudeMissing','missing'),
+    ('SetupClaudeOld','old'),
+    ('SetupTeamsOff','teams'),
+    ('SetupGhSignedOut','gh'),
+    ('SetupPortBusy','port'),
+    ('RoomSetup','room'),
+]: emit(n, su.replace('%%CASE%%',k), None)
 se=rd('Settings.dc.html')
 # KERNEL-255: Environment, Big terminal and the room icon picker have pages. SettingsEnvironmentAdd is the add form over the room's Environment page.
 # KERNEL-188: room pages nest under each room. SettingsTeam, SettingsSkills and SettingsFiles keep their names and draw the room's Agents, Skills and MCP, and Files to copy pages.
-for n,pg in [('Settings','general'),('SettingsAppearance','appearance'),('SettingsNotifications','notifications'),('SettingsAccount','account'),('SettingsShortcuts','shortcuts'),('SettingsModels','models'),('SettingsTeam','r-agents'),('SettingsPermissions','permissions'),('SettingsSkills','r-skills'),('SettingsGit','git'),('SettingsScripts','scripts'),('SettingsPRs','prs'),('SettingsFiles','r-files'),('SettingsHooks','hooks'),('SettingsIntegrations','integrations'),('SettingsExperimental','experimental'),('SettingsAbout','about'),('SettingsRoom','r-general'),('SettingsRoomGit','r-git'),('SettingsRoomScripts','r-scripts'),('SettingsRoomInstructions','r-instructions'),('SettingsRoomPermissions','r-permissions'),('SettingsEnvironment','env'),('SettingsRoomEnvironment','r-env'),('SettingsEnvironmentAdd','r-env-add'),('SettingsBigTerminal','bigterm'),('SettingsRoomIcon','r-icon')]:
+for n,pg in [
+    ('Settings','general'),
+    ('SettingsAppearance','appearance'),
+    ('SettingsNotifications','notifications'),
+    ('SettingsAccount','account'),
+    ('SettingsShortcuts','shortcuts'),
+    ('SettingsModels','models'),
+    ('SettingsTeam','r-agents'),
+    ('SettingsPermissions','permissions'),
+    ('SettingsSkills','r-skills'),
+    ('SettingsGit','git'),
+    ('SettingsScripts','scripts'),
+    ('SettingsPRs','prs'),
+    ('SettingsFiles','r-files'),
+    ('SettingsHooks','hooks'),
+    ('SettingsIntegrations','integrations'),
+    ('SettingsExperimental','experimental'),
+    ('SettingsAbout','about'),
+    ('SettingsRoom','r-general'),
+    ('SettingsRoomGit','r-git'),
+    ('SettingsRoomScripts','r-scripts'),
+    ('SettingsRoomInstructions','r-instructions'),
+    ('SettingsRoomPermissions','r-permissions'),
+    ('SettingsEnvironment','env'),
+    ('SettingsRoomEnvironment','r-env'),
+    ('SettingsEnvironmentAdd','r-env-add'),
+    ('SettingsBigTerminal','bigterm'),
+    ('SettingsRoomIcon','r-icon'),
+]:
     emit(n, se.replace('%%PAGE%%',pg), None)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
