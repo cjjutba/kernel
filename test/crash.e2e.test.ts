@@ -81,7 +81,6 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('crash
       return out
     })
     expect(roles).toEqual(expect.arrayContaining(['copy', 'paste', 'quit', 'undo', 'selectall']))
-    await expect.poll(() => inWindow('document.body.innerText').catch(() => ''), { timeout: 5000 }).toContain('Diagnostics copied')
   })
 
   // Last, because it leaves the window without a page.

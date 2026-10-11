@@ -244,7 +244,7 @@ async function syncedRoom() {
   await run('git', ['-C', repo, 'remote', 'add', 'origin', bare])
   await run('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'main'])
   const k = await boot(await dirs())
-  const room = await k.addRoom(repo)
+  const room = await k.rooms.addRoom(repo)
   const chat = await k.lead.leadChat(room.id)
   const ws = k.store.workspace(chat.workspaceId)!
   expect(ws.baseRef).toBe('origin/main')
@@ -299,7 +299,7 @@ describe("keeping the Lead's worktree on the latest main (KERNEL-181)", () => {
 
   it('fetches and moves the worktree when a PR in the room merges', async () => {
     const { k, bare, room, ws } = await syncedRoom()
-    const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
     const merged = await pushElsewhere(bare, 'merged')
     const sync = vi.spyOn(k.lead, 'syncLead')
     bus.push({ type: 'pr', workspaceId: kai.id, state: 'merged' })

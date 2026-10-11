@@ -2,9 +2,9 @@ import { join } from 'node:path'
 import type { Chat, ChatPart, Effort, ModelId, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
-import { loadRepoSettings, type RepoSettings } from '../services/settings'
+import { DEFAULT_BASE_REF, loadRepoSettings, type RepoSettings } from '../services/settings'
 import { clock, worktreeTree, writeTree } from '../services/checkpoints'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, fetchOrigin, freeBranch, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, fetchOrigin, freeBranch, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readWorkspaceFile, searchFiles } from '../services/files'
@@ -41,8 +41,10 @@ export class Workspaces extends Feature {
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
     const remote = await this.k.config.remoteFor(room.path, repo)
+    // A base nobody set is the repo's default branch, the one the Lead's worktree follows and PRs go into (KERNEL-400).
+    const set = o.baseRef ?? repo.workspace.baseRef ?? (s.workspace.baseRef === DEFAULT_BASE_REF ? undefined : s.workspace.baseRef)
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
-    const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
+    const wanted = set ?? `${remote}/${await defaultBranch(room.path, remote).catch(() => 'main')}`
     const want = o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote)
     // A failed fetch still starts the workspace, from the remote as last fetched, and says so (KERNEL-179). A folder
     // without that remote has nothing to fetch, so it says nothing.

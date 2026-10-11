@@ -278,12 +278,12 @@ const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDE
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  // The count reads these four slices and nothing else, so terminal chunks and script lines leave it alone.
+  // The count reads these four slices, plus the workspaces held for script trust, and nothing else, so terminal chunks and script lines leave it alone.
   const notifications = useStore((s) => s.notifications)
   const approvals = useStore((s) => s.approvals)
   const allRooms = useStore((s) => s.rooms)
   const overlaps = useStore((s) => s.overlaps)
-  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou).length, [notifications, approvals, allRooms, overlaps])
+  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps), workspaces).filter(needsYou).length, [notifications, approvals, allRooms, overlaps, workspaces])
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()

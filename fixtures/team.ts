@@ -492,6 +492,11 @@ export const teamFixtures: Record<string, Fixture> = {
     }],
     ui: { route: { name: 'inbox' } }
   })),
+  // No PNG (KERNEL-395): invoice-table is held for script trust beside the approvals, as the newest row, so the detail pane opens on it.
+  InboxTrustHeld: scene((f) => {
+    const home = homeScene(f)
+    return { ...home, workspaces: home.workspaces!.map((w) => (w.id === ids.table ? { ...w, status: 'trust' as const, createdAt: Date.now() } : w)), ui: { route: { name: 'inbox' } } }
+  }),
   Rooms: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'rooms' } } })),
   NewRoom: scene((f) => ({
     ...roomsScene(f),

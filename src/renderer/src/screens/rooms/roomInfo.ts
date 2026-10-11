@@ -1,11 +1,12 @@
-import type { AgentDef, AgentStatus, Approval, Room } from '@shared/types'
+import type { AgentDef, AgentStatus, Approval, Room, Workspace } from '@shared/types'
 
 export type RoomState = 'you' | 'working' | 'idle' | 'archived'
 
-/** "Needs you" when something waits on the user, "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
-export function roomState(room: Room, approvals: Approval[], status: Record<string, AgentStatus> | undefined): RoomState {
+/** "Needs you" when something waits on the user, a pending approval or a workspace held for script trust (KERNEL-395). "Working" when any agent is busy. Real events only, no timers (CLAUDE.md). */
+export function roomState(room: Room, approvals: Approval[], status: Record<string, AgentStatus> | undefined, workspaces: Workspace[] = []): RoomState {
   if (room.archived) return 'archived'
   if (approvals.some((a) => a.roomId === room.id && a.status === 'pending')) return 'you'
+  if (workspaces.some((w) => w.roomId === room.id && w.status === 'trust')) return 'you'
   const busy: AgentStatus[] = ['working', 'planning', 'walking']
   return Object.values(status ?? {}).some((s) => busy.includes(s)) ? 'working' : 'idle'
 }
