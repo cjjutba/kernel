@@ -34,7 +34,8 @@ export const SETTLE_MS = 300
 /** The thumbnail's page size in CSS pixels, and the width of the image Kernel keeps. */
 const THUMB_PAGE = { width: 1280, height: 800 }
 const THUMB_WIDTH = 640
-const THUMB_WAIT = { after: 600, cap: 6000 }
+/** Capture after the load plus `after`, or at `cap`. Past `deadline` the whole job gives up, capture included. */
+export const THUMB_WAIT = { after: 600, cap: 6000, deadline: 8000 }
 
 /** Make the scheme standard and secure before the app is ready. No fetch, CORS, CSP bypass or service workers. */
 export function registerPreviewScheme() {
@@ -273,7 +274,8 @@ export class PreviewHost {
 
   /**
    * A PNG of the version for its card, 640 px wide, or null for PDF and Markdown. Drawn one at a time in an offscreen
-   * window with the same locks, after the load plus 600 ms, or at 6 s if it never finishes.
+   * window with the same locks, after the load plus 600 ms, or at 6 s if it never finishes. A page that hangs or crashes
+   * gets null by the 8 s deadline, so the queue moves on.
    */
   thumbnail(file: SharedFile, n: number): Promise<Buffer | null> {
     if (file.kind !== 'html' && file.kind !== 'image') return Promise.resolve(null)
@@ -291,21 +293,32 @@ export class PreviewHost {
     // An offscreen window renders without Kernel's window, which may be closed. It joins getAllWindows(), so index.ts
     // sends events and focus to Kernel's window by name, never to the first window.
     const w = new BrowserWindow({ show: false, ...THUMB_PAGE, webPreferences: prefs(this.o.dev, true) })
-    let cap: NodeJS.Timeout | undefined
+    const wc = w.webContents
+    const timers: NodeJS.Timeout[] = []
+    let hung = false
+    // A page that loops before its first paint never lets capturePage resolve, so the deadline covers the capture too.
+    const stopped = new Promise<null>((resolve) => {
+      const stop = () => { hung = true; resolve(null) }
+      timers.push(setTimeout(stop, THUMB_WAIT.deadline))
+      wc.once('unresponsive', stop)
+      wc.once('render-process-gone', stop)
+    })
     try {
-      const wc = w.webContents
       guard(wc)
       const settled = new Promise<void>((resolve) => {
-        cap = setTimeout(resolve, THUMB_WAIT.cap)
-        wc.once('did-finish-load', () => setTimeout(resolve, THUMB_WAIT.after))
+        timers.push(setTimeout(resolve, THUMB_WAIT.cap))
+        wc.once('did-finish-load', () => timers.push(setTimeout(resolve, THUMB_WAIT.after)))
       })
       void wc.loadURL(`${PREVIEW_SCHEME}://${t}/`).catch(() => undefined)
-      await settled
-      const img = await wc.capturePage()
-      return img.isEmpty() ? null : img.resize({ width: THUMB_WIDTH, quality: 'good' }).toPNG()
+      const drawn = settled.then(() => wc.capturePage())
+        .then((img) => (img.isEmpty() ? null : img.resize({ width: THUMB_WIDTH, quality: 'good' }).toPNG()), () => null)
+      return await Promise.race([stopped, drawn])
     } finally {
-      clearTimeout(cap)
+      for (const timer of timers) clearTimeout(timer)
       this.served.delete(t)
+      // Closing a window doesn't stop a renderer stuck in a loop, so a hung page's process is killed first. Only then:
+      // a renderer that answered may host another preview.
+      if (hung && !wc.isDestroyed()) wc.forcefullyCrashRenderer()
       if (!w.isDestroyed()) w.destroy()
     }
   }

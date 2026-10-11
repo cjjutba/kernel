@@ -38,6 +38,7 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('a sha
     data = mkdtempSync(join(tmpdir(), 'kernel-preview-'))
     share('hostile', 'page.html', hostilePage(origin))
     share('loop', 'loop.html', '<p>busy</p><script>setTimeout(() => { for (;;) {} }, 50)</script>')
+    share('hang', 'hang.html', '<script>for (;;) {}</script><p>never drawn</p>')
     share('pic', 'dot.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"><rect width="40" height="20" fill="#36c"/></svg>')
     share('doc', 'doc.pdf', '%PDF-1.4\n%%EOF\n')
     for (const n of [1, 2, 3, 4, 5]) share(`page${n}`, 'p.html', `<p>page ${n}</p>`)
@@ -140,6 +141,27 @@ describe.skipIf(!process.env.KERNEL_E2E || process.platform !== 'darwin')('a sha
     expect(await size('pic', 'image')).toBeGreaterThan(1000)
     expect(await size('doc', 'pdf')).toBeNull()
   })
+
+  it('gives up on a thumbnail whose page hangs before its first paint, and draws the next one', async () => {
+    const r = await app.evaluate(async ({ BrowserWindow }) => {
+      const host = (globalThis as any).kernelPreview
+      const before = BrowserWindow.getAllWindows().length
+      const start = Date.now()
+      const hung = host.thumbnail({ id: 'hang', kind: 'html' }, 1)
+        .then((png: Buffer | null) => ({ png, ms: Date.now() - start, windows: BrowserWindow.getAllWindows().length }))
+      const next: Promise<Buffer | null> = host.thumbnail({ id: 'page2', kind: 'html' }, 1)
+      const first = await hung
+      const second = await next
+      return { png: first.png, ms: first.ms, windowsAfterHung: first.windows, next: second ? second.length : null, before, after: BrowserWindow.getAllWindows().length }
+    })
+    expect(r.png).toBeNull()
+    expect(r.ms).toBeGreaterThanOrEqual(7_900)
+    expect(r.ms).toBeLessThan(9_500)
+    expect(r.windowsAfterHung).toBe(r.before)
+    expect(r.next).toBeGreaterThan(1000)
+    expect(r.after).toBe(r.before)
+    expect(await invoke('rooms.list')).toEqual(expect.any(Array))
+  }, 30_000)
 })
 
 /** Tries every way out, records each outcome in `window.results`, then sets `window.done`. */
