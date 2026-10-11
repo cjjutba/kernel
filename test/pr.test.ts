@@ -229,11 +229,11 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
 
     // Ready, then main moves: checks until GitHub settles, and one quick read follows it back to ready.
     gh.pr = info({ state: 'ready' })
-    await k.refreshPr(ws.id)
+    await k.prs.refreshPr(ws.id)
     gh.pr = unknown()
-    expect((await k.refreshPr(ws.id)).prState).toBe('checks')
+    expect((await k.prs.refreshPr(ws.id)).prState).toBe('checks')
     // A second unknown read before the quick one doesn't queue another.
-    await k.refreshPr(ws.id)
+    await k.prs.refreshPr(ws.id)
     gh.pr = info({ state: 'ready' })
     reads = 0
     await wait(100)
@@ -242,9 +242,9 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
 
     // A conflict stays a conflict, even with checks failing meanwhile, until GitHub says it is gone.
     gh.pr = info({ state: 'conflict' })
-    await k.refreshPr(ws.id)
+    await k.prs.refreshPr(ws.id)
     gh.pr = unknown({ state: 'cifail', checks: [{ name: 'e2e', state: 'fail' }] })
-    expect((await k.refreshPr(ws.id)).prState).toBe('conflict')
+    expect((await k.prs.refreshPr(ws.id)).prState).toBe('conflict')
     gh.pr = unknown()
     reads = 0
     await wait(100)
@@ -252,13 +252,13 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(reads).toBe(1)
     expect(k.store.workspace(ws.id)?.prState).toBe('conflict')
     gh.pr = info({ state: 'ready' })
-    expect((await k.refreshPr(ws.id)).prState).toBe('ready')
+    expect((await k.prs.refreshPr(ws.id)).prState).toBe('ready')
     expect(states).toEqual(['ready', 'checks', 'ready', 'conflict', 'ready'])
 
     // Archiving drops a pending quick read.
     gh.pr = unknown()
-    await k.refreshPr(ws.id)
-    await k.archiveWorkspace(ws.id)
+    await k.prs.refreshPr(ws.id)
+    await k.archive.archiveWorkspace(ws.id)
     reads = 0
     await wait(100)
     expect(reads).toBe(0)
@@ -273,7 +273,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     k.github = { ...k.github, info: async (...a) => { reads++; return read(...a) } }
     k.prs.recheckMs = 30
     gh.pr = info({ state: 'checks', conflictsUnknown: true })
-    await k.refreshPr(ws.id)
+    await k.prs.refreshPr(ws.id)
     await k.stop()
     reads = 0
     await wait(100)
