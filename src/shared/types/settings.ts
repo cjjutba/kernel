@@ -23,7 +23,10 @@ export interface AppSettings {
   }
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
   workspace: { mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean }
-  scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean }
+  scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean
+    /** Minutes a setup or archive script may run before Kernel stops it (KERNEL-216). Run scripts have no limit. */
+    timeoutMinutes: number
+  }
   models: { lead: ModelId; engineers: ModelId; qa: ModelId; reviewer: ModelId; effort: Effort; leadPlanMode: boolean; agentTeams: boolean
     /** Agents working at once, the Lead's chats left out (D-094). 0 means no limit. Was `maxConcurrent`, whose saved 4 was only the old default. */
     agentLimit: number

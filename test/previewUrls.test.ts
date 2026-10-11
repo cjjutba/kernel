@@ -26,7 +26,7 @@ const until = async (ok: () => boolean, what: string, ms = 15000) => {
 }
 const urls = (workspaceId: string, name = 'run') => events.flatMap((e) => (e.type === 'script.url' && e.workspaceId === workspaceId && e.name === name ? [e.url] : []))
 const tick = () => new Promise((r) => setImmediate(r))
-const lines = (workspaceId: string) => events.flatMap((e) => (e.type === 'script.output' && e.workspaceId === workspaceId ? [e.line] : []))
+const lines = (workspaceId: string) => events.flatMap((e) => (e.type === 'script.output' && e.workspaceId === workspaceId ? e.lines.map((l) => l.line) : []))
 const exits = (workspaceId: string) => events.filter((e) => e.type === 'script.exit' && e.workspaceId === workspaceId).length
 
 /** Vite 5's banner as it prints it, color codes and all. The port sits inside the URL's colors. */

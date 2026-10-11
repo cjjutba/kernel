@@ -10,7 +10,7 @@ import type { Readable } from 'node:stream'
 import { PORT_BLOCK, type ScriptLine } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { localUrlIn } from '@shared/previewUrl'
-import { keepLine, scriptKey } from '@shared/scriptLog'
+import { keepLines, scriptKey } from '@shared/scriptLog'
 
 const canBind = (p: number) => new Promise<boolean>((res) => {
   const srv = createServer()
@@ -151,7 +151,7 @@ export function keepScript(e: PushEvent) {
   if ((e.type !== 'script.output' && e.type !== 'script.exit' && e.type !== 'script.url') || archived.has(e.workspaceId)) return
   let k = kept.get(e.workspaceId)
   if (!k) kept.set(e.workspaceId, (k = { lines: [], exit: {}, url: {} }))
-  if (e.type === 'script.output') k.lines = keepLine(k.lines, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
+  if (e.type === 'script.output') k.lines = keepLines(k.lines, e.kind, e.name, e.lines)
   else if (e.type === 'script.exit') k.exit[scriptKey(e.kind, e.name)] = e.code
   else if (e.url) k.url[e.name] = e.url
   else delete k.url[e.name]
@@ -189,16 +189,16 @@ export function runScript(o: { workspaceId: string; kind: Kind; name?: string; s
     if (name) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
     const emit = (line: string, stream: 'stdout' | 'stderr') => {
       if (!line) return
-      bus.push({ type: 'script.output', ...tag, line, stream })
+      bus.push({ type: 'script.output', ...tag, lines: [{ line, stream }] })
       // A process a restart replaced may still be printing. Its URL isn't the new run's.
       if (name && !url && current()) {
         url = localUrlIn(line)
         if (url) bus.push({ type: 'script.url', workspaceId: o.workspaceId, name, url })
       }
     }
-    bus.push({ type: 'script.output', ...tag, line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' })
+    bus.push({ type: 'script.output', ...tag, lines: [{ line: `$ ${o.script.split('\n').join(' && ')}`, stream: 'stdout' }] })
     const flushes = (['stdout', 'stderr'] as const).map((stream) => pipeLines(child[stream], (line) => emit(line, stream)))
-    child.on('error', (err) => { bus.push({ type: 'script.output', ...tag, line: String(err), stream: 'stderr' }) })
+    child.on('error', (err) => { bus.push({ type: 'script.output', ...tag, lines: [{ line: String(err), stream: 'stderr' }] }) })
     child.on('close', (code) => {
       for (const flush of flushes) flush()
       // A restart already holds the slot with the new process, and its URL.

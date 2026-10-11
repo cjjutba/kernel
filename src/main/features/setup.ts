@@ -134,7 +134,7 @@ export class Setup extends Feature {
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
   async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
     const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy)
-    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' })
+    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' }] })
   }
 
   /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
@@ -182,7 +182,7 @@ export class Setup extends Feature {
   private setupPassed(ws: Workspace, code: number | null) {
     if (code === 0) { this.setupFailures.delete(ws.id); return true }
     this.setupFailures.set(ws.id, code)
-    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`, stream: 'stderr' })
+    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`, stream: 'stderr' }] })
     return false
   }
 

@@ -25,11 +25,15 @@ export const scriptKey = (kind: ScriptKind, name?: string) => {
  * out. The lines that stay are the same objects, so the log's rows keep their keys and only new lines are drawn (KERNEL-211).
  */
 export function keepLine(list: ScriptLine[], line: ScriptLine): ScriptLine[] {
-  const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
-  const next = [...list, named]
-  if (next.length > SCRIPT_LINES) {
-    const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
-    if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
-  }
-  return next
+  return keepLines(list, line.kind, line.name, [line])
+}
+
+/** `keepLine` for each of one script's `lines` in turn, with one copy of the list (KERNEL-216). */
+export function keepLines(list: ScriptLine[], kind: ScriptKind, name: string | undefined, lines: Pick<ScriptLine, 'line' | 'stream'>[]): ScriptLine[] {
+  const n = runName(kind, name)
+  const next = [...list, ...lines.map((l): ScriptLine => ({ kind, name: n, line: l.line, stream: l.stream }))]
+  const mine = next.filter((l) => l.kind === kind && l.name === n)
+  if (mine.length <= SCRIPT_LINES) return next
+  const drop = new Set(mine.slice(0, mine.length - SCRIPT_LINES))
+  return next.filter((l) => !drop.has(l))
 }

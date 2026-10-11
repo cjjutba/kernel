@@ -52,7 +52,7 @@ const until = async (ok: () => boolean, what: string, ms = 15000) => {
     await new Promise((r) => setTimeout(r, 25))
   }
 }
-const printed = (ws: Workspace, name: string, line: string) => events.some((e) => e.type === 'script.output' && e.workspaceId === ws.id && e.name === name && e.line === line)
+const printed = (ws: Workspace, name: string, line: string) => events.some((e) => e.type === 'script.output' && e.workspaceId === ws.id && e.name === name && e.lines.some((l) => l.line === line))
 const exited = (ws: Workspace, name: string) => events.some((e) => e.type === 'script.exit' && e.workspaceId === ws.id && e.name === name)
 
 const scripts = (toml: string) => ({ '.kernel/settings.toml': toml })
@@ -151,8 +151,8 @@ describe('named run scripts (KERNEL-244)', () => {
     await h['scripts.run']({ workspaceId: b.id, kind: 'run', name: 'stubborn' })
     let pid = 0
     await until(() => {
-      const line = events.find((e) => e.type === 'script.output' && e.workspaceId === b.id && e.name === 'stubborn' && /^pid-\d+$/.test(e.line))
-      pid = line?.type === 'script.output' ? Number(line.line.slice(4)) : 0
+      const line = events.flatMap((e) => (e.type === 'script.output' && e.workspaceId === b.id && e.name === 'stubborn' ? e.lines : [])).find((l) => /^pid-\d+$/.test(l.line))
+      pid = line ? Number(line.line.slice(4)) : 0
       return pid > 0
     }, 'stubborn to print its pid')
     const alive = () => { try { process.kill(pid, 0); return true } catch { return false } }
