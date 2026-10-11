@@ -2,7 +2,7 @@ import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
   ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, SharedFile, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
@@ -70,6 +70,8 @@ export interface State {
   settings: AppSettings | null
   /** By room id. */
   roomSettings: Record<string, RoomSettings>
+  /** By shared id. Every file agents shared, from `shared.list` and the `shared` push (KERNEL-305). */
+  shared: Record<string, SharedFile>
   system: { booted: boolean; online: boolean; preflight: PreflightCheck[] | null; hooks: HookStatus | null; update: AppUpdate | null }
   /** By room id. The Ask Rowan popover's draft and last question, kept while it is closed. */
   quickAsk: Record<string, QuickAskState>
@@ -107,7 +109,7 @@ let state: State = {
   chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
-  usage: [], account: null, settings: null, roomSettings: {},
+  usage: [], account: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
   quickAsk: {},
   ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
@@ -174,12 +176,13 @@ function rememberRoom(route: Route) {
 export function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
 }
-const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }
-/** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file or diff tab joins the open ones. */
+const emptyTabs: WorkspaceTabs = { files: [], diffs: [], shared: [] }
+/** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file, diff or shared tab joins the open ones. */
 function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
   const t = { ...emptyTabs, ...tabs, tab }
   if (tab.startsWith('file:')) { const path = tab.slice(5); return t.files.includes(path) ? t : { ...t, files: [...t.files, path] } }
   if (tab.startsWith('diff:')) { const path = tab.slice(5); return t.diffs.includes(path) ? t : { ...t, diffs: [...t.diffs, path] } }
+  if (tab.startsWith('shared:')) { const id = tab.slice(7); return (t.shared ?? []).includes(id) ? t : { ...t, shared: [...(t.shared ?? []), id] } }
   if (tab.startsWith('image:') || tab.startsWith('text:')) return t
   return { ...t, lastChat: tab }
 }
@@ -359,6 +362,18 @@ export const actions = {
       const closed = !!shown && !hasTab(state, workspaceId, shown)
       moved(from, placeNow(), isChatTab(tab) && !closed ? 'push' : 'none')
     },
+    /**
+     * Opens a shared file's tab in the workspace on screen (the copy is Kernel's, so any workspace can show it) and selects it. A `version`
+     * picks that one, and the latest clears the pick so the tab follows new versions. Without one, a pick already made stays (KERNEL-305).
+     */
+    openShared: (workspaceId: string, sharedId: string, version?: number) => {
+      if (version !== undefined) {
+        const latest = Math.max(0, ...(state.shared[sharedId]?.versions ?? []).map((v) => v.n))
+        const { [sharedId]: _was, ...rest } = state.ui.tabs[workspaceId]?.sharedVersion ?? {}
+        actions.ui.setTabs(workspaceId, { sharedVersion: version === latest ? rest : { ...rest, [sharedId]: version } })
+      }
+      actions.ui.openTab(workspaceId, `shared:${sharedId}`)
+    },
     /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
     setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
     /** Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. */
@@ -485,6 +500,10 @@ export const actions = {
   account: {
     set: (account: ClaudeAccount) => setState({ account })
   },
+  shared: {
+    set: (list: SharedFile[]) => setState({ shared: Object.fromEntries(list.map((f) => [f.id, f])) }),
+    upsert: (file: SharedFile) => setState((s) => ({ shared: { ...s.shared, [file.id]: file } }))
+  },
   settings: {
     set: (settings: AppSettings) => setState({ settings }),
     setRoom: (roomId: string, rs: RoomSettings) => setState((s) => ({ roomSettings: { ...s.roomSettings, [roomId]: rs } }))
@@ -529,6 +548,7 @@ export function apply(e: PushEvent) {
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
+    case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
@@ -542,12 +562,14 @@ export function apply(e: PushEvent) {
  */
 export async function boot() {
   onPush(apply)
-  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture] = await Promise.all([
+  const [rooms, workspaces, approvals, notifications, activity, usage, settings, fixture, shared] = await Promise.all([
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
-    call('settings.get', undefined), call('system.fixture', undefined)
+    call('settings.get', undefined), call('system.fixture', undefined),
+    // Cards and the Shared panel read these. A failed load only leaves them out until a push brings a file in.
+    call('shared.list', {}).catch((): SharedFile[] => [])
   ])
   fixtureMode = !!fixture
-  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
+  setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings, shared: Object.fromEntries(shared.map((f) => [f.id, f])) })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
   void call('hooks.status', undefined).then(actions.system.setHooks).catch(() => undefined)
