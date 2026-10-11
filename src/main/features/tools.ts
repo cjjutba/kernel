@@ -32,6 +32,14 @@ export class Tools extends Feature {
   }
 
   /**
+   * What a Codex chat gets of Kernel's (KERNEL-406): the same tools as the `kernel` server, as dynamic tools, and the Lead's
+   * server instructions, which go into the thread's developer instructions.
+   */
+  codexTools(ws: Workspace, agent: AgentDef | undefined, chat: Chat) {
+    return { tools: this.toolsFor(ws, agent, chat), instructions: agent?.lead ? LEAD_INSTRUCTIONS : undefined }
+  }
+
+  /**
    * The rule added to an agent's prompt. The Lead's is LEAD_RULE, which agentPrompt adds itself. Auto review and sharing
    * each add a line after it, only while on (KERNEL-115, KERNEL-302). Auto review needs someone to review: a room set to
    * no reviewer gets no such line. Every other agent gets SHARE_RULE while sharing is on (KERNEL-397).

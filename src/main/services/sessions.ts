@@ -1,8 +1,8 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import type { Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, Decision, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import type { Options, SdkMcpToolDefinition } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, CodexPersonality, Decision, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import { linkText } from '@shared/links'
 import { nearLimit } from '@shared/usage'
@@ -17,12 +17,14 @@ import { revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
 import { ClaudeRunner, claudeCommands, probeClaudeUsage, TOOL_STOPPED } from './providers/claude'
-import { mergeLimit, type LimitPatch } from './providers/limits'
+import { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
+import { CodexRunner } from './providers/codex/runner'
+import { chatProvider, limitProvider } from '@shared/providers'
 import type { Ask, Proc, Runner, RunnerHost } from './providers/types'
 
 // Moved behind the provider seam (KERNEL-406). Exported here too for what imports them from Sessions.
 export { packagedClaude, InputQueue, toUserMessage, builtinCommands, sessionEnv, AGENT_TEAMS, switchedOff, limitsFromEvent, limitsFromUsage, HOLD_TIMEOUT_SEC, SESSION_GONE, TOOL_STOPPED } from './providers/claude'
-export { mergeLimit, type LimitPatch } from './providers/limits'
+export { limitKey, mergeLimit, type LimitPatch } from './providers/limits'
 
 interface Live {
   /** The chat's process on its provider (KERNEL-406). */
@@ -87,6 +89,11 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
+  /**
+   * What a Codex chat runs (KERNEL-406): the executable, the active account's CODEX_HOME, the personality, and Kernel's
+   * own tools with their instructions, which Codex gets as dynamic tools. Without it a Codex chat can't start.
+   */
+  codexFor?: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => { bin?: string; home?: string; personality: CodexPersonality; tools: SdkMcpToolDefinition<any>[]; instructions?: string }
   /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
   disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
@@ -198,7 +205,7 @@ export class Sessions {
    * gate as a limit: a pause, an offline or signed-out hold, a limit and the agent limit all make it wait.
    */
   restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
-    for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
+    for (const l of limits) this.limits.set(limitKey(l), l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
     const saved: [string, CutOffReason][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
     for (const [id, reason] of saved) if (reason === 'limit' || reason === 'quit') this.cutOff.set(id, reason)
     // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
@@ -321,17 +328,26 @@ export class Sessions {
 
   /**
    * Mark a usage window as reset (its resetsAt passed) and tell the renderer. A window that was only close to its limit resets
-   * too, so what it held goes out (KERNEL-220). One already at 0 changes nothing.
+   * too, so what it held goes out (KERNEL-220). One already at 0 changes nothing. `key` is its `limitKey`: a Claude window's type.
    */
-  resetLimit(type: RateLimit['type']) {
-    const l = this.limits.get(type)
+  resetLimit(key: string) {
+    const l = this.limits.get(key)
     if (!l || (l.status === 'allowed' && !l.utilization)) return
-    this.limits.set(type, { ...l, status: 'allowed', utilization: 0 })
+    this.limits.set(key, { ...l, status: 'allowed', utilization: 0 })
     this.pushLimits()
   }
 
-  /** /compact in the chat: Claude Code summarises the conversation and frees context. Queues behind a running turn. */
-  compact(chatId: string) { return this.send(chatId, [{ type: 'text', text: '/compact' }]) }
+  /**
+   * /compact in the chat: the agent summarises the conversation and frees context. On Claude it queues behind a running
+   * turn. Codex compacts its thread through its own call (KERNEL-406).
+   */
+  async compact(chatId: string): Promise<{ queued: boolean; why?: QueueReason }> {
+    const chat = this.mustChat(chatId)
+    if (chatProvider(chat) !== 'codex') return this.send(chatId, [{ type: 'text', text: '/compact' }])
+    const live = this.live.get(chatId) ?? this.start(chat, this.mustWorkspace(chat.workspaceId))
+    await (live.runner as CodexRunner).compact()
+    return { queued: false }
+  }
 
   isPaused(roomId: string) { return this.paused.has(roomId) }
 
@@ -635,7 +651,8 @@ export class Sessions {
    */
   private nearLimitHolds(chatId: string): boolean {
     if (!this.d.settings().usage?.pauseNearLimit || this.isLeadChat(chatId)) return false
-    return !!nearLimit([...this.limits.values()])
+    const chat = this.d.store.chat(chatId)
+    return !!chat && !!nearLimit(this.limitsFor(chat))
   }
 
   /** A slot opened (a turn ended or the limit went up): start held messages of idle chats, oldest queue first, while there is room. */
@@ -669,10 +686,16 @@ export class Sessions {
     }
   }
 
-  /** A known usage limit stops this chat: one on the whole account, or on the chat's model. */
+  /** A known usage limit stops this chat: one on the whole account, or on the chat's model. Only its own provider's count (KERNEL-406). */
   private limitHolds(chat: Chat) {
-    const limits = [...this.limits.values()]
+    const limits = this.limitsFor(chat)
     return !!blockingLimit(limits) || (limitedModels(limits) as string[]).includes(chat.model)
+  }
+
+  /** The usage windows that count for a chat: its own provider's (KERNEL-406). */
+  private limitsFor(chat: Chat) {
+    const provider = chatProvider(chat)
+    return [...this.limits.values()].filter((l) => limitProvider(l) === provider)
   }
 
   /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
@@ -956,13 +979,15 @@ export class Sessions {
     const agent = this.d.agentFor(ws)
     const root = this.d.store.room(ws.roomId)?.path
     const live = { running: false, interrupted: false, tasks: new Set<string>() } as Live
-    live.runner = new ClaudeRunner(this.hostFor(chat.id, ws, agent, live), {
-      mcpServers: this.d.mcpFor(ws, agent, chat),
-      disabled: this.d.disabledFor?.(ws),
-      prompt: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)),
-      env: this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) }),
-      root
-    })
+    const host = this.hostFor(chat.id, ws, agent, live)
+    const env = this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)) })
+    const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
+    if (chatProvider(chat) === 'codex') {
+      const c = this.d.codexFor?.(ws, agent, chat)
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: [prompt, c?.instructions].filter(Boolean).join('\n\n'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
+    } else {
+      live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, root })
+    }
     this.live.set(chat.id, live)
     live.runner.start()
     return live
@@ -1028,7 +1053,8 @@ export class Sessions {
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
       handoffAfterPlan: () => (this.handoffs.due(chatId) ? HANDOFF_NOW : undefined),
-      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t }
+      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t },
+      followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
   }
 
@@ -1160,7 +1186,8 @@ export class Sessions {
       void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
     }
     const result = await decision
-    if (!this.showBlocked(ws, chatId)) this.setStatus(ws, agent, 'working')
+    // A Codex plan waits for approval after its turn ended, so the agent goes back to idle rather than working.
+    if (!this.showBlocked(ws, chatId)) this.setStatus(ws, agent, this.live.get(chatId)?.running === false ? 'idle' : 'working')
     return result ?? undefined
   }
 
@@ -1197,7 +1224,11 @@ export class Sessions {
 
   private mergeLimits(next: LimitPatch[]) {
     if (!next.length) return
-    for (const l of next) this.limits.set(l.type, mergeLimit(this.limits.get(l.type), { ...l, model: l.model ?? WINDOW_MODEL[l.type] }, Date.now()))
+    for (const l of next) {
+      const key = limitKey(l)
+      // Claude's per-model windows name their model. Codex's windows are the account's.
+      this.limits.set(key, mergeLimit(this.limits.get(key), limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, Date.now()))
+    }
     this.pushLimits()
   }
 

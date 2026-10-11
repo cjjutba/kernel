@@ -6,6 +6,8 @@ import { signOut } from '../services/account'
 import { exec } from '../services/exec'
 import { blockingLimit, NetworkMonitor } from '../services/health'
 import { planOf } from '../services/settings'
+import { limitKey } from '../services/providers/limits'
+import { limitProvider } from '@shared/providers'
 import { Feature } from './feature'
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
@@ -21,9 +23,9 @@ export class Account extends Feature {
   network?: NetworkMonitor
   /**
    * One timer per usage window that holds something, at its reset time: a rejected one, or one close to its limit that holds
-   * teammates' new work (KERNEL-220). `rejected` is the first kind, the only one "Notify me" can ask about.
+   * teammates' new work (KERNEL-220). `rejected` is the first kind, the only one "Notify me" can ask about. Keyed by `limitKey`.
    */
-  private limitTimers = new Map<RateLimit['type'], { at: number; timer: NodeJS.Timeout; rejected: boolean }>()
+  private limitTimers = new Map<string, { at: number; timer: NodeJS.Timeout; rejected: boolean }>()
   /** The last account read, so a sign-out keeps the name on the account menu. */
   private account?: ClaudeAccount
   /** Windows the user asked to hear about when they reset ("Notify me"). */
@@ -105,22 +107,23 @@ export class Account extends Feature {
     const now = Date.now()
     this.store.saveMeta('limits', limits)
     const rooms = this.store.rooms().filter((r) => !r.archived)
-    if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.k.rooms.pauseRoom(r.id, 'limit') }
+    if (blockingLimit(limits.filter((l) => limitProvider(l) === 'claude'), now)) { for (const r of rooms) if (!r.paused) this.k.rooms.pauseRoom(r.id, 'limit') }
     else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.k.rooms.resumeRoom(r.id, 'limit')
     const holding = this.holdsTeammates()
     for (const l of limits) {
       const at = l.resetsAt ? l.resetsAt * 1000 : undefined
-      const held = this.limitTimers.get(l.type)
+      const key = limitKey(l)
+      const held = this.limitTimers.get(key)
       const rejected = l.status === 'rejected'
-      if ((!rejected && !(holding && nearLimit([l], now))) || !at) { if (held) { clearTimeout(held.timer); this.limitTimers.delete(l.type) } continue }
+      if ((!rejected && !(holding && nearLimit([l], now))) || !at) { if (held) { clearTimeout(held.timer); this.limitTimers.delete(key) } continue }
       if (held?.at === at) { held.rejected = rejected; continue }
       if (held) clearTimeout(held.timer)
-      const timer = setTimeout(() => this.limitReset(l.type), Math.min(Math.max(0, at - now), 2 ** 31 - 1))
+      const timer = setTimeout(() => this.limitReset(key), Math.min(Math.max(0, at - now), 2 ** 31 - 1))
       timer.unref?.()
-      this.limitTimers.set(l.type, { at, timer, rejected })
+      this.limitTimers.set(key, { at, timer, rejected })
     }
     for (const type of this.notifyReset) {
-      if (limits.some((l) => l.type === type && l.status === 'rejected')) continue
+      if (limits.some((l) => l.type === type && limitProvider(l) === 'claude' && l.status === 'rejected')) continue
       this.notifyReset.delete(type)
       this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
     }
@@ -140,7 +143,8 @@ export class Account extends Feature {
    * times a minute apart count as the same window. A window already past its reset doesn't warn.
    */
   private warnWeekly(limits: RateLimit[], now: number) {
-    const weekly = limits.find((l) => l.type === 'seven_day')
+    // Claude's weekly window. Codex reports one too, under the same type (KERNEL-406).
+    const weekly = limits.find((l) => l.type === 'seven_day' && limitProvider(l) === 'claude')
     if (!this.settings?.usage?.warnBeforeWeekly || !weekly?.resetsAt || weekly.resetsAt * 1000 <= now || (weekly.utilization ?? 0) < WEEKLY_WARN) return
     const warned = this.store.meta<number[]>('weeklyWarned') ?? []
     if (warned.some((at) => Math.abs(at - weekly.resetsAt!) <= 60)) return
@@ -150,11 +154,11 @@ export class Account extends Feature {
     this.notifications.notice({ id: `n-weekly-${weekly.resetsAt}`, title, sub: `Resets ${resetPhrase(weekly.resetsAt, now)}`, heading: title, body: `Your weekly limit resets ${resetPhrase(weekly.resetsAt, now)}.` })
   }
 
-  private limitReset(type: RateLimit['type']) {
-    const held = this.limitTimers.get(type)
+  private limitReset(key: string) {
+    const held = this.limitTimers.get(key)
     if (held) clearTimeout(held.timer)
-    this.limitTimers.delete(type)
-    this.sessions.resetLimit(type)
+    this.limitTimers.delete(key)
+    this.sessions.resetLimit(key)
   }
 
   /**
@@ -164,7 +168,7 @@ export class Account extends Feature {
    */
   checkLimits(): Promise<void> {
     this.limitChecking ??= (async () => {
-      for (const [type, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(type)
+      for (const [key, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(key)
       const paused = this.store.rooms().some((r) => r.pausedBy === 'limit')
       await this.sessions.usage({ probeIn: paused ? this.o.dataDir : undefined })
     })().catch(() => undefined).finally(() => { this.limitChecking = undefined })

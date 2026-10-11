@@ -20,6 +20,9 @@ export class Providers extends Feature {
     return resolveBinary(provider, this.settings?.providers?.[provider])
   }
 
+  /** CODEX_HOME of the active Codex account. Undefined is Codex's own `~/.codex`, the CLI login. */
+  codexHome(): string | undefined { return undefined }
+
   /** The CLI's own config file, which Open shows. */
   configFile(provider: Provider) { return provider === 'claude' ? this.k.hooks.claudeSettings : join(process.env.CODEX_HOME ?? join(this.home, '.codex'), 'config.toml') }
 

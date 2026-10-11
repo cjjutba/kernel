@@ -13,6 +13,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     settings: () => k.settings,
     agentFor: (ws) => k.team.agentOf(ws.roomId, ws.agentId),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
+    codexFor: (ws, agent, chat) => ({ bin: k.providers.binary('codex').path, home: k.providers.codexHome(), personality: k.settings.providers.codex.personality, ...k.tools.codexTools(ws, agent, chat) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],

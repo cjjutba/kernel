@@ -1,4 +1,4 @@
-import type { RateLimit } from '@shared/types'
+import type { Provider, RateLimit } from '@shared/types'
 
 // Usage windows as every provider reports them, merged into what Kernel already knows (KERNEL-406).
 
@@ -20,3 +20,12 @@ export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: 
 
 /** The object without its undefined values. */
 export const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
+
+/**
+ * Where Kernel keeps a usage window: by provider, account and window (KERNEL-406). A Claude window on the CLI's own login
+ * keeps its type alone as the key, as every saved limit from before had.
+ */
+export function limitKey(l: { type: RateLimit['type']; provider?: Provider; accountId?: string }): string {
+  const provider = l.provider ?? 'claude'
+  return provider === 'claude' && !l.accountId ? l.type : `${provider}:${l.accountId ?? ''}:${l.type}`
+}

@@ -118,4 +118,6 @@ export interface RunnerHost {
   /** A Lead's hand-off texts: right after an approved plan, and the one reminder at a stop before anything was handed off. */
   handoffAfterPlan(): string | undefined
   handoffAtStop(): string | undefined
+  /** Send Kernel's own message as the chat's next turn, after what is queued: a plan's approval, a hand-off reminder (Codex). */
+  followUp(text: string): void
 }
