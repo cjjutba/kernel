@@ -56,6 +56,11 @@ export type Modal =
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
+  /**
+   * The first switch into Bypass permissions, asked once (KERNEL-455). `roomId` is the room whose mode override is being set,
+   * and none means the app's mode in Settings, Permissions.
+   */
+  | { name: 'confirm'; kind: 'bypass'; roomId?: string }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
 
@@ -67,7 +72,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab' | `reply:${string}`
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'roomMode' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
