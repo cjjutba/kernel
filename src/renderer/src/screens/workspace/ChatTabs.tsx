@@ -22,9 +22,9 @@ const base = (path: string) => path.split('/').pop() ?? path
  * In the Lead's workspace `chats` are the tabs of the chat on screen (`threadId`), and a new tab joins that chat (KERNEL-338).
  * The drawer it opens is `checkpoints/Checkpoints.tsx`.
  */
-export function ChatTabs({ workspaceId, threadId, noChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
+export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, files, diffs, shared, images, texts, active, onSelect, onCloseFile, onCloseDiff, onCloseShared, onCloseImage, onCloseText }: {
   workspaceId: string; /** The Lead chat on screen. A new chat tab joins it. Unset outside the Lead's workspace. */ threadId?: string
-  /** The Lead's workspace shows New chat with Rowan, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
+  /** The Lead's workspace shows New chat with Rowan, so a new tab is that box and starts no chat (KERNEL-366). */ noChat?: boolean; /** Switches the screen to that box when another tab is showing. */ onNewChat?: () => void; chats: Chat[]; files: string[]; diffs: string[]; shared: string[]; images: { id: string; name: string }[]; texts: { id: string; name: string }[]; active?: string
   onSelect: (tab: string) => void; onCloseFile: (path: string) => void; onCloseDiff: (path: string) => void; onCloseShared: (sharedId: string) => void; onCloseImage: (id: string) => void; onCloseText: (id: string) => void
 }) {
   const menu = useStore((s) => s.ui.menu)
@@ -41,10 +41,10 @@ export function ChatTabs({ workspaceId, threadId, noChat, chats, files, diffs, s
   const presets = useTerminalPresets(menu === 'newTab')
   const closeMenu = () => actions.ui.closeMenu()
 
-  /** With no chat on screen, + and ⌘T put the caret in the New chat box. A file or diff tab open meanwhile gives way to it. */
+  /** With no chat open, + and ⌘T put the caret in the New chat box, whichever tab is showing (a terminal, file, diff or shared tab gives way to it). */
   const newTab = () => {
     closeMenu()
-    return newChatTab(!!noChat, () => { actions.ui.setTabs(workspaceId, { tab: undefined }); focusComposerIn(workspaceId) }, () => create('chat'))
+    return newChatTab(!!noChat, () => { onNewChat?.(); focusComposerIn(workspaceId) }, () => create('chat'))
   }
 
   /** `preset` is a menu row's id. ⌘⇧T sends none, so main opens the settings' preset, or Claude when that one is gone. */

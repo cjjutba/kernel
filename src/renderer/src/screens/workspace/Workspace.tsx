@@ -9,7 +9,7 @@ import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
-import { leadHasNoChat } from './leadNoChat'
+import { leadHasNoChat, showsNewChat } from './leadNoChat'
 import { NewLeadChat } from './NewLeadChat'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
@@ -72,6 +72,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   shown.current.workspaceId = workspaceId
   const [images, setImages] = useState<OpenedImage[]>([])
   const [texts, setTexts] = useState<OpenedText[]>([])
+  // + and ⌘T with no chat open switch from whatever tab is showing to the New chat box. Picking a tab goes back to it.
+  const [newChat, setNewChat] = useState(false)
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
   // The panel's width is the CSS clamp until it is dragged, then a saved px width. It is read once. The CSS caps a saved width so the chat column keeps CHAT_MIN, whatever the window or the sidebar does.
   const aside = useRef<HTMLElement>(null)
@@ -89,8 +91,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
   // A room whose last chat was closed has no chat to show: New chat with Rowan is drawn instead, and the first message starts the chat (KERNEL-366).
-  // A terminal tab is shown while it is the one open.
-  const noChat = leadHasNoChat(isLead, everyChat) && !chats.some((c) => c.id === tab)
+  // A terminal tab is shown while it is the one open, until + or ⌘T ask for the box (`newChat`).
+  const noChat = leadHasNoChat(isLead, everyChat)
+  const showNewChat = showsNewChat(noChat, newChat, chats, tab)
   const chat = filePath || diffPath !== undefined || sharedId || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = tabs?.files ?? NO_TABS
   const diffs = tabs?.diffs ?? NO_TABS
@@ -121,7 +124,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // Stable, so the memoized transcript stays put while the screen redraws.
   const edit = useCallback((text: string) => setPrefill({ text, n: Date.now() }), [])
   const select = useCallback((id: string) => {
-    if (id) actions.ui.openTab(workspaceId, id)
+    if (!id) return
+    setNewChat(false)
+    actions.ui.openTab(workspaceId, id)
+  }, [workspaceId])
+  const showNew = useCallback(() => {
+    setNewChat(true)
+    actions.ui.setTabs(workspaceId, { tab: undefined })
   }, [workspaceId])
 
   if (!ws) return <div className="panel" />
@@ -189,7 +198,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={showNewChat ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />
@@ -206,7 +215,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   // A failed setup holds the first prompt, so the chat is empty but not new: no "New chat" suggestions.
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
-                  : noChat
+                  : showNewChat
                     ? <NewLeadChat workspaceId={workspaceId} roomId={ws.roomId} />
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>

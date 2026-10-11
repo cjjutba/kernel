@@ -10,7 +10,7 @@ import { briefParts, leadMessage } from '../new-workspace/brief'
 import { ChatWelcome, LEAD_SUGGESTIONS } from './ChatWelcome'
 import { focusComposerWhenOpen, onComposerFocusAsked, takeComposerFocus } from './composer/bus'
 import { DraftInput, useDraft } from './composer/draft'
-import { NEW_CHAT_DRAFT, saveDraft } from './composer/draftStore'
+import { newChatDraftOf, saveDraft } from './composer/draftStore'
 import { ModelPicker } from './composer/ModelPicker'
 import { effortLabel, rememberEffort, useDefaultEffort, useEffortMemory } from './composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from './composer/PlusMenu'
@@ -19,7 +19,7 @@ import './composer/composer.css'
 /**
  * New chat with Rowan, in the Lead's workspace when the room has no chat (NewChat.png, KERNEL-366). The welcome, a composer and the suggestions.
  * Sending calls `lead.start`, as the New chat dialog does, so the chat and its sidebar row begin with the first message. The box shares the dialog's
- * draft, so typed text survives leaving the screen and a send from either clears both.
+ * room's own draft, so typed text survives leaving the screen and never shows in another room.
  */
 export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; roomId: string }) {
   const settings = useStore((s) => s.settings)
@@ -31,7 +31,8 @@ export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; room
   const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, fallback))
   const [plan, setPlan] = useState(settings?.models.leadPlanMode ?? false)
   const [menu, setMenu] = useState<'model' | PlusPanel>(null)
-  const d = useDraft(undefined, NEW_CHAT_DRAFT)
+  const draftKey = newChatDraftOf(roomId)
+  const d = useDraft(undefined, draftKey)
   const [sending, run] = useBusy()
   const busy = sending !== null
   const filePick = useRef<HTMLInputElement>(null)
@@ -51,7 +52,7 @@ export function NewLeadChat({ workspaceId, roomId }: { workspaceId: string; room
       let chat
       try { chat = await call('lead.start', { roomId, ...leadMessage(briefParts(parts, null, [])), model, effort, plan }) }
       catch (e) { actions.ui.toast({ title: 'Could not send', sub: cleanError(e) }); return }
-      if (!picked) saveDraft(NEW_CHAT_DRAFT, [], '')
+      if (!picked) saveDraft(draftKey, [], '')
       // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
       try { await loadWorkspace(chat.workspaceId) } catch { /* the push brings it */ }
       actions.chats.upsert(chat)
