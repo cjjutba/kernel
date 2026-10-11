@@ -460,6 +460,27 @@ export class Sessions {
     return { queued: false }
   }
 
+  /**
+   * Several messages for a chat that has not had a turn, such as a brief and the Lead's notes sent while setup ran (KERNEL-393).
+   * They join the queue in order and go out together as its first turn when nothing blocks the chat, otherwise they wait like
+   * `send`'s message does, and `why` says what for.
+   */
+  async sendAll(chatId: string, messages: (Sender & { parts: ChatPart[] })[]): Promise<{ queued: boolean; why?: QueueReason }> {
+    this.mustChat(chatId)
+    // One message with nothing ahead of it is an ordinary send.
+    if (messages.length === 1 && !this.queued(chatId).length) return this.send(chatId, messages[0].parts, sender(messages[0]))
+    if (messages.some((m) => m.from !== 'kernel')) this.handoffs.done(chatId)
+    this.setQueue(chatId, [...this.queued(chatId), ...messages.map((m) => ({ id: randomUUID(), chatId, parts: m.parts, ts: Date.now(), ...sender(m) }))])
+    if (this.closing) return { queued: true }
+    const why = this.waitsFor(chatId)
+    if (why) return { queued: true, why }
+    this.drain(chatId)
+    return { queued: false }
+  }
+
+  /** The row that started the chat's running turn, or its last one. With a batched first turn it is the first message's, not the last row's. */
+  turnRow(chatId: string): (ChatItem & { kind: 'user' }) | undefined { return this.live.get(chatId)?.sentItem }
+
   /** What a message sent now would wait for, or nothing when it can go at once. */
   waitsFor(chatId: string): QueueReason | undefined {
     const chat = this.d.store.chat(chatId)
@@ -540,10 +561,15 @@ export class Sessions {
     return queued ? this.queued(chatId).at(-1) : undefined
   }
 
-  private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}) {
+  /**
+   * Starts a turn with `parts`. `more` are the messages that waited for the same first turn (`drain`): each keeps its own row
+   * and sender, right after the first, and Claude Code reads them all as one message, in order. The turn's row and sender
+   * stay the first message's.
+   */
+  private dispatch(chat: Chat, parts: ChatPart[], o: Sender = {}, more: QueuedMessage[] = []) {
     const ws = this.mustWorkspace(chat.workspaceId)
     // A held message going out counts as the user taking over too. Kernel's own updates don't.
-    if (o.from !== 'kernel') { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
+    if ([o, ...more].some((m) => m.from !== 'kernel')) { this.handoffs.done(chat.id); this.crashed.delete(chat.id) }
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
     // Read before the nudge is saved, which would be the last message.
     const by = o.from === 'kernel' && isNudge(parts) ? this.startedBy(chat.id) : o.from
@@ -552,6 +578,7 @@ export class Sessions {
     this.setCutOff(chat.id, false)
     const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
     this.item(chat, row)
+    for (const m of more) this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts: m.parts, ...sender(m) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
     live.sentItem = row
     live.carrying = carrying
@@ -560,7 +587,7 @@ export class Sessions {
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.sent = toUserMessage(parts)
+    live.sent = toUserMessage([...parts, ...more.flatMap((m) => m.parts)])
     live.input.push(live.sent)
     this.setRunning(chat, ws, live, true)
   }
@@ -581,13 +608,19 @@ export class Sessions {
     return undefined
   }
 
-  /** Send the oldest held message. The next one goes when this turn ends. */
+  /**
+   * Send the oldest held message. The next one goes when this turn ends. A chat with no user message yet sends everything that
+   * waited for its first turn together (`firstTurn`), so a note queued behind a brief that waited hours reaches the agent
+   * before it starts. Read from the chat's rows, not a flag, so it holds after a restart and while the batch waits for a slot.
+   */
   private drain(chatId: string) {
-    const [next, ...rest] = this.queued(chatId)
+    const queue = this.queued(chatId)
+    const [next] = queue
     const chat = this.d.store.chat(chatId)
     if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
-    this.setQueue(chatId, rest)
-    this.dispatch(chat, next.parts, next)
+    const batch = queue.length > 1 && !this.d.store.items(chatId).some((i) => i.kind === 'user') ? firstTurn(queue) : [next]
+    this.setQueue(chatId, queue.slice(batch.length))
+    this.dispatch(chat, next.parts, next, batch.slice(1))
   }
 
   /** Settings changed. The lists and the timeout are read per tool call; the mode is moved on live sessions now, and a higher limit starts waiting work. */
@@ -1536,6 +1569,18 @@ const STDERR_KEPT = 4000
 
 /** Kernel's restart, limit, relaunch and fresh-session nudges, which carry on a turn rather than start one. */
 export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED || parts[0].text === RELAUNCH_NUDGE || parts[0].text.startsWith(FRESH_NUDGE))
+
+/**
+ * The leading run of a queue that goes out as a chat's first turn. A message with a skill chip goes alone, since Claude Code
+ * reads a slash command only at the start of a message (D-030), and so does a Kernel nudge. Either ends the run, and the rest
+ * go in the turns after it. When the first message is one of them, it is the whole run.
+ */
+const firstTurn = (queue: QueuedMessage[]): QueuedMessage[] => {
+  const alone = (m: QueuedMessage) => m.parts.some((p) => p.type === 'skill') || (m.from === 'kernel' && isNudge(m.parts))
+  if (alone(queue[0])) return queue.slice(0, 1)
+  const end = queue.findIndex((m, at) => at > 0 && alone(m))
+  return end < 0 ? queue : queue.slice(0, end)
+}
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600

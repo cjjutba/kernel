@@ -132,7 +132,8 @@ export class Waits extends Feature {
     if (now) this.note(id, `Started without waiting for ${label}.`, undefined, refs)
     else {
       if (!forwarded && chat) this.sessions.hold(chat.id, [{ type: 'text', text: `${label} merged after your branch started. Rebase onto ${remote}/${base} before you build on it.` }], { from: 'kernel' })
-      this.note(id, forwarded ? `${label} merged. Your branch now starts from it.` : `${label} merged. Kernel couldn't move your branch onto it, so a message after the brief asks for a rebase.`, undefined, refs)
+      const it = refs.length > 1 ? 'them' : 'it'
+      this.note(id, forwarded ? `${label} merged. Your branch now starts from ${it}.` : `${label} merged. Kernel couldn't move your branch onto ${it}, so a message with the brief asks for a rebase.`, undefined, refs)
       this.leadUpdates.waits(current, 'wait.released', { on: wait.on, label, held: true })
     }
     // Setup runs again only when the files under it changed.
