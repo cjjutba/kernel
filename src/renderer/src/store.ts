@@ -365,10 +365,12 @@ export const actions = {
     /**
      * Opens a shared file's tab in the workspace on screen (the copy is Kernel's, so any workspace can show it) and selects it. A `version`
      * picks that one, and the latest clears the pick so the tab follows new versions. Without one, a pick already made stays (KERNEL-305).
+     * A card passes its own version, since it stands for that one. A file that hasn't loaded has no latest to compare with, so it picks nothing.
      */
     openShared: (workspaceId: string, sharedId: string, version?: number) => {
-      if (version !== undefined) {
-        const latest = Math.max(0, ...(state.shared[sharedId]?.versions ?? []).map((v) => v.n))
+      const file = state.shared[sharedId]
+      if (version !== undefined && file) {
+        const latest = Math.max(0, ...file.versions.map((v) => v.n))
         const { [sharedId]: _was, ...rest } = state.ui.tabs[workspaceId]?.sharedVersion ?? {}
         actions.ui.setTabs(workspaceId, { sharedVersion: version === latest ? rest : { ...rest, [sharedId]: version } })
       }

@@ -4,14 +4,17 @@ import { Button, Icon } from '../../../ui'
 import { kindIcon, kindLabel, useOpenShared, useSharer, useThumb, versionLine, versionOf } from '../shared/shared'
 import '../shared/shared.css'
 
-/** What both cards draw: the file, the version they were made for and whether that version has a picture to show. */
+/**
+ * What both cards draw: the file, the version they were made for and whether that version has a picture to show. A card stands for one
+ * version, so Open shows that one: the latest follows new versions again, an older one is picked.
+ */
 function useCard(sharedId: string, version: number): { file?: SharedFile; v?: SharedVersion; thumb: string | null; by: string; open: () => void } {
   const file = useStore((s) => s.shared[sharedId])
   const v = file ? versionOf(file, version) : undefined
   const thumb = useThumb(file, v)
   const by = useSharer(file)
   const openShared = useOpenShared()
-  return { file, v, thumb, by, open: () => openShared(sharedId) }
+  return { file, v, thumb, by, open: () => openShared(sharedId, v?.n ?? version) }
 }
 
 /** A page and an image are drawn from their picture. A PDF or a note gets a tile, because a first page or a line of text says little. */
