@@ -30,7 +30,7 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | IssuesConnect | Issues · connect Linear | [png](../design/screens/IssuesConnect.png) | [dc.html](../design/canvas/project/IssuesConnect.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
 | IssuesError | Issues · Linear unreachable | [png](../design/screens/IssuesError.png) | [dc.html](../design/canvas/project/IssuesError.dc.html) | KERNEL-160 | Team | issues | `screens/issues/Issues.tsx` | done |
 | CommandPalette | Search · ⌘K | [png](../design/screens/CommandPalette.png) | [dc.html](../design/canvas/project/CommandPalette.dc.html) | KERNEL-21 | Team | modal search | `screens/search/CommandPalette.tsx` | done |
-| SearchShared | Search · ⌘K with a Shared group | [png](../design/screens/SearchShared.png) | [dc.html](../design/canvas/project/SearchShared.dc.html) | KERNEL-307 | Team | modal search | `screens/search/CommandPalette.tsx` | todo |
+| SearchShared | Search · ⌘K with a Shared group | [png](../design/screens/SearchShared.png) | [dc.html](../design/canvas/project/SearchShared.dc.html) | KERNEL-307 | Team | modal search | `screens/search/CommandPalette.tsx` | done |
 | Rooms | All rooms | [png](../design/screens/Rooms.png) | [dc.html](../design/canvas/project/Rooms.dc.html) | KERNEL-20 | Team | rooms | `screens/rooms/Rooms.tsx` | done |
 | NewRoom | New room | [png](../design/screens/NewRoom.png) | [dc.html](../design/canvas/project/NewRoom.dc.html) | KERNEL-20 | Team | modal newRoom | `screens/rooms/NewRoom.tsx` | done |
 | History | History | [png](../design/screens/History.png) | [dc.html](../design/canvas/project/History.dc.html) | KERNEL-21 | Team | history | `screens/history/History.tsx` | done |
