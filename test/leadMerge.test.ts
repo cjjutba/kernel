@@ -96,7 +96,15 @@ describe('merge_workspace (KERNEL-352)', () => {
     const t = leadTools([ws('green', { prNumber: 266 }), ws('unreviewed', { prNumber: 267 })], {
       blocked: { green: 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).', unreviewed: "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)." }
     })
-    expect(await t.merge(['green', 'unreviewed'])).toBe("Skipped #266: Checks have not passed yet.\nSkipped #267: Theo hasn't approved the latest commit.")
+    expect(await t.merge(['green', 'unreviewed'])).toBe([
+      'Skipped #266: Checks have not passed yet. Merging needs green checks (Settings, Pull requests).',
+      "Skipped #267: Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+    ].join('\n'))
+  })
+
+  it("keeps the first line of a failed merge's output", async () => {
+    const t = leadTools([ws('base', { prNumber: 269 })], { blocked: { base: 'GraphQL: Base branch was modified (mergePullRequest)\nRetry the merge.' } })
+    expect(await t.merge(['base'])).toBe('Skipped #269: GraphQL: Base branch was modified (mergePullRequest).')
   })
 
   it('skips a PR whose state is not ready, without trying to merge it', async () => {

@@ -370,7 +370,9 @@ export function kernelTools(d: KernelToolDeps) {
           const title = after.prTitle ?? ws.prTitle
           lines.push(`Merged ${pr}${title ? ` (${title})` : ''}.`)
         } catch (e) {
-          const why = firstLine(e instanceof Error ? e.message : String(e))
+          // mergeBlock's reason is a finished sentence that names the reviewer and the setting, so it goes whole (KERNEL-349).
+          // A failed merge's error is gh output, of which the first line is enough.
+          const why = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
           lines.push(`Skipped ${pr}: ${/[.!?…]$/.test(why) ? why : why + '.'}`)
         }
       }
