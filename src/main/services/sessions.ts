@@ -1063,6 +1063,11 @@ export class Sessions {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
   }
 
+  /** Where a shared file's card sits in the chat that shared it, one per version (KERNEL-302). */
+  placeShared(chatId: string, sharedId: string, version: number) {
+    this.item(this.mustChat(chatId), { kind: 'shared', id: `shared-${sharedId}-v${version}`, ts: Date.now(), sharedId, version })
+  }
+
   private mustChat(id: string) { const c = this.d.store.chat(id); if (!c) throw new Error(`Unknown chat ${id}`); return c }
   private mustWorkspace(id: string) { const w = this.d.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 }
