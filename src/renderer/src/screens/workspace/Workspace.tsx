@@ -17,6 +17,7 @@ import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
+import { LeadPrSummary } from './pr/LeadPrSummary'
 import { PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -206,7 +207,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <IssueKey ws={ws} room={room} />
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
-        {!panels && <PrHeader ws={ws} />}
+        {!panels && (isLead ? <LeadPrSummary roomId={ws.roomId} /> : <PrHeader ws={ws} />)}
         <RightPanelToggle name="panels" />
       </header>
       <OpenImage.Provider value={openImage}>
@@ -248,7 +249,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
-          <div className="ws-aside-head"><PrHeader ws={ws} spread /></div>
+          <div className="ws-aside-head">{isLead ? <LeadPrSummary roomId={ws.roomId} spread /> : <PrHeader ws={ws} spread />}</div>
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} />
           <BottomPanel ws={ws} />
         </aside>

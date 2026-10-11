@@ -9,6 +9,7 @@ import { tempRepo } from './helpers'
 import { git } from '../src/main/services/exec'
 import { checkOf, infoOf, parseReviews, prNote, prStateOf, resolveFile, type PrView } from '../src/main/services/github'
 import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
+import { checkRow } from '../src/renderer/src/screens/workspace/Panels'
 import { Kernel } from '../src/main/kernel'
 import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
 import { LEAD_REVIEW_RULE, LEAD_RULE } from '../src/main/services/handoff'
@@ -118,6 +119,19 @@ describe('PR header and toasts', () => {
     expect(headerView('cifail')).toMatchObject({ state: { label: 'Checks failed', tone: 'fail' }, button: { label: 'Fix checks' } })
     expect(headerView('changes')).toMatchObject({ state: { label: 'Changes requested', tone: 'fail' }, button: { label: 'Address review' } })
     expect(headerView('closed')).toMatchObject({ state: { label: 'Closed', tone: 'idle', glyph: 'prClosed' }, button: { label: 'Reopen' }, archive: true })
+  })
+
+  it("reads Open for a ready PR GitHub won't merge yet, and keeps Merge PR (KERNEL-388)", () => {
+    expect(headerView('ready', true, true)).toMatchObject({ state: { label: 'Open', tone: 'ready' }, button: { label: 'Merge PR', action: 'merge' } })
+    expect(headerView('ready', true, false).state.label).toBe('Ready to merge')
+  })
+
+  it('marks a check that does not decide the PR, and shows its failure as a warning (KERNEL-388)', () => {
+    expect(checkRow({ name: 'Release note', state: 'fail' })).toEqual({ state: 'fail', label: 'Release note', meta: 'failed' })
+    expect(checkRow({ name: 'Test', state: 'fail', optional: true })).toEqual({ state: 'warn', label: 'Test', meta: 'failed, optional' })
+    expect(checkRow({ name: 'Vercel', state: 'running', optional: true })).toEqual({ state: 'run', label: 'Vercel', meta: 'running, optional' })
+    expect(checkRow({ name: 'lint', state: 'pass', meta: '12s', optional: true })).toEqual({ state: 'ok', label: 'lint', meta: '12s, optional' })
+    expect(checkRow({ name: 'docs', state: 'skipped', optional: true })).toEqual({ state: 'idle', label: 'docs', meta: 'optional' })
   })
 
   it('offers Merge PR in exactly the states the merge rule lets through (KERNEL-349)', () => {

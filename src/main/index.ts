@@ -277,8 +277,10 @@ app.whenReady().then(async () => {
     started = refreshPath().then(() => kernel.start())
     started.catch((err: unknown) => { quit.bootFailed(); bootFailed(err) })
     void started.then(() => updater?.start(), () => undefined)
-    // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake.
-    powerMonitor.on('resume', () => void started.then(() => kernel.checkLimits(), () => undefined))
+    // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake, and the PRs
+    // are read again, as when the window comes back from another app (KERNEL-388).
+    powerMonitor.on('resume', () => void started.then(() => { kernel.prs.pollSoon(); return kernel.checkLimits() }, () => undefined))
+    app.on('browser-window-focus', (_e, w) => { if (w === mainWindow()) void started.then(() => kernel.prs.pollSoon(), () => undefined) })
     handlers = kernel.handlers() as typeof handlers
     hookPort = () => kernel.settings?.hookPort
   }

@@ -17,7 +17,10 @@ export function PRs({ s }: { s: AppSettings }) {
         </Row>
         <Row label="Open as draft"><Toggle label="Open as draft" checked={p.draft} onChange={(v) => set({ draft: v })} /></Row>
         <Row label="Require green checks to merge"><Toggle label="Require green checks to merge" checked={p.requireGreen} onChange={(v) => set({ requireGreen: v })} /></Row>
-        <Row label="Require Reviewer approval"><Toggle label="Require Reviewer approval" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
+        <Row label="Review every pull request automatically" desc="The Lead hands each PR that passes checks to the reviewer. Off saves usage, and you can still ask for a review.">
+          <Toggle label="Review every pull request automatically" checked={p.autoReview} onChange={(v) => set({ autoReview: v })} />
+        </Row>
+        <Row label="Wait for the reviewer's approval to merge, when a review ran"><Toggle label="Wait for the reviewer's approval to merge, when a review ran" checked={p.requireReviewer} onChange={(v) => set({ requireReviewer: v })} /></Row>
         <Row label="Let the Lead merge when you ask" desc="The Lead merges only when your own message asks. Each merge still needs passing checks and any reviewer's approval.">
           <Toggle label="Let the Lead merge when you ask" checked={p.leadMerge} onChange={(v) => set({ leadMerge: v })} />
         </Row>

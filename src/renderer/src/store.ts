@@ -90,7 +90,7 @@ export interface State {
   ui: UiState
 }
 
-const workspaceView: WorkspaceView = { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }
+const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
 const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const

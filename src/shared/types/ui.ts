@@ -79,7 +79,10 @@ export interface Toast {
 
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
-  right: 'files' | 'changes' | 'checks' | 'shared'
+  /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). */
+  right: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
+  /** The tab the Lead's workspace shows, kept apart from `right` so opening a teammate's workspace and coming back finds the PRs tab again. The store starts it at `prs`; a fixture can leave it out. */
+  leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */

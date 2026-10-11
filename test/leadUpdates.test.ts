@@ -471,6 +471,21 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     expect(out.wake.size).toBe(todo.length)
   })
 
+  it("says why a PR that passed checks can't merge yet when GitHub blocks it (KERNEL-388)", () => {
+    const blocked = (prBlocked: NonNullable<Workspace['prBlocked']>) => ({ ...ws('ready'), prBlocked })
+    const off = { allMerged: () => false, autoReview: false, review: { approvedBy: [], blockers: false, inProgress: false } }
+    expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, off).todo)
+      .toEqual(["PR #54 passed checks and has no conflicts. It can't merge yet: GitHub needs an approving review before this pull request can merge. Tell the user."])
+    expect(decide({ ws: blocked('behind'), name: 'Noor', events: [ev('pr.ready')] }, { ...off, review: { approvedBy: ['Theo'], blockers: false, inProgress: false } }).todo)
+      .toEqual(["PR #54 passed checks, has no conflicts and Theo approved it. It can't merge yet: this branch is behind its base, and GitHub needs it up to date before it can merge. Tell the user."])
+    // A reviewer's approval of a ready PR GitHub still blocks.
+    const approval = ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } })
+    expect(decide({ ws: ws('none'), name: 'Noor', events: [approval] }, { allMerged: () => false, workspace: () => ({ ...blocked('rules'), id: 'w2', prNumber: 60 }) }).todo)
+      .toEqual(["PR #60 passed checks, has no conflicts and Noor approved it. It can't merge yet: GitHub's branch rules block this merge. Tell the user."])
+    // The review flow itself goes on as for any ready PR.
+    expect(decide({ ws: blocked('review'), name: 'Noor', events: [ev('pr.ready')] }, { allMerged: () => false, reviewer: THEO }).todo).toEqual([NEEDS_REVIEW])
+  })
+
   it('asks nothing of an archived workspace, and still says when the last task merged', () => {
     const archived = (prState: PrState) => ({ ...ws(prState), status: 'archived' as const })
     for (const [kind, prState] of [['pr.cifail', 'cifail'], ['pr.changes', 'changes'], ['pr.conflict', 'conflict'], ['pr.ready', 'ready'], ['error', 'none'], ['crash', 'none'], ['turn', 'none'], ['pr.closed', 'closed']] as [TeamEventKind, PrState][]) {

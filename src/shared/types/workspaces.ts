@@ -1,11 +1,12 @@
 import type { ReviewVerdict } from './chats'
+import type { PrBlocked } from './pullRequests'
 
 export type WorkspaceMode = 'worktree' | 'current'
 /** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
 export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
- * the rest come from `gh pr view` (github.ts prStateOf).
+ * the rest come from GitHub's read of the PR (github.ts prStateOf).
  */
 export type PrState =
   | 'none' | 'creating' | 'draft' | 'open' | 'checks' | 'cifail' | 'changes' | 'conflict' | 'resolving'
@@ -59,6 +60,8 @@ export interface Workspace {
   prUrl?: string
   prTitle?: string
   prState: PrState
+  /** A ready PR GitHub won't merge yet, and why. The header reads Open and Merge PR says why (KERNEL-388). */
+  prBlocked?: PrBlocked
   /** Totals for the sidebar and Home (+412 -38). Refreshed after each turn. */
   stat?: DiffStat
   createdAt: number

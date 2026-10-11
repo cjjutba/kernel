@@ -153,7 +153,8 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
-    pr: picked(doc.pr, PR_KEYS, isString),
+    // `[pr] optional_checks`: checks this room never counts in a repo that requires none (KERNEL-388).
+    pr: { ...picked(doc.pr, PR_KEYS, isString), ...Object.fromEntries(Object.entries(picked(doc.pr, ['optionalChecks'], Array.isArray)).map(([k, v]) => [k, strings(v)])) },
     preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
     env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)]))
   }
