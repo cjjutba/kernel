@@ -247,6 +247,32 @@ function scene2(f: Fixture, ws: Partial<Workspace>, title: string, items: ChatIt
   }
 }
 
+/** Kai's plan for T-15b, waiting on you in plan mode. */
+const planWaiting = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
+  userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
+  { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
+  tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
+  tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
+], {
+  approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
+}, { plan: true, model: 'claude-opus-5-5' })
+
+/** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
+const planMode = (f: Fixture): Partial<Fixture> => {
+  // scene2 sets approvals from the ones a scene passes. This one passes none and keeps the seed's.
+  const { approvals: _none, ...patch } = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Invoice row actions', [
+    userMsg('pm1', 'Look at how the invoice rows show their actions.'),
+    tool('pm-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
+    { kind: 'text', id: 'pm-reply', ts: at(10, 28), text: 'Each row ends in a menu with Duplicate, Send and Void. A new action fits there without crowding the row.' },
+    { kind: 'result', id: 'pm-res', ts: at(10, 28), durationMs: 24_000, ok: true }
+  ], {}, { plan: true, model: 'claude-opus-5-5' })
+  return patch
+}
+
+/** A fixture with a draft in the box. */
+const withDraft = (p: Partial<Fixture>, draft: string): Partial<Fixture> =>
+  ({ ...p, ui: { ...p.ui, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer: { parts: [], draft } } } })
+
 /** Two team updates in Rowan's chat after a hand-off: Kai's PR passed checks, then Theo approved it (KERNEL-127). */
 const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
@@ -539,14 +565,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })),
-  WorkspacePlan: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Plan T-15b', [
-    userMsg('pl1', 'Plan T-15b: a Download PDF button on each invoice row. Do not edit anything yet.'),
-    { kind: 'thinking', id: 'pl-th', ts: at(10, 28), text: 'Row actions already live in a menu. A second button would crowd the row.' },
-    tool('pl-t1', 'Read the row actions', 'cat src/app/invoices/row-actions.tsx', { name: 'Read' }),
-    tool('pl-t2', 'Check the PDF endpoint', 'rg -n "renderInvoicePdf" src')
-  ], {
-    approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
-  }, { plan: true, model: 'claude-opus-5-5' })),
+  WorkspacePlan: scene(planWaiting),
+  // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
+  WorkspacePlanMode: scene((f) => planMode(f)),
+  WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),
+  WorkspacePlanTyping: scene((f) => withDraft(planWaiting(f), 'Split step 2 into its own PR, after step 1 merges.')),
   WorkspaceQuestion: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('q1', 'Build T-15b from the approved plan.', true),
     ...folded('q', 6, 0),

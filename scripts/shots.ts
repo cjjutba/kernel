@@ -65,7 +65,15 @@ async function openVersions(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// The typing shots draw the composer focused, which takes a real focus. Focus also settles the plan glow at full.
+async function focusComposer(page: Page) {
+  await page.locator('.cmp-input').focus()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page) => Promise<void>> = {
+  WorkspacePlanModeTyping: focusComposer,
+  WorkspacePlanTyping: focusComposer,
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
   WorkspaceQuestionSteps: stepToSecondQuestion,
@@ -98,7 +106,8 @@ async function capture(name: string): Promise<boolean> {
     await page.waitForTimeout(500)
     await interactions[name]?.(page)
     await lazyLoaded()
-    await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
+    // One-off animations finish and loops (the plan glow's breath, spinners) reset, so a shot is the same on every run.
+    await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`), animations: 'disabled' })
     console.log(`shots/${name}${suffix}.png`)
     return true
   } catch (err) {
