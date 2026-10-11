@@ -3,7 +3,7 @@ import { Keys, Page, Row, Section } from '../kit'
 /** The shortcuts Kernel listens for. The canvas shows them as fixed, so they are read only. */
 export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
   { title: 'Workspaces', rows: [
-    ['New chat', ['⌘', 'N']], ['New chat tab', ['⌘', 'T']], ['Big terminal tab', ['⌘', '⇧', 'T']],
+    ['New chat', ['⌘', 'N']], ['New tab', ['⌘', 'T']], ['Big terminal tab', ['⌘', '⇧', 'T']],
     ['Create PR or mark ready', ['⌘', '⇧', 'P']],
     ['Merge PR', ['⌘', '⇧', 'M']],
     ['Fix conflicts, checks or review', ['⌘', '⇧', 'F']],

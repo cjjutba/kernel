@@ -1,4 +1,4 @@
-import type { Route, UiState } from '@shared/types'
+import type { Chat, Route, UiState } from '@shared/types'
 import type { State } from './store'
 
 /**
@@ -32,6 +32,22 @@ export function tabOf(s: State, workspaceId: string): string | undefined {
   if (t?.tab && hasTab(s, workspaceId, t.tab)) return t.tab
   if (t?.lastChat && hasTab(s, workspaceId, t.lastChat)) return t.lastChat
   return (s.chats[workspaceId] ?? []).find((c) => !c.closed)?.id
+}
+
+/** The Lead chat a tab is in. A tab with no thread (threads not loaded yet, or an older fixture) is a chat of its own. */
+export const threadIdOf = (chat: Chat): string => chat.threadId ?? chat.id
+
+/**
+ * The Lead chat a workspace shows (KERNEL-338): the thread of its open chat tab, or of the chat it was last on while a file or diff tab is open,
+ * else the one remembered for the workspace, else the first open chat. Nothing for a workspace with no open chat.
+ */
+export function currentThread(s: State, workspaceId: string): string | undefined {
+  const chats = (s.chats[workspaceId] ?? []).filter((c) => c.kind === 'chat' && !c.closed)
+  const picks = [tabOf(s, workspaceId), s.ui.tabs[workspaceId]?.lastChat]
+  const chat = picks.map((id) => chats.find((c) => c.id === id)).find(Boolean)
+    // A terminal tab has no chat of its own, so the chat you were in stays current.
+    ?? chats.find((c) => threadIdOf(c) === s.lastThread[workspaceId]) ?? chats[0]
+  return chat && threadIdOf(chat)
 }
 
 /** A tab of the chat kind, as opposed to a file, diff, shared, image or text tab. */

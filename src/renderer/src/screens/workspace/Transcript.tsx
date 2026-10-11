@@ -72,7 +72,7 @@ interface ReplyProps { item: Extract<ChatItem, { kind: 'text' }>; chatId: string
  * its time, which leads the actions' row (KERNEL-346). Fork into new workspace only shows where the workspace has its own worktree.
  */
 function ReplyMessage({ item, chatId, onFork, onForkWorkspace, files, meta }: ReplyProps) {
-  const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new chat', busyLabel: 'Forking', onClick: () => onFork(item.id) }]
+  const forks: MessageAction[] = [{ icon: 'fork', label: 'Fork into new tab', busyLabel: 'Forking', onClick: () => onFork(item.id) }]
   if (onForkWorkspace) forks.push({ icon: 'branch', label: 'Fork into new workspace', busyLabel: 'Forking', onClick: () => onForkWorkspace(item.id) })
   return (
     <div className="msg msg-reply">
@@ -363,7 +363,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     <div ref={scroller} className="ws-scroll selectable" onScroll={onScroll}>
       {empty && (
         <div className="chat-empty">
-          <h2>{chat.kind === 'terminal' ? chat.title : `New chat with ${agentName}`}</h2>
+          <h2>{chat.kind === 'terminal' ? chat.title : `New tab with ${agentName}`}</h2>
           <span className="muted">Same worktree and branch, fresh context.</span>
           <div className="chat-suggest">
             {(isLead ? LEAD_SUGGESTIONS : SUGGESTIONS).map(({ text, icon }) => (
