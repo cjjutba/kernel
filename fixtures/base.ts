@@ -158,10 +158,10 @@ export const base: Fixture = {
   fileText: { [ids.table]: { 'src/app/invoices/table.tsx': tableSource } },
   ui: { route: { name: 'home' } },
   push: [
-    { type: 'script.output', workspaceId: ids.table, kind: 'run', line: '$ pnpm dev --port $KERNEL_PORT', stream: 'stdout' },
-    { type: 'script.output', workspaceId: ids.table, kind: 'run', line: 'Next.js ready on http://localhost:4312', stream: 'stdout' },
-    { type: 'script.output', workspaceId: ids.table, kind: 'run', line: 'Compiled /invoices', stream: 'stdout' },
-    { type: 'script.output', workspaceId: ids.table, kind: 'run', line: 'GET /invoices 200 in 84ms', stream: 'stdout' }
+    { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: '$ pnpm dev --port $KERNEL_PORT', stream: 'stdout' }] },
+    { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: 'Next.js ready on http://localhost:4312', stream: 'stdout' }] },
+    { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: 'Compiled /invoices', stream: 'stdout' }] },
+    { type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line: 'GET /invoices 200 in 84ms', stream: 'stdout' }] }
   ]
 }
 

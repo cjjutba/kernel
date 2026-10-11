@@ -9,7 +9,7 @@ import { Feature } from './feature'
 export class Inbox extends Feature {
   /** A plan's file for Open in editor, written again from the approval when it is missing (D-092). */
   private async planFile(id: string): Promise<{ path: string; relative: string }> {
-    const a = this.store.approvals().find((x) => x.id === id)
+    const a = this.store.approval(id)
     const text = a ? String(a.detail || (a.input as { plan?: unknown } | undefined)?.plan || '') : ''
     if (!a || !text.trim()) throw new Error('This plan has no text to save.')
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
@@ -27,7 +27,7 @@ export class Inbox extends Feature {
   private async withAttachments(id: string, decision: Decision): Promise<Decision> {
     if (decision.behavior !== 'deny' || !decision.images?.length) return decision
     const { images, ...rest } = decision
-    const a = this.store.approvals().find((x) => x.id === id)
+    const a = this.store.approval(id)
     if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || !this.approvals.isPending(id)) return rest
     const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
     if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("The workspace folder is gone, so the images can't be saved.")

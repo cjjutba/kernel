@@ -130,14 +130,27 @@ export class Tasks {
     return this.refreshOne(base)
   }
 
-  /** Recompute every task in a room. Saves and pushes only those that moved. */
-  refresh(roomId: string) { for (const t of this.list(roomId)) this.refreshOne(t) }
+  /**
+   * Recompute every task in a room. Saves and pushes only those that moved. The room's pending approvals are read once,
+   * not once per task, since every PR poll and workspace change lands here (KERNEL-216).
+   */
+  refresh(roomId: string) {
+    const tasks = this.list(roomId)
+    if (!tasks.length) return
+    const pending = this.pendingIn(roomId)
+    for (const t of tasks) this.refreshOne(t, pending)
+  }
 
-  private refreshOne(task: Task): Task {
+  /** The workspaces in a room with an approval waiting on the user. */
+  private pendingIn(roomId: string) {
+    return new Set(this.d.store.approvals({ roomId, pendingOnly: true }).flatMap((a) => (a.workspaceId ? [a.workspaceId] : [])))
+  }
+
+  private refreshOne(task: Task, pending = this.pendingIn(task.roomId)): Task {
     const store = this.d.store
     const ws = task.workspaceId ? store.workspace(task.workspaceId) : undefined
     const agent = this.d.agents(task.roomId).find((a) => a.id === (ws?.agentId ?? task.agentId))
-    const approvalPending = !!ws && store.approvals({ roomId: task.roomId, pendingOnly: true }).some((a) => a.workspaceId === ws.id)
+    const approvalPending = !!ws && pending.has(ws.id)
     const { column, state } = derive(task, { workspace: ws, agent, approvalPending })
     const completedAt = column === 'done' ? task.completedAt ?? ws?.mergedAt ?? Date.now() : task.completedAt
     const prev = store.task(task.roomId, task.id)

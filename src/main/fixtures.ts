@@ -339,7 +339,7 @@ export function fixturePush(f: Fixture): PushEvent[] {
     if (e.type !== 'script.output' || e.kind !== 'run') continue
     const name = e.name ?? 'run'
     const k = JSON.stringify([e.workspaceId, name])
-    const url = found.has(k) ? null : localUrlIn(e.line)
+    const url = found.has(k) ? null : e.lines.map((l) => localUrlIn(l.line)).find(Boolean)
     if (url) { found.add(k); out.push({ type: 'script.url', workspaceId: e.workspaceId, name, url }) }
   }
   return out

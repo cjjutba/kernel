@@ -50,7 +50,7 @@ function runScripts(): Fixture {
     // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
     push: [
       ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', line, stream: 'stdout' }))
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', lines: [{ line, stream: 'stdout' }] }))
     ]
   }
 }
@@ -74,7 +74,7 @@ function preview(): Fixture {
     } },
     push: [
       ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
-      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', line, stream: 'stdout' }))
+      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', lines: [{ line, stream: 'stdout' }] }))
     ],
     ui: { ...open.ui, menu: 'preview' }
   }

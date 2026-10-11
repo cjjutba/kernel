@@ -1,7 +1,7 @@
 import type { Chat, ChatPart, Room, WaitsFor, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { loadRepoSettings, type RepoSettings } from '../services/settings'
-import { copyLocalFiles, replayScripts, runScript, stopRuns, stopScript } from '../services/scripts'
+import { copyLocalFiles, replayScripts, runScript, scriptTimeout, stopRuns, stopScript, timeoutText, type ScriptEnd } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { waitMet } from '../services/waits'
 import { head } from './shared'
@@ -18,8 +18,8 @@ export class Setup extends Feature {
    * Saved under the meta key `setups`, so a quit during setup doesn't lose the brief (KERNEL-128).
    */
   readonly setups = new Map<string, SetupHold>()
-  /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
-  readonly setupFailures = new Map<string, number | null>()
+  /** How a workspace's last failed setup ended: its exit code, null when it was stopped, or `timeout`. Cleared when setup passes. */
+  readonly setupFailures = new Map<string, ScriptEnd>()
 
   /** Setup passed: the workspace is ready, the run script starts, the start-of-chat checkpoint is taken, and the agent gets its prompt. */
   async setupDone(ws: Workspace, room: Room, chat: Chat, prompt: string, start: () => Promise<void>) {
@@ -66,7 +66,7 @@ export class Setup extends Feature {
     // The script changed since it failed, and nobody trusted the new text yet (KERNEL-209).
     if (await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (repo.scripts.setup) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script: repo.scripts.setup, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
       if (!this.setupPassed(ws, code)) {
         // Run again failed too, and nothing told the Lead (KERNEL-126). A stopped run, by archive or quit, isn't news.
         const now = this.mustWs(workspaceId)
@@ -104,7 +104,7 @@ export class Setup extends Feature {
     // and trusting runs setup and sends it (KERNEL-209).
     if (script && await this.k.trust.untrusted(room, repo)) return this.k.trust.holdForTrust(ws.id)
     if (script) {
-      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
+      const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
       if (!this.setupPassed(ws, code)) {
         const failed = this.updateWs(ws.id, { status: 'failed', waitsFor: undefined })
         if (code !== null && failed.status !== 'archived') this.leadUpdates.setup(failed, false, { code })
@@ -134,7 +134,7 @@ export class Setup extends Feature {
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
   async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
     const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy)
-    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' })
+    for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' }] })
   }
 
   /** A workspace held for trust: copy, set up and send the brief, or fail the way a new workspace's setup fails. */
@@ -174,15 +174,16 @@ export class Setup extends Feature {
 
   private async runSetup(ws: Workspace, room: Room, script?: string): Promise<boolean> {
     if (!script || !this.settings.scripts.setupOnCreate) return true
-    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
+    const code = await runScript({ workspaceId: ws.id, kind: 'setup', script, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
     return this.setupPassed(ws, code)
   }
 
   /** The last line of a failed setup log says so, the way the canvas draws it (WorkspaceSetupFailed.png). */
-  private setupPassed(ws: Workspace, code: number | null) {
+  private setupPassed(ws: Workspace, code: ScriptEnd) {
     if (code === 0) { this.setupFailures.delete(ws.id); return true }
     this.setupFailures.set(ws.id, code)
-    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`, stream: 'stderr' })
+    const line = code === 'timeout' ? `Setup didn't finish in ${timeoutText(this.settings)}` : code === null ? 'Setup was stopped' : `Setup failed with exit code ${code}`
+    bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line, stream: 'stderr' }] })
     return false
   }
 
@@ -230,7 +231,7 @@ export class Setup extends Feature {
         // Trusted since it was held: it sets up the way trusting releases it, brief and all.
         if (ws.status === 'trust') { void this.releaseTrust(workspaceId).catch(() => undefined); return { ok: true } }
         if (kind === 'run') { this.startRun(ws, room, repo, name); return { ok: true } }
-        void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }) })
+        void runScript({ workspaceId, kind, script: script!, cwd: ws.path, env: this.k.env.envFor(ws, { script: true }), timeoutMs: scriptTimeout(this.settings) })
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },

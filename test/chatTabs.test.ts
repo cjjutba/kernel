@@ -46,7 +46,12 @@ describe('a window that loads while a terminal runs (KERNEL-340)', () => {
       await until(() => seen.map((x) => x.data).join('').includes('kept-42'))
       const printed = seen.map((x) => x.data).join('')
       ptys.replay('t2')
-      expect(seen.at(-1)).toEqual({ data: printed, replace: true })
+      // Output still waiting for its batch goes out with the replay, not after it (KERNEL-216).
+      expect(seen.at(-1)?.replace).toBe(true)
+      expect(seen.at(-1)?.data.startsWith(printed)).toBe(true)
+      const replayed = seen.length
+      await new Promise((r) => setTimeout(r, 100))
+      expect(seen.slice(replayed).map((x) => x.data).join('')).not.toContain('kept-42')
       ptys.kill('t2')
       const before = seen.length
       ptys.replay('t2')

@@ -173,7 +173,7 @@ export class Lead extends Feature {
           return queued ? { ...out, queued } : out
         }
         const code = this.k.setup.setupFailures.get(ws.id)
-        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === undefined ? 'it did not pass' : `exit code ${code}` }
+        return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
       askUser: async (o) => {

@@ -868,7 +868,7 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await writeFile(join(repo, '.kernel', 'settings.toml'), `[scripts]\nsetup = "true"\narchive = "touch ${marker}"\n`)
     const { k, room } = await kernelFor(repo)
     const lines: string[] = []
-    const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'archive') lines.push(e.line) }
+    const on = (e: PushEvent) => { if (e.type === 'script.output' && e.kind === 'archive') lines.push(...e.lines.map((l) => l.line)) }
     bus.on('push', on)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build', agentId: 'kai', title: 'Build' })
     await k.archiveWorkspace(ws.id)

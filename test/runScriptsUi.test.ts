@@ -8,7 +8,7 @@ const { actions, apply, getState, scriptKey, setState } = await import('../src/r
 const { applyRunScripts } = await import('../src/renderer/src/screens/settings/useSettings')
 const { pickerNames, runningRuns } = await import('../src/renderer/src/screens/workspace/runScripts')
 
-const line = (name: string | undefined, text: string, kind: 'run' | 'setup' = 'run') => ({ kind, name, line: text, stream: 'stdout' as const })
+const add = (name: string | undefined, text: string, kind: 'run' | 'setup' = 'run') => actions.workspaces.appendScript('w1', kind, name, [{ line: text, stream: 'stdout' }])
 const out = (name: string) => getState().scripts.w1.filter((l) => l.name === name).map((l) => l.line)
 
 beforeEach(() => setState({ scripts: {}, scriptExit: {}, scriptUrl: {} }))
@@ -46,30 +46,44 @@ describe('script.url', () => {
 
 describe('script lines', () => {
   it('names a run line without a name run, and leaves setup lines unnamed', () => {
-    actions.workspaces.appendScript('w1', line(undefined, 'a'))
-    actions.workspaces.appendScript('w1', line(undefined, 'b', 'setup'))
+    add(undefined, 'a')
+    add(undefined, 'b', 'setup')
     expect(getState().scripts.w1.map((l) => l.name)).toEqual(['run', undefined])
   })
 
   it("keeps 400 lines for each script, so a chatty one drops its own oldest line and nobody else's", () => {
-    actions.workspaces.appendScript('w1', line('backend', 'b-first'))
-    for (let i = 0; i < 401; i++) actions.workspaces.appendScript('w1', line('frontend', `f${i}`))
-    actions.workspaces.appendScript('w1', line('backend', 'b-last'))
+    add('backend', 'b-first')
+    for (let i = 0; i < 401; i++) add('frontend', `f${i}`)
+    add('backend', 'b-last')
     expect(out('frontend')).toHaveLength(400)
     expect(out('frontend')[0]).toBe('f1')
     expect(out('frontend')[399]).toBe('f400')
     expect(out('backend')).toEqual(['b-first', 'b-last'])
   })
 
+  it('keeps a batch the way it keeps its lines one by one (KERNEL-216)', () => {
+    add('backend', 'b-first')
+    for (let i = 0; i < 401; i++) add('frontend', `f${i}`)
+    const oneByOne = getState().scripts.w1
+    setState({ scripts: {} })
+    add('backend', 'b-first')
+    actions.workspaces.appendScript('w1', 'run', 'frontend', Array.from({ length: 401 }, (_, i) => ({ line: `f${i}`, stream: 'stdout' as const })))
+    expect(getState().scripts.w1).toEqual(oneByOne)
+    apply({ type: 'script.output', workspaceId: 'w1', kind: 'run', name: 'frontend', lines: [{ line: 'f401', stream: 'stderr' }, { line: 'f402', stream: 'stdout' }] })
+    expect(out('frontend').slice(-3)).toEqual(['f400', 'f401', 'f402'])
+    expect(out('frontend')).toHaveLength(400)
+    expect(out('backend')).toEqual(['b-first'])
+  })
+
   it('counts a run script named setup apart from the setup script', () => {
-    for (let i = 0; i < 400; i++) actions.workspaces.appendScript('w1', line('setup', `r${i}`))
-    actions.workspaces.appendScript('w1', line(undefined, 'install', 'setup'))
+    for (let i = 0; i < 400; i++) add('setup', `r${i}`)
+    add(undefined, 'install', 'setup')
     expect(getState().scripts.w1).toHaveLength(401)
   })
 })
 
 describe('the Run tab names', () => {
-  const lines = (...names: string[]) => names.forEach((n) => actions.workspaces.appendScript('w1', line(n, 'x')))
+  const lines = (...names: string[]) => names.forEach((n) => add(n, 'x'))
 
   it('lists a script that is running, and not one that exited', () => {
     lines('frontend', 'backend')
@@ -96,7 +110,7 @@ describe('the Run tab names', () => {
   })
 
   it('does not take a finished setup for a run script', () => {
-    actions.workspaces.appendScript('w1', line(undefined, 'install', 'setup'))
+    add(undefined, 'install', 'setup')
     expect(runningRuns(getState(), 'w1')).toEqual([])
   })
 })
