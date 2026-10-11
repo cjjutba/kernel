@@ -47,6 +47,8 @@ export interface State {
   chats: Record<string, Chat[]>
   /** By thread id. The Lead chats, each holding the Lead tabs whose `threadId` names it, open or closed (KERNEL-337). */
   threads: Record<string, Thread>
+  /** By workspace id. The Lead chat each Lead workspace showed last, which stays current while a terminal tab is open (KERNEL-338). */
+  lastThread: Record<string, string>
   /** By thread id. The tab last shown in each Lead chat, so the sidebar row and a switch back open where you left off. Kept across launches (KERNEL-338). */
   lastTabs: Record<string, string>
   /** By chat id. */
@@ -128,7 +130,7 @@ let state: State = {
   rooms: [], roomSetup: {}, scriptTrust: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
-  chats: {}, threads: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
+  chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
@@ -200,7 +202,9 @@ function selectTab(workspaceId: string, tab: string) {
   setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } }))
   // A Lead tab is also the last one shown in its Lead chat. A file or diff tab leaves the memory alone.
   const threadId = state.chats[workspaceId]?.find((c) => c.id === tab)?.threadId
-  if (threadId && state.lastTabs[threadId] !== tab) {
+  if (!threadId) return
+  if (state.lastThread[workspaceId] !== threadId) setState({ lastThread: { ...state.lastThread, [workspaceId]: threadId } })
+  if (state.lastTabs[threadId] !== tab) {
     const next = { ...state.lastTabs, [threadId]: tab }
     setState({ lastTabs: next })
     keepLastTabs(next)

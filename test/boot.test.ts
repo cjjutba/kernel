@@ -12,7 +12,7 @@ async function bootWith(checks: PreflightCheck[]) {
   const gate = new Promise<void>((resolve) => { finishChecks = resolve })
   const answers: Record<string, unknown> = {
     'rooms.list': [room], 'workspaces.list': [], 'approvals.list': [], 'notifications.list': [], 'activity.recent': [], 'usage.get': [],
-    'settings.get': DEFAULT_SETTINGS('/Users/you'), 'system.fixture': null, 'shared.list': [], 'agents.list': [], 'agents.status': {}, 'tasks.list': [],
+    'settings.get': DEFAULT_SETTINGS('/Users/you'), 'system.fixture': null, 'shared.list': [], 'threads.list': [], 'agents.list': [], 'agents.status': {}, 'tasks.list': [],
     'rooms.lastActivity': null, 'rooms.overlaps': [], 'account.get': null, 'hooks.status': null, 'update.get': null
   }
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined })
