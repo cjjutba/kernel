@@ -15,7 +15,7 @@ vi.mock('../src/renderer/src/api', () => ({
   }
 }))
 
-const { closeChats, closesThread } = await import('../src/renderer/src/screens/workspace/ConfirmCloseChats')
+const { closeChats, closesThread, frozenWhole, wholeChat } = await import('../src/renderer/src/screens/workspace/ConfirmCloseChats')
 
 const room = { id: 'r1', name: 'r1', path: '/r/r1', defaultBranch: 'main', paused: false, createdAt: 1 } as Room
 const rowan = { id: 'rowan', lead: true } as AgentDef
@@ -52,6 +52,29 @@ describe('closesThread', () => {
     expect(closesThread(getState(), 'lead', ['b1'])).toBeUndefined()
     seed([tab('a1', 't1'), tab('term', 't1', { kind: 'terminal' })])
     expect(closesThread(getState(), 'lead', ['term'])).toBeUndefined()
+  })
+})
+
+describe('the Close this chat dialog (KERNEL-362)', () => {
+  it('has a chat to name once the Lead\'s chats load, if it opened before', () => {
+    setState({ chats: {}, agents: {} })
+    expect(wholeChat(getState(), 'lead', ['b1'])).toBeUndefined()
+    setState({ chats: { lead: server }, agents: { r1: [rowan] } })
+    expect(wholeChat(getState(), 'lead', ['b1'])).toMatchObject({ id: 't2', title: 'b1', started: 0 })
+  })
+
+  it('keeps the chat it first found while Close chat is busy and after the tab closes', async () => {
+    let kept = frozenWhole(undefined, wholeChat(getState(), 'lead', ['b1']))
+    expect(kept?.id).toBe('t2')
+    actions.ui.go({ name: 'workspace', workspaceId: 'lead' })
+    await closeChats('lead', ['b1'], 'b1', select)
+    expect(wholeChat(getState(), 'lead', ['b1'])).toBeUndefined()
+    kept = frozenWhole(kept, wholeChat(getState(), 'lead', ['b1']))
+    expect(kept?.id).toBe('t2')
+  })
+
+  it('is not made by a dialog for tabs that leave another tab of their chat open', () => {
+    expect(frozenWhole(undefined, wholeChat(getState(), 'lead', ['a1']))).toBeUndefined()
   })
 })
 

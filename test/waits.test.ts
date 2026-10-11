@@ -4,7 +4,9 @@ import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AgentDef, Chat, PrInfo, PrState, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
+import { bus } from '../src/main/bus'
 import { exec, run } from '../src/main/services/exec'
 import { listCheckpoints } from '../src/main/services/checkpoints'
 import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
@@ -131,6 +133,13 @@ const pending = (k: Kernel) => (k.store.meta<{ pending: [string, { events: { kin
 /** The turn Kernel started in the workspace's chat has ended. */
 const idle = (k: Kernel, ws: Workspace) => vi.waitFor(() => expect(k.sessions.isRunning(chatOf(k, ws).id)).toBe(false), SLOW)
 const released = (k: Kernel, ws: Workspace) => vi.waitFor(() => { expect(k.store.workspace(ws.id)?.waitsFor).toBeUndefined() }, SLOW)
+/** What the renderer was last told each chat's queue waits for (KERNEL-361). `done` stops listening. */
+function reasonsPushed() {
+  const why = new Map<string, string | undefined>()
+  const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') why.set(e.chatId, e.why) }
+  bus.on('push', onPush)
+  return { last: (chatId: string) => why.get(chatId), done: () => { bus.off('push', onPush) } }
+}
 
 describe('a hand-off that waits for a merge', () => {
   it('creates the worktree and runs setup, then holds the brief with no checkpoint, run script or turn', async () => {
@@ -305,6 +314,36 @@ describe('a hand-off that waits for a merge', () => {
     await k.stop()
   })
 
+  // KERNEL-361: the queued row said "Sends when setup passes" and hid Send now, because a held brief reported setup.
+  it('tells the renderer a held brief waits for a merge once setup passes', async () => {
+    const { k, room, lead, target } = await setup()
+    const pushed = reasonsPushed()
+    try {
+      const noor = await target(k, 164)
+      const w = await k.workspaces.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+      const chat = chatOf(k, w)
+      expect(k.sessions.queueReason(chat.id)).toBe('merge')
+      await vi.waitFor(() => expect(pushed.last(chat.id)).toBe('merge'))
+    } finally { pushed.done() }
+    await k.stop()
+  })
+
+  it('says a held brief waits for setup while setup has failed, and for the merge once Run again passes', async () => {
+    const { k, room, lead, target } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
+    const pushed = reasonsPushed()
+    try {
+      const noor = await target(k, 164)
+      const w = await k.workspaces.createWorkspace(room.id, { prompt: 'Build T-15', agentId: 'kai', title: 'Thinking rows', leadChatId: lead.id, waitFor: [noor.id] })
+      const chat = chatOf(k, w)
+      expect(k.sessions.queueReason(chat.id)).toBe('setup')
+      await writeFile(join(w.path, 'ok.txt'), 'ok\n')
+      expect(await k.setup.retrySetup(w.id)).toMatchObject({ status: 'ready', waitsFor: { held: true } })
+      expect(k.sessions.queueReason(chat.id)).toBe('merge')
+      await vi.waitFor(() => expect(pushed.last(chat.id)).toBe('merge'))
+    } finally { pushed.done() }
+    await k.stop()
+  })
+
   it('archives a held waiter through archive_workspace, and ends its wait', async () => {
     const { k, room, lead, target } = await setup()
     const noor = await target(k, 164)
@@ -394,6 +433,7 @@ describe('across a restart', () => {
     await flush()
     expect(k2.store.workspace(w.id)).toMatchObject({ status: 'ready', waitsFor: { held: true } })
     expect(queue(k2, chat)).toEqual([['Build T-15', 'lead']])
+    expect(k2.sessions.queueReason(chat.id)).toBe('merge')
     expect((await k2.lead['messageWorkspace'](room.id, w.id, 'Still there?', lead.id)).sent).toBe(false)
     await k2.prs['pollPrs']()
     await released(k2, w)

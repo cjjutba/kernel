@@ -1015,6 +1015,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ui: open
     }
   }),
+  /** A brief Rowan handed off with wait_for, held until Noor's PR merges, with Send now to start it sooner (KERNEL-259, KERNEL-361). */
+  WorkspaceQueuedMerge: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 2), from: 'lead' as const, parts: [{ type: 'text' as const, text: 'Build the invoice table on top of the new schema' }] }]
+    const schema = withWorkspace(f, ids.schema, { prNumber: 43, prUrl: 'https://github.com/samrivera/client-a/pull/43', prState: 'open' })
+    return {
+      workspaces: withWorkspace({ ...f, workspaces: schema }, ids.table, { stat: undefined, waitsFor: { on: [ids.schema], held: true } }),
+      items: { [ids.tableChat]: [{ kind: 'note', id: 'n1', ts: at(10, 2), text: 'Waiting for PR #43 by Noor to merge. Kernel sends this brief then. Send now starts it sooner.' }] },
+      queue: { [ids.tableChat]: queue },
+      // A held brief has no run script and no changes yet (KERNEL-259).
+      changes: { ...f.changes, [ids.table]: [] },
+      push: [...f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'), { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'merge' }],
+      ui: open
+    }
+  }),
   WorkspaceHunks: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'checkout-rounding', mode: 'current', branch: 'main', baseRef: 'main' }),
     items: { [ids.tableChat]: [
