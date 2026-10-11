@@ -190,11 +190,11 @@ describe('a chat on Codex (KERNEL-406)', () => {
     ) }])
     await t.idle()
     expect(usage.at(-1)).toEqual([
-      { type: 'five_hour', provider: 'codex', status: 'allowed', utilization: 0.62, resetsAt: 1791734191 },
-      { type: 'seven_day', provider: 'codex', status: 'allowed', utilization: 0.12, resetsAt: 1792320991 }
+      { type: 'five_hour', provider: 'codex', status: 'allowed', utilization: 0.62, resetsAt: 1791734191, readAt: expect.any(Number) },
+      { type: 'seven_day', provider: 'codex', status: 'allowed', utilization: 0.12, resetsAt: 1792320991, readAt: expect.any(Number) }
     ])
     expect(t.store.chat('chat')).toMatchObject({ context: 25, contextUsage: { used: 45000, max: 180000, rows: [] } })
-    expect(await t.sessions.usage()).toContainEqual({ type: 'five_hour', provider: 'codex', status: 'allowed', utilization: 0.4, resetsAt: 1791734191 })
+    expect(await t.sessions.usage()).toContainEqual({ type: 'five_hour', provider: 'codex', status: 'allowed', utilization: 0.4, resetsAt: 1791734191, readAt: expect.any(Number) })
   })
 
   it('stops the running turn with Stop', async () => {
