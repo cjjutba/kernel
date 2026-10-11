@@ -270,6 +270,27 @@ describe('create_workspace when every agent slot is in use (KERNEL-272)', () => 
   })
 })
 
+describe("create_workspace when the room's scripts wait for trust (KERNEL-261)", () => {
+  it("says Kai hasn't started after the Created prefix, and the Lead hears once that trusting sent the brief", async () => {
+    const { k, room, first, call, byTitle, sent } = await setup({ '.kernel/settings.toml': '[scripts]\nsetup = "true"\n' })
+    // A pull changed the script after the room was trusted, so the next workspace waits for another yes.
+    await writeFile(join(room.path, '.kernel', 'settings.toml'), '[scripts]\nsetup = "echo changed"\n')
+    const told = vi.spyOn(k.leadUpdates, 'setup')
+    const said = await call(first, 'create_workspace', { agent: 'kai', title: 'Invoice table', brief: 'Build T-14' })
+    const ws = byTitle('Invoice table')
+    expect(said).toBe(`Created ${ws.id} on ${ws.branch} for kai. Kai's workspace waits for the user to trust this room's scripts, so Kai hasn't started. The brief goes out once they do.`)
+    expect(ws.status).toBe('trust')
+    expect(sent.some((s) => s.text === 'Build T-14')).toBe(false)
+
+    await trustRoom(k, room.id)
+    await vi.waitFor(() => expect(k.store.workspace(ws.id)?.status).toBe('ready'), { timeout: 15000 })
+    // Nothing else holds Kai, so the release reaches the Lead as one setup.passed, the way Run again does.
+    const passed = told.mock.calls.filter(([w, ok]) => w.id === ws.id && ok)
+    expect(passed.map(([, , o]) => o)).toEqual([{ trusted: true }])
+    expect(told.mock.calls.filter(([w, ok]) => w.id === ws.id && !ok)).toEqual([])
+  }, 30000)
+})
+
 describe('message_agent says what really happened (KERNEL-118)', () => {
   it('refuses an archived workspace, an unknown id, a missing folder, the Lead\'s own workspace and another room\'s, sending nothing', async () => {
     const { k, first, run, byTitle, sent } = await setup()

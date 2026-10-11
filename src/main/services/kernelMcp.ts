@@ -325,10 +325,13 @@ export function kernelTools(d: KernelToolDeps) {
       const failed = ws.status === 'failed' ? ` Setup failed (${ws.setupFailed ?? 'it did not pass'}), so ${pick.name} hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace.` : ''
       const stale = ws.fetchFailed ? ` ${ws.fetchFailed}` : ''
       const waiting = ws.waitsFor?.held && ws.waitsFor.on.length ? ` ${pick.name} waits for ${labels(targets.filter((t) => ws.waitsFor!.on.includes(t.id)), team)} to merge, and Kernel sends the brief then. Tell the user that merging it starts ${pick.name}.` : ''
+      // A room whose scripts the user hasn't trusted holds the brief too (KERNEL-209, KERNEL-261). A merge it also waits
+      // for says when the brief goes out instead.
+      const trust = ws.status === 'trust' ? ` ${pick.name}'s workspace waits for the user to trust this room's scripts, so ${pick.name} hasn't started.${waiting ? '' : ' The brief goes out once they do.'}` : ''
       // A brief held for a slot, a pause or the connection isn't the teammate starting either (KERNEL-272). A brief held
-      // for a merge says so above instead.
-      const queued = failed || waiting ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
-      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued)}`)
+      // for a merge or for trust says so above instead.
+      const queued = failed || waiting || trust ? undefined : queuedNote(ws.queued, { name: pick.name, brief: true })
+      return text(`Created ${ws.id} on ${ws.branch} for ${pick.id}.${stale}${failed}${trust}${waiting}${queued ? ` ${queued}` : ''}${wait_for?.length ? '' : blocked(ws, team, pick, !!queued || !!trust)}`)
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
