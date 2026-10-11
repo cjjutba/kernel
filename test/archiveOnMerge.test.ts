@@ -286,6 +286,43 @@ describe('Delete branch on archive in a room (KERNEL-370)', () => {
   })
 })
 
+describe('Delete the branch while Kernel is already archiving (KERNEL-139)', () => {
+  /** Kernel's own archive, which keeps the branch, and the person's, which asks to delete it, both running at once. */
+  const both = async (k: Kernel, ws: Workspace) => {
+    const kept: string[] = []
+    const onActivity = (e: { kind: string; text: string; object?: string }) => { if (e.kind === 'note' && e.text.startsWith('kept the branch')) kept.push(`${e.text} ${e.object}`) }
+    bus.on('activity', onActivity)
+    onTestFinished(() => { bus.off('activity', onActivity) })
+    await Promise.all([k.archive.archiveWorkspace(ws.id), k.archive.archiveWorkspace(ws.id, true)])
+    return kept
+  }
+
+  it('deletes a pushed branch', async () => {
+    const { k, repo, author, status } = await setup({ origin: true, deleteBranch: false })
+    await pushWork(author)
+    expect(await both(k, author)).toEqual([])
+    expect(status(author)).toBe('archived')
+    expect(await hasBranch(repo, author)).toBe(false)
+  })
+
+  it('keeps a branch with a commit that never left the machine, and says why', async () => {
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: false })
+    await pushWork(author)
+    await writeFile(join(author.path, 'more.ts'), 'export const more = 1\n')
+    await run('git', ['-C', author.path, 'add', '-A'])
+    await run('git', ['-C', author.path, 'commit', '-q', '-m', 'more'])
+    expect(await both(k, author)).toEqual([`kept the branch because it has commits that were never pushed: ${author.branch}`])
+    expect(await hasBranch(repo, author)).toBe(true)
+  })
+
+  it('leaves the running archive\'s choice when the second one doesn\'t ask to delete', async () => {
+    const { k, repo, author } = await setup({ origin: true, deleteBranch: false })
+    await pushWork(author)
+    await Promise.all([k.archive.archiveWorkspace(author.id), k.archive.archiveWorkspace(author.id, false)])
+    expect(await hasBranch(repo, author)).toBe(true)
+  })
+})
+
 describe('Archive on merge at start (KERNEL-114)', () => {
   it('archives work that merged before, keeps the Lead\'s workspace, and runs once', async () => {
     const { k, lead, author, where } = await setup()
