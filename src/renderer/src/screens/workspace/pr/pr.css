@@ -38,8 +38,9 @@
 /* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
 .pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
 .pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
-/* A merge another button started: muted text in the button's place, no spinner. Only the pressed button spins (KERNEL-411). */
-.pr-note { font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* An open PR's state word in a PRs tab or Team update row, red for what needs fixing, as the band says it (KERNEL-417). */
+.pr-word { font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.pr-word[data-tone='fail'] { color: var(--pr-fail-text); }
 /* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row, with the panel toggle at its end, needs
    about 372px of the head's content box, which is 377px when the panel is at its widest (400px). */
 @container (max-width: 371px) { .pr-tone .pr-btn-label { display: none; } }
@@ -73,8 +74,6 @@
 .lp-name { flex-shrink: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
 .lp-key { flex-shrink: 0; font: 11.5px var(--mono); color: var(--faint); }
 .lp-act { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
-.lp-state { font-size: 12px; color: var(--ink-3); }
-.lp-state[data-tone='del'] { color: var(--pr-fail-text); }
 .lp-open { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; border: 0; background: transparent; padding: 0; font-size: 12px; color: var(--muted); }
 .lp-open:hover { color: var(--ink); }
 .lp-title { font-size: 13px; line-height: 18px; color: var(--ink-2); }

@@ -2,6 +2,7 @@ import type { AgentStatus, Approval, Workspace } from '@shared/types'
 import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
+import { PR_STATUS } from '../../screens/workspace/pr/model'
 
 /**
  * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
@@ -47,17 +48,13 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
   switch (ws.prState) {
-    case 'creating': return spin('Creating PR')
-    case 'resolving': return spin('Resolving')
-    case 'merging': return spin('Merging')
+    // What runs spins, and every state says the word the PR band, the PRs tab and a Team update row say (KERNEL-417).
+    case 'creating': case 'checks': case 'resolving': case 'merging': return spin(PR_STATUS[ws.prState].label)
     // A ready PR GitHub won't merge yet reads open, as the header does (KERNEL-401).
     case 'ready': return ws.prBlocked ? { icon: 'pr', tone: 'add', label: 'PR open' } : { icon: 'pr', tone: 'add', label: 'Ready to merge' }
     case 'open': return { icon: 'pr', tone: 'add', label: 'PR open' }
-    case 'checks': return { icon: 'pr', tone: 'muted', label: 'Checks running' }
-    case 'conflict': return { icon: 'pr', tone: 'del', label: 'Merge conflicts' }
-    case 'cifail': return { icon: 'pr', tone: 'del', label: 'Checks failed' }
-    case 'changes': return { icon: 'pr', tone: 'del', label: 'Changes requested' }
-    case 'draft': return { icon: 'prDraft', tone: 'muted', label: 'Draft PR' }
+    case 'conflict': case 'cifail': case 'changes': return { icon: 'pr', tone: 'del', label: PR_STATUS[ws.prState].label }
+    case 'draft': return { icon: 'prDraft', tone: 'muted', label: PR_STATUS.draft.label }
     case 'merged': return { icon: 'merged', tone: 'merged', label: 'Merged' }
     case 'closed': return { icon: 'prClosed', tone: 'muted', label: 'PR closed' }
     case 'none': return { icon: 'branch', tone: 'muted', label: ws.stat?.files ? 'No PR yet' : 'No changes yet' }

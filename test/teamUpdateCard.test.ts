@@ -192,8 +192,8 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules)).toEqual({ kind: 'merging' })
     expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules)).toEqual({ kind: 'merged' })
     // An open PR that can't merge yet says where it stands, in the PRs tab's words (KERNEL-411). One with no PR yet says nothing.
-    expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed' })
-    expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running' })
+    expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })
+    expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })
     expect(mergeView(ws('w1', { prState: 'none' }), pr(), rules)).toEqual({ kind: 'none' })
     // In a Merge all run, a PR whose turn is still to come reads Next; the one merging now reads Merging.
     const queue = { ids: ['w0', 'w1'], current: 'w0' }
@@ -214,12 +214,14 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('aria-busy="true"')
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
-    // Only the button that was pressed spins (KERNEL-411). Anywhere else the same PR shows, and for a merge Rowan or Merge all
-    // started, Merging is muted text with no spinner and nothing to press.
+    // A PR that reads merging spins in every place it shows, whoever started the merge: this button, another, Rowan or Merge
+    // all (KERNEL-417). The spinner sits in the ready band's green, as the Merge button did.
     expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
-    expect(draw({ kind: 'merging' })).toBe('<span class="tucard-why">Merging</span>')
+    expect(draw({ kind: 'merging' })).toMatch(/^<span class="pr-tone" data-tone="ready"><button[^>]*disabled[^>]*aria-busy="true"[^>]*>.*Merging<\/button><\/span>$/)
     expect(draw({ kind: 'next' })).toBe('<span class="tucard-why">Next</span>')
-    expect(draw({ kind: 'state', label: 'Checks running' })).toBe('<span class="tucard-why">Checks running</span>')
+    // An open PR's state, as the PR band says it: a spinner while checks run, and the word in red for what failed.
+    expect(draw({ kind: 'state', label: 'Checks running', tone: 'idle', spin: true })).toMatch(/data-tone="idle"><button[^>]*aria-busy="true"[^>]*>.*Checks running/)
+    expect(draw({ kind: 'state', label: 'Checks failed', tone: 'fail', spin: false })).toBe('<span class="pr-word" data-tone="fail">Checks failed</span>')
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
     expect(draw({ kind: 'merged' })).toContain('tucard-merged')

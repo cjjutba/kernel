@@ -438,7 +438,7 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
       work('ws-176', 'kai', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Rowan asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Rowan asks when a brief is unclear' } }),
       work('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
       work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')], ...issue('KERNEL-172', 2) }),
-      // Rowan started this merge, so the row's Merging is muted, with no spinner (KERNEL-411).
+      // Rowan started this merge, and the row spins Merging all the same, as every place showing the PR does (KERNEL-417).
       work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging', ...issue('KERNEL-160', 3) }),
       work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
     ],
@@ -540,6 +540,47 @@ const LEAD_PRS: OpenPr[] = [
 const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
 const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
 const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
+
+/** A ready PR, then one PR in each state the band, the PRs tab, a Team update row and the sidebar all say the same way (KERNEL-417). */
+const PR_STATES: OpenPr[] = [
+  LEAD_PRS[0],
+  { id: 'ws-160', agentId: 'kai', key: 'KERNEL-160', n: 155, title: 'Issues screen with search', state: 'merging', stat: [212, 30], review: 'approved' },
+  LEAD_PRS[3],
+  { id: 'ws-190', agentId: 'noor', key: 'KERNEL-190', n: 170, title: 'Sidebar keeps its scroll on a new chat', state: 'resolving', stat: [40, 12] },
+  LEAD_PRS[6],
+  LEAD_PRS[4],
+  LEAD_PRS[5],
+  LEAD_PRS[7]
+]
+
+/**
+ * A Team update about each PR of `PR_STATES`, with the PRs tab beside it (KERNEL-417). Both places say each PR's state the same
+ * way: Merging, Checks running and Resolving spin, what failed is red, the draft reads Draft, and the ready PR keeps Merge.
+ */
+const teamUpdatePrStates = (f: Fixture): Partial<Fixture> => {
+  const ev = (kind: TeamEventKind, text: string, actionable = false) => ({ kind, text, actionable })
+  const events = (p: OpenPr): TeamUpdateRow['events'] => {
+    switch (p.state) {
+      case 'merging': return [ev('turn', 'Finished a turn'), ev('turn', `Merging PR #${p.n}`)]
+      case 'checks': return [ev('pr.opened', `Opened PR #${p.n}`)]
+      case 'resolving': case 'conflict': return [ev('pr.conflict', `Merge conflicts on PR #${p.n}`, true)]
+      case 'cifail': return [ev('pr.cifail', `Checks failed on PR #${p.n}`, true)]
+      case 'changes': return [ev('pr.changes', `Theo requested changes on PR #${p.n}`, true)]
+      case 'draft': return [ev('pr.opened', `Opened draft PR #${p.n}`)]
+      default: return [ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Theo approved')]
+    }
+  }
+  const names: Record<string, string> = { kai: 'Kai', noor: 'Noor', ivy: 'Ivy' }
+  const rows = PR_STATES.map((p): TeamUpdateRow => ({ workspaceId: p.id, agentId: p.agentId, name: names[p.agentId], task: p.title, events: events(p) }))
+  const card: ChatItem = { kind: 'user', id: 'tus-1', ts: at(20, 30), from: 'kernel', update: { rows }, parts: [{ type: 'text', text: 'Team update from Kernel, not from the user.' }] }
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [card, { kind: 'result', id: 'tus-res', ts: at(20, 31), durationMs: 14_000, ok: true }], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest, ...openPrs(f, PR_STATES),
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  }
+}
 
 /**
  * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
@@ -1085,7 +1126,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
-  // A PR merging keeps its row in Ready to merge, Merging muted since this tab didn't start it (KERNEL-411).
+  // A PR merging keeps its row in Ready to merge and spins there, though this tab didn't start it (KERNEL-411, KERNEL-417).
   LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
   // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
   LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
@@ -1098,6 +1139,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
+  TeamUpdatePrStates: scene((f) => teamUpdatePrStates(f)),
   // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
   GroupedNewChat: scene((f) => {
     const csv = leadTab('chat-csv', GROUPED.csv, 'Add CSV export', 13, { plan: true })

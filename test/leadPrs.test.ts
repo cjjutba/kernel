@@ -38,7 +38,7 @@ describe('the order', () => {
     const read = (id: string) => ({ [id]: info(id) })
     const [row] = list([ws('blocked', { reviews: [verdict('approved', { sha: 'old' })] })], read('blocked'))
     expect(row.ready).toBe(false)
-    expect(row.state?.label).toBe('Waiting for approval')
+    expect(row.state).toMatchObject({ label: 'Waiting for approval', tone: 'idle', spin: false, why: expect.stringContaining("Theo hasn't approved") })
     expect(list([ws('fine', { reviews: [verdict('approved')] })], read('fine'))[0].ready).toBe(true)
   })
 
@@ -53,12 +53,13 @@ describe('the order', () => {
 
 describe('what a not ready row says it waits on', () => {
   const label = (prState: Workspace['prState']) => list([ws('x', { prState })])[0].state
-  it('uses the sidebar icon words, and Draft for a draft', () => {
-    expect(label('checks')).toMatchObject({ label: 'Checks running', tone: 'muted' })
-    expect(label('cifail')).toMatchObject({ label: 'Checks failed', tone: 'del' })
-    expect(label('changes')).toMatchObject({ label: 'Changes requested', tone: 'del' })
-    expect(label('conflict')).toMatchObject({ label: 'Merge conflicts', tone: 'del' })
-    expect(label('draft')).toMatchObject({ label: 'Draft', tone: 'muted' })
+  it("uses every place's words and the PR band's tone, and spins for what runs (KERNEL-417)", () => {
+    expect(label('checks')).toEqual({ label: 'Checks running', tone: 'idle', spin: true })
+    expect(label('resolving')).toEqual({ label: 'Resolving', tone: 'fail', spin: true })
+    expect(label('cifail')).toEqual({ label: 'Checks failed', tone: 'fail', spin: false })
+    expect(label('changes')).toEqual({ label: 'Changes requested', tone: 'fail', spin: false })
+    expect(label('conflict')).toEqual({ label: 'Merge conflicts', tone: 'fail', spin: false })
+    expect(label('draft')).toEqual({ label: 'Draft', tone: 'idle', spin: false })
   })
 })
 

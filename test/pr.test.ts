@@ -169,6 +169,8 @@ describe('PR header and toasts', () => {
     expect(headerView('none', false).button).toBeUndefined()
     expect(headerView('none', false)).toMatchObject({ link: false, caret: false })
     expect(headerView('checks').button).toMatchObject({ label: 'Checks running', kind: 'busy' })
+    // A merge spins in the header whoever started it, as it does everywhere the PR shows (KERNEL-417).
+    expect(headerView('merging')).toMatchObject({ state: { label: 'Ready to merge', tone: 'ready' }, button: { label: 'Merging', kind: 'busy' } })
     expect(headerView('conflict').button).toMatchObject({ label: 'Resolve conflicts', action: 'resolve' })
     expect(headerView('ready').button).toMatchObject({ label: 'Merge PR', action: 'merge' })
     expect(headerView('merged')).toMatchObject({ merged: true, link: true })

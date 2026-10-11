@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { AppSettings, MergeQueue, PrInfo, PrState, Workspace } from '@shared/types'
+import type { AppSettings, MergeQueue, PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState } from '@shared/merge'
 import { call, cleanError } from '../../../api'
 import { actions, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
-import { workspaceGlyph } from '../../../components/sidebar/workspaceGlyph'
-import { busyLabel, failTitle } from './model'
+import { PR_STATUS, busyLabel, failTitle, prStatus, type PrStatus } from './model'
 import { request } from './PrHeader'
 import './pr.css'
 
@@ -13,12 +12,10 @@ type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
 
 /**
  * What a PR's Merge button place shows (KERNEL-351, KERNEL-411): nothing, the button, why it can't, the merge running, the
- * merge done, its turn still to come in a Merge all run (`next`), or where an open PR that can't merge yet stands (`state`).
+ * merge done, its turn still to come in a Merge all run (`next`), or where an open PR that can't merge yet stands (`state`),
+ * in the words and tone every place uses (KERNEL-417).
  */
-export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | { kind: 'next' } | { kind: 'state'; label: string }
-
-/** Open PRs that can't merge yet, whose state word stands in the button's place, as the PRs tab's Still open rows say it. */
-const WAITING: PrState[] = ['creating', 'checks', 'cifail', 'changes', 'conflict', 'resolving', 'draft']
+export type MergeView = { kind: 'none' } | { kind: 'ready' } | { kind: 'blocked'; reason: string } | { kind: 'merging' } | { kind: 'merged' } | { kind: 'next' } | ({ kind: 'state' } & PrStatus)
 
 /**
  * Decides from the same rule as the header's Merge PR (`mergeBlock`, KERNEL-349). A PR a Merge all run will get to reads
@@ -28,7 +25,8 @@ export function mergeView(ws: Workspace, pr: PrInfo | null | undefined, rules: R
   if (ws.prState === 'merged') return { kind: 'merged' }
   if (ws.prState === 'merging') return { kind: 'merging' }
   if (queue && queue.current !== ws.id && queue.ids.indexOf(ws.id) > queue.ids.indexOf(queue.current ?? '')) return { kind: 'next' }
-  if (WAITING.includes(ws.prState)) return ws.prNumber ? { kind: 'state', label: workspaceGlyph({ ...ws, status: 'ready' }, { waiting: [], running: false }).label } : { kind: 'none' }
+  const status = prStatus(ws.prState)
+  if (status) return ws.prNumber ? { kind: 'state', ...status } : { kind: 'none' }
   if (!mergeableState(ws.prState)) return { kind: 'none' }
   const reason = mergeBlock(ws, pr, rules, name)
   return reason ? { kind: 'blocked', reason } : { kind: 'ready' }
@@ -42,7 +40,8 @@ const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
  * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. It reads the rules, the PR and the reviewer's name itself, so a
- * caller knows nothing about when a PR may merge. Each button keeps its own busy state, so only the one pressed spins (KERNEL-411).
+ * caller knows nothing about when a PR may merge. The click spins the pressed button until the PR reads merging, and from then
+ * on every place showing the PR spins (KERNEL-417).
  */
 export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
@@ -72,8 +71,8 @@ export async function mergeAndToast(workspaceId: string) {
 }
 
 /**
- * What `MergeButton` draws for a view. `busy` is the label while this button's own merge runs, such as "Merging". Only that
- * button spins: anywhere else the same PR shows, and for a merge Rowan or Merge all started, Merging is muted text (KERNEL-411).
+ * What `MergeButton` draws for a view. `busy` is the label while this button's own merge call runs, such as "Merging". A PR
+ * that reads merging spins in every place it shows, whoever started the merge: a button, Rowan or Merge all (KERNEL-417).
  */
 export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
   switch (view.kind) {
@@ -81,14 +80,21 @@ export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; v
     case 'merged': return <span className="tucard-merged">Merged</span>
     case 'blocked': return <span className="tucard-why" data-tip={view.reason}>{firstSentence(view.reason)}</span>
     case 'next': return <span className="tucard-why">Next</span>
-    case 'state': return <span className="tucard-why">{view.label}</span>
-    case 'merging': return busy
-      ? <span className="pr-tone" data-tone="ready"><Button className="pr-soft tucard-merge" busy>{busy}</Button></span>
-      : <span className="tucard-why">Merging</span>
+    case 'state': return <PrStatusTag status={view} />
+    case 'merging': return <PrStatusTag status={PR_STATUS.merging} />
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
         <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
       </span>
     )
   }
+}
+
+/**
+ * An open PR's state in a PRs tab or Team update row, drawn as the PR band draws it (KERNEL-417): while something runs, a spinner
+ * with the word in the band's tone, as the band's own busy button; otherwise the word, red for what needs fixing. `why` is its tooltip.
+ */
+export function PrStatusTag({ status, why }: { status: PrStatus; why?: string }) {
+  if (status.spin) return <span className="pr-tone" data-tone={status.tone}><Button className="pr-soft tucard-merge" busy>{status.label}</Button></span>
+  return <span className="pr-word" data-tone={status.tone} data-tip={why}>{status.label}</span>
 }
