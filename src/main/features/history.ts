@@ -78,6 +78,9 @@ export class History extends Feature {
   private async deleteFacts(byRoom: Map<string, Workspace[]>): Promise<DeleteFacts[]> {
     const going = new Set([...byRoom.values()].flat().map((w) => w.id))
     const staying = this.store.workspaces().filter((w) => !going.has(w.id))
+    // A session a staying chat resumes is that chat's, wherever its file is. Fork into new workspace leaves the forked session
+    // in the source worktree's project folder, so the source's list finds it too (KERNEL-346).
+    const kept = new Set(staying.flatMap((w) => this.store.chats(w.id).flatMap((c) => (c.sessionId ? [c.sessionId] : []))))
     // Check and add in one step with no await between, so workspaces read at the same time can't claim a branch or session twice.
     const branches = new Set<string>()
     const claimed = new Set<string>()
@@ -105,9 +108,10 @@ export class History extends Feature {
           for (const info of await this.k.listSessions({ dir: ws.path, includeWorktrees: false }).catch(() => [])) found.set(info.sessionId, info.fileSize ?? 0)
         }
         for (const chat of this.store.chats(ws.id)) {
-          if (chat.sessionId && !found.has(chat.sessionId)) found.set(chat.sessionId, (await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.fileSize ?? 0)
+          // A forked chat's session may sit in another worktree's project folder (KERNEL-346), so a miss looks in every folder.
+          if (chat.sessionId && !found.has(chat.sessionId)) found.set(chat.sessionId, ((await this.k.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined)) ?? (await this.k.sessionInfo(chat.sessionId).catch(() => undefined)))?.fileSize ?? 0)
         }
-        const sessions = new Map([...found].filter(([id]) => !claimed.has(id)))
+        const sessions = new Map([...found].filter(([id]) => !claimed.has(id) && !kept.has(id)))
         for (const id of sessions.keys()) claimed.add(id)
         return { ws, room, branch, sessions }
       }))
@@ -134,7 +138,8 @@ export class History extends Feature {
         await dropCheckpoints(room.path, ws.id).catch((e) => console.warn(`[delete] could not drop the checkpoints of ${ws.name}`, e))
         let bytes = 0
         for (const [id, size] of f.sessions) {
-          try { await this.k.deleteSession(id, { dir: ws.path }); bytes += size } catch (e) { if (!/not found|invalid sessionId/i.test((e as Error).message)) throw e }
+          const missing = (e: unknown) => /not found|invalid sessionId/i.test((e as Error).message)
+          try { await this.k.deleteSession(id, { dir: ws.path }).catch((e) => (missing(e) ? this.k.deleteSession(id) : Promise.reject(e))); bytes += size } catch (e) { if (!missing(e)) throw e }
         }
         deleted.push(ws.id)
         freedBytes += bytes

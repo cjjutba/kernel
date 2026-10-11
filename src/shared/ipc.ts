@@ -73,6 +73,11 @@ export interface KernelApi {
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
   /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
   'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; model?: ModelId; effort?: Effort; plan?: boolean }; res: Workspace }
+  /**
+   * Fork into new workspace (KERNEL-346): a new worktree workspace on a branch from the chat's workspace's HEAD, with its files as
+   * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
+   */
+  'workspaces.fork': { req: { chatId: string; itemId?: string }; res: Workspace }
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */
   'workspaces.restore': { req: { workspaceId: string }; res: Workspace }

@@ -100,6 +100,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
     'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
+    'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.archive': async () => ok,
     'workspaces.restore': async ({ workspaceId }) => ({ ...workspace(workspaceId), status: 'ready' }),
     'workspaces.deletePreview': async ({ workspaceIds }) => f.deletePreview ?? { workspaces: workspaceIds.length, skipped: [], unpushedBranches: 0, transcriptBytes: 640 * 1024 * 1024 },
