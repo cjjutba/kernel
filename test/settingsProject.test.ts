@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -437,6 +438,20 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     expect(trustHash({ ...shared, copy: ['../../.ssh/id_rsa'] })).not.toBe(trustHash(shared))
     // Moving text from one script to another is a change too.
     expect(trustHash({ scripts: { run: 'pnpm install' }, copy: [] })).not.toBe(trustHash({ scripts: { setup: 'pnpm install' }, copy: [] }))
+  })
+
+  it("adds the repo's install scripts to the hash only when it has some, so a room without them keeps its trust (KERNEL-260)", () => {
+    const subject = { scripts: { setup: 'pnpm install' }, copy: ['.env.local'] }
+    // The hash from before install scripts counted.
+    expect(trustHash(subject)).toBe(createHash('sha256').update(JSON.stringify(['pnpm install', null, null, ['.env.local']])).digest('hex'))
+    expect(trustHash({ ...subject, installScripts: [] })).toBe(trustHash(subject))
+    const one = trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node setup.js' }] })
+    expect(one).not.toBe(trustHash(subject))
+    expect(trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node setup.js' }] })).toBe(one)
+    expect(trustHash({ ...subject, installScripts: [{ name: 'postinstall', command: 'node other.js' }] })).not.toBe(one)
+    expect(trustHash({ ...subject, installScripts: [{ name: 'prepare', command: 'node setup.js' }] })).not.toBe(one)
+    // Install scripts are not env files: the same text in either tag gives another hash.
+    expect(trustHash({ ...subject, envFiles: ['node setup.js'] })).not.toBe(one)
   })
 
   it('keeps trusted hashes per room in the data folder, across restarts', async () => {

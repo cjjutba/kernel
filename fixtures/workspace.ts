@@ -824,12 +824,13 @@ const groupedTurn = (id: string, ago: number, ask: string, thought: string, tool
   { ...userMsg(id, ask), ts: Date.now() - ago * 1000 }, { kind: 'thinking', id: `${id}-th`, ts: at(10, 28), text: thought }, ...tools, ...(reply ? [{ kind: 'text' as const, id: `${id}-tx`, ts: at(10, 29), text: reply }] : [])
 ]
 
-/** What a freshly cloned repo's settings.toml asks the user to trust (KERNEL-209, KERNEL-218). */
+/** What a freshly cloned repo's settings.toml and package.json ask the user to trust (KERNEL-209, KERNEL-218, KERNEL-260). */
 export const scriptTrust: ScriptTrust = {
   roomId: ids.roomA, hash: 'a41f0c9e', workspaceIds: [ids.table],
   scripts: { setup: 'pnpm install --frozen-lockfile\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'pnpm clean' },
   runScripts: [{ name: 'storybook', command: 'pnpm storybook --port $KERNEL_PORT' }],
-  copy: ['.env.local', 'certs/*.pem']
+  copy: ['.env.local', 'certs/*.pem'],
+  installScripts: [{ name: 'postinstall', command: 'node scripts/postinstall.js' }, { name: 'prepare', command: 'husky install' }]
 }
 
 export const workspaceFixtures: Record<string, Fixture> = {

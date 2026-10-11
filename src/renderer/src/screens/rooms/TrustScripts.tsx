@@ -5,8 +5,8 @@ import { CodeBlock, ConfirmDialog, useBusy } from '../../ui'
 import './rooms.css'
 
 /**
- * Run this repo's scripts? (KERNEL-218, no PNG.) The room's scripts and files.copy list exactly as Kernel will run them,
- * held by KERNEL-209 until the user trusts that text. Trust and run releases the held workspaces. Not now leaves them held,
+ * Run this repo's scripts? (KERNEL-218, no PNG.) The room's scripts, files.copy list and the install scripts in package.json
+ * exactly as Kernel will run them, held by KERNEL-209 and KERNEL-260 until the user trusts that text. Trust and run releases the held workspaces. Not now leaves them held,
  * and the workspace banner keeps its Review action.
  */
 export function TrustScripts({ roomId }: { roomId: string }) {
@@ -51,14 +51,20 @@ export function TrustScripts({ roomId }: { roomId: string }) {
     ...(trust.copy.length ? [{ label: 'Files to copy', text: trust.copy.join('\n') }] : []),
     ...(trust.envFiles?.length ? [{ label: 'Env files', text: trust.envFiles.join('\n') }] : [])
   ]
+  // The repo's own package.json scripts that a package install runs (KERNEL-260). Shown apart, since they come from another file.
+  const installs = trust.installScripts?.length ? [{ label: 'Install scripts in package.json', text: trust.installScripts.map((i) => `${i.name}: ${i.command}`).join('\n') }] : []
+  const body = [
+    entries.length ? `These come from .kernel/settings.toml in ${room.name}. Kernel runs them in your login shell for each new workspace.` : '',
+    installs.length ? `The install scripts come from package.json in ${room.name}. A package install runs them.` : ''
+  ].filter(Boolean).join(' ')
 
   return (
     <ConfirmDialog
       title="Run this repo's scripts?" busy={!!busy} busyLabel="Trusting" confirmLabel="Trust and run" cancelLabel="Not now" onConfirm={() => void confirm()} onCancel={close}
-      body={`These come from .kernel/settings.toml in ${room.name}. Kernel runs them in your login shell for each new workspace.`}
+      body={body}
     >
       <div ref={list} className="ts-list">
-        {entries.map((e) => (
+        {[...entries, ...installs].map((e) => (
           <section key={e.label} className="ts-item" aria-label={e.label}>
             <h3 className="ts-label">{e.label}</h3>
             <CodeBlock>{e.text}</CodeBlock>

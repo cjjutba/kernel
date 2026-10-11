@@ -303,7 +303,7 @@ export async function saveTeamSettings(repo: string, patch: TeamPatch): Promise<
   return loadRepoSettings(repo)
 }
 
-/** The text a room runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the room reads them. */
+/** The text a room runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the room reads them (KERNEL-260). */
 export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles' | 'installScripts'>
 
 /**
@@ -387,7 +387,9 @@ export function trustHash(s: TrustSubject): string {
   const runs = s.runScripts?.length ? [s.runScripts.map((r) => [r.name, r.command])] : []
   // Tagged and only when set, so a room without repo env files keeps the hash the user already trusted (KERNEL-247).
   const env = s.envFiles?.length ? [['env.files', s.envFiles]] : []
-  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env])).digest('hex')
+  // The same for the repo's install scripts (KERNEL-260), so a room whose package.json has none keeps its hash.
+  const installs = s.installScripts?.length ? [['install.scripts', s.installScripts.map((i) => [i.name, i.command])]] : []
+  return createHash('sha256').update(JSON.stringify([s.scripts.setup ?? null, s.scripts.run ?? null, s.scripts.archive ?? null, s.copy, ...runs, ...env, ...installs])).digest('hex')
 }
 
 /** How many trusted versions a room keeps. Going back to an older version doesn't ask again while it is in the list. */

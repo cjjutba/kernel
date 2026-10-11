@@ -1,7 +1,8 @@
-import { copyFile, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import type { FolderInfo, RepoSummary } from '@shared/types'
+import { parse, unwrap } from './bashGuard'
 import { exec, git, gitSlow, run } from './exec'
 
 // Everything a new room needs from the outside world: reading folders, GitHub through `gh`, the starter team and settings.toml.
@@ -161,6 +162,41 @@ export async function lockfileInstall(repoPath: string): Promise<string | undefi
   const locks: [string, string][] = [['pnpm-lock.yaml', 'pnpm install'], ['yarn.lock', 'yarn install'], ['bun.lockb', 'bun install'], ['bun.lock', 'bun install'], ['package-lock.json', 'npm install']]
   for (const [lock, command] of locks) if (await exists(join(repoPath, lock))) return command
   return (await exists(join(repoPath, 'package.json'))) ? 'npm install' : undefined
+}
+
+/** The scripts a package install runs from the root `package.json` itself, in the order it runs them. */
+const INSTALL_HOOKS = ['preinstall', 'install', 'postinstall', 'preprepare', 'prepare', 'postprepare'] as const
+
+/**
+ * The install scripts in the repo's root `package.json`, when a lockfile install applies (`lockfileInstall`). A package
+ * install runs these as the repo's own code, so they wait for the user to trust them like a setup script does (KERNEL-260).
+ * The scripts of the packages it installs aren't listed: pnpm 10 skips them by default, and npm and yarn run them.
+ */
+export async function installScripts(repoPath: string): Promise<{ name: string; command: string }[]> {
+  if (!(await lockfileInstall(repoPath))) return []
+  try {
+    const scripts = (JSON.parse(await readFile(join(repoPath, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> } | null)?.scripts
+    return INSTALL_HOOKS.flatMap((name) => (typeof scripts?.[name] === 'string' && scripts[name].trim() ? [{ name, command: scripts[name] }] : []))
+  } catch { return [] }
+}
+
+const PACKAGE_MANAGERS = new Set(['npm', 'pnpm', 'yarn', 'bun'])
+const INSTALL_VERBS = new Set(['install', 'i', 'ci', 'add', 'update', 'upgrade', 'up', 'rebuild', 'rb', 'install-test', 'it', 'link', 'ln', 'dedupe'])
+
+/**
+ * Whether a setup script installs packages: it has the lockfile's own command (`lock`), or a package manager called with an
+ * install verb anywhere in it, through wrappers too (`npm ci`, `pnpm --filter app i`, `yarn`). Over-reading only makes the
+ * room ask for trust it may not need, and only when the repo has install scripts.
+ */
+export function runsPackageInstall(script: string, lock?: string): boolean {
+  if (lock && script.includes(lock)) return true
+  return parse(script).flatMap((s) => unwrap(s)).some((s) => {
+    const at = s.words.findIndex((w) => PACKAGE_MANAGERS.has(w.slice(w.lastIndexOf('/') + 1)))
+    if (at < 0) return false
+    const rest = s.words.slice(at + 1)
+    // Bare `yarn`, with or without flags, installs.
+    return rest.some((w) => INSTALL_VERBS.has(w)) || (s.words[at].endsWith('yarn') && rest.every((w) => w.startsWith('-')))
+  })
 }
 
 /** The install command for a checkout, from its lockfile. Undefined when it has no package manager or already has node_modules. */
