@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { Served } from '../src/main/previewHost'
 
 // The suite runs Electron as plain Node, where `electron` is only the binary's path. These tests cover the pure parts.
 vi.mock('electron', () => ({}))
@@ -64,7 +65,7 @@ describe('allowedUrl', () => {
 describe('route', () => {
   const page = { path: '/data/shared/a/v1/page.html', mime: 'text/html', kind: 'html' as const }
   const image = { path: '/data/shared/b/v2/dot.svg', mime: 'image/svg+xml', kind: 'image' as const, frame: true }
-  const served = new Map([['t1', page], ['t2', image]])
+  const served = new Map<string, Served>([['t1', page], ['t2', image]])
 
   it("serves a token's version at its root and nothing else", () => {
     expect(route('kernel-shared://t1/', served)).toEqual({ file: page })
