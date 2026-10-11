@@ -1,8 +1,7 @@
 import { basename, dirname, join } from 'node:path'
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import type { Server } from 'node:http'
-import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, WaitsFor, Checkpoint, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -11,7 +10,6 @@ import { Store, newId } from './db'
 import { bus } from './bus'
 import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
-import { attachmentNote, planExists, saveAttachments, savePlan } from './services/plans'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
@@ -30,43 +28,39 @@ import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
-import { startHookServer } from './services/hookServer'
-import { hookToken } from './services/hookToken'
-import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
-import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
-import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, listWorktrees, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
-import { claudeSignedIn, readAccount, signOut } from './services/account'
+import { KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
+import { loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { claudeSignedIn, readAccount } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
 import { exec, git } from './services/exec'
-import { discoverSkills, listTree, readWorkspaceFile, searchFiles } from './services/files'
+import { listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
-import { allGreen, gh, ghUser as ghUserName, openIssues, openPrs, prNote, resolveFile, type GitHub } from './services/github'
-import { getIssue, getScope, linearToken, listIssues, moveToStarted, planParts, searchIssues } from './services/linear'
+import { allGreen, gh, prNote, resolveFile, type GitHub } from './services/github'
 import { Overlaps } from './services/overlap'
-import { checkpointTitle, clock, dropCheckpoints, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
-import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
+import { dropCheckpoints, snapshot } from './services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from './services/waits'
 import type { KernelOptions } from './features/options'
 import { channels } from './features/channels'
+import * as records from './features/records'
+import { head, LEAD_CHAT, messageOf, NEW_CHAT } from './features/shared'
+import { App } from './features/app'
+import { Inbox } from './features/inbox'
+import { Checkpoints } from './features/checkpoints'
+import { Config } from './features/config'
+import { Hooks } from './features/hooks'
+import { Account } from './features/account'
+import { Integrations } from './features/integrations'
 import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
 import { sessionDeps } from './features/sessionDeps'
 
 const COPY = 'fork:'
 
-/**
- * The name a chat opened from the tab row starts with. It gives way to Claude Code's title for the session, or to the one
- * Kernel picks at the end of a turn, and comes back after /clear (`nameChat`, KERNEL-202).
- */
-const NEW_CHAT = 'New chat'
-/** The Lead's first tab before anyone writes in it. Like "New chat", it gives way to a real name. */
-const LEAD_CHAT = 'Lead'
 /** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
 const RENAME_AT = [1, 3, 10, 30]
 
@@ -86,18 +80,6 @@ async function inPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
 
-/** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
-const LIMIT_RECHECK_MS = 90_000
-
-/** What the "Notify me" notification calls each window. Claude Code calls `seven_day_overage_included` the Fable limit. */
-const LIMIT_NAME: Record<RateLimit['type'], string> = {
-  five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
-}
-
-/** A composer message: `parts` in order when they carry text (chips sit inline), else `text` first and the parts after it. */
-const messageOf = (text: string, parts: ChatPart[] = []): ChatPart[] =>
-  parts.some((p) => p.type === 'text') ? parts : [...(text ? [{ type: 'text' as const, text }] : []), ...parts]
-
 type CoreChannel = Exclude<Channel, `system.${string}`>
 export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promise<KernelApi[C]['res']> }
 
@@ -109,6 +91,10 @@ export type Handlers = { [C in CoreChannel]: (req: KernelApi[C]['req']) => Promi
 export const UNBUILT = {} as const satisfies Partial<Record<CoreChannel, `KERNEL-${number}`>>
 
 type Unbuilt = keyof typeof UNBUILT
+
+/** The channels of the features that have moved out of this file, so `coreHandlers` holds the rest and a channel in both fails typecheck. */
+type ChannelsOf<F> = F extends { handlers(): infer H } ? keyof H : never
+type Moved = ChannelsOf<App | Inbox | Checkpoints | Config | Hooks | Account | Integrations>
 
 /** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
 function unbuilt(): Pick<Handlers, Unbuilt> {
@@ -154,8 +140,6 @@ export class Kernel {
    */
   private trash = new Set<string>()
   private emptying: Promise<void> = Promise.resolve()
-  /** Each room's own `workspace.remote` by path, for the review rule, which can't wait on a file read (`remoteFor`). */
-  private roomRemotes = new Map<string, string | undefined>()
   /** Ports handed out to workspaces not saved yet, so two hand-offs in one turn never share a block (KERNEL-244). */
   private reservedPorts = new Set<number>()
   /** The exit code of a workspace's last failed setup, or null when it was stopped. Cleared when setup passes. */
@@ -177,6 +161,15 @@ export class Kernel {
    * synchronous and can't wait for the check (KERNEL-247).
    */
   private envFilesOk = new Map<string, string>()
+  // ---------- features (KERNEL-325)
+  // Each is built with this Kernel and does no work until it is called (R1), so the order here doesn't matter.
+  readonly app = new App(this)
+  readonly inbox = new Inbox(this)
+  readonly checkpoints = new Checkpoints(this)
+  readonly config = new Config(this)
+  readonly hooks = new Hooks(this)
+  readonly account = new Account(this)
+  readonly integrations = new Integrations(this)
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
   // (KERNEL-324).
@@ -201,26 +194,11 @@ export class Kernel {
   github: GitHub = gh
 
   settings!: AppSettings
-  private hookServer?: Server
-  /** The start-up rewrite of out-of-date hooks failed (KERNEL-206). The hooks banner shows until a write succeeds. */
-  private hooksNeedInstall = false
   private agentCache = new Map<string, AgentDef[]>()
   private agentWatchers = new Map<string, () => void>()
   private statuses = new Map<string, Record<string, AgentStatus>>()
   private prTimer?: NodeJS.Timeout
-  /** When each hook event last arrived from a real session. The test event is not counted. */
-  private hookSeen = new Map<string, number>()
   private unlisten: () => void = () => undefined
-  private network?: NetworkMonitor
-  /** One timer per rejected usage window, at its reset time. */
-  private limitTimers = new Map<RateLimit['type'], { at: number; timer: NodeJS.Timeout }>()
-  /** The last account read, so a sign-out keeps the name on the account menu. */
-  private account?: import('@shared/types').ClaudeAccount
-  /** Windows the user asked to hear about when they reset ("Notify me"). */
-  private notifyReset = new Set<RateLimit['type']>()
-  /** Runs `checkLimits` while any window is rejected. */
-  private limitCheck?: NodeJS.Timeout
-  private limitChecking?: Promise<void>
   /** Waits being released, so a merge seen twice (push and poll) sends the brief once (KERNEL-259). */
   private waitReleases = new Map<string, Promise<void>>()
   /**
@@ -251,21 +229,18 @@ export class Kernel {
     this.unlisten = listen(this)
   }
 
-  private get home() { return this.o.home ?? homedir() }
+  get home(): string { return this.o.home ?? homedir() }
   /** Whether agents get share_file. `experimental.sharing` in settings.json, with no page in Settings until KERNEL-308. */
   private get sharing() { return this.settings?.experimental.sharing === true }
-  private get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   async start() {
     // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
     const clean = this.store.meta<boolean>('cleanExit') === true
     this.store.saveMeta('cleanExit', false)
-    this.settings = await loadAppSettings(this.settingsFile, this.home)
-    await saveAppSettings(this.settingsFile, this.settings)
+    this.settings = await loadAppSettings(this.config.settingsFile, this.home)
+    await saveAppSettings(this.config.settingsFile, this.settings)
     this.o.onSettings?.(this.settings)
-    // Hooks from before KERNEL-206, or from another port or timeout, get a 401. Rewrite Kernel's own entries, never add any.
-    this.hooksNeedInstall = await refreshHooks(this.claudeSettings, this.settings.hookPort, this.settings.permissions.approvalTimeoutSec, this.hookToken).then(() => false, (e) => { console.warn('[hooks] could not update the hooks', e); return true })
-    await this.listenHooks(this.settings.hookPort)
+    await this.hooks.start()
     this.prTimer = setInterval(() => void this.pollPrs(), 45_000)
     void this.countChanges()
     // No waiter outlives a restart, so nothing can answer an approval from the last run. It ends before the inbox
@@ -275,12 +250,9 @@ export class Kernel {
     this.backfillLeadChats()
     void this.nameStuckChats().catch(() => undefined)
     this.leadUpdates.attach()
-    if (this.o.probeNetwork) {
-      this.network = new NetworkMonitor({ probe: this.o.probeNetwork, onChange: (online) => this.setOnline(online) })
-      this.network.start()
-    }
+    this.account.start()
     this.tasks.attach()
-    for (const r of this.store.rooms()) void this.remoteFor(r.path)
+    for (const r of this.store.rooms()) void this.config.remoteFor(r.path)
     // Claude Code processes a crash or a force quit left behind keep working in the worktrees the chats resume in.
     await this.sessions.endLeftovers()
     // Chats that carry on below need their agent's prompt, and a Lead chat its Kernel tools, which read the agents.
@@ -299,9 +271,9 @@ export class Kernel {
       this.sessions.holdCarryOn()
       void (async () => {
         try {
-          await this.network?.check()
+          await this.account.network?.check()
           const signedIn = await this.signedInReader().catch(() => true)
-          if (!signedIn && !this.stopped) this.signedOut()
+          if (!signedIn && !this.stopped) this.account.signedOut()
         } finally {
           // A stopped Kernel's database is closed, and releasing would send what waited.
           if (!this.stopped) this.sessions.releaseCarryOn()
@@ -318,182 +290,14 @@ export class Kernel {
     void this.sweepWaits().catch(() => undefined).then(() => this.sweepMerged()).catch(() => undefined)
     for (const path of this.store.meta<string[]>('trash') ?? []) this.throwAway(path)
     // A reset on claude.ai while Kernel was closed shows only in the real numbers, so ask at once.
-    if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.checkLimits()
-  }
-
-  /** Starts the hook server on `port`. A taken port is not fatal: preflight reports it and offers the next one. */
-  private async listenHooks(port: number): Promise<boolean> {
-    try {
-      this.hookServer = await startHookServer({
-        port,
-        token: this.hookToken,
-        approvals: this.approvals,
-        approvalTimeoutMs: () => this.settings.permissions.approvalTimeoutSec * 1000,
-        isManaged: (id) => this.sessions.isManaged(id),
-        resolve: (cwd) => this.resolveCwd(cwd)
-      })
-      // A server that closes or errors on its own takes the floor and the logs with it (WorkspaceHooksDown.png).
-      const server = this.hookServer
-      // A quit closes it on purpose, and the window is still up to flash Hooks are disconnected (KERNEL-214).
-      server.on('close', () => { if (this.hookServer === server && !this.stopped) void this.pushHooks() })
-      server.on('error', () => { if (!this.stopped) void this.pushHooks() })
-      return true
-    } catch { return false }
-  }
-
-  /** Moves the hook server to `port`, saves it, and rewrites the hooks if they were installed. Returns the status after. */
-  private async restartHooks(port: number): Promise<HookStatus> {
-    // A busy new port must not take down the server that works. Check before closing.
-    if (port !== this.settings.hookPort && (await portBusy(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
-    // Any Kernel entry counts, so an old http install moves to the command form. Hooks are never added where there were none.
-    const wasInstalled = await kernelHooksPresent(this.claudeSettings).catch(() => false)
-    await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
-    this.hookServer = undefined
-    if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
-    if (port !== this.settings.hookPort) {
-      this.settings = { ...this.settings, hookPort: port }
-      await saveAppSettings(this.settingsFile, this.settings)
-    }
-    if (wasInstalled) await this.writeHooks(port)
-    return this.pushHooks()
-  }
-
-  /**
-   * Settings > any app page. Saves to settings.json and applies at once: running sessions read the permission lists on their
-   * next tool call, the mode moves to them now, a higher limit on agents working at once starts what was waiting, and a new
-   * approval timeout is read per request and rewritten into the installed hooks.
-   */
-  private async setSettings(patch: Parameters<typeof applySettingsPatch>[1]): Promise<AppSettings> {
-    const before = this.settings
-    this.settings = applySettingsPatch(before, patch)
-    await saveAppSettings(this.settingsFile, this.settings)
-    this.sessions.applySettings(before)
-    this.o.onSettings?.(this.settings)
-    // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
-    if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.claudeSettings).catch(() => false))) await this.writeHooks(this.settings.hookPort)
-    return this.settings
-  }
-
-  /** The activity log as plain text, one line per event, saved in the data folder. */
-  private async exportLogs(): Promise<{ path: string }> {
-    const dir = join(this.o.dataDir, 'logs')
-    await mkdir(dir, { recursive: true })
-    const path = join(dir, `kernel-${new Date().toISOString().replace(/[:.]/g, '-')}.log`)
-    const lines = this.store.activity(undefined, 5000).reverse().map((e) => `${new Date(e.ts).toISOString()} ${[e.actor, e.text, e.object].filter(Boolean).join(' ')}`)
-    await writeFile(path, lines.join('\n') + '\n')
-    return { path }
-  }
-
-  /** Install, and every rewrite after a port or timeout change. A write that works clears the start-up failure. */
-  private async writeHooks(port: number): Promise<string[]> {
-    const events = await installHooks(this.claudeSettings, port, this.settings.permissions.approvalTimeoutSec, this.hookToken)
-    this.hooksNeedInstall = false
-    return events
-  }
-
-  private async pushHooks(): Promise<HookStatus> {
-    const status = await this.hooksStatus()
-    if (!this.stopped) bus.push({ type: 'hooks', status })
-    return status
-  }
-
-  // ---------- failures (KERNEL-28)
-
-  /** Main's view of the network. Offline holds every room like a pause; back online sends what queued. */
-  private setOnline(online: boolean) {
-    bus.push({ type: 'online', online })
-    if (online) this.sessions.releaseAll('offline')
-    else this.sessions.holdAll('offline')
-  }
-
-  private authTimer?: NodeJS.Timeout
-
-  /**
-   * A session reported an auth failure: Claude Code is signed out. Everything waits until the CLI is signed in again,
-   * by Sign in here or by `claude /login` in a terminal, which a check every 10 seconds picks up.
-   */
-  private signedOut() {
-    this.sessions.holdAll('auth')
-    bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
-    if (this.authTimer) return
-    this.authTimer = setInterval(() => void this.readAccount().catch(() => undefined), 10_000)
-    this.authTimer.unref?.()
+    if (this.store.rooms().some((r) => r.pausedBy === 'limit')) void this.account.checkLimits()
   }
 
   /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
-  async readAccount() {
-    const account = await this.accountReader()
-    if (!account.signedIn) return account
-    this.account = account
-    if (this.sessions.heldFor().includes('auth')) {
-      clearInterval(this.authTimer); this.authTimer = undefined
-      this.sessions.releaseAll('auth')
-      bus.push({ type: 'account', account })
-    }
-    return account
-  }
+  readAccount(): Promise<ClaudeAccount> { return this.account.readAccount() }
 
-  /** Runs Claude Code's own login (it opens the browser), then reads the account back. */
-  async signIn() {
-    await exec('claude', ['auth', 'login'], { timeoutMs: 5 * 60_000 })
-    const account = await this.readAccount()
-    bus.push({ type: 'account', account })
-    if (!account.signedIn) throw new Error('Sign in did not finish. Open a terminal and run claude /login.')
-    return account
-  }
-
-  /**
-   * A 5-hour or weekly rejection pauses every room by `limit` (FloorLimit.png); its end resumes them, and the chats it
-   * stopped mid-turn carry on (`Sessions.carryOn`). The limits are saved, so a restart keeps the pause. Each rejected
-   * window gets a timer at its reset time, which marks it allowed again. While any window is rejected, `checkLimits`
-   * also runs every LIMIT_RECHECK_MS. A window lifting by any route sends "Notify me".
-   */
-  private applyLimits(limits: RateLimit[]) {
-    const now = Date.now()
-    this.store.saveMeta('limits', limits)
-    const rooms = this.store.rooms().filter((r) => !r.archived)
-    if (blockingLimit(limits, now)) { for (const r of rooms) if (!r.paused) this.pauseRoom(r.id, 'limit') }
-    else for (const r of rooms) if (r.paused && r.pausedBy === 'limit') this.resumeRoom(r.id, 'limit')
-    for (const l of limits) {
-      const at = l.resetsAt ? l.resetsAt * 1000 : undefined
-      const held = this.limitTimers.get(l.type)
-      if (l.status !== 'rejected' || !at) { if (held) { clearTimeout(held.timer); this.limitTimers.delete(l.type) } continue }
-      if (held?.at === at) continue
-      if (held) clearTimeout(held.timer)
-      const timer = setTimeout(() => this.limitReset(l.type), Math.min(Math.max(0, at - now), 2 ** 31 - 1))
-      timer.unref?.()
-      this.limitTimers.set(l.type, { at, timer })
-    }
-    for (const type of this.notifyReset) {
-      if (limits.some((l) => l.type === type && l.status === 'rejected')) continue
-      this.notifyReset.delete(type)
-      this.o.showNotification?.({ id: `limit-${type}-${now}`, kind: 'system', title: `Your ${LIMIT_NAME[type]} reset`, sub: 'Agents can run again.', needsYou: false, read: false, createdAt: now }, { silent: false })
-    }
-    const rejected = limits.some((l) => l.status === 'rejected')
-    if (rejected && !this.limitCheck) { this.limitCheck = setInterval(() => void this.checkLimits(), LIMIT_RECHECK_MS); this.limitCheck.unref?.() }
-    if (!rejected && this.limitCheck) { clearInterval(this.limitCheck); this.limitCheck = undefined }
-  }
-
-  private limitReset(type: RateLimit['type']) {
-    const held = this.limitTimers.get(type)
-    if (held) clearTimeout(held.timer)
-    this.limitTimers.delete(type)
-    this.sessions.resetLimit(type)
-  }
-
-  /**
-   * A rejected window can lift without Kernel hearing: its timer fires late after the Mac slept, or the limit is reset
-   * on claude.ai. Lift what the clock says has reset, then ask Claude Code for the real numbers. While a limit pauses
-   * the rooms and no session is live, a short session asks. Runs every LIMIT_RECHECK_MS while a window is rejected, and when the Mac wakes.
-   */
-  checkLimits(): Promise<void> {
-    this.limitChecking ??= (async () => {
-      for (const [type, t] of [...this.limitTimers]) if (t.at <= Date.now()) this.limitReset(type)
-      const paused = this.store.rooms().some((r) => r.pausedBy === 'limit')
-      await this.sessions.usage({ probeIn: paused ? this.o.dataDir : undefined })
-    })().catch(() => undefined).finally(() => { this.limitChecking = undefined })
-    return this.limitChecking
-  }
+  /** The app calls it when the Mac wakes. */
+  checkLimits(): Promise<void> { return this.account.checkLimits() }
 
   /**
    * Send now in a room a limit paused sends the message anyway. If the limit is real, Claude Code answers with it and
@@ -511,12 +315,6 @@ export class Kernel {
     return this.sessions.sendNow(chatId, id, { pastPause: room?.pausedBy === 'limit' })
   }
 
-  /** Opens Terminal.app in `cwd` and runs `command` there. */
-  async openTerminal(cwd: string, command?: string) {
-    const r = await exec('osascript', ['-e', terminalScript(cwd, command)], { timeoutMs: 15_000 })
-    if (r.code !== 0) throw new Error(`Could not open Terminal: ${r.stderr.trim() || 'osascript failed'}`)
-  }
-
   /** Throws away uncommitted changes, after a checkpoint so they can still come back from the drawer. */
   async discard(workspaceId: string) {
     const ws = this.mustWs(workspaceId)
@@ -527,18 +325,6 @@ export class Kernel {
     if (chat) await snapshot(ws, { chatId: chat.id, title: 'Before discarding changes' }).then((c) => bus.push({ type: 'checkpoint', checkpoint: c }))
     await discardChanges(ws.path)
     bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
-  }
-
-  private async hooksStatus(): Promise<HookStatus> {
-    const installed = new Set(await hookStatus(this.claudeSettings, this.hookToken).catch(() => [] as string[]))
-    return {
-      port: this.settings.hookPort,
-      listening: !!this.hookServer?.listening,
-      installed: KERNEL_HOOK_EVENTS.every((e) => installed.has(e)),
-      events: KERNEL_HOOK_EVENTS.map((name) => ({ name, installed: installed.has(name), lastSeen: this.hookSeen.get(name) })),
-      token: this.hookToken,
-      needsInstall: this.hooksNeedInstall
-    }
   }
 
   /** Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). */
@@ -558,21 +344,18 @@ export class Kernel {
   }
 
   private stopping?: Promise<void>
+  private hasStopped = false
+  get stopped(): boolean { return this.hasStopped }
 
   /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window (KERNEL-214). */
   private async doStop(o: { budgetMs?: number }) {
-    this.stopped = true
+    this.hasStopped = true
     this.unlisten()
     this.notifications.detach()
     this.leadUpdates.detach()
     this.tasks.detach()
     clearInterval(this.prTimer)
-    this.network?.stop()
-    clearInterval(this.authTimer)
-    for (const t of this.limitTimers.values()) clearTimeout(t.timer)
-    this.limitTimers.clear()
-    clearInterval(this.limitCheck)
-    this.limitCheck = undefined
+    this.account.stop()
     for (const close of this.agentWatchers.values()) close()
     this.agentWatchers.clear()
     await this.sessions.shutdown(o.budgetMs)
@@ -586,9 +369,7 @@ export class Kernel {
     // would reach a closed database. An outside session's hook gets its fallback answer before the connections end.
     this.approvals.expirePending()
     await new Promise((r) => setImmediate(r))
-    // An outside session waiting on an approval holds its request open for up to the approval timeout, and close()
-    // waits for it, so whatever is still open ends first.
-    await new Promise<void>((r) => { if (!this.hookServer) return r(); this.hookServer.closeAllConnections(); this.hookServer.close(() => r()) })
+    await this.hooks.stop()
     this.store.db.close()
   }
 
@@ -597,7 +378,7 @@ export class Kernel {
   async addRoom(path: string, name?: string): Promise<Room> {
     const existing = this.store.rooms().find((r) => r.path === path)
     if (existing) return existing
-    const remote = await this.remoteFor(path)
+    const remote = await this.config.remoteFor(path)
     const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
     this.store.saveRoom(room)
     await this.agents(room.id)
@@ -666,7 +447,7 @@ export class Kernel {
       if (req.source === 'repo') await cloneRepo(req.from, room.path)
       else if (req.source === 'scratch') await copyTemplate(req.from, room.path)
       else if (req.initGit && !(await inspectFolder(room.path, this.home)).git) await initGit(room.path)
-      const remote = await this.remoteFor(room.path)
+      const remote = await this.config.remoteFor(room.path)
       const next: Room = { ...room, repo: room.repo ?? (await remoteRepo(room.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(room.path, remote).catch(() => 'main')) }
       this.store.saveRoom(next)
       bus.push({ type: 'room', room: next })
@@ -692,7 +473,7 @@ export class Kernel {
       return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
     })
     await step('hooks', async () => {
-      const status = await this.hooksStatus()
+      const status = await this.hooks.hooksStatus()
       if (!status.installed) throw new Error('Kernel hooks are not in your Claude settings yet. Open Check hooks in the sidebar to install them.')
     })
     await step('agents', async () => {
@@ -940,7 +721,7 @@ export class Kernel {
     const mode = reviewed ? 'worktree' : o.mode ?? repo.workspace.mode ?? s.workspace.mode
     if (o.waitFor?.length && (mode === 'current' || reviewed)) throw new Error(reviewed ? 'A review never waits for another PR.' : "A workspace on the main checkout can't wait for a PR. Pass mode worktree.")
     const title = o.title ?? o.prompt.split(/\s+/).slice(0, 6).join(' ')
-    const remote = await this.remoteFor(room.path, repo)
+    const remote = await this.config.remoteFor(room.path, repo)
     // `origin/` in a base from Settings, the Lead or a PR means the room's remote. A branch picked from the list is a real ref.
     const wanted = o.baseRef ?? repo.workspace.baseRef ?? s.workspace.baseRef
     const want = o.source?.kind === 'branch' ? wanted : onRemote(wanted, remote)
@@ -961,7 +742,7 @@ export class Kernel {
         const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
-        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
+        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.integrations.issueLabels(issue.id) : [])
         branch = await freeBranch(room.path, asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels))))
         path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
@@ -988,7 +769,7 @@ export class Kernel {
     bus.activity({ kind: 'workspace.created', roomId, workspaceId: ws.id, agentId: agent.id, text: 'started', object: ws.name })
     if (stale) bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: agent.id, actor: 'kernel', text: `started ${ws.name} from ${baseRef} as last fetched${stale.when ? ` ${stale.when}` : ''}, because fetching ${remote} failed:`, object: stale.error, warn: true })
     // A Linear issue goes to In Progress. A GitHub issue ("#41") is left to GitHub.
-    if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.startIssue(ws, o.source.id)
+    if (o.source?.kind === 'issue' && o.source.id && !o.source.id.startsWith('#')) void this.integrations.startIssue(ws, o.source.id)
     // Rowan's hand-off: the board task this workspace builds moves to Building now, not when the turn ends.
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
@@ -1034,7 +815,7 @@ export class Kernel {
     if (wait?.held && wait.on.length) {
       // The brief and the Lead's messages wait in the chat, and only then does the workspace count as ready, so a quit
       // between them finds a ready waiter that Sessions.restore holds again. No checkpoint, run script or turn yet.
-      const base = await this.head(ws.path)
+      const base = await head(ws.path)
       this.sessions.hold(chat.id, parts, { from })
       await after((m) => this.sessions.hold(chat.id, m, { from: 'lead' }))
       const now = this.mustWs(ws.id)
@@ -1132,7 +913,7 @@ export class Kernel {
         await this.releaseWait(ws.id)
         return passed(this.mustWs(ws.id))
       }
-      const base = await this.head(ws.path)
+      const base = await head(ws.path)
       const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
       if (held.status === 'ready') this.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.waitLabelOf(held), held: true } })
       return held
@@ -1319,7 +1100,7 @@ export class Kernel {
       // a wait that merged meanwhile ends with it (KERNEL-259).
       const wait = this.mustWs(ws.id).waitsFor
       if (wait?.held && wait.on.length && chat && !waitMet(wait, this.store.workspaces(ws.roomId))) {
-        const base = await this.head(ws.path)
+        const base = await head(ws.path)
         this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
         void this.settleWait(ws.id).catch(() => undefined)
         return
@@ -1373,7 +1154,7 @@ export class Kernel {
     // whose commits can't be counted: an unknown count is not zero (KERNEL-70).
     // A kept worktree still has its branch checked out, so the branch stays with it.
     const wanted = ws.mode === 'worktree' && !o.keepWorktree && (deleteBranch ?? this.settings.workspace.deleteBranchOnArchive)
-    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path, repo)) : 0
+    const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.config.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
     // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).
     const moved = ws.mode === 'worktree' && !o.keepWorktree ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
@@ -1425,7 +1206,7 @@ export class Kernel {
       const path = await stat(ws.path).then(() => undefined, () => ws.path)
       if (!path) throw new Error(`The folder ${ws.path} is back in use, so ${ws.name} cannot be restored there.`)
       const repo = await loadRepoSettings(room.path)
-      await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote: await this.remoteFor(room.path, repo) })
+      await restoreWorktree({ repo: room.path, path, branch: ws.branch, remote: await this.config.remoteFor(room.path, repo) })
       if (!(await this.untrusted(room, repo))) await this.copyFiles(ws, room, repo)
       else bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', line: "Did not copy local files: this room's scripts aren't trusted yet.", stream: 'stderr' })
       if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
@@ -1504,8 +1285,8 @@ export class Kernel {
     const facts: DeleteFacts[] = []
     for (const [roomId, list] of byRoom) {
       const room = this.mustRoom(roomId)
-      const remote = await this.remoteFor(room.path)
-      const trees = await listWorktrees(room.path).then((l) => l, () => undefined)
+      const remote = await this.config.remoteFor(room.path)
+      const trees =await listWorktrees(room.path).then((l) => l, () => undefined)
       const current = await currentBranch(room.path).catch(() => undefined)
       facts.push(...await inPool(list, 8, async (ws): Promise<DeleteFacts> => {
         const branchKey = `${roomId}\0${ws.branch}`
@@ -1614,33 +1395,6 @@ export class Kernel {
     return files
   }
 
-  /** A plan's file for Open in editor, written again from the approval when it is missing (D-092). */
-  async planFile(id: string): Promise<{ path: string; relative: string }> {
-    const a = this.store.approvals().find((x) => x.id === id)
-    const text = a ? String(a.detail || (a.input as { plan?: unknown } | undefined)?.plan || '') : ''
-    if (!a || !text.trim()) throw new Error('This plan has no text to save.')
-    const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
-    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error('Its workspace folder is gone. Copy the plan instead.')
-    if (a.planFile && (await planExists(ws.path, a.planFile))) return { path: join(ws.path, a.planFile), relative: a.planFile }
-    const relative = await savePlan(ws.path, text, { fallback: a.title, reuse: a.planFile })
-    if (relative !== a.planFile) this.approvals.update(a.id, { planFile: relative })
-    return { path: join(ws.path, relative), relative }
-  }
-
-  /**
-   * A plan's change request with images: saves them in the workspace and names their paths in the message (D-134).
-   * A plan is ExitPlanMode or the Lead's `request_plan_approval`, the same test as the composer's `isPlanApproval`.
-   */
-  async withAttachments(id: string, decision: Decision): Promise<Decision> {
-    if (decision.behavior !== 'deny' || !decision.images?.length) return decision
-    const { images, ...rest } = decision
-    const a = this.store.approvals().find((x) => x.id === id)
-    if (!a || (a.kind !== 'plan' && a.toolName !== 'ExitPlanMode') || !this.approvals.isPending(id)) return rest
-    const ws = a.workspaceId ? this.store.workspace(a.workspaceId) : undefined
-    if (!ws || !(await stat(ws.path).then(() => true, () => false))) throw new Error("The workspace folder is gone, so the images can't be saved.")
-    return { ...rest, message: attachmentNote(rest.message, await saveAttachments(ws.path, images)) }
-  }
-
   async diff(id: string, file?: string) {
     const ws = this.mustWs(id)
     const since = ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : await mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)
@@ -1655,46 +1409,13 @@ export class Kernel {
   // ---------- checkpoints
 
   /** Save the worktree after a turn, titled with the prompt that started the turn. */
-  async checkpoint(ws: Workspace, chat: Chat) {
-    const items = this.store.items(chat.id)
-    const user = [...items].reverse().find((i) => i.kind === 'user')
-    // A turn Kernel's team update started is titled for what it is, not for the update's first line (KERNEL-116).
-    const text = user?.kind !== 'user' ? '' : isKernelUpdate(user) ? 'Team update' : user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ')
-    const c = await snapshot(ws, { chatId: chat.id, title: text || chat.title })
-    bus.push({ type: 'checkpoint', checkpoint: c })
-    return c
-  }
-
-  /** Restore a workspace's files to a checkpoint. Later changes go to a backup branch, and the chat gets a note saying so. */
-  async revertCheckpoint(workspaceId: string, checkpointId: string): Promise<{ backupBranch: string }> {
-    const ws = this.mustWs(workspaceId)
-    // Current-branch workspaces share the checkout with the Lead and each other, so any agent working in the same folder blocks a revert.
-    const sharing = this.store.workspaces().filter((w) => w.path === ws.path && w.status !== 'archived')
-    if (sharing.some((w) => this.store.chats(w.id).some((c) => this.sessions.isRunning(c.id)))) throw new Error('An agent is still working in this workspace. Stop it, then revert.')
-    const r = await revertTo(ws, checkpointId)
-    bus.push({ type: 'checkpoint', checkpoint: r.checkpoint })
-    const time = clock(r.checkpoint.ts)
-    const tabs = this.chatTabs(ws.id).filter((c) => c.kind !== 'terminal')
-    const chat = tabs.find((c) => c.id === r.checkpoint.chatId) ?? tabs[0]
-    const what = r.checkpoint.start ? 'the start of the chat' : `${time}, "${checkpointTitle(r.checkpoint.title)}"`
-    if (chat) {
-      const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text: `Reverted files to ${what}. Later changes are saved on ${r.backupBranch}.` }
-      this.store.saveItem(chat.id, item)
-      bus.push({ type: 'chat.item', chatId: chat.id, item })
-    }
-    bus.activity({ kind: 'checkpoint.reverted', actor: 'you', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `reverted files to ${time} in`, object: ws.name, data: { backupBranch: r.backupBranch } })
-    return { backupBranch: r.backupBranch }
-  }
+  checkpoint(ws: Workspace, chat: Chat): Promise<Checkpoint> { return this.checkpoints.checkpoint(ws, chat) }
 
   // ---------- chats
 
-  chatTabs(workspaceId: string): Chat[] { return this.store.chats(workspaceId).filter((c) => !c.closed) }
+  chatTabs(workspaceId: string): Chat[] { return records.chatTabs(this.store, workspaceId) }
 
-  private mustChat(chatId: string): Chat {
-    const c = this.store.chat(chatId)
-    if (!c) throw new Error('That chat no longer exists.')
-    return c
-  }
+  private mustChat(chatId: string): Chat { return records.mustChat(this.store, chatId) }
 
   /** A name the user types is theirs: Kernel never changes it again (KERNEL-202). */
   renameChat(chatId: string, title: string): Chat {
@@ -1716,7 +1437,6 @@ export class Kernel {
    * once (a provider without the Haiku id, no bundled CLI) tends to keep failing, so the retries stop (`nameChat`).
    */
   private nameMisses = new Map<string, number>()
-  private stopped = false
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
   private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
@@ -1823,11 +1543,7 @@ export class Kernel {
     return effortFor(model, this.settings.models.effortByModel, agent?.effort ?? this.settings.models.effort)
   }
 
-  private saveChat(chat: Chat): Chat {
-    this.store.saveChat(chat)
-    bus.push({ type: 'chat', chat })
-    return chat
-  }
+  private saveChat(chat: Chat): Chat { return records.saveChat(this.store, chat) }
 
   /**
    * A new chat that resumes from this one with the SDK's session fork. With `itemId` the fork ends at the nearest assistant message
@@ -1890,9 +1606,7 @@ export class Kernel {
 
   /** A chat opened with a placeholder name ("New chat", the Lead's "Lead") is auto-named. A workspace's title or a fork's is not (KERNEL-202). */
   newChat(workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
-    const kind = o.kind ?? 'chat'
-    const auto = kind === 'chat' && (title === NEW_CHAT || title === LEAD_CHAT)
-    return this.store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), createdAt: Date.now() })
+    return records.newChat(this.store, workspaceId, title, o)
   }
 
   /** The preset a new big terminal tab runs, resolved here so the renderer never names the command (KERNEL-248). */
@@ -1964,7 +1678,7 @@ export class Kernel {
         // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
         const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
-        const linked = issue ? await this.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
+        const linked = issue ? await this.integrations.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf
@@ -2071,10 +1785,7 @@ export class Kernel {
   private mergedWith = new Map<string, AppSettings['pr']['mergeMethod']>()
 
   /** PR instructions and notes go to the workspace's first chat. */
-  private prChat(id: string): Chat | undefined {
-    const chats = this.chatTabs(id)
-    return chats.find((c) => c.kind !== 'terminal') ?? chats[0]
-  }
+  private prChat(id: string): Chat | undefined { return records.prChat(this.store, id) }
 
   /**
    * The sidebar's check before a one-click archive: whether archiving would lose uncommitted work. A current-branch
@@ -2085,7 +1796,7 @@ export class Kernel {
       const ws = await this.syncBranch(id)
       if (ws.mode !== 'worktree') return false
       if (await folderGone(ws.path)) return false
-      return (await gitStatus(ws.path, ws.branch, ws.baseRef, await this.remoteOfWs(ws))).dirty.files ? 'dirty' : false
+      return (await gitStatus(ws.path, ws.branch, ws.baseRef, await this.config.remoteOfWs(ws))).dirty.files ? 'dirty' : false
     } catch { return 'unknown' }
   }
 
@@ -2193,7 +1904,7 @@ export class Kernel {
   private async unpushedOf(ws: Workspace): Promise<number | null> {
     const room = this.store.room(ws.roomId)
     if (!room) return null
-    const counted = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.remoteFor(room.path))
+    const counted = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.config.remoteFor(room.path))
     if (counted === 0 || !ws.prHead) return counted
     const r = await exec('git', ['-C', room.path, 'rev-list', '--count', `refs/heads/${ws.branch}`, '--not', ws.prHead])
     const n = Number(r.stdout.trim())
@@ -2255,11 +1966,6 @@ export class Kernel {
   private waitLabelOf(ws: Workspace) {
     const targets = (ws.waitsFor?.on ?? []).map((id) => this.store.workspace(id)).filter((t): t is Workspace => !!t)
     return joinLabels(targets.map((t) => waitLabel(t, this.nameOf(t)))) || 'another PR'
-  }
-
-  private async head(path: string) {
-    const r = await exec('git', ['-C', path, 'rev-parse', 'HEAD'])
-    return r.code === 0 ? r.stdout.trim() : undefined
   }
 
   /** A PR merged or closed. Its own wait ends, its waiters whose targets all merged go on, and a close breaks their wait. */
@@ -2341,10 +2047,10 @@ export class Kernel {
     }
     const room = this.mustRoom(ws.roomId)
     const chat = this.store.chats(id).find((c) => c.kind !== 'terminal' && this.sessions.queued(c.id).length > 0) ?? this.prChat(id)
-    const before = await this.head(ws.path)
+    const before = await head(ws.path)
     // Onto the remote's copy of the base, even when the workspace started from the local branch, which a merge on
     // GitHub doesn't move. Only a fast-forward on a clean tree: anything else is the agent's to rebase.
-    const remote = await this.remoteFor(room.path)
+    const remote = await this.config.remoteFor(room.path)
     const base = stripRemote(ws.baseRef, remote)
     let forwarded = true
     if (!now && ws.mode === 'worktree') {
@@ -2352,7 +2058,7 @@ export class Kernel {
       const fetched = (await fetchOrigin(room.path, remote, { fresh: true })).ok
       forwarded = fetched && await fastForward(ws.path, `${remote}/${base}`)
     }
-    const after = await this.head(ws.path)
+    const after = await head(ws.path)
     // Archived, started or changed while git ran.
     const current = this.mustWs(id)
     if (current.status !== 'ready' || !current.waitsFor?.held) return
@@ -2385,7 +2091,7 @@ export class Kernel {
    * agent slot taken, waits for the next poll.
    */
   private async deliverRelease(id: string) {
-    const remote = await this.remoteOfWs(this.mustWs(id))
+    const remote = await this.config.remoteOfWs(this.mustWs(id))
     // Read after the await, and marked before the send, so the poll and a merge can't both send it.
     const ws = this.store.workspace(id)
     if (!ws?.waitsFor?.releasing || ws.status === 'archived' || this.releaseSent.has(id)) return
@@ -2494,7 +2200,7 @@ export class Kernel {
     // With a PR, the review is of what the PR holds on GitHub, the commit verdicts are checked against. Before one, it is
     // of the author's local branch, or the remote's copy when the local one was gone (reviewBase).
     const room = this.store.room(ws.roomId)
-    const remote = remoteOf({ workspace: { remote: room && this.roomRemotes.get(room.path) } }, this.settings)
+    const remote = remoteOf({ workspace: { remote: room && this.config.roomRemotes.get(room.path) } }, this.settings)
     const resetTo = of.prNumber ? `${remote}/${of.branch}` : ws.baseRef
     return reviewRule({ author, task: of.title ?? of.name, workspaceId: of.id, branch: of.branch, resetTo, base: of.baseRef, ...(of.prNumber ? { pr: { number: of.prNumber, url: of.prUrl } } : {}) }, remote)
   }
@@ -2601,13 +2307,7 @@ export class Kernel {
   }
 
   /** `pr` is the PR state the note is about, which draws that state's icon before the text. */
-  private note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') {
-    const chat = this.prChat(workspaceId)
-    if (!chat) return
-    const item: ChatItem = { kind: 'note', id: newId(), ts: Date.now(), text, ...(pr ? { pr } : {}) }
-    this.store.saveItem(chat.id, item)
-    bus.push({ type: 'chat.item', chatId: chat.id, item })
-  }
+  private note(workspaceId: string, text: string, pr?: 'merged' | 'closed' | 'cifail') { return records.note(this.store, workspaceId, text, pr) }
 
   private setPrState(ws: Workspace, prState: PrState) {
     const before = this.mustWs(ws.id).prState
@@ -2615,18 +2315,6 @@ export class Kernel {
     if (next.prState !== before) bus.push({ type: 'pr', workspaceId: ws.id, state: prState })
     return next
   }
-
-  /**
-   * The git remote a room fetches from and pushes to: the room's, then the app's, then origin (`remoteOf`, KERNEL-190).
-   * Pass `repo` when the room's settings are already loaded.
-   */
-  private async remoteFor(path: string, repo?: RepoSettings): Promise<string> {
-    const r = repo ?? await loadRepoSettings(path)
-    this.roomRemotes.set(path, r.workspace.remote)
-    return remoteOf(r, this.settings)
-  }
-
-  private remoteOfWs(ws: Workspace) { return this.remoteFor(this.mustRoom(ws.roomId).path) }
 
   /** The PR instructions for a workspace: its room's, else Settings > Pull requests (KERNEL-190). */
   private async prTexts(ws: Workspace) {
@@ -2650,7 +2338,7 @@ export class Kernel {
     const chat = this.prChat(id)
     if (!chat) throw new Error('This workspace has no chat.')
     if (ws.prState !== 'conflict' && ws.prState !== 'cifail' && ws.prState !== 'changes') throw new Error('This pull request has nothing to fix.')
-    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
+    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.config.remoteOfWs(ws) })
     if (info) bus.push({ type: 'pr.info', info })
     const [name, text] = resolveFile(ws.prState, await this.prTexts(ws), info)
     this.userSpoke(chat.id)
@@ -2662,7 +2350,7 @@ export class Kernel {
   async getPr(id: string) {
     const ws = await this.syncBranch(id)
     if (!ws.prNumber) return null
-    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
+    const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.config.remoteOfWs(ws) })
     if (info) bus.push({ type: 'pr.info', info })
     return info
   }
@@ -2676,7 +2364,7 @@ export class Kernel {
   async refreshPr(id: string, o: { settle?: boolean } = {}): Promise<Workspace> {
     const asked = await this.syncBranch(id)
     if (asked.status === 'archived') return asked
-    const remote = await this.remoteOfWs(asked)
+    const remote = await this.config.remoteOfWs(asked)
     const info = await folderGone(asked.path)
       ? await this.github.info(this.mustRoom(asked.roomId).path, asked.prNumber ? String(asked.prNumber) : asked.branch, id, { conflicts: false })
       : await this.github.info(asked.path, asked.branch, id, { remote })
@@ -2730,7 +2418,7 @@ export class Kernel {
     const ws = await this.syncBranch(id)
     if (ws.prState !== 'ready' && ws.prState !== 'open') throw new Error('This pull request is not ready to merge.')
     if (this.settings.pr.requireGreen) {
-      const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.remoteOfWs(ws) })
+      const info = await this.github.info(ws.path, ws.branch, id, { remote: await this.config.remoteOfWs(ws) })
       if (!info) throw new Error('Could not read the pull request from GitHub.')
       bus.push({ type: 'pr.info', info })
       if (!allGreen(info.checks)) throw new Error('Checks have not passed yet. Merging needs green checks (Settings > Pull requests).')
@@ -2777,7 +2465,7 @@ export class Kernel {
     if (ws.prState !== 'merged' && ws.prState !== 'closed') throw new Error('Continue is for a merged or closed pull request.')
     if (ws.mode !== 'worktree') throw new Error('Continue needs a worktree workspace. Start a new workspace to keep going.')
     const room = this.mustRoom(ws.roomId)
-    const remote = await this.remoteFor(room.path)
+    const remote = await this.config.remoteFor(room.path)
     if (ws.baseRef.startsWith(`${remote}/`)) await fetchOrigin(room.path, remote, { fresh: true })
     // feat/x-2 continues as feat/x-3, not feat/x-2-2.
     const stem = ws.branch.replace(/-\d+$/, '')
@@ -2857,64 +2545,14 @@ export class Kernel {
 
   // ---------- helpers
 
-  private resolveCwd(cwd: string) {
-    const ws = this.store.workspaces().filter((w) => w.status !== 'archived').sort((a, b) => b.path.length - a.path.length).find((w) => cwd === w.path || cwd.startsWith(w.path + '/'))
-    if (ws) return { roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId }
-    const room = this.store.rooms().find((r) => cwd === r.path || cwd.startsWith(r.path + '/'))
-    return room ? { roomId: room.id } : {}
-  }
-
-  private saveWs(ws: Workspace) { this.store.saveWorkspace(ws); bus.push({ type: 'workspace', workspace: ws }); return ws }
+  private saveWs(ws: Workspace) { return records.saveWs(this.store, ws) }
 
   /**
    * Saves a change to the workspace as it is in the store now, never a copy read before an await, which would put back
    * whatever changed meanwhile (KERNEL-70). An archived workspace only changes through archive and restore, so a slow
    * PR refresh or setup that finishes late leaves it archived. A key set to undefined is dropped when it is stored.
    */
-  private updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}): Workspace {
-    const cur = this.mustWs(id)
-    if (cur.status === 'archived' && !o.archived) return cur
-    return this.saveWs({ ...cur, ...patch })
-  }
-  /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY. */
-  private async linearKey() { return (await storedLinearToken(this.o.dataDir)) ?? linearToken() }
-  private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
-
-  /**
-   * A workspace started on a Linear issue: move the issue to In Progress (D-140). Nobody waits for it, and a failure is
-   * one note in the log, never a failed workspace. Without a token there is nothing to do.
-   */
-  private async startIssue(ws: Workspace, key: string) {
-    try {
-      const token = await this.linearKey()
-      if (token) await moveToStarted(token, key, this.linearFetch)
-    } catch (e) {
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
-    }
-  }
-
-  /**
-   * create_workspace's `issue`: the source to save, the issue's labels, which pick the branch type, and the issues that
-   * block it (KERNEL-263), or the task title and no labels when Linear doesn't answer.
-   */
-  private async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
-    if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title }, labels: [] }
-    try {
-      const issue = await getIssue(await this.linearKey(), key, this.linearFetch)
-      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels, blockedBy: issue.blockedBy }
-    } catch { return { source: { kind: 'issue', id: key, title }, labels: [] } }
-  }
-
-  /**
-   * A Linear issue's labels, for a workspace started from it in the New workspace modal. Linear gets 5 seconds, and no
-   * answer means no labels, so the branch starts with feat and Linear never holds a workspace up (KERNEL-275).
-   */
-  private async issueLabels(key: string): Promise<string[]> {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
-    const read = this.linearKey().then((token) => getIssue(token, key, this.linearFetch)).then((i) => i.labels, () => [])
-    try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
-  }
+  private updateWs(id: string, patch: Partial<Workspace>, o: { archived?: boolean } = {}): Workspace { return records.updateWs(this.store, id, patch, o) }
 
   /**
    * A hand-off whose Linear issue is blocked by issues open teammates are building (KERNEL-263). Once the brief has gone
@@ -2934,8 +2572,8 @@ export class Kernel {
     return on.length ? this.setWait(ws.id, on) : undefined
   }
 
-  private mustRoom(id: string) { const r = this.store.room(id); if (!r) throw new Error(`Unknown room ${id}`); return r }
-  private mustWs(id: string) { const w = this.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
+  private mustRoom(id: string) { return records.mustRoom(this.store, id) }
+  private mustWs(id: string) { return records.mustWs(this.store, id) }
   private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
 
   /**
@@ -2943,40 +2581,13 @@ export class Kernel {
    * its own channels, and `channels` throws if two answer the same one (KERNEL-324).
    */
   handlers(): Handlers {
-    return channels(unbuilt(), this.coreHandlers())
+    return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
+      this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.coreHandlers())
   }
 
   /** The channels of features still in this file. They move into their feature's `handlers()` (KERNEL-325 to KERNEL-330). */
-  private coreHandlers(): Omit<Handlers, Unbuilt> {
+  private coreHandlers(): Omit<Handlers, Unbuilt | Moved> {
     return {
-      'update.get': async () => this.o.updater?.get() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
-      'update.check': async () => this.o.updater?.check() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
-      // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
-      'update.install': async () => {
-        if (!this.o.updater) throw new Error('No update to install')
-        // Checked before asking: a confirmed restart stops Kernel, and an install that can't happen would leave it stopped.
-        if (this.o.updater.get().status !== 'ready') throw new Error('No update is ready')
-        if (this.o.confirmQuit && !(await this.o.confirmQuit('update'))) return { ok: true, canceled: true }
-        this.o.updater.install()
-        return { ok: true }
-      },
-      'preflight.run': async () => this.preflight(),
-      'preflight.fix': async ({ id }) => {
-        // Through setSettings, so it is saved and applied like the Models page toggle.
-        if (id === 'teams') await this.setSettings({ models: { agentTeams: true } })
-        else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
-        return this.preflight()
-      },
-      'hooks.status': async () => this.hooksStatus(),
-      'hooks.restart': async ({ port }) => this.restartHooks(port ?? this.settings.hookPort),
-      'hooks.test': async () => {
-        // /health answers from the same server that receives hooks, and records nothing.
-        const res = await fetch(`http://127.0.0.1:${this.settings.hookPort}/health`, { signal: AbortSignal.timeout(5000) }).catch(() => null)
-        if (!res?.ok) throw new Error(`No reply from the hook server on port ${this.settings.hookPort}.`)
-        return this.hooksStatus()
-      },
-      'hooks.uninstall': async () => { await uninstallHooks(this.claudeSettings); return this.pushHooks() },
-      'hooks.install': async ({ port }) => ({ path: this.claudeSettings, events: await this.writeHooks(port) }),
       'rooms.list': async () => this.store.rooms(),
       'rooms.add': async ({ path, name }) => this.addRoom(path, name),
       'rooms.create': async (req) => this.createRoom(req),
@@ -3018,23 +2629,6 @@ export class Kernel {
       'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
       'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
       'agents.status': async ({ roomId }) => this.statusOf(roomId),
-      'git.branches': async ({ roomId }) => {
-        const { path } = this.mustRoom(roomId)
-        const repo = await loadRepoSettings(path)
-        this.roomRemotes.set(path, repo.workspace.remote)
-        return listBranches(path, configuredRemote(repo, this.settings))
-      },
-      'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
-      'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
-      'issues.list': async ({ query }) => searchIssues(await this.linearKey(), query, this.linearFetch),
-      'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
-      'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
-      'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),
-      'linear.plan': async ({ id, roomId }) => {
-        const issue = await getIssue(await this.linearKey(), id, this.linearFetch)
-        const chat = await this.startLeadChat(roomId, { prompt: '', parts: planParts(issue), plan: true })
-        return { chatId: chat.id, workspaceId: chat.workspaceId }
-      },
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
@@ -3044,24 +2638,14 @@ export class Kernel {
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
       'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
       'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),
-      'account.get': async () => this.readAccount(),
-      'account.signOut': async () => signOut(),
       'workspaces.archive': async ({ workspaceId, deleteBranch, push }) => {
-        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch, await this.remoteOfWs(ws)) }
+        if (push) { const ws = await this.syncBranch(workspaceId); await pushBranch(ws.path, ws.branch, await this.config.remoteOfWs(ws)) }
         await this.archiveWorkspace(workspaceId, deleteBranch)
         return { ok: true }
       },
-      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef, await this.remoteOfWs(ws)) },
+      'workspaces.gitStatus': async ({ workspaceId }) => { const ws = await this.syncBranch(workspaceId); return gitStatus(ws.path, ws.branch, ws.baseRef, await this.config.remoteOfWs(ws)) },
       'workspaces.discard': async ({ workspaceId }) => { await this.discard(workspaceId); return { ok: true } },
       'chats.compact': async ({ chatId }) => { await this.sessions.compact(chatId); return { ok: true } },
-      'usage.notifyOnReset': async ({ type }) => {
-        if (!this.limitTimers.has(type)) throw new Error('Kernel does not know when this limit resets, so it cannot tell you. Check /usage.')
-        this.notifyReset.add(type)
-        return { ok: true }
-      },
-      'account.signIn': async () => this.signIn(),
-      'app.openTerminal': async ({ cwd, command }) => { await this.openTerminal(cwd, command); return { ok: true } },
-      'app.checkOnline': async () => ({ online: this.network ? await this.network.check() : true }),
       'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),
@@ -3082,8 +2666,6 @@ export class Kernel {
       },
       'terminal.presets': async () => terminalPresets(this.settings.terminal),
       'chats.items': async ({ chatId }) => this.store.items(chatId),
-      'checkpoints.list': async ({ workspaceId }) => listCheckpoints(this.mustWs(workspaceId)),
-      'checkpoints.revert': async ({ workspaceId, checkpointId }) => this.revertCheckpoint(workspaceId, checkpointId),
       'workspaces.files': async ({ workspaceId, query, limit }) => searchFiles(this.mustWs(workspaceId).path, query, limit),
       'workspaces.hunks': async ({ workspaceId, path }) => this.hunks(workspaceId, path),
       'workspaces.commit': async ({ workspaceId, hunkIds, message }) => {
@@ -3091,10 +2673,6 @@ export class Kernel {
         if (picked.length !== hunkIds.length) throw new Error('Those changes moved on. Open the card again and pick again.')
         await commitHunks(this.mustWs(workspaceId).path, picked, message?.trim() || `Update ${[...new Set(picked.map((h) => h.path))].join(', ')}`)
         return { ok: true }
-      },
-      'skills.list': async ({ roomId }) => {
-        const off = (await loadRepoSettings(this.mustRoom(roomId).path)).disabled?.skills ?? []
-        return (await discoverSkills(this.mustRoom(roomId).path, this.home)).map((s) => ({ ...s, enabled: !off.includes(s.name) }))
       },
       'commands.list': async () => this.sessions.commands(this.home),
       'chats.queue': async ({ chatId }) => this.sessions.queued(chatId),
@@ -3114,11 +2692,6 @@ export class Kernel {
       'chats.send': async ({ chatId, parts }) => { this.userSpoke(chatId); return this.sessions.send(chatId, parts) },
       'chats.interrupt': async ({ chatId }) => { await this.sessions.interrupt(chatId); return { ok: true } },
       'chats.configure': async ({ chatId, ...patch }) => this.sessions.configure(chatId, patch),
-      'notifications.list': async () => this.notifications.list(),
-      'notifications.read': async ({ ids }) => this.notifications.read(ids),
-      'approvals.list': async ({ roomId }) => this.store.approvals({ roomId }),
-      'approvals.decide': async ({ id, decision }) => { const a = this.approvals.decide(id, await this.withAttachments(id, decision)); if (!a) throw new Error('This request already timed out or was answered.'); return a },
-      'approvals.planFile': async ({ id }) => this.planFile(id),
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
@@ -3142,38 +2715,8 @@ export class Kernel {
         return { ok: true }
       },
       'scripts.stop': async ({ workspaceId, name }) => { if (name) stopScript(workspaceId, 'run', name); else stopRuns(workspaceId); return { ok: true } },
-      'tasks.list': async ({ roomId }) => this.tasks.list(roomId),
-      'activity.recent': async ({ roomId, limit }) => this.store.activity(roomId, limit),
-      'rooms.lastActivity': async ({ roomId }) => this.store.lastActivity(roomId),
-      'usage.get': async () => this.sessions.usage(),
-      'settings.get': async () => this.settings,
-      'settings.set': async ({ patch }) => this.setSettings(patch),
-      'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
-      'app.exportLogs': async () => this.exportLogs(),
-      'settings.room': async ({ roomId }) => {
-        const { path } = this.mustRoom(roomId)
-        const rs = await loadRepoSettings(path)
-        // A read refreshes the room's remote as a save does, so a file edited outside Kernel takes effect (KERNEL-244).
-        this.roomRemotes.set(path, rs.workspace.remote)
-        return rs
-      },
-      'settings.setRoom': async ({ roomId, patch, shared }) => {
-        const room = this.mustRoom(roomId)
-        const before = await this.trustState(room)
-        const next = await saveRepoSettings(room.path, patch, shared)
-        this.roomRemotes.set(room.path, next.workspace.remote)
-        await this.trustSaved(room, before, patch, !!shared, next)
-        // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-        await this.untrusted(room, next)
-        return next
-      },
       'rooms.scriptTrust': async ({ roomId }) => this.untrusted(this.mustRoom(roomId)),
       'rooms.trust': async ({ roomId, hash }) => { await this.trustRoom(roomId, hash); return { ok: true } },
-      // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).
-      'files.preview': async ({ roomId, patterns }) => {
-        const { path } = this.mustRoom(roomId)
-        return resolveFilesToCopy(path, patterns ?? (await loadRepoSettings(path)).files.copy)
-      },
       'env.get': async ({ roomId }) => {
         const room = roomId ? this.mustRoom(roomId) : undefined
         // The room's files are checked in its main checkout, without reading them. A workspace reads its own copies when
@@ -3190,11 +2733,6 @@ export class Kernel {
         if (roomId) this.mustRoom(roomId)
         return this.envStore.reveal(roomId, name)
       },
-      'mcp.list': async ({ roomId }) => {
-        const room = roomId ? this.mustRoom(roomId) : undefined
-        const off = room ? (await loadRepoSettings(room.path)).disabled?.mcp ?? [] : []
-        return discoverMcp(room?.path ?? this.home, this.home, off)
-      },
       'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
       'shared.read': async ({ sharedId, version }) => this.shared.read(sharedId, version),
       'shared.thumb': async ({ sharedId, version }) => this.shared.thumb(sharedId, version),
@@ -3210,30 +2748,7 @@ export class Kernel {
         if (got.file.kind !== 'pdf') throw new Error('Only a PDF opens in Preview.')
         await this.o.openFile?.(got.path)
         return { ok: true }
-      },
-      'integrations.list': async () => this.integrations(),
-      'integrations.connect': async ({ id, token }) => {
-        if (id === 'linear') {
-          const clean = (token ?? '').trim()
-          if (clean) await searchIssues(clean, '', this.linearFetch)
-          await saveLinearToken(this.o.dataDir, clean)
-        } else if (id === 'github') throw new Error('GitHub signs in through the GitHub CLI. Run gh auth login in a terminal.')
-        else throw new Error(`${id === 'vercel' ? 'Vercel' : 'Remote Control'} is not available yet.`)
-        return (await this.integrations()).find((i) => i.id === id)!
       }
     }
   }
-
-  private async integrations() {
-    const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), this.linearKey()])
-    return integrationRows({ ghUser, linear: !!linear })
-  }
-
-  private async preflight() {
-    await this.o.refreshPath?.()
-    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
-  }
-
-  private get hookToken() { return hookToken(this.o.dataDir) }
-  private get claudeSettings() { return this.o.claudeSettingsFile ?? join(this.home, '.claude', 'settings.json') }
 }
