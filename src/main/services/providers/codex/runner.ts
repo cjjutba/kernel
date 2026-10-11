@@ -6,7 +6,7 @@ import { linkText } from '@shared/links'
 import { describeTool } from '../../approvals'
 import { exec } from '../../exec'
 import { IMAGE_DATA_URL } from '../../plans'
-import { bashVerdict, NETWORK_OFF, usesNetwork } from '../../bashGuard'
+import { decide, rulesOf, saveAlwaysAllow, type Step } from '../../permissions'
 import type { LimitPatch } from '../limits'
 import type { Proc, Runner, RunnerHost } from '../types'
 import { codexEnv, KERNEL_VERSION } from './client'
@@ -391,23 +391,18 @@ export class CodexRunner implements Runner {
    */
   private async approveCommand(p: CommandExecutionRequestApprovalParams): Promise<CommandExecutionRequestApprovalResponse> {
     await this.held()
-    const perms = this.host.settings().permissions
     const command = unwrapShell(p.command ?? '')
     const leaves = leavesSandbox(p)
+    const step: Step = { tool: 'Bash', command, network: !!p.networkApprovalContext, sandbox: leaves ? 'outside' : 'inside' }
+    const verdict = decide(step, rulesOf(this.host))
     // Codex's answer carries no reason, so a refusal shows in the chat, where the user sees why the step failed.
-    if (perms.network === false && (usesNetwork(command) || p.networkApprovalContext)) return this.declined(NETWORK_OFF)
-    const verdict = command ? bashVerdict(command, perms, this.host.roomAllow()) : undefined
-    if (verdict === 'deny') return this.declined(`Kernel blocks "${command}" in every room.`)
-    if (verdict === 'allow') return { decision: 'accept' }
-    if (verdict !== 'ask' && !leaves && perms.mode !== 'default') return { decision: 'accept' }
+    if (verdict?.behavior === 'deny') return this.declined(verdict.message)
+    if (verdict?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool('Bash', { command })
     const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
     const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), activity: d.title }, {})
-    if (result?.behavior === 'allow') {
-      if (result.always && command) this.host.allowInRoom(command.trim())
-      return { decision: 'accept' }
-    }
-    return { decision: 'decline' }
+    saveAlwaysAllow(this.host, step, result)
+    return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
   }
 
   private declined(why: string): CommandExecutionRequestApprovalResponse {
@@ -418,11 +413,10 @@ export class CodexRunner implements Runner {
   /** File edits accept in Accept edits and Bypass in worktrees, and ask in Ask, as Claude's do. Writes outside the workspace always ask. */
   private async approveFiles(p: FileChangeRequestApprovalParams): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
-    const perms = this.host.settings().permissions
-    if (perms.mode !== 'default' && !p.grantRoot) return { decision: 'accept' }
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'
+    if (decide({ tool: name, sandbox: p.grantRoot ? 'outside' : 'inside' }, rulesOf(this.host))?.behavior === 'allow') return { decision: 'accept' }
     const d = describeTool(name, { file_path: path })
     const result = await this.host.ask({ kind: 'tool', toolName: name, input: { file_path: path }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, {})
     return { decision: result?.behavior === 'allow' ? 'accept' : 'decline' }
@@ -431,7 +425,7 @@ export class CodexRunner implements Runner {
   /** More permissions than the sandbox gives, such as the network or another folder. Always the user's call, and Network off says no. */
   private async approvePermissions(p: PermissionsRequestApprovalParams): Promise<PermissionsRequestApprovalResponse> {
     const none: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' }
-    if (this.host.settings().permissions.network === false && p.permissions.network) return none
+    if (decide({ tool: 'Permissions', network: !!p.permissions.network, sandbox: 'outside' }, rulesOf(this.host))?.behavior === 'deny') return none
     const title = p.permissions.network ? 'Allow network access' : 'Allow access outside the workspace'
     const result = await this.host.ask({ kind: 'tool', toolName: 'Permissions', input: p.permissions, title, detail: p.reason ?? undefined, activity: title }, {})
     if (result?.behavior !== 'allow') return none

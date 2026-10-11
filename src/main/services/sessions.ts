@@ -1228,13 +1228,13 @@ export class Sessions {
    * Put a runner's request in front of the user and wait: a tool to allow, a question, or a plan. The agent shows as
    * needing the user meanwhile. Order: Never allow, the room's rules, Always ask and Bypass were the runner's to apply first.
    */
-  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal }, plan?: string): Promise<Decision | undefined> {
+  private async ask(chatId: string, ws: Workspace, agent: AgentDef | undefined, a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }, plan?: string): Promise<Decision | undefined> {
     this.setStatus(ws, agent, 'needs', a.activity)
     const reuse = plan !== undefined ? revisedPlanFile(this.d.store.approvals({ roomId: ws.roomId }), chatId) : undefined
     const { approval, decision } = this.d.approvals.request({
       kind: a.kind, source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId, agentId: agent?.id,
       toolName: a.toolName, input: a.input, title: a.title, detail: a.detail, options: a.options, questions: a.questions
-    } as Parameters<Approvals['request']>[0], { signal: o.signal })
+    } as Parameters<Approvals['request']>[0], { signal: o.signal, timeoutMs: o.timeoutMs })
     this.placeApproval(chatId, approval.id)
     if (plan?.trim() && existsSync(ws.path)) {
       void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)

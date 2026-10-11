@@ -1,19 +1,19 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
 import { bus } from '../../bus'
-import { describeTool, needsUser } from '../approvals'
+import { describeTool } from '../approvals'
 import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { IMAGE_DATA_URL } from '../plans'
-import { bashVerdict, NETWORK_OFF, roomRule, usesNetwork, type BashVerdict } from '../bashGuard'
+import { decide, guardVerdict, NETWORK_OFF, rulesOf, saveAlwaysAllow, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
-import type { Proc, Runner, RunnerHost } from './types'
+import type { Ask, Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
 
 export { packagedClaude }
@@ -98,7 +98,7 @@ export class ClaudeRunner implements Runner {
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
         ctx, commands: this.commands, tools,
-        verdict: (command) => bashVerdict(command, host.settings().permissions, host.roomAllow()),
+        verdict: (command) => guardVerdict(command, rulesOf(host)),
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
@@ -273,22 +273,17 @@ export class ClaudeRunner implements Runner {
   }
 
   /**
-   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask.
-   * Order: Never allow, the room's Always allow rules, Always ask, Bypass in worktrees, then the user decides.
+   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask. Kernel's rules
+   * decide first (`decide`), and what they leave open goes to the user.
    */
   private canUseTool(): CanUseTool {
     const host = this.host
     return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
-      const ws = host.workspace
-      const p = host.settings().permissions
-      if (toolName.startsWith('mcp__kernel__')) return { behavior: 'allow', updatedInput: input }
-      if (p.network === false && (toolName === 'WebFetch' || toolName === 'WebSearch')) return { behavior: 'deny', message: NETWORK_OFF }
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
-      if (command && p.network === false && usesNetwork(command)) return { behavior: 'deny', message: NETWORK_OFF }
-      const verdict = command ? bashVerdict(command, p, host.roomAllow()) : undefined
-      if (verdict === 'deny') return { behavior: 'deny', message: `Kernel blocks "${command}" in every room.` }
-      if (verdict === 'allow') return { behavior: 'allow', updatedInput: input }
-      if (verdict !== 'ask' && !needsUser(toolName) && p.mode === 'bypassPermissions' && ws.mode === 'worktree') return { behavior: 'allow', updatedInput: input }
+      const step = { tool: toolName, command }
+      const verdict = decide(step, rulesOf(host))
+      if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
+      if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
 
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
@@ -298,8 +293,8 @@ export class ClaudeRunner implements Runner {
       const result = toolName === 'ExitPlanMode'
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title }, { signal })
-      if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      if (result.behavior === 'allow' && result.always && command) host.allowInRoom(roomRule(command, suggestions, suppressAlwaysAllowRule))
+      if (!result) return { behavior: 'deny', message: NO_DECISION }
+      saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
       // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
@@ -442,7 +437,7 @@ function toolDetail(name: string, input: any): string {
 function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
-  verdict: (command: string) => BashVerdict
+  verdict: (command: string) => Verdict
   held: () => Promise<void> | undefined
   networkAllowed?: () => boolean
   handoff?: LeadHandoff
@@ -459,9 +454,10 @@ function kernelHooks(o: {
     const { tool_use_id, tool_input } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
+    // A room's Always allow rule gives no opinion here. canUseTool allows the command if Claude Code asks about it.
     const v = verdict(command)
-    if (v === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Kernel blocks "${command}" in every room.` } }
-    if (v === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: 'On the Always ask list in Kernel.' } }
+    if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
+    if (v?.behavior === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: v.reason } }
     return {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
@@ -512,6 +508,28 @@ export const SESSION_GONE = 'No conversation found with session ID: '
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
+
+/** How long a hook that asks the user waits: a minute short of its matcher's timeout, so Kernel denies the call before the CLI stops waiting and lets it go. In milliseconds. */
+export const HOOK_ASK_MS = (HOLD_TIMEOUT_SEC - 60) * 1000
+
+/** What the agent hears when the user didn't answer in time, or the ask ended without an answer. */
+const NO_DECISION = 'No decision was made in time.'
+
+/**
+ * Asks the user from inside a PreToolUse hook and waits, for a call Claude Code would run without asking: Always ask in
+ * Auto, the tools gate in Auto and Bypass (KERNEL-433, KERNEL-446). The card and the agent's needs status are the ones
+ * canUseTool's asks get. Only the user's yes allows the call. An abort, the wait running out and no decision deny it,
+ * because a hook that times out lets the call go. The hook's matcher needs `timeout: HOLD_TIMEOUT_SEC`.
+ */
+export async function awaitDecision(host: Pick<RunnerHost, 'ask'>, req: Ask, signal: AbortSignal, timeoutMs = HOOK_ASK_MS): Promise<SyncHookJSONOutput> {
+  const deny = (reason: string): SyncHookJSONOutput => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+  // An abort listener added after the abort never fires, so the card would wait out the whole timeout.
+  if (signal.aborted) return deny(NO_DECISION)
+  const result = await host.ask(req, { signal, timeoutMs })
+  if (result?.behavior === 'allow') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+  if (!result) return deny(NO_DECISION)
+  return deny(result.behavior === 'answer' ? `The user answered: ${result.text}` : result.message ?? 'Denied in Kernel.')
+}
 
 /** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
 const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])

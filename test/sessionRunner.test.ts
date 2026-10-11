@@ -4,11 +4,13 @@ import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, Chat, ChatItem, TeamUpdate, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ChatItem, Decision, TeamUpdate, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
+import { awaitDecision, HOLD_TIMEOUT_SEC, HOOK_ASK_MS, type ClaudeRunner } from '../src/main/services/providers/claude'
+import type { Ask } from '../src/main/services/providers/types'
 import { CRASH_NOTE, freshNudge, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
@@ -554,6 +556,89 @@ describe("an agent file's tools line (KERNEL-397)", () => {
     expect(signal.aborted).toBe(true)
     await sessions.send(chat.id, [{ type: 'text', text: 'Again' }])
     expect(sdk.calls[sdk.calls.length - 1].options.resume).toBe(options.sessionId)
+  })
+})
+
+describe('asking from inside a hook (KERNEL-446)', () => {
+  const noor = { id: 'noor', name: 'Noor', role: 'Engine', description: '', lead: false, prompt: '', file: '/r/noor.md' } as AgentDef
+  const ask: Ask = { kind: 'tool', toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', activity: 'Run pnpm drizzle-kit push' }
+  // The host Sessions gave the chat's runner, so the card and the status are the ones a canUseTool ask gets.
+  const hostOf = (sessions: Sessions) => (sessions['live'].get('chat') as unknown as { runner: ClaudeRunner }).runner['host']
+  const open = () => new AbortController().signal
+  const denied = (reason: string) => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+  const late = denied('No decision was made in time.')
+
+  it('puts the card in the chat, shows the agent as needing the user, and allows the call on yes', async () => {
+    const { sessions, call, options, store, approvals, kinds } = await setup('acceptEdits', { agent: noor })
+    const statuses: string[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'agent.status') statuses.push(e.status) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    call.feed({ type: 'system', subtype: 'init', session_id: options.sessionId, apiKeySource: 'none' })
+    await flush()
+    const answer = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })[0]
+    expect(pending).toMatchObject({ kind: 'tool', source: 'sdk', toolName: 'Bash', chatId: 'chat', title: 'Run pnpm drizzle-kit push' })
+    expect(kinds()).toContain('approval')
+    expect(statuses.at(-1)).toBe('needs')
+    approvals.decide(pending.id, { behavior: 'allow' })
+    expect(await answer).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } })
+    expect(statuses.at(-1)).toBe('working')
+  })
+
+  it("denies with the user's reason, or with what the user typed instead", async () => {
+    const { sessions, store, approvals } = await setup()
+    const cases: [Decision, string][] = [
+      [{ behavior: 'deny', message: 'Use the staging database.' }, 'Use the staging database.'],
+      [{ behavior: 'deny' }, 'Denied in Kernel.'],
+      [{ behavior: 'answer', text: 'Run the migration instead' }, 'The user answered: Run the migration instead']
+    ]
+    for (const [decision, reason] of cases) {
+      const answer = awaitDecision(hostOf(sessions), ask, open())
+      await flush()
+      approvals.decide(store.approvals({ pendingOnly: true })[0].id, decision)
+      expect(await answer).toEqual(denied(reason))
+    }
+  })
+
+  it('denies when the hook is aborted, and opens no card for a hook already aborted', async () => {
+    const { sessions, store } = await setup()
+    const abort = new AbortController()
+    const answer = awaitDecision(hostOf(sessions), ask, abort.signal)
+    await flush()
+    abort.abort()
+    expect(await answer).toEqual(late)
+    expect(store.approvals({}).map((a) => a.status)).toEqual(['expired'])
+    expect(await awaitDecision(hostOf(sessions), ask, abort.signal)).toEqual(late)
+    expect(store.approvals({})).toHaveLength(1)
+  })
+
+  it('denies once the wait runs out, which comes before the CLI stops waiting on the hook and lets the call go', async () => {
+    expect(HOOK_ASK_MS).toBeLessThan(HOLD_TIMEOUT_SEC * 1000)
+    // Past this, Node fires the timer at once and every ask would deny before the user saw it.
+    expect(HOOK_ASK_MS).toBeLessThanOrEqual(2 ** 31 - 1)
+    const waits: (number | undefined)[] = []
+    await awaitDecision({ ask: async (_a, o) => { waits.push(o.timeoutMs); return { behavior: 'allow' } } }, ask, open())
+    expect(waits).toEqual([HOOK_ASK_MS])
+
+    const { sessions, store } = await setup()
+    expect(await awaitDecision(hostOf(sessions), ask, open(), 20)).toEqual(late)
+    expect(store.approvals({}).map((a) => a.status)).toEqual(['expired'])
+  })
+
+  it('denies when the ask ends with no decision: the workspace archived, or Kernel quitting', async () => {
+    const { sessions, approvals } = await setup()
+    const archived = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    approvals.expireWorkspace('ws')
+    expect(await archived).toEqual(late)
+    const quitting = awaitDecision(hostOf(sessions), ask, open())
+    await flush()
+    approvals.expirePending()
+    expect(await quitting).toEqual(late)
+    // Once Kernel is quitting, an ask gets no decision at once.
+    expect(await awaitDecision(hostOf(sessions), ask, open())).toEqual(late)
   })
 })
 
