@@ -32,8 +32,23 @@ describe('agents', () => {
   it('derives display name, role and lead', () => {
     const a = agentFromFile('/r/.claude/agents/kai.md', '---\nname: kai\ndescription: Frontend engineer. Builds UI.\nmodel: sonnet\ntools: Read, Edit\n---\nBody')
     expect(a).toMatchObject({ id: 'kai', name: 'Kai', role: 'Frontend', model: 'sonnet', tools: ['Read', 'Edit'], lead: false })
+    // Only the file marks the Lead: lead: true, or a role that says Lead. A description that does isn't enough (KERNEL-397).
     const r = agentFromFile('/r/.claude/agents/rowan.md', '---\nname: rowan\ndescription: Lead. Plans and hands out tasks.\n---\n')
-    expect(r.lead).toBe(true)
+    expect(r).toMatchObject({ role: 'Lead', lead: false })
+    expect(agentFromFile('/r/a.md', '---\nname: a\ndescription: x\nrole: Tech Lead\n---\n').lead).toBe(true)
+    expect(agentFromFile('/r/b.md', '---\nname: b\ndescription: x\nrole: Lead\nlead: false\n---\n').lead).toBe(false)
+    expect(agentFromFile('/r/c.md', '---\nname: c\ndescription: x\nlead: True\n---\n').lead).toBe(true)
+  })
+  it('reads block values, comments, a BOM and Windows line endings as Claude Code does', () => {
+    const folded = parseFrontmatter('---\nname: code-reviewer\ndescription: >-\n  Reviews pull requests.\n  Use proactively\n  after a change.\n\n  Read-only.\ntools:\n  - Read\n  - Grep\n---\nBody')
+    expect(folded.meta).toMatchObject({ name: 'code-reviewer', description: 'Reviews pull requests. Use proactively after a change.\nRead-only.', tools: 'Read, Grep' })
+    expect(parseFrontmatter('---\nname: x\ndescription: |\n  Line one\n    indented\n  line two\nmodel: opus\n---\n').meta).toMatchObject({ description: 'Line one\n  indented\nline two', model: 'opus' })
+    expect(parseFrontmatter('---\nname: x\ndescription: >+ # kept\n  One.\n---\n').meta.description).toBe('One.')
+    expect(parseFrontmatter('---\nname: x\nmodel: sonnet # cheap\ndescription: "Fixes #12"\nrole: QA #tests\n---\n').meta).toMatchObject({ model: 'sonnet', description: 'Fixes #12', role: 'QA' })
+    expect(parseFrontmatter('\uFEFF---\r\nname: win\r\ndescription: >\r\n  From Windows.\r\ntools: [Read, Edit]\r\n---\r\nBody\r\n').meta).toMatchObject({ name: 'win', description: 'From Windows.', tools: '[Read, Edit]' })
+    const a = agentFromFile('/r/code-reviewer.md', '---\nname: code-reviewer\ndescription: >-\n  Reviews pull requests.\n---\nBody')
+    expect(a).toMatchObject({ description: 'Reviews pull requests.', role: 'Reviews Pull' })
+    expect(agentFromFile('/r/w.md', '---\nname: w\ndescription: x\ntools: [Read, Edit, Bash]\n---\n').tools).toEqual(['Read', 'Edit', 'Bash'])
   })
   it('round-trips, loads lead first, and retires out of the loaded folder', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))
@@ -109,6 +124,35 @@ describe('agents', () => {
       await writeFile(join(repo, '.claude', 'agents', 'theo.md'), '---\nname: theo\ndescription: Reviewer.\n---\nx')
       await vi.waitFor(() => expect(hits).toBeGreaterThan(afterDir), WATCH)
     } finally { for (const stop of stops) await stop() }
+  })
+  it('saves only the fields an edit changed, so block values and lists keep their form', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    const head = 'name: kai\ndescription: >-\n  Frontend engineer.\n  Builds UI.\ntools:\n  - Read\n  - Edit\nmodel: sonnet'
+    await writeFile(join(repo, '.claude', 'agents', 'kai.md'), `---\n${head}\n---\nYou are Kai.\n`)
+    await updateAgent(repo, 'kai', { effort: 'high', description: 'Frontend engineer. Builds UI.', tools: ['Read', 'Edit'] })
+    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toBe(`---\n${head}\neffort: high\n---\n\nYou are Kai.\n`)
+  })
+  it('saves, retires and restores an agent whose name differs from its file', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await mkdir(join(repo, '.claude', 'agents'), { recursive: true })
+    await writeFile(join(repo, '.claude', 'agents', 'code-reviewer.md'), '---\nname: reviewer\ndescription: Reviews code.\n---\nBody\n')
+    expect((await updateAgent(repo, 'reviewer', { model: 'opus' })).file).toBe(join(repo, '.claude', 'agents', 'code-reviewer.md'))
+    expect(await readdir(join(repo, '.claude', 'agents'))).toEqual(['code-reviewer.md'])
+    await retireAgent(repo, 'reviewer')
+    expect(await readdir(join(repo, '.claude', 'retired-agents'))).toEqual(['code-reviewer.md'])
+    await restoreAgent(repo, 'reviewer')
+    expect((await loadAgents(repo)).map((a) => [a.id, a.model])).toEqual([['reviewer', 'opus']])
+  })
+  it("never replaces an agent the room has, or takes the name of Kernel's own", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agents-'))
+    await saveAgent(repo, { id: 'kai', description: 'Frontend engineer.', prompt: 'You are Kai.' })
+    await expect(saveAgent(repo, { id: 'kai', description: 'Another Kai.', prompt: 'x' })).rejects.toThrow(/already on the team/)
+    expect(await readFile(join(repo, '.claude', 'agents', 'kai.md'), 'utf8')).toContain('You are Kai.')
+    await expect(saveAgent(repo, { id: 'kernel-lead', description: 'Lead.', prompt: 'x' })).rejects.toThrow(/Kernel's own Lead/)
+    await expect(createAgent(repo, draftAgent({ description: 'reviews', name: 'Kernel Reviewer' }))).rejects.toThrow(/Kernel's own reviewer/)
+    await writeFile(join(repo, '.claude', 'agents', 'other.md'), '---\nname: ivy\ndescription: QA.\n---\nx\n')
+    await expect(saveAgent(repo, { id: 'ivy', description: 'QA.', prompt: 'x' })).rejects.toThrow(/already on the team/)
   })
   it('saves an edit without touching nested frontmatter or quoted values', async () => {
     const repo = await mkdtemp(join(tmpdir(), 'agents-'))

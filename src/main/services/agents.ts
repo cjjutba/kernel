@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile, mkdir, rename, stat } from 'node:fs/promi
 import { watch, type FSWatcher } from 'node:fs'
 import { join, basename } from 'node:path'
 import type { AgentDef, AgentDraft, AgentEdit, Effort } from '@shared/types'
+import { KERNEL_LEAD, RESERVED_AGENT_IDS } from '@shared/team'
 
 // Agents are plain Claude Code subagent files: .claude/agents/<name>.md with YAML-ish frontmatter.
 // Kernel reads the same files Claude Code reads, so the team works outside the app too.
@@ -27,18 +28,40 @@ export function parseFrontmatter(src: string): { meta: Record<string, string>; b
   const body = text.slice(end + 4).replace(/^\r?\n/, '').trim()
   const meta: Record<string, string> = {}
   let last: string | null = null
-  for (const raw of head.split(/\r?\n/)) {
+  // The last line before `---` keeps its `\r` in a file saved on Windows.
+  const lines = head.split(/\r?\n/).map((l) => l.replace(/\r$/, ''))
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i]
     if (!raw.trim() || raw.trim().startsWith('#')) continue
     const m = /^([A-Za-z_][\w-]*):\s*(.*)$/.exec(raw)
     if (m && !/^\s/.test(raw)) {
       last = m[1]
-      meta[last] = stripQuotes(m[2].trim())
+      // `description: >-` and `|`: the indented lines under it are the value, folded or kept as lines (KERNEL-397).
+      const block = /^([|>])[+-]?\d?[+-]?\s*(#.*)?$/.exec(m[2].trim())
+      if (block) {
+        const taken: string[] = []
+        while (i + 1 < lines.length && (/^\s/.test(lines[i + 1]) || !lines[i + 1].trim())) taken.push(lines[++i])
+        meta[last] = blockScalar(taken, block[1] === '>')
+        continue
+      }
+      meta[last] = stripQuotes(plain(m[2].trim()))
     } else if (last && /^\s+/.test(raw)) {
       const piece = raw.trim().replace(/^-\s+/, '')
-      meta[last] = (meta[last] ? meta[last] + (raw.trim().startsWith('-') ? ', ' : ' ') : '') + stripQuotes(piece)
+      meta[last] = (meta[last] ? meta[last] + (raw.trim().startsWith('-') ? ', ' : ' ') : '') + stripQuotes(plain(piece))
     }
   }
   return { meta, body }
+}
+
+/** A plain YAML value without its comment: `sonnet # cheap` is `sonnet`. A quoted value keeps its `#`. */
+const plain = (v: string) => (/^['"]/.test(v) ? v : v.replace(/(^|\s+)#.*$/, '').trim())
+
+/** The lines of a `|` or `>` value, their shared indent taken off. `>` joins each paragraph's lines with spaces. */
+function blockScalar(lines: string[], folded: boolean): string {
+  const indent = Math.min(...lines.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)![0].length))
+  const out = lines.map((l) => (l.trim() ? l.slice(Number.isFinite(indent) ? indent : 0) : ''))
+  const text = folded ? out.join('\n').split(/\n{2,}/).map((p) => p.split('\n').join(' ')).join('\n') : out.join('\n')
+  return text.trim()
 }
 
 const EFFORT_IDS: Effort[] = ['low', 'medium', 'high', 'xhigh']
@@ -55,7 +78,8 @@ export function agentFromFile(file: string, src: string): AgentDef {
   const id = meta.name || basename(file, '.md')
   const description = meta.description || ''
   const role = meta.role || roleFrom(description) || 'Agent'
-  const lead = meta.lead ? meta.lead === 'true' : /\blead\b/i.test(role)
+  // Only the file says who leads: `lead: true`, or a `role:` that says Lead. A description that does is a warning on Team (KERNEL-397).
+  const lead = meta.lead ? /^true$/i.test(meta.lead) : !!meta.role && /\blead\b/i.test(meta.role)
   return {
     id, name: titleCase(id), role, description, lead,
     model: meta.model || undefined,
@@ -118,14 +142,16 @@ export function renderAgentFile(a: Pick<AgentDef, 'id' | 'description' | 'prompt
 
 /**
  * Rewrites only the managed lines of an existing file. Everything else in the frontmatter (a hooks: block, color, comments)
- * stays as it was, byte for byte, and so does the order of the lines that remain.
+ * stays as it was, byte for byte, and so does the order of the lines that remain. With `changed`, only those keys are
+ * rewritten, so a `description: >-` block or a tools list the edit didn't touch keeps its form (KERNEL-397).
  */
-export function rewriteAgentFile(src: string, id: string, a: Managed & { description: string; prompt: string }): string {
+export function rewriteAgentFile(src: string, id: string, a: Managed & { description: string; prompt: string }, changed?: ReadonlySet<string>): string {
   const text = src.replace(/^\uFEFF/, '')
   const end = text.startsWith('---') ? text.indexOf('\n---', 3) : -1
   const head = end < 0 ? [] : text.slice(3, end).replace(/^\r?\n/, '').split(/\r?\n/)
   // `lead` is not editable here, so a lead: line stays as written.
-  const want = new Map(managedLines(id, a).filter(([k]) => k !== 'lead'))
+  const all = managedLines(id, a).filter(([k]) => k !== 'lead')
+  const want = new Map(changed ? all.filter(([k]) => changed.has(k) || (k === 'name' && !head.some((l) => /^name:/.test(l)))) : all)
   const out: string[] = []
   const done = new Set<string>()
   for (let i = 0; i < head.length; i++) {
@@ -145,7 +171,26 @@ const agentPath = (repoPath: string, id: string) => join(repoPath, '.claude', 'a
 const ID = /^[a-z][a-z0-9-]*$/
 const exists = (p: string) => stat(p).then(() => true, () => false)
 
+/**
+ * The file an agent lives in. Its `name:` is its id, so `code-reviewer.md` may hold `reviewer`: the file named after the
+ * id first, else whichever file's name matches (KERNEL-397).
+ */
+async function fileOf(repoPath: string, id: string, o: { retired?: boolean } = {}): Promise<string | undefined> {
+  const named = o.retired ? join(repoPath, '.claude', 'retired-agents', `${id}.md`) : agentPath(repoPath, id)
+  const src = await readFile(named, 'utf8').catch(() => undefined)
+  if (src !== undefined && agentFromFile(named, src).id === id) return named
+  return (await loadAgents(repoPath, o)).find((a) => a.id === id)?.file
+}
+
+/** Kernel's own agents and the files a room already has keep their names (KERNEL-397). */
+async function freeId(repoPath: string, id: string) {
+  if (RESERVED_AGENT_IDS.includes(id)) throw new Error(`${id} is the name of Kernel's own ${id === KERNEL_LEAD ? 'Lead' : 'reviewer'}. Pick another name.`)
+  if (await fileOf(repoPath, id) || await exists(agentPath(repoPath, id))) throw new Error(`${titleCase(id)} is already on the team. Pick another name or edit the file.`)
+}
+
+/** hire_agent's file. It never replaces an agent the room already has. */
 export async function saveAgent(repoPath: string, agent: Parameters<typeof renderAgentFile>[0]): Promise<string> {
+  await freeId(repoPath, agent.id)
   const dir = join(repoPath, '.claude', 'agents')
   await mkdir(dir, { recursive: true })
   const file = join(dir, `${agent.id}.md`)
@@ -153,24 +198,29 @@ export async function saveAgent(repoPath: string, agent: Parameters<typeof rende
   return file
 }
 
-/** Saving the profile rewrites the file with the edited fields. Fields the patch leaves out and frontmatter Kernel does not know are kept. */
+/**
+ * Saving the profile rewrites the file with the edited fields. Fields the patch leaves out or doesn't change, and
+ * frontmatter Kernel does not know, are kept as written.
+ */
 export async function updateAgent(repoPath: string, id: string, patch: AgentEdit): Promise<AgentDef> {
-  const file = agentPath(repoPath, id)
+  const file = await fileOf(repoPath, id)
   let src: string
-  try { src = await readFile(file, 'utf8') } catch { throw new Error(`${id} is not in .claude/agents.`) }
-  const cur = agentFromFile(file, src)
+  try { src = await readFile(file ?? agentPath(repoPath, id), 'utf8') } catch { throw new Error(`${id} is not in .claude/agents.`) }
+  const path = file ?? agentPath(repoPath, id)
+  const cur = agentFromFile(path, src)
   const { meta } = parseFrontmatter(src)
   const description = patch.description ?? cur.description
   if (!oneLine(description)) throw new Error('Add a description so Rowan knows what to hand this agent.')
   // The name is the file stem, so the display name follows it. Role is the only label that can change.
-  await writeFile(file, rewriteAgentFile(src, cur.id, {
-    description,
-    role: patch.role ?? meta.role,
+  const next = {
+    description, role: patch.role ?? meta.role,
     model: patch.model ?? cur.model, effort: patch.effort ?? cur.effort,
-    tools: patch.tools ?? cur.tools, skills: patch.skills ?? cur.skills,
-    prompt: patch.prompt ?? cur.prompt
-  }))
-  return agentFromFile(file, await readFile(file, 'utf8'))
+    tools: patch.tools ?? cur.tools, skills: patch.skills ?? cur.skills
+  }
+  const was: Record<keyof typeof next, unknown> = { description: cur.description, role: meta.role, model: cur.model, effort: cur.effort, tools: cur.tools, skills: cur.skills }
+  const changed = new Set(Object.keys(next).filter((k) => JSON.stringify(next[k as keyof typeof next] ?? null) !== JSON.stringify(was[k as keyof typeof next] ?? null)))
+  await writeFile(path, rewriteAgentFile(src, cur.id, { ...next, prompt: patch.prompt ?? cur.prompt }, changed))
+  return agentFromFile(path, await readFile(path, 'utf8'))
 }
 
 const ROLES: { match: RegExp; role: string; tools: string[] }[] = [
@@ -208,8 +258,8 @@ export async function createAgent(repoPath: string, draft: AgentDraft): Promise<
   if (!ID.test(id)) throw new Error('The name in the file must be lowercase letters, numbers and dashes, starting with a letter.')
   if (!meta.description?.trim()) throw new Error('The file needs a description line so Rowan knows what to hand this agent.')
   if (!body.trim()) throw new Error('The file needs instructions under the second ---.')
+  await freeId(repoPath, id)
   const file = agentPath(repoPath, id)
-  if (await exists(file)) throw new Error(`${titleCase(id)} is already on the team. Pick another name or edit the file.`)
   await mkdir(join(repoPath, '.claude', 'agents'), { recursive: true })
   await writeFile(file, draft.text.endsWith('\n') ? draft.text : `${draft.text}\n`)
   return { ...agentFromFile(file, draft.text), joinedAt: Date.now() }
@@ -217,25 +267,27 @@ export async function createAgent(repoPath: string, draft: AgentDraft): Promise<
 
 /**
  * Retiring moves the file out of .claude/agents instead of deleting it, so it can come back.
- * It goes to .claude/retired-agents, not a subfolder, so Claude Code stops loading it.
+ * It goes to .claude/retired-agents, not a subfolder, so Claude Code stops loading it. The file keeps its own name.
  */
 export async function retireAgent(repoPath: string, id: string): Promise<string> {
-  const to = join(repoPath, '.claude', 'retired-agents', `${id}.md`)
-  if (!(await exists(agentPath(repoPath, id)))) throw new Error(`${id} is not in .claude/agents.`)
+  const from = await fileOf(repoPath, id)
+  if (!from) throw new Error(`${id} is not in .claude/agents.`)
+  const to = join(repoPath, '.claude', 'retired-agents', basename(from))
   await mkdir(join(repoPath, '.claude', 'retired-agents'), { recursive: true })
   // An older retired file with the same name is an earlier version of this agent, and the newer one replaces it.
-  await rename(agentPath(repoPath, id), to)
+  await rename(from, to)
   return to
 }
 
 /** Bring a retired agent back. Refuses when a new file took the name. */
 export async function restoreAgent(repoPath: string, id: string): Promise<string> {
-  const from = join(repoPath, '.claude', 'retired-agents', `${id}.md`)
-  if (!(await exists(from))) throw new Error(`${id} is not in .claude/retired-agents.`)
-  if (await exists(agentPath(repoPath, id))) throw new Error(`There is already an agent named ${id}. Rename one of the files first.`)
+  const from = await fileOf(repoPath, id, { retired: true })
+  if (!from) throw new Error(`${id} is not in .claude/retired-agents.`)
+  const to = join(repoPath, '.claude', 'agents', basename(from))
+  if (await fileOf(repoPath, id) || await exists(to)) throw new Error(`There is already an agent named ${id}. Rename one of the files first.`)
   await mkdir(join(repoPath, '.claude', 'agents'), { recursive: true })
-  await rename(from, agentPath(repoPath, id))
-  return agentPath(repoPath, id)
+  await rename(from, to)
+  return to
 }
 
 /**

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { AgentDef, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy } from '@shared/merge'
+import { RESERVED_AGENT_IDS } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
 import { renderAgentFile } from './agents'
@@ -393,11 +394,15 @@ export function kernelTools(d: KernelToolDeps) {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
     }, async (a) => {
+      // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
+      if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
       const agentFile = { path: `.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }) }
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
-      const file = await d.hireAgent(a)
-      return text(`Saved ${file}. ${a.id} joins the team.`)
+      try {
+        const file = await d.hireAgent(a)
+        return text(`Saved ${file}. ${a.id} joins the team.`)
+      } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
     })
   ]
 }
