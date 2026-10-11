@@ -57,10 +57,14 @@ describe('rooms service', () => {
     expect(expandHome('~/Projects/x', home)).toBe(join(home, 'Projects', 'x'))
   })
 
-  it('seats the Lead plus the picked starters, and writes settings.toml once', async () => {
+  it("seats the picked starter teammates, not Kernel's own Rowan and Theo, and writes settings.toml once", async () => {
     const repo = await tempRepo()
-    expect(await seatStarterTeam(starter, repo, ['kai', 'nobody'])).toEqual(['rowan', 'kai'])
-    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md', 'rowan.md'])
+    expect(await seatStarterTeam(starter, repo, ['kai', 'rowan', 'theo', 'nobody'])).toEqual(['kai'])
+    expect((await readdir(join(repo, '.claude', 'agents'))).sort()).toEqual(['kai.md'])
+    // A file the repo already has stays as it is.
+    await writeFile(join(repo, '.claude', 'agents', 'noor.md'), '---\nname: noor\ndescription: Ours.\n---\nx\n')
+    expect(await seatStarterTeam(starter, repo, ['kai', 'noor', 'ivy'])).toEqual(['ivy'])
+    expect(await readFile(join(repo, '.claude', 'agents', 'noor.md'), 'utf8')).toContain('Ours.')
     expect(await ensureRepoSettings(repo)).toBe(true)
     await writeFile(join(repo, '.kernel', 'settings.toml'), '[files]\ncopy = []\n')
     expect(await ensureRepoSettings(repo)).toBe(false)
@@ -102,7 +106,9 @@ describe('Kernel rooms', () => {
     expect(room).toMatchObject({ name: 'Own app', kind: 'folder', path: repo })
     expect(steps.map((s) => [s.id, s.state])).toEqual([['clone', 'ok'], ['worktrees', 'ok'], ['install', 'ok'], ['copy', 'ok'], ['hooks', 'fail'], ['agents', 'ok']])
     expect(steps.find((s) => s.id === 'hooks')?.error).toContain('Check hooks')
-    expect((await k.agents(room.id)).map((a) => a.id)).toEqual(['rowan', 'kai'])
+    expect((await k.agents(room.id)).map((a) => a.id)).toEqual(['kernel-lead', 'kai', 'kernel-reviewer'])
+    expect(steps.find((s) => s.id === 'agents')).toMatchObject({ detail: 'Kai from .claude/agents, Rowan and Theo from Kernel' })
+    expect(steps.find((s) => s.id === 'agents')?.brought).toBeUndefined()
     expect(await stat(join(repo, '.kernel', 'settings.toml'))).toBeTruthy()
 
     await expect(k.createRoom({ source: 'folder', name: 'Again', from: repo, team: [], autostart: false })).rejects.toThrow('already the room Own app')
@@ -114,7 +120,7 @@ describe('Kernel rooms', () => {
     await k.removeRoom(room.id, false)
     expect(k.store.room(room.id)).toBeUndefined()
     expect(await stat(join(repo, 'README.md'))).toBeTruthy()
-    expect(await stat(join(repo, '.claude', 'agents', 'rowan.md'))).toBeTruthy()
+    expect(await stat(join(repo, '.claude', 'agents', 'kai.md'))).toBeTruthy()
     await k.stop()
   })
 

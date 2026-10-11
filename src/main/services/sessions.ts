@@ -15,6 +15,7 @@ import { describeTool, matchesRule, needsUser, type Approvals } from './approval
 import { toActivity } from './hookServer'
 import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } from './health'
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { toolKind, toolPolicy, type ToolPolicy } from './agentTools'
 import { IMAGE_DATA_URL, revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
 import { buildEnv, kernelVars } from './env'
@@ -173,6 +174,8 @@ export class Sessions {
   private turns = new Map<string, Turns>()
   /** Idle clocks of live chats between turns. One that runs out stops the process (KERNEL-183). */
   private idle = new Map<string, ReturnType<typeof setTimeout>>()
+  /** Chats whose agent changed during a turn or a background task. Their process ends once nothing runs (KERNEL-397). */
+  private stale = new Set<string>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
@@ -804,6 +807,7 @@ export class Sessions {
   /** Close the process's input and abort it. `consume` sees the abort and reports nothing: no offline, no crash. */
   private end(chatId: string, live: Live) {
     this.stopIdle(chatId)
+    this.stale.delete(chatId)
     live.input.close()
     live.abort.abort()
     this.live.delete(chatId)
@@ -818,6 +822,7 @@ export class Sessions {
     this.stopIdle(chatId)
     const live = this.live.get(chatId)
     if (!live || live.running) return
+    if (this.stale.has(chatId) && !live.tasks.size) { this.stale.delete(chatId); this.end(chatId, live); return }
     const clock = setTimeout(() => {
       this.idle.delete(chatId)
       if (this.live.get(chatId) !== live || live.running) return
@@ -857,6 +862,22 @@ export class Sessions {
   }
 
   stopWorkspace(workspaceId: string) { for (const c of this.d.store.chats(workspaceId)) this.stop(c.id) }
+
+  /**
+   * The agent behind these workspaces changed: its file, its tools, or who leads (KERNEL-397). A process only reads its
+   * agent when it starts, so an idle one ends now and a busy one when its turn and background tasks end. The next message
+   * resumes the conversation with the agent as it is now, and nothing waiting in the queue is lost.
+   */
+  restartIdle(workspaceIds: string[]) {
+    for (const id of workspaceIds) {
+      for (const c of this.d.store.chats(id)) {
+        const live = this.live.get(c.id)
+        if (!live) continue
+        if (live.running || live.tasks.size) this.stale.add(c.id)
+        else this.end(c.id, live)
+      }
+    }
+  }
 
   /** The workspace is archived. Chats held for its setup let go of what they held, so a restore doesn't find them still waiting. */
   dropHeld(workspaceId: string) {
@@ -961,6 +982,8 @@ export class Sessions {
     const sessionId = chat.sessionId ?? randomUUID()
     this.managedIds.add(sessionId)
     const mcpServers = this.d.mcpFor(ws, agent, chat)
+    // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
+    const tools = toolPolicy(agent?.tools)
     const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
     const root = this.d.store.room(ws.roomId)?.path
     const options: Options = {
@@ -978,8 +1001,17 @@ export class Sessions {
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)) },
       mcpServers,
       ...(off ? { settings: off } : {}),
-      hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false,
-        agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined),
+      ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
+      hooks: kernelHooks({
+        ctx, commands, tools,
+        verdict: (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)),
+        held: () => this.paused.get(ws.roomId)?.open ?? this.global?.open,
+        networkAllowed: () => this.d.settings().permissions.network !== false,
+        handoff: agent?.lead ? {
+          afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined),
+          atStop: () => { const t = this.handoffs.reminder(chat.id); if (t) bus.track({ name: 'handoff.reminder' }); return t }
+        } : undefined
+      }),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
@@ -1486,7 +1518,17 @@ export function agentPrompt(agent: AgentDef | undefined, ws: Workspace, rule?: s
  * In-process hooks. Every event feeds the room log the same way the installed hooks do for outside sessions.
  * A Bash guard applies Kernel's Never allow and Always ask lists on top of the user's own Claude Code settings.
  */
-function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: string }, commands: Map<string, string>, verdict: (command: string) => BashVerdict, held: () => Promise<void> | undefined, networkAllowed: () => boolean = () => true, handoff?: LeadHandoff): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+function kernelHooks(o: {
+  ctx: { roomId: string; workspaceId: string; agentId?: string }
+  commands: Map<string, string>
+  verdict: (command: string) => BashVerdict
+  held: () => Promise<void> | undefined
+  networkAllowed?: () => boolean
+  handoff?: LeadHandoff
+  /** The agent file's tools line, when it has one (KERNEL-397). */
+  tools?: ToolPolicy
+}): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
+  const { ctx, commands, verdict, held, networkAllowed = () => true, handoff, tools } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
@@ -1518,6 +1560,16 @@ function kernelHooks(ctx: { roomId: string; workspaceId: string; agentId?: strin
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
   hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
+  // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
+  if (tools) {
+    const gate: HookCallback = async (input) => {
+      const { tool_name: tool, tool_input } = input as PreToolUseHookInput
+      if (tools.allows(tool, tool_input)) return {}
+      bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
+      return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
+    }
+    hooks.PreToolUse!.push({ hooks: [gate] })
+  }
   if (handoff) {
     // The approval reaches the Lead as "hand it off now", and a Stop before any workspace exists gets one reminder.
     const afterPlan: HookCallback = async () => { const t = handoff.afterPlan(); return t ? { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: t } } : {} }

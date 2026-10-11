@@ -76,7 +76,7 @@ export class Lead extends Feature {
   private async leadWorkspace(roomId: string): Promise<{ ws: Workspace; lead: AgentDef }> {
     const agents = await this.k.team.agents(roomId)
     const lead = agents.find((a) => a.lead)
-    if (!lead) throw new Error('No lead agent. Mark one agent with "lead: true".')
+    if (!lead) throw new Error('No Lead in this room. Mark one agent with "lead: true", or pick one in Settings, Agents.')
     // A move at startup finishes first, so nothing starts on the checkout it is leaving.
     await this.making.get(roomId)?.catch(() => undefined)
     const saved = this.store.workspaces(roomId).find((w) => isLeadWorkspace(w, lead.id))
@@ -85,6 +85,21 @@ export class Lead extends Feature {
       : saved.mode === 'worktree' && await folderGone(saved.path).catch(() => false) ? await this.once(roomId, () => this.remakeLead(saved.id, this.mustRoom(roomId)))
       : saved
     return { ws, lead }
+  }
+
+  /**
+   * The room's Lead is now `leadId`: a file marked Lead, `[team] lead`, or Kernel's own Rowan (KERNEL-397). The Lead's open
+   * workspace goes to it with its chats, so the Lead chats carry on. Returns the workspace when it moved.
+   */
+  adoptLeadWorkspace(roomId: string, leadId: string): Workspace | undefined {
+    const all = this.store.workspaces(roomId).filter((w) => w.lead && w.agentId !== leadId)
+    // Archived ones too, so History still shows them as the Lead's.
+    for (const w of all) if (w.status === 'archived') this.updateWs(w.id, { agentId: leadId }, { archived: true })
+    const ws = all.find((w) => w.status !== 'archived')
+    if (!ws) return undefined
+    const moved = this.updateWs(ws.id, { agentId: leadId })
+    bus.activity({ kind: 'note', roomId, workspaceId: ws.id, agentId: leadId, actor: 'kernel', text: "handed the Lead's chats to", object: this.agentsSync(roomId).find((a) => a.id === leadId)?.name ?? leadId })
+    return moved
   }
 
   private async makeLeadWorkspace(roomId: string, agentId: string): Promise<Workspace> {

@@ -27,6 +27,7 @@ export class Config extends Feature {
     await saveAppSettings(this.settingsFile, this.settings)
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
+    if (before.privacy?.telemetry !== this.settings.privacy.telemetry) await this.k.telemetry.settingsChanged()
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
     if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.k.hooks.claudeSettings).catch(() => false))) await this.k.hooks.writeHooks(this.settings.hookPort)
     return this.settings

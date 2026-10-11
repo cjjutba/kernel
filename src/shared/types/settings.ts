@@ -1,3 +1,4 @@
+import type { TeamConfig } from './agents'
 import type { Effort, ModelId } from './chats'
 import type { WorkspaceMode } from './workspaces'
 
@@ -6,7 +7,7 @@ export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
   | 'models' | 'permissions' | 'env'
   | 'git' | 'scripts' | 'prs'
-  | 'hooks' | 'integrations' | 'experimental' | 'bigterm' | 'about'
+  | 'hooks' | 'integrations' | 'experimental' | 'privacy' | 'bigterm' | 'about'
   /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
@@ -50,6 +51,11 @@ export interface AppSettings {
   terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
   /** `sharing` gives agents share_file (KERNEL-302). On by default since KERNEL-308. No page shows it; `false` in settings.json turns it off. */
   experimental: { walking: boolean; floor3d: boolean; voice: boolean; sharing?: boolean }
+  /**
+   * Usage data (KERNEL-397). `ask` until the user answers the one-time question, and nothing is sent until it is `on`.
+   * Settings, Privacy changes it.
+   */
+  privacy: { telemetry: 'ask' | 'on' | 'off' }
 }
 
 /**
@@ -108,6 +114,11 @@ export interface RoomSettings {
    */
   env: { files: string[] }
   /**
+   * Who leads, who reviews and who takes tasks, where it differs from what Kernel works out from the agent files (KERNEL-397).
+   * Written to the shared file with `agents.setTeam`, not `settings.setRoom`.
+   */
+  team?: TeamConfig
+  /**
    * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
    * A path missing here means the app default applies (KERNEL-190).
    */
@@ -134,7 +145,7 @@ export interface FileToCopy {
  * `runScripts` maps a name to its command, and `run` is `[scripts] run`.
  */
 export type RoomSettingsPatch = {
-  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts' | 'team'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
 } & { runScripts?: Record<string, string | null> }
 
 /** Recursive partial for settings patches. */

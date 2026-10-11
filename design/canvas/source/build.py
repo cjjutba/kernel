@@ -87,7 +87,10 @@ simple={
     'Welcome':None,
     'CommandPalette':'search',
     'Team':None,
+    'TeamOwnAgents':None,
     'AgentProfile':None,
+    'AgentProfileBuiltIn':None,
+    'RoomSetupTeam':None,
     'History':'history',
     'LoadingApp':None,
 }
@@ -227,6 +230,7 @@ for n,k in [
     ('ConfirmRemoveRoom','remove'),
     ('ConfirmDiscard','discard'),
     ('ConfirmRetire','retire'),
+    ('TelemetryAsk','telemetry'),
 ]: emit(n, cf.replace('%%KIND%%',k), 'ws' if k in ('archive','discard') else None)
 su=rd('Setup.dc.html')
 for n,k in [
@@ -258,6 +262,7 @@ for n,pg in [
     ('SettingsIntegrations','integrations'),
     ('SettingsExperimental','experimental'),
     ('SettingsAbout','about'),
+    ('SettingsPrivacy','privacy'),
     ('SettingsRoom','r-general'),
     ('SettingsRoomGit','r-git'),
     ('SettingsRoomScripts','r-scripts'),

@@ -127,6 +127,8 @@ export interface DiagnosticsInfo {
   electron: string
   hookPort?: number
   log?: Log
+  /** The latest usage events, one line each, whether or not they were sent (KERNEL-397). */
+  events?: string[]
   /** For tests: a stubbed command runner and the session binary's path. */
   run?: typeof exec
   claude?: string | null
@@ -154,7 +156,8 @@ export async function diagnostics(o: DiagnosticsInfo & RedactOptions): Promise<s
     `Hook port ${o.hookPort ?? 'unknown'}`,
     '',
     o.log ? `Last ${lines!.length} lines of ${o.log.file}` : 'The log is off in this run.',
-    ...(lines ?? [])
+    ...(lines ?? []),
+    ...(o.events ? ['', o.events.length ? 'Usage events, newest first. "sent" left this Mac, "kept" stayed:' : 'No usage events yet.', ...o.events] : [])
   ].join('\n')
   return redact(text, o) + '\n'
 }

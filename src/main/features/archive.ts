@@ -7,6 +7,7 @@ import { branchExists, detachWorktree, dropBranch, folderGone, restoreWorktree }
 import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
+import { git } from '../services/exec'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -98,6 +99,11 @@ export class Archive extends Feature {
     const wanted = ws.mode === 'worktree' && !ws.lead && !o.keepWorktree && (deleteBranch ?? cleanupSwitch(repo, this.settings.workspace, 'deleteBranchOnArchive'))
     const unpushed = wanted ? await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, repo)) : 0
     if (wanted && unpushed === null) bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'kept the branch because its commits could not be counted:', object: ws.branch, warn: true })
+    // Work the Lead handed off that ends with no PR and no commit of its own: Kernel counts it (KERNEL-397).
+    if (!gone && ws.mode === 'worktree' && ws.leadChatId && !ws.lead && !ws.reviewOf && ws.prState === 'none') {
+      const ahead = await git(ws.path, 'rev-list', '--count', `${ws.baseRef}..HEAD`).then((n) => Number(n.trim()), () => NaN)
+      if (ahead === 0) bus.track({ name: 'handoff.no_commit' })
+    }
     // The folder only moves aside here, and is deleted after the workspace is archived, without waiting (KERNEL-284).
     const moved = ws.mode === 'worktree' && !o.keepWorktree ? await detachWorktree(room.path, ws.path, { force: true, deleteBranch: wanted && unpushed === 0 ? ws.branch : undefined, moving: (p) => this.keepTrash(p) }) : undefined
     // Archiving a waiter ends its wait (KERNEL-259).

@@ -61,6 +61,7 @@ Kernel itself makes these network calls and no others:
 - The update check, which reads this repo's GitHub Releases
 - An offline check, a DNS lookup of `api.anthropic.com`
 - Linear, only if you connect it in Settings
+- Usage data, only if you turn it on in Settings, Privacy. Kernel asks once. It sends anonymous counts of what goes wrong and the class of an error, never code, prompts, file paths or names, and Settings, Privacy lists every event it kept or sent
 
 ## Build from source
 

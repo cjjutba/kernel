@@ -2,14 +2,20 @@ import { useSyncExternalStore } from 'react'
 import type { NewRoomRequest, RoomKind } from '@shared/types'
 import { actions, getState } from '../../store'
 
-/** Everyone you can seat from docs/starter-agents. Rowan is the Lead and always sits. */
+/**
+ * Everyone a new room starts with. Rowan leads and Theo reviews from Kernel itself, so they always sit and no file is written
+ * for them (`builtIn`). The others are starter files copied into .claude/agents (KERNEL-397).
+ */
 export const STARTER_TEAM = [
-  { id: 'rowan', name: 'Rowan', role: 'Lead' },
-  { id: 'kai', name: 'Kai', role: 'Frontend' },
-  { id: 'noor', name: 'Noor', role: 'Backend' },
-  { id: 'ivy', name: 'Ivy', role: 'QA' },
-  { id: 'theo', name: 'Theo', role: 'Reviewer' }
+  { id: 'rowan', name: 'Rowan', role: 'Lead', builtIn: true },
+  { id: 'kai', name: 'Kai', role: 'Frontend', builtIn: false },
+  { id: 'noor', name: 'Noor', role: 'Backend', builtIn: false },
+  { id: 'ivy', name: 'Ivy', role: 'QA', builtIn: false },
+  { id: 'theo', name: 'Theo', role: 'Reviewer', builtIn: true }
 ] as const
+
+/** The starter teammates Team can add to a team that has agents. */
+export const STARTER_TEAMMATES = STARTER_TEAM.filter((m) => !m.builtIn)
 
 /** What New room is filling in. Connect a repo and Open a folder write to it, then hand back to New room. */
 export interface RoomDraft extends Omit<NewRoomRequest, 'source' | 'from' | 'desc' | 'baseBranch'> {
@@ -22,10 +28,10 @@ export interface RoomDraft extends Omit<NewRoomRequest, 'source' | 'from' | 'des
   named: boolean
 }
 
-/** Who a new room starts with: Settings > Agents > Default team for new rooms. The pair is the Lead and Kai. */
+/** The starter files a new room gets: Settings > Agents > Default team for new rooms. The pair is Kai. */
 export function defaultTeam(): string[] {
   const pair = getState().settings?.team.defaultTemplate === 'pair'
-  return STARTER_TEAM.filter((m) => !pair || m.id === 'rowan' || m.id === 'kai').map((m) => m.id)
+  return STARTER_TEAMMATES.filter((m) => !pair || m.id === 'kai').map((m) => m.id)
 }
 
 const blank = (): RoomDraft => ({ source: 'repo', name: '', named: false, desc: '', from: '', baseBranch: '', team: defaultTeam(), autostart: true })

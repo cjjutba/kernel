@@ -4,6 +4,7 @@ import { call } from './api'
 import { toggleFocus, toggleRightPanel, toggleSidebar, useFoldPanels } from './components/PanelToggles'
 import { Footer, Sidebar } from './components/Shell'
 import { Toasts } from './components/Toasts'
+import { askAboutTelemetry, TelemetryAsk } from './components/TelemetryAsk'
 import { actions, getState, useStore } from './store'
 import { Tooltips } from './ui'
 import { openLead } from './lead'
@@ -112,6 +113,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
     case 'newAgent': return <NewAgent roomId={modal.roomId} step={modal.step} prefill={modal.prefill} />
     case 'whatsNew': return <WhatsNew update={modal.update} />
     case 'envVar': return <EnvVarForm roomId={modal.roomId} editName={modal.editName} />
+    case 'telemetryAsk': return <TelemetryAsk />
     case 'confirm':
       if (modal.kind === 'archive') return <ConfirmArchive workspaceId={modal.workspaceId} />
       if (modal.kind === 'discard') return <ConfirmDiscard workspaceId={modal.workspaceId} />
@@ -171,6 +173,9 @@ export function App() {
     return () => cancelIdleCallback(id)
   }, [booted])
   useEffect(() => { void call('system.trafficLights', { at: hidden ? 'header' : 'sidebar' }).catch(() => undefined) }, [hidden])
+  // Usage data is asked about once, after the first room, in a build that can send it (KERNEL-397).
+  const rooms = useStore((s) => s.rooms.length)
+  useEffect(() => { if (booted && route.name !== 'onboarding' && !modal) void askAboutTelemetry() }, [booted, rooms, route.name, modal])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return

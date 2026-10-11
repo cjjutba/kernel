@@ -54,6 +54,7 @@ export class Rooms extends Feature {
     }
     this.store.saveRoom(room)
     bus.push({ type: 'room', room })
+    bus.track({ name: 'room.created', source: req.source })
     void this.setupRoom(room, req).catch(() => undefined)
     return room
   }
@@ -118,17 +119,21 @@ export class Rooms extends Feature {
       const status = await this.k.hooks.hooksStatus()
       if (!status.installed) throw new Error('Kernel hooks are not in your Claude settings yet. Open Check hooks in the sidebar to install them.')
     })
+    // A repo that brings its own agents keeps them, and Room setup shows the team for review (KERNEL-397). An empty one gets
+    // the starter teammates picked in New room. Kernel's own Rowan and Theo fill in a missing Lead or reviewer either way.
     await step('agents', async () => {
-      let files = await agentFiles(room.path)
-      if (!files.length) {
+      const brought = (await agentFiles(room.path)).length
+      if (!brought) {
         if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
         await seatStarterTeam(this.o.starterDir, room.path, req.team)
-        files = await agentFiles(room.path)
       }
       const list = await this.k.team.agents(room.id)
       bus.push({ type: 'agents', roomId: room.id, agents: list })
       for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
-      return { detail: list.length ? `${list.map((a) => a.name).join(', ')} from .claude/agents` : 'No agents in .claude/agents' }
+      const own = list.filter((a) => !a.builtIn).map((a) => a.name)
+      const kernel = list.filter((a) => a.builtIn).map((a) => a.name)
+      const detail = [own.length ? `${own.join(', ')} from .claude/agents` : '', kernel.length ? `${kernel.join(' and ')} from Kernel` : ''].filter(Boolean).join(', ')
+      return { detail: detail || 'No agents in .claude/agents', ...(brought ? { brought } : {}) }
     })
   }
 

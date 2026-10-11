@@ -781,11 +781,11 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (review?.approvedBy.length) { wake(blocked || readyToMerge(pr, review.approvedBy)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in ${review.open.name}'s review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // With auto review off, only a review the user asked for is followed up: nobody looked at this PR, so it is the user's to merge (KERNEL-115).
-        if (c.autoReview === false && !review?.open && !review?.stale) { wake(blocked || `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.`); break }
+        if (c.autoReview === false && !review?.open && !review?.stale) { bus.track({ name: 'pr.ready_unreviewed', hasReviewer: !!c.reviewer }); wake(blocked || `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.`); break }
         if (review?.open) { wake(review.stale ? anotherReview(pr, review.open.name, review.open.workspaceId) : `${upper(pr)} needs a review. Ask ${review.open.name} to review it with message_agent (workspace ${review.open.workspaceId}).`); break }
         // A review of an earlier commit with nobody left to review again: a merge that needs an approval waits (KERNEL-115).
         if (review?.stale && !c.reviewer) { wake(blocked || `${upper(pr)} passed checks and has no conflicts, but its last review was of an earlier commit and no reviewer is on this team now. Tell the user the review is out of date.`); break }
-        if (!c.reviewer) { wake(blocked || `${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
+        if (!c.reviewer) { bus.track({ name: 'pr.ready_unreviewed', hasReviewer: false }); wake(blocked || `${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
         wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: call create_workspace with agent "${c.reviewer.id}" and review_of "${ws.id}".`)
         break
       }

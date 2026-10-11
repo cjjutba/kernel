@@ -100,6 +100,9 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'agents.retire': async () => ok,
     'agents.restore': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), retired: false }),
     'agents.seed': async ({ roomId }) => f.agents[roomId] ?? [],
+    'agents.setTeam': async ({ roomId }) => f.agents[roomId] ?? [],
+    'agents.customize': async ({ roomId, agentId }) => ({ ...agentOf(roomId, agentId), builtIn: undefined, file: join('.claude', 'agents', `${agentOf(roomId, agentId).name.toLowerCase()}.md`) }),
+    'agents.addStarter': async ({ id }) => ({ id, name: id.charAt(0).toUpperCase() + id.slice(1), role: '', description: '', lead: false, prompt: '', file: join('.claude', 'agents', `${id}.md`), joinedAt: Date.now() }),
     'workspaces.list': async ({ roomId }) => f.workspaces.filter((w) => !roomId || w.roomId === roomId),
     'workspaces.create': async () => { throw new Error('Fixture mode does not create workspaces.') },
     'workspaces.fork': async () => { throw new Error('Fixture mode does not create workspaces.') },
@@ -318,9 +321,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'update.check': async () => update,
     'update.install': async () => ok,
     'app.exportLogs': async () => ({ path: '(fixture)' }),
-    'app.info': async () => ({ version: '0.1.0', dataDir: join('~', 'Library', 'Application Support', 'Kernel') }),
+    'app.info': async () => ({ version: '0.1.0', dataDir: join('~', 'Library', 'Application Support', 'Kernel'), telemetry: f.telemetry?.canSend ?? false }),
     'app.openTerminal': async () => ok,
-    'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) })
+    'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) }),
+    'telemetry.recent': async () => f.telemetry?.recent ?? [],
+    'telemetry.track': async () => ok
   }
 }
 

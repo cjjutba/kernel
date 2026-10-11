@@ -37,7 +37,7 @@ export class App extends Feature {
         return { ok: true }
       },
       'app.openTerminal': async ({ cwd, command }) => { await this.openTerminal(cwd, command); return { ok: true } },
-      'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir }),
+      'app.info': async () => ({ version: this.o.version ?? '0.1.0', dataDir: this.o.dataDir, telemetry: this.k.telemetry.canSend }),
       'app.exportLogs': async () => this.exportLogs()
     } satisfies Partial<Handlers>
   }

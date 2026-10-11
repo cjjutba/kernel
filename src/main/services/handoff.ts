@@ -31,8 +31,11 @@ export const LEAD_REVIEW_RULE = "When a PR passed checks and nobody has reviewed
 /** Appended to the Lead's prompt after LEAD_RULE while sharing is on, which it is by default (KERNEL-302, KERNEL-308). */
 export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'
 
-/** What a reviewer may block on, in `reviewRule`, the submit_review description and both theo.md files (KERNEL-377). */
-export const BLOCKER_RULE = 'A blocker is one of these: an acceptance criterion fails, a user would hit a bug or regression, a CLAUDE.md rule is broken (a secret, code added to kernel.ts, a hex value in screen code, a missing release note, a file outside the issue\'s Owns), or a check fails. Nothing else blocks: test strength, naming, style, doc wording, decision-file bookkeeping, refactors, "could also".'
+/**
+ * What a reviewer may block on, in `reviewRule`, the submit_review description and both theo.md files (KERNEL-377). It
+ * names no rule of Kernel's own repo, since Kernel's Theo reviews every repo (KERNEL-397). This repo's theo.md adds them.
+ */
+export const BLOCKER_RULE = 'A blocker is one of these: an acceptance criterion fails, a user would hit a bug or regression, a rule in the repo\'s CLAUDE.md or AGENTS.md is broken (a committed secret, for one), or a check fails. Nothing else blocks: test strength, naming, style, doc wording, decision-file bookkeeping, refactors, "could also".'
 
 /**
  * Appended to a review workspace's prompt (KERNEL-130). The reviewer works in a worktree started from the author's branch,
@@ -58,6 +61,12 @@ export function reviewRule(r: { author: string; task: string; workspaceId: strin
 }
 
 /** Appended to the prompt of every teammate that isn't reviewing, next to its wait_for_merge tool (KERNEL-262). */
+/**
+ * Appended after the teammate's or reviewer's own rule while sharing is on (KERNEL-302), whatever its agent file says, so a
+ * repo's own agents know share_file the way Kernel's starter agents did (KERNEL-397).
+ */
+export const SHARE_RULE = 'When the user should see your work without running it, call mcp__kernel__share_file with a self-contained HTML mock, a screenshot, a Markdown report or a diagram. Comments on a file you shared arrive as messages naming the file and version. Answer one by sharing the same path again.'
+
 export const TEAMMATE_RULE = "If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop. Kernel messages you when it merges."
 
 /**

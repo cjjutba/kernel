@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { AgentDef, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy } from '@shared/merge'
+import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
 import { renderAgentFile } from './agents'
@@ -100,19 +101,30 @@ const NOT_MERGEABLE: Partial<Record<PrState, string>> = {
 
 /**
  * The agent `asked` names: its exact id, else the one whose id or name matches ignoring case. A miss or a name two
- * agents share comes back as the tool's refusal, listing the team, so the Lead can try again with a real id (KERNEL-119).
+ * agents share comes back as the tool's refusal, listing who takes tasks, so the Lead can try again with a real id
+ * (KERNEL-119). `reason` is what Kernel counts (KERNEL-397).
  */
-export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
+export function pickAgent(team: AgentDef[], asked: string): AgentDef | { refusal: string; reason: 'unknown' | 'ambiguous' | 'no-teammates' } {
   const exact = team.find((a) => a.id === asked)
   if (exact) return exact
   const want = asked.trim().toLowerCase()
   const found = team.filter((a) => a.id.toLowerCase() === want || a.name.toLowerCase() === want)
   if (found.length === 1) return found[0]
-  const list = team.filter((a) => !a.lead).map((a) => `${a.id} (${a.name}, ${a.role})`).join(', ')
-  if (found.length > 1) return `Not created: "${asked}" matches more than one agent (${found.map((a) => a.id).join(', ')}). Use the id from list_agents.`
+  if (found.length > 1) return { reason: 'ambiguous', refusal: `Not created: "${asked}" matches more than one agent (${found.map((a) => a.id).join(', ')}). Use the id from list_agents.` }
+  const list = takers(team)
   return list
-    ? `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.`
-    : `Not created: this team has no teammates yet. Propose one with hire_agent.`
+    ? { reason: 'unknown', refusal: `Not created: no agent "${asked}" on this team. Use an id from list_agents: ${list}.` }
+    : { reason: 'no-teammates', refusal: `Not created: this team has no teammates yet. Propose one with hire_agent.` }
+}
+
+/** The agents the Lead can hand a task to, as refusals list them. */
+const takers = (team: AgentDef[]) => team.filter((a) => !a.lead && takesTasks(a)).map((a) => `${a.id} (${a.name}, ${a.role})`).join(', ')
+
+/** What list_agents adds after an agent's role: who leads, who reviews and who doesn't take tasks (KERNEL-397). */
+function roleTag(a: AgentDef): string {
+  if (a.lead) return ' (the Lead, you)'
+  if (isReviewer(a)) return takesTasks(a) ? ' (reviews PRs, takes tasks)' : ' (reviews PRs)'
+  return takesTasks(a) ? '' : " (helper, doesn't take tasks)"
 }
 
 /** What the Lead's server tells the model, next to the tools. */
@@ -125,7 +137,7 @@ export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the
  * `done` also takes an archived one whose PR merged or closed, for the start sweep.
  */
 export function reviewedByBase(agent: AgentDef | undefined, baseRef: string | undefined, workspaces: Workspace[], o: { self?: string; done?: boolean } = {}): Workspace | undefined {
-  if (!agent || agent.lead || !/\breview/i.test(agent.role) || !baseRef) return undefined
+  if (!agent || !isReviewer(agent) || !baseRef) return undefined
   const branch = baseRef.trim().replace(/^origin\//, '')
   const on = workspaces.filter((w) => w.id !== o.self && w.mode !== 'current' && w.branch === branch).sort((a, b) => b.createdAt - a.createdAt)
   return on.find((w) => w.status !== 'archived') ?? (o.done ? on.find((w) => w.prState === 'merged' || w.prState === 'closed') : undefined)
@@ -185,7 +197,7 @@ export function kernelTools(d: KernelToolDeps) {
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
       const agents = await d.agents()
-      return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
+      return text(agents.map((a) => `${a.id}: ${a.name}, ${a.role}${roleTag(a)}. ${a.description}`).join('\n') || 'No agents in .claude/agents yet.')
     }),
     tool('list_workspaces', 'List open workspaces in this room: id, agent, branch, PR state, and "yours" for the ones you handed off in this chat.', {}, async () => {
       const all = d.workspaces()
@@ -229,12 +241,18 @@ export function kernelTools(d: KernelToolDeps) {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
-      if (typeof pick === 'string') return { ...text(pick), isError: true }
-      if (pick.lead) return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true }
+      if ('refusal' in pick) { bus.track({ name: 'handoff.refused', reason: pick.reason }); return { ...text(pick.refusal), isError: true } }
+      if (pick.lead) { bus.track({ name: 'handoff.refused', reason: 'self' }); return { ...text('Not created: hand tasks to a teammate, not to yourself. Call list_agents for the team.'), isError: true } }
       const refuse = (why: string) => ({ ...text(`Not created: ${why}`), isError: true })
       // A reviewer started on another workspace's branch is a review of it, with the same checks. It keeps base_ref and
       // branch, since a long reviewed branch can't take review_of yet (KERNEL-299, KERNEL-265).
       const review_of = askedReview ?? reviewedByBase(pick, base_ref, d.workspaces())?.id
+      // A helper only answers when another agent calls it, so it gets no workspace of its own. The reviewer can still review (KERNEL-397).
+      if (!takesTasks(pick) && !(review_of && isReviewer(pick))) {
+        bus.track({ name: 'handoff.refused', reason: 'helper' })
+        const list = takers(team)
+        return refuse(`${pick.name} is a helper in this room and doesn't take tasks${isReviewer(pick) ? ', only reviews with review_of' : ''}.${list ? ` Use an id from list_agents: ${list}.` : ' Propose a teammate with hire_agent.'}`)
+      }
       // A Lead that carries on after a quit may call this again for a task it already handed off (KERNEL-287). The same
       // issue anywhere in the room, or the same agent and title from this chat, is that task while its PR is still open.
       if (!review_of) {
@@ -393,11 +411,15 @@ export function kernelTools(d: KernelToolDeps) {
       id: z.string().regex(/^[a-z][a-z0-9-]*$/), description: z.string(), prompt: z.string(),
       model: z.string().optional(), tools: z.array(z.string()).optional(), role: z.string().optional()
     }, async (a) => {
+      // A name the team or Kernel's own agents use is refused before the user sees a card (KERNEL-397).
+      if (RESERVED_AGENT_IDS.includes(a.id) || (await d.agents()).some((x) => x.id === a.id)) return { ...text(`Not proposed: ${a.id} is taken. Pick another id.`), isError: true }
       const agentFile = { path: `.claude/agents/${a.id}.md`, text: renderAgentFile({ ...a, tools: a.tools }) }
       const decision = await d.askUser({ kind: 'agent', title: `Add ${a.id} to the team`, detail: a.description, agentFile })
       if (!decision || decision.behavior !== 'allow') return text('The user did not approve this agent.')
-      const file = await d.hireAgent(a)
-      return text(`Saved ${file}. ${a.id} joins the team.`)
+      try {
+        const file = await d.hireAgent(a)
+        return text(`Saved ${file}. ${a.id} joins the team.`)
+      } catch (e) { return { ...text(`Not saved: ${(e as Error).message}`), isError: true } }
     })
   ]
 }

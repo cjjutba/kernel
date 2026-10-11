@@ -11,7 +11,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     store: k.store,
     approvals: k.approvals,
     settings: () => k.settings,
-    agentFor: (ws) => k.team.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
+    agentFor: (ws) => k.team.agentOf(ws.roomId, ws.agentId),
     mcpFor: (ws, agent, chat) => k.tools.mcpFor(ws, agent, chat),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
@@ -26,7 +26,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     onTurnDone: (ws, chat, turn) => {
       void k.checkpoints.checkpoint(ws, chat).catch(() => undefined)
       void k.chats.nameChat(ws, chat, true)
-      const lead = !!k.team.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+      const lead = !!k.team.agentOf(ws.roomId, ws.agentId)?.lead
       const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
       k.notifications.turnDone(ws, chat, done)
       // The Lead never opens a PR of its own, so there is nothing to refresh. A teammate's

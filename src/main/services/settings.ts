@@ -4,7 +4,7 @@ import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'nod
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 
@@ -38,7 +38,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
-  experimental: { walking: true, floor3d: false, voice: false, sharing: true }
+  experimental: { walking: true, floor3d: false, voice: false, sharing: true },
+  privacy: { telemetry: 'ask' }
 })
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
@@ -201,6 +202,11 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
   const { scripts, files, workspace, disabled, linear, pr, preview, env } = merged
+  // `[team]` (KERNEL-397), read like the other tables but written only by `saveTeamSettings`.
+  const sharedTeam = teamValues(sharedDoc.team)
+  const localTeam = teamValues(localDoc.team)
+  const team = { ...sharedTeam, ...localTeam }
+  for (const k of Object.keys(team)) sources[`team.${k}`] = k in sharedTeam && k in localTeam ? 'override' : k in localTeam ? 'local' : 'shared'
   return {
     scripts: { setup: scripts.setup, run: scripts.run, archive: scripts.archive, runMode: scripts.runMode },
     runScripts: [...(scripts.run ? [{ name: 'run', command: scripts.run as string }] : []), ...[...runs].map(([name, command]) => ({ name, command }))],
@@ -211,8 +217,90 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     ...(Object.keys(pr).length ? { pr } : {}),
     preview: { urls: preview.urls ?? [] },
     env: { files: env.files ?? [] },
+    ...(Object.keys(team).length ? { team } : {}),
     sources
   }
+}
+
+/** The `[team]` keys a file sets. A blank id or an empty list is no setting. */
+function teamValues(table: unknown): TeamConfig {
+  const t = (table && typeof table === 'object' ? table : {}) as Record<string, unknown>
+  const id = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+  const ids = (v: unknown) => { const l = strings(v).map((x) => x.trim()).filter(Boolean); return l.length ? l : undefined }
+  const out: TeamConfig = { lead: id(t.lead), reviewer: id(t.reviewer), members: ids(t.members), helpers: ids(t.helpers) }
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
+}
+
+/**
+ * `table` in a TOML file's text, with `values` set and `null` keys removed, everything else kept as written: comments,
+ * other tables, the order of the keys (KERNEL-397). `stringify` would drop the comments of a file the repo commits. The
+ * result is parsed back and refused when anything but `table` came out different, so a file this can't splice is never
+ * written. A table left empty goes, header and all.
+ */
+export function upsertTomlTable(src: string, table: string, values: Record<string, string | string[] | null>): string {
+  const lines = src.length ? src.replace(/\r\n/g, '\n').replace(/\n$/, '').split('\n') : []
+  const isHeader = (l: string) => /^\s*\[/.test(l)
+  let start = lines.findIndex((l) => new RegExp(`^\\s*\\[\\s*${table}\\s*\\]\\s*(#.*)?$`).test(l))
+  if (start < 0) {
+    if (!Object.values(values).some((v) => v !== null)) return src
+    while (lines.length && !lines[lines.length - 1].trim()) lines.pop()
+    if (lines.length) lines.push('')
+    lines.push(`[${table}]`)
+    start = lines.length - 1
+  }
+  let end = lines.findIndex((l, i) => i > start && isHeader(l))
+  if (end < 0) end = lines.length
+  const render = (v: string | string[]) => (Array.isArray(v) ? `[${v.map((x) => JSON.stringify(x)).join(', ')}]` : JSON.stringify(v))
+  const body = lines.slice(start + 1, end)
+  for (const [key, v] of Object.entries(values)) {
+    const at = body.findIndex((l) => new RegExp(`^\\s*${key}\\s*=`).test(l))
+    // A multi-line array runs to the line that closes it.
+    let span = 1
+    if (at >= 0 && /=\s*\[[^\]]*$/.test(body[at].replace(/#.*$/, ''))) while (at + span < body.length && !/\]/.test(body[at + span - 1].replace(/#.*$/, ''))) span++
+    if (v === null) { if (at >= 0) body.splice(at, span) }
+    else if (at >= 0) body.splice(at, span, `${key} = ${render(v)}`)
+    else {
+      let last = body.length
+      while (last > 0 && !body[last - 1].trim()) last--
+      body.splice(last, 0, `${key} = ${render(v)}`)
+    }
+  }
+  const empty = !body.some((l) => l.trim() && !l.trim().startsWith('#'))
+  const out = [...lines.slice(0, start), ...(empty ? [] : [lines[start], ...body]), ...lines.slice(end)]
+  while (out.length && !out[out.length - 1].trim()) out.pop()
+  const text = out.length ? `${out.join('\n')}\n` : ''
+  // Nothing but `table` may change, and `table` must read back as asked.
+  const refuse = `Kernel couldn't change [${table}] in .kernel/settings.toml without changing the rest of it. Edit the file by hand.`
+  let before: Record<string, unknown>
+  try { before = parseToml(src) as Record<string, unknown> } catch { throw new Error(".kernel/settings.toml isn't valid TOML, so Kernel left it alone. Fix the file first.") }
+  let after: Record<string, unknown>
+  try { after = parseToml(text) as Record<string, unknown> } catch { throw new Error(refuse) }
+  const want = { ...((before[table] as Record<string, unknown>) ?? {}) }
+  for (const [k, v] of Object.entries(values)) { if (v === null) delete want[k]; else want[k] = v }
+  const rest = (d: Record<string, unknown>) => JSON.stringify(Object.fromEntries(Object.entries(d).filter(([k]) => k !== table)))
+  if (rest(before) !== rest(after) || JSON.stringify(after[table] ?? {}) !== JSON.stringify(want)) throw new Error(refuse)
+  return text
+}
+
+/**
+ * Writes a `[team]` change to the shared `.kernel/settings.toml`, so the whole team gets it (KERNEL-397). Keys the patch
+ * leaves out stay as they are. `null`, a blank id and an empty list remove a key.
+ */
+export async function saveTeamSettings(repo: string, patch: TeamPatch): Promise<RepoSettings> {
+  const file = repoFile(repo, 'settings.toml')
+  const src = await readFile(file, 'utf8').catch(() => '')
+  const values: Record<string, string | string[] | null> = {}
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue
+    const blank = v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)
+    values[k] = blank ? null : Array.isArray(v) ? v : v.trim()
+  }
+  const next = upsertTomlTable(src, 'team', values)
+  if (next !== src) {
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, next)
+  }
+  return loadRepoSettings(repo)
 }
 
 /** The text a room runs or copies on its own: the scripts, the files.copy list and the env files list, as the room reads them. */

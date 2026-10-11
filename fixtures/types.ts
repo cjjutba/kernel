@@ -4,6 +4,7 @@ import type {
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
+import type { TelemetryRecord } from '@shared/telemetry'
 
 /** Everything one screen needs. `KERNEL_FIXTURES=<key>` serves it in place of the kernel. */
 export interface Fixture {
@@ -95,6 +96,8 @@ export interface Fixture {
   sharedComments?: SharedComment[]
   /** What `system.preview.hit` answers in a fixture run, which has no live page: the innermost anchor whose element box holds the point, as it is written (KERNEL-311). */
   sharedHits?: SharedAnchor[]
+  /** Usage data (KERNEL-397): whether this build could send, and what Settings, Privacy lists. Left out, it can't and lists nothing. */
+  telemetry?: { canSend?: boolean; recent?: TelemetryRecord[] }
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run

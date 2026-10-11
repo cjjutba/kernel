@@ -351,11 +351,12 @@ describe('room pause and team templates', () => {
     const k = await kernel()
     const h = k.handlers()
     const a = await k.addRoom(await tempRepo()), b = await k.addRoom(await tempRepo()), c = await k.addRoom(await tempRepo())
-    expect((await h['agents.seed']({ roomId: a.id, template: { kind: 'starter' } })).map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'noor', 'rowan', 'theo'])
-    expect((await h['agents.seed']({ roomId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['kai', 'rowan'])
+    // The templates seat teammates as files, and Kernel's own Rowan and Theo lead and review (KERNEL-397).
+    expect((await h['agents.seed']({ roomId: a.id, template: { kind: 'starter' } })).map((x) => x.id).sort()).toEqual(['ivy', 'kai', 'kernel-lead', 'kernel-reviewer', 'noor'])
+    expect((await h['agents.seed']({ roomId: b.id, template: { kind: 'pair' } })).map((x) => x.id).sort()).toEqual(['kai', 'kernel-lead', 'kernel-reviewer'])
     await expect(h['agents.seed']({ roomId: b.id, template: { kind: 'starter' } })).rejects.toThrow('already has agents')
     expect((await h['agents.seed']({ roomId: c.id, template: { kind: 'copy', fromRoomId: a.id } })).length).toBe(5)
-    expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(5)
+    expect(await readdir(join(c.path, '.claude', 'agents'))).toHaveLength(3)
     await k.stop()
   })
 

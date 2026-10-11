@@ -19,7 +19,7 @@ export function notificationDeps(k: Kernel): ConstructorParameters<typeof Notifi
   return {
     store: k.store,
     settings: () => k.settings,
-    agentName: (roomId, agentId) => (roomId ? k.team.agentsSync(roomId).find((a) => a.id === agentId)?.name : undefined),
+    agentName: (roomId, agentId) => (roomId && agentId ? k.team.agentOf(roomId, agentId)?.name : undefined),
     show: k.o.showNotification,
     inBackground: k.o.inBackground
   }
@@ -32,12 +32,12 @@ export function leadUpdateDeps(k: Kernel): LeadUpdateDeps {
     target: (roomId, owner) => k.lead.leadUpdateTarget(roomId, owner),
     // With no Lead tab open, an update that needs the Lead opens one rather than being dropped (KERNEL-365).
     open: (roomId, owner) => k.lead.openUpdateTab(roomId, owner),
-    isLead: (ws) => !!k.team.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
-    agentName: (roomId, agentId) => k.team.agentsSync(roomId).find((a) => a.id === agentId)?.name,
+    isLead: (ws) => !!k.team.agentOf(ws.roomId, ws.agentId)?.lead,
+    agentName: (roomId, agentId) => k.team.agentOf(roomId, agentId)?.name,
     post: (chatId, text, update) => k.sessions.post(chatId, [{ type: 'text', text }], { update }),
     reviewState: (ws) => k.reviews.reviewState(ws),
-    // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121). Retired agents are off the team.
-    reviewer: (roomId) => k.team.agentsSync(roomId).find((a) => !a.lead && !a.retired && /\breview/i.test(a.role)),
+    // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121): its own, or Kernel's Theo (KERNEL-397).
+    reviewer: (roomId) => k.team.reviewerOf(roomId),
     autoReview: () => k.settings.pr.autoReview !== false,
     // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
     // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
@@ -79,6 +79,7 @@ export function listen(k: Kernel): () => void {
     // Main moved, so the Lead's worktree follows it once the room fetches (KERNEL-181).
     const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.roomId : undefined
     if (merged) void k.lead.syncLead(merged, { fetch: true })
+    if (e.type === 'pr' && e.state === 'merged') bus.track({ name: 'pr.merged' })
     // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
     const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? k.autoArchive.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
     if (e.type === 'pr' && !reviews) k.autoArchive.unmarkReviews(...k.autoArchive.reviewsOf(e.workspaceId), e.workspaceId)

@@ -3,8 +3,9 @@ import type {
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrBlocked, PrInfo, PrState,
   PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
-  Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
+  TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
+import type { TelemetryEvent, TelemetryRecord } from './telemetry'
 
 type Ok = { ok: true }
 
@@ -70,6 +71,15 @@ export interface KernelApi {
   'agents.restore': { req: { roomId: string; agentId: string }; res: AgentDef }
   /** Empty floor: seat a starter team. */
   'agents.seed': { req: { roomId: string; template: TeamTemplate }; res: AgentDef[] }
+  /**
+   * Who leads, who reviews and who takes tasks: writes the `[team]` table in the shared .kernel/settings.toml and returns
+   * the team as Kernel now resolves it (KERNEL-397). `from` says which screen asked.
+   */
+  'agents.setTeam': { req: { roomId: string; team: TeamPatch; from?: 'setup' | 'settings' }; res: AgentDef[] }
+  /** Copies Kernel's own Lead or reviewer into .claude/agents so the user can edit it, and returns the new file's agent. */
+  'agents.customize': { req: { roomId: string; agentId: string }; res: AgentDef }
+  /** Team > Add a starter agent: copies one of Kernel's starter files into .claude/agents. Refuses one the team already has. */
+  'agents.addStarter': { req: { roomId: string; id: string }; res: AgentDef }
 
   // workspaces (KERNEL-10, 11, 16, 21, 28)
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
@@ -241,12 +251,21 @@ export interface KernelApi {
   'update.install': { req: void; res: Ok & { canceled?: true } }
   /** Writes the activity log to a file in the data folder and returns where (Settings > About). */
   'app.exportLogs': { req: void; res: { path: string } }
-  /** What Settings > About shows: Kernel's version and where its data lives. */
-  'app.info': { req: void; res: { version: string; dataDir: string } }
+  /**
+   * What Settings > About shows: Kernel's version and where its data lives. `telemetry` says whether this build can send
+   * usage data at all (KERNEL-397); a dev build or one without a key can't.
+   */
+  'app.info': { req: void; res: { version: string; dataDir: string; telemetry: boolean } }
   /** A terminal window in a folder, optionally running a command (Open terminal, Sign in). */
   'app.openTerminal': { req: { cwd: string; command?: string }; res: Ok }
   /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */
   'app.checkOnline': { req: void; res: { online: boolean } }
+
+  // usage data (KERNEL-397)
+  /** The latest events, newest first, and whether each went out: Settings, Privacy's "See what's sent". */
+  'telemetry.recent': { req: void; res: TelemetryRecord[] }
+  /** The renderer's own events: the answer in Room setup's team review. Main checks each before keeping it. */
+  'telemetry.track': { req: { event: TelemetryEvent }; res: Ok }
 
   // shared files (KERNEL-302)
   /** Files agents shared, newest first: a room's (the Lead's panel) or one workspace's. */

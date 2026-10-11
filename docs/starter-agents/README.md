@@ -1,3 +1,3 @@
 # Starter team
 
-Kernel offers these files when a room has no `.claude/agents` folder yet (KERNEL-20). Copy them into a repo's `.claude/agents/` and edit freely. `role` and `lead` are Kernel-only fields; Claude Code ignores them.
+Kernel offers Kai, Noor and Ivy when a room has no `.claude/agents` folder yet (KERNEL-20), and Team adds any of them to a room later. Rowan and Theo are Kernel's own Lead and reviewer. They run from here, under the ids `kernel-lead` and `kernel-reviewer`, whenever a repo has no Lead or reviewer of its own. Customize on their profile copies them into the repo (KERNEL-397). Copy any file into a repo's `.claude/agents/` and edit freely. `role` and `lead` are Kernel-only fields; Claude Code ignores them. Kernel's own instructions, such as when to share a file, come from its rules, so these files describe only the job.
