@@ -84,7 +84,7 @@ export function listen(k: Kernel): () => void {
     // LeadUpdates, which drops events while Lead updates are off. The reviews and the waits run together, and the work
     // itself is archived once both are done (KERNEL-114).
     if (e.type === 'pr') {
-      const waits = k['onTargetPr'](e.workspaceId, e.state).catch(() => undefined)
+      const waits = k.waits.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
       if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => k['archiveMerged'](e.workspaceId)).catch(() => undefined)
     }
   }

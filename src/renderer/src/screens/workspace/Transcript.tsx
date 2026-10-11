@@ -9,7 +9,7 @@ import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
-import { attempt, copyText, MessageActions } from './MessageActions'
+import { attempt, MessageActions } from './MessageActions'
 import { chipIcon, ImageButton, isPastedText, TextButton } from './composer/Chip'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
@@ -50,19 +50,18 @@ function UserMessage({ item, onEdit }: { item: Extract<ChatItem, { kind: 'user' 
       <div className="bubble">
         {item.parts.map((p, i) => (p.type === 'text' ? <span key={i}>{p.text} </span> : <PartChip key={i} part={p} />))}
       </div>
-      <MessageActions align="end" label="Message actions" items={[{ label: 'Copy', onClick: () => void copyText(partsText(item.parts)) }, { label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]} />
+      <MessageActions align="end" label="Message actions" copy={partsText(item.parts)} items={[{ icon: 'pen', label: 'Edit', onClick: () => onEdit(partsText(item.parts)) }]} />
     </div>
   )
 }
 
-function ReplyMessage({ item, chatId, onFork }: { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; onFork: (itemId: string) => void }) {
+function ReplyMessage({ item, chatId, onFork }: { item: Extract<ChatItem, { kind: 'text' }>; chatId: string; onFork: (itemId: string) => Promise<unknown> }) {
   return (
     <div className="msg msg-reply">
       <Markdown text={item.text} />
-      <MessageActions label="Message actions" items={[
-        { label: 'Copy', onClick: () => void copyText(item.text) },
-        { label: 'Retry', onClick: () => void attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) },
-        { label: 'Fork into new chat', onClick: () => onFork(item.id) }
+      <MessageActions label="Message actions" copy={item.text} items={[
+        { icon: 'refresh', label: 'Retry', busyLabel: 'Retrying', onClick: () => attempt('Could not retry', () => call('chats.retry', { chatId, itemId: item.id })) },
+        { icon: 'fork', label: 'Fork into new chat', busyLabel: 'Forking', onClick: () => onFork(item.id) }
       ]} />
     </div>
   )
@@ -218,7 +217,7 @@ function sameBlock(a: ThreadBlock, b: ThreadBlock): boolean {
   }
 }
 
-interface BlockProps { block: ThreadBlock; chatId: string; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => void; onTerminal: () => Promise<unknown> }
+interface BlockProps { block: ThreadBlock; chatId: string; changes: ChangedFile[]; agentName: string; onEdit: (text: string) => void; onFork: (itemId: string) => Promise<unknown>; onTerminal: () => Promise<unknown> }
 
 /** Only a tool group reads the changed files, so a new list redraws the groups and nothing else. */
 const sameProps = (a: BlockProps, b: BlockProps) =>
@@ -324,7 +323,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
   const forked = useRef(onForked)
   forked.current = onForked
   const chatId = chat.id
-  const fork = useCallback((itemId: string) => void attempt('Could not fork', async () => {
+  const fork = useCallback((itemId: string) => attempt('Could not fork', async () => {
     const next = await call('chats.fork', { chatId, itemId })
     await loadWorkspace(workspaceId)
     forked.current(next.id)

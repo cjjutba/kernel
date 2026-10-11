@@ -44,7 +44,6 @@
 .pcard-row .pcard-tools { margin: -6px -6px -6px 0; }
 .pcard-tools { display: flex; align-items: center; gap: 2px; flex-shrink: 0; margin-left: auto; }
 .pcard-tools .icon-btn { width: 26px; height: 26px; }
-.pcard-tools .icon-btn:hover { background: var(--surface-3); color: var(--ink-2); }
 .tcard.pcard { gap: 0; padding: 0; }
 .pcard-head { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 8px 0 16px; min-height: 36px; }
 .pcard-kicker { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--muted); font-size: 12.5px; }
@@ -64,7 +63,6 @@
 .plan-file { min-width: 0; max-width: 340px; height: 22px; padding: 0 7px; border-radius: var(--r-sm); border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 11.5px; }
 .plan-file:hover { border-color: var(--line-4); color: var(--ink); }
 .plan-inline .plan-copy { width: 24px; height: 24px; margin-left: -2px; }
-.plan-inline .plan-copy:hover { background: var(--surface-3); color: var(--ink-2); }
 .plan-open { margin-left: 10px; padding: 0; border: 0; background: transparent; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
 /* Kernel's team update in the Lead's chat (cards/TeamUpdateCard.tsx, KERNEL-127): an outline with a small header, one
    row per teammate, the events as a line of text and the reply as plain text (KERNEL-274). */

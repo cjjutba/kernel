@@ -67,12 +67,12 @@ export class Config extends Feature {
       },
       'settings.setRoom': async ({ roomId, patch, shared }) => {
         const room = this.mustRoom(roomId)
-        const before = await this.k['trustState'](room)
+        const before = await this.k.trust.trustState(room)
         const next = await saveRepoSettings(room.path, patch, shared)
         this.roomRemotes.set(room.path, next.workspace.remote)
-        await this.k['trustSaved'](room, before, patch, !!shared, next)
+        await this.k.trust.trustSaved(room, before, patch, !!shared, next)
         // A saved env files list counts once the check agrees, trusted or the user's own (KERNEL-247).
-        await this.k['untrusted'](room, next)
+        await this.k.trust.untrusted(room, next)
         return next
       },
       // Lists, never copies, through the same confinement as the copy, so it shows nothing outside the repo (KERNEL-209).

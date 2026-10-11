@@ -1,7 +1,8 @@
 @import './ui/ui.css';
 /* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
    pill fills color status words in the sidebar's hover cards (D-084); `--needs` also marks what waits on you in the sidebar.
-   `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). */
+   `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
+   orange, on the Claude mark in the model picker and nowhere else. */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
@@ -36,6 +37,7 @@
   --aside: #0c0d0e;
   --plan: #5aa2ff;
   --on-plan: #06101e;
+  --claude: #d97757;
   --pr-merged-band: #2a2140;
   --pr-merged-line: #3c2f5c;
   --pr-merged-soft: #372b55;
@@ -112,6 +114,7 @@
   --aside: #f7f7f8;
   --plan: #1f5fbf;
   --on-plan: #ffffff;
+  --claude: #d97757;
   --pr-merged-band: #f3effd;
   --pr-merged-line: #e2d9fa;
   --pr-merged-soft: #ebe4fc;
@@ -226,7 +229,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 /* Busy: the work the button started is running (DESIGN.md). Every variant takes the canvas's Creating PR look. */
 .btn[aria-busy='true']:disabled { opacity: 1; background: var(--surface-3); border: 1px solid var(--line-3); color: var(--ink-3); }
 .icon-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--muted); }
-.icon-btn:hover { background: var(--surface-3); color: var(--ink-2); }
+/* Hover brightens the icon with no fill behind it. A fill means on or open (`aria-pressed`, `aria-expanded`), never hover (DESIGN.md). */
+.icon-btn:hover { color: var(--ink); }
 .pill { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--pill-line); background: transparent; color: var(--muted); font-weight: 500; }
 .pill[aria-pressed='true'], .pill[aria-current='page'] { border-color: var(--line-3); background: var(--surface-3); color: var(--ink); }
 .tab { height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-weight: 500; }
