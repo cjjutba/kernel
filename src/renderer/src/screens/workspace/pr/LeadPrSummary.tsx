@@ -1,6 +1,6 @@
 import { actions } from '../../../store'
 import { Icon } from '../../../ui'
-import { useLeadPrs } from './leadPrList'
+import { summaryOf, useLeadPrs } from './leadPrList'
 import './pr.css'
 
 /**
@@ -9,8 +9,7 @@ import './pr.css'
  * while something can merge; in the chat header it stays neutral, like `PrHeader`.
  */
 export function LeadPrSummary({ roomId, spread }: { roomId: string; spread?: boolean }) {
-  const ready = useLeadPrs(roomId).filter((r) => r.ready).length
-  const text = ready ? `${ready} ready to merge` : 'No open PRs'
+  const { ready, text } = summaryOf(useLeadPrs(roomId))
   const tone = spread && ready ? 'ready' : 'idle'
   const open = () => { actions.ui.setWorkspaceView({ leadRight: 'prs' }); actions.ui.setRightPanel(true) }
   const state = <span className="pr-state"><Icon name="pr" size={14} /><span className="pr-label">{text}</span></span>

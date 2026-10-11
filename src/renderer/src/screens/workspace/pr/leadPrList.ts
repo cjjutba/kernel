@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo } from 'react'
 import type { AgentDef, AppSettings, PrInfo, Workspace } from '@shared/types'
 import { mergeBlock, mergeNeedsPr, mergeableState, reviewVerdicts } from '@shared/merge'
 import { call } from '../../../api'
@@ -61,8 +61,17 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
   return [...rows.filter((r) => r.ready), ...rows.filter((r) => !r.ready)]
 }
 
+/** What the Lead's header says: the ready count while any PR is open, "No open PRs" when none is. Only a ready PR gets the green band and the chevron. */
+export function summaryOf(rows: Pick<LeadPr, 'ready'>[]): { text: string; ready: number } {
+  const ready = rows.filter((r) => r.ready).length
+  return { ready, text: rows.length ? `${ready} ready to merge` : 'No open PRs' }
+}
+
 const NO_AGENTS: AgentDef[] = []
 const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
+
+/** The PRs a read was already asked for. Module-level, since the header, the tab count and the list each call `useLeadPrs`, and the tab remounts. */
+const asked = new Set<string>()
 
 /**
  * The Lead's PRs for the room, redrawn when a workspace, a PR read, a rule or an agent changes. The rule may need a PR GitHub
@@ -75,11 +84,10 @@ export function useLeadPrs(roomId: string): LeadPr[] {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const leadId = useStore((s) => leadOf(s.agents, roomId)?.id)
   const rows = useMemo(() => leadPrs(workspaces, { leadId, roomId, prs, rules, agents }), [workspaces, leadId, roomId, prs, rules, agents])
-  const asked = useRef(new Set<string>())
   useEffect(() => {
     for (const { ws } of rows) {
-      if (prs[ws.id] || asked.current.has(ws.id) || !mergeableState(ws.prState) || !mergeNeedsPr(ws, rules)) continue
-      asked.current.add(ws.id)
+      if (prs[ws.id] || asked.has(ws.id) || !mergeableState(ws.prState) || !mergeNeedsPr(ws, rules)) continue
+      asked.add(ws.id)
       call('pr.get', { workspaceId: ws.id }).then((info) => { if (info) actions.prs.set(info) }).catch(() => undefined)
     }
   }, [rows, prs, rules])

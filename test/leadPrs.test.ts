@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { AgentDef, PrInfo, Workspace } from '@shared/types'
-import { leadPrs, reviewLine } from '../src/renderer/src/screens/workspace/pr/leadPrList'
+import { leadPrs, reviewLine, summaryOf } from '../src/renderer/src/screens/workspace/pr/leadPrList'
 
 // The Lead's PRs tab: which workspaces it lists, which come first, and what each row says (KERNEL-354).
 
@@ -77,4 +77,11 @@ describe('the review line', () => {
     const pr = { head: 'new' } as PrInfo
     expect(reviewLine(ws('a', { reviews: [verdict('approved', { sha: 'new' })] }), pr, name).text).toBe('Theo approved')
   })
+})
+
+describe("the Lead's header", () => {
+  const rows = (...ready: boolean[]) => ready.map((r) => ({ ready: r }))
+  it('counts the ready PRs', () => expect(summaryOf(rows(true, false, true))).toEqual({ ready: 2, text: '2 ready to merge' }))
+  it('says 0 ready to merge while PRs are open and none is ready', () => expect(summaryOf(rows(false, false, false))).toEqual({ ready: 0, text: '0 ready to merge' }))
+  it('says No open PRs only when the room has none', () => expect(summaryOf([])).toEqual({ ready: 0, text: 'No open PRs' }))
 })

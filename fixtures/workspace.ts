@@ -444,7 +444,7 @@ const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string): P
   ], {}, { model: 'claude-opus-5-5' })
   const { approvals: _none, ...rest } = s
   return {
-    ...rest, ...openPrs(f, list),
+    ...rest, ...openPrs(f, list), settings: noSharing(),
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   }
@@ -455,6 +455,9 @@ const INVITES_PR: OpenPr = { id: ids.invites, agentId: 'kai', key: 'T-09', n: 41
 
 /** Kai's download button PR from the Export chat, ready to merge. */
 const PDF_BUTTON_PR: OpenPr = { id: 'ws-pdf-button', agentId: 'kai', key: 'T-15b', n: 43, title: 'Download PDF in the row actions', state: 'ready', stat: [96, 12], review: 'approved' }
+
+/** The PNGs of the Lead's panel have no Shared tab, which Settings, Experimental turns on by default. */
+const noSharing = () => ({ ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: false } })
 
 const LEAD_PRS: OpenPr[] = [
   { id: 'ws-182', agentId: 'kai', key: 'KERNEL-182', n: 162, title: 'New chats focus the composer, and ⌘L focuses it', state: 'ready', stat: [49, 5], review: 'approved' },
@@ -968,7 +971,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: open
   })),
   // Rowan's plan for T-15 waits in the Lead's own worktree, on the Grouped sidebar, before the export chat hands anything off (KERNEL-355).
-  WorkspaceLead: scene((f) => leadWaiting(f)),
+  WorkspaceLead: scene((f) => ({ ...leadWaiting(f), settings: noSharing() })),
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
