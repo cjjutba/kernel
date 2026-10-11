@@ -4,7 +4,7 @@ import { type AppSettings, loadRepoSettings, prInstructions } from '../services/
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
 import { prNote, resolveFile } from '../services/github'
-import { mergeBlock, mergeNeedsPr } from '@shared/merge'
+import { mergeableState, mergeBlock, mergeNeedsPr } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -141,7 +141,7 @@ export class Prs extends Feature {
     const ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read only when the rule needs it, and never for a PR that isn't ready, which mergeBlock refuses anyway.
-    const info = (ws.prState === 'ready' || ws.prState === 'open') && mergeNeedsPr(ws, rules)
+    const info = mergeableState(ws.prState) && mergeNeedsPr(ws, rules)
       ? await this.k.github.info(ws.path, ws.branch, id, { remote: await this.k.config.remoteOfWs(ws) })
       : undefined
     if (info) bus.push({ type: 'pr.info', info })
