@@ -18,13 +18,13 @@ body{margin:0}
 .i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
 .row-h{font-size:13px;font-weight:500;color:var(--ink);margin:0 0 4px}
 .cap{font-size:12px;color:var(--muted);margin:0 0 10px}
-.cmp{--plan:#5aa2ff;--ease:cubic-bezier(.33,0,.2,1);position:relative;display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 12px 10px;transition:border-color 1.6s ease-in-out}
+.cmp{--plan:#5aa2ff;--ease:cubic-bezier(.33,0,.2,1);position:relative;display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 12px 10px;transition:border-color 1s ease-in-out}
 .cmp > *{position:relative}
-.cmp::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%);opacity:0;transform:scaleY(.85);transform-origin:50% 100%;transition:opacity 1.6s ease-in-out,transform 1.6s ease-in-out}
+.cmp::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%);opacity:0;transform:scaleY(.85);transform-origin:50% 100%;transition:opacity 1s ease-in-out,transform 1s ease-in-out}
 .cmp.focus{border-color:var(--line-4);transition:border-color .6s ease-out}
-.cmp.plan{border-color:rgba(90,162,255,.45);transition:border-color 2.4s var(--ease)}
+.cmp.plan{border-color:rgba(90,162,255,.45);transition:border-color 1s var(--ease)}
 .cmp.plan.focus{border-color:rgba(90,162,255,.7);transition:border-color .6s ease-out}
-.cmp.plan::before{opacity:.9;transform:none;transition:opacity 2.4s var(--ease),transform 2.4s var(--ease);animation:plan-breathe 8s ease-in-out 2.4s infinite}
+.cmp.plan::before{opacity:.9;transform:none;transition:opacity 1s var(--ease),transform 1s var(--ease);animation:plan-breathe 8s ease-in-out 1s infinite}
 .cmp.plan.focus::before{opacity:1;animation:none;transition:opacity 1s ease-out}
 @keyframes plan-breathe{0%,100%{opacity:.9}50%{opacity:.62}}
 .cmp-text{min-height:34px;font-size:14px;line-height:24px;color:var(--ink)}
