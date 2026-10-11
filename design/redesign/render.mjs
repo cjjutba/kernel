@@ -1,6 +1,8 @@
 // Renders the redesign canvas to PNGs: design/redesign/canvas/<Screen>.dc.html -> design/redesign/<Screen>.png at 1440x900.
 // Each artboard becomes plain HTML: template values and <sc-if> blocks are filled from its default props, then headless
-// Chrome screenshots it. Usage: node design/redesign/render.mjs [Screen ...]   (no names renders every artboard)
+// Chrome screenshots it with reduced motion, so an animated artboard renders as its still state.
+// Usage: node design/redesign/render.mjs [Screen ...]   (no names renders every artboard)
+// Interactive artboards (PlanMotion) run on the canvas only and have no PNG.
 // Set CHROME to the browser binary when it isn't the default macOS Google Chrome.
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -31,11 +33,12 @@ function toHtml(src) {
 }
 
 const names = process.argv.slice(2)
-const files = readdirSync(canvas).filter((f) => f.endsWith('.dc.html')).filter((f) => !names.length || names.includes(f.replace('.dc.html', '')))
+const boards = JSON.parse(readFileSync(join(canvas, 'canvas.json'), 'utf8')).boards
+const files = readdirSync(canvas).filter((f) => f.endsWith('.dc.html') && !boards[f]?.is_interactive).filter((f) => !names.length || names.includes(f.replace('.dc.html', '')))
 for (const file of files) {
   const name = file.replace('.dc.html', '')
   const page = join(tmp, `${name}.html`)
   writeFileSync(page, toHtml(readFileSync(join(canvas, file), 'utf8')))
-  execFileSync(chrome, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--window-size=1440,900', '--virtual-time-budget=4000', `--screenshot=${join(here, `${name}.png`)}`, `file://${page}`], { stdio: 'ignore' })
+  execFileSync(chrome, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--force-device-scale-factor=1', '--window-size=1440,900', '--virtual-time-budget=4000', '--force-prefers-reduced-motion', `--screenshot=${join(here, `${name}.png`)}`, `file://${page}`], { stdio: 'ignore' })
   console.log(`${name}.png`)
 }

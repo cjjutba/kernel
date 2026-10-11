@@ -97,7 +97,8 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Danger: red only on the final confirm button, never on the trigger.
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.
 - PR header (KERNEL-274): the top of the right panel is a band in the PR's tone: grey (neutral states), green (open, ready, merging), red (checks failed, changes requested, conflicts, resolving), violet (merged). It holds the `#N | ↗` link pill, the state's icon and label, and the actions. Soft buttons use the band's soft fill and edge. Merge PR and a merged PR's Archive take its solid; a closed PR's Archive is soft. Create PR stays ink on the neutral band. The label always shows the state, never a spinner. With the right panel hidden, the header sits in the chat with no band, in neutral colors except merged. `design/redesign/Pr*.png` draws every state.
-- Plan mode (KERNEL-274): the composer gets a `plan` border and a soft glow rising from its bottom edge, and the caret and a ready send button turn `plan`. No hatch, no stripes, no label. A waiting plan keeps the blue and puts Copy and Approve in a blue strip on top; send stays ink there so Approve is the one blue button.
+- Composer (KERNEL-322): one composer everywhere, drawn in `design/redesign/Composer.png`. The box sits recessed on `input-bg`, the agent's name and role sit in a pill with no divider, and send and stop are circles.
+- Plan mode (KERNEL-274): the composer gets a `plan` border and a soft glow rising from its bottom edge, and the caret and a ready send button turn `plan`. No hatch, no stripes, no label. A waiting plan keeps the blue and puts Copy and Approve in a blue strip on top; send stays ink there so Approve is the one blue button. The glow moves slowly (see Motion).
 
 ## Busy buttons
 
@@ -112,7 +113,9 @@ A button that waits on the main process shows it is working until the call retur
 ## Motion
 
 - Floor characters (hidden, D-104) bob while working and stride while walking (see `.bob` and `.stride` in `design/canvas/source/templates/_helmet.html`).
-- Respect reduced motion: jump instead of walk, no spinners rotating.
+- Plan mode (KERNEL-322): the glow rises over 2.4s, fades over 1.6s, and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays it.
+- Only opacity and transform loop, and nothing on a button loops.
+- Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow.
 
 ## Accessibility
 
