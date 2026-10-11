@@ -90,6 +90,18 @@ export const isStepped = (a: Pick<Approval, 'questions'>): boolean => (a.questio
 /** Next or Send waits until something is checked, and until Something else has text. */
 export const pickReady = (p: Picked): boolean => (p.sel.length > 0 || p.other) && (!p.other || !!p.text.trim())
 
+/** Every question has an answer, so Send is the next move. */
+export const allAnswered = (picks: Picked[]): boolean => picks.every(pickReady)
+
+/** The next question without an answer after `from`, wrapping to the start. -1 when every other question has one. */
+export function nextUnanswered(picks: Picked[], from: number): number {
+  for (let k = 1; k < picks.length; k++) {
+    const i = (from + k) % picks.length
+    if (!pickReady(picks[i])) return i
+  }
+  return -1
+}
+
 /** One question's answer: the ticked labels in the order asked, then the typed text, joined with ", ". */
 export function pickAnswer(q: AskedQuestion, p: Picked): string {
   const labels = q.options.map((o) => o.label).filter((l) => p.sel.includes(l))

@@ -52,6 +52,16 @@ async function stepToSecondQuestion(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceQuestionOther is drawn on question 3 with the first two answered and a Something else answer typed.
+async function typeOtherAnswer(page: Page) {
+  await stepToSecondQuestion(page)
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Something else' }).click()
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Ask me again after the review')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceSharedPhone is drawn at the Phone width, and WorkspaceSharedVersions with the version picker open. Both are local to the tab.
 async function pickPhone(page: Page) {
   await page.getByRole('radio', { name: 'Phone' }).click()
@@ -118,6 +128,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
   WorkspaceQuestionSteps: stepToSecondQuestion,
+  WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
 }

@@ -103,11 +103,11 @@ const PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
 
-/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select with descriptions. */
+/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select. */
 const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
-  { question: 'Should the download keep the invoice number in the file name?', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
+  { question: 'Should the download keep the invoice number in the file name?', header: 'File name', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
   {
-    question: 'Where should the Download PDF action appear?', multiSelect: true,
+    question: 'Where should the Download PDF action appear?', header: 'Placement', multiSelect: true,
     options: [
       { label: 'Row actions menu', description: 'Next to Duplicate and Void on every invoice row.' },
       { label: 'Invoice detail header', description: 'Beside the status badge when an invoice is open.' },
@@ -115,11 +115,8 @@ const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
     ]
   },
   {
-    question: 'What should happen when the download fails?',
-    options: [
-      { label: 'Show a toast with a retry action', description: 'The same toast the invoice table uses.' },
-      { label: 'Show an inline error on the row', description: 'Stays until the next try.' }
-    ]
+    question: 'What should happen when the download fails?', header: 'On failure',
+    options: [{ label: 'Show a toast with a retry action' }, { label: 'Fail quietly and write it to the log' }]
   }
 ]
 
@@ -772,6 +769,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
     userMsg('qs1', 'Build T-15b from the approved plan.', true),
     ...folded('qs', 6, 0),
     { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+  })),
+  // Drawn on question 3 with the first two answered and Something else typed; the step and the typing are local to the card (scripts/shots.ts).
+  WorkspaceQuestionOther: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qo1', 'Build T-15b from the approved plan.', true),
+    ...folded('qo', 6, 0),
+    { kind: 'result', id: 'qo-res', ts: at(10, 29), durationMs: 60_000, ok: true }
   ], {
     approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
   })),
