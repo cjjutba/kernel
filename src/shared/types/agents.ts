@@ -54,9 +54,8 @@ export interface AgentDef {
  * - `reserved-id`: the file uses an id Kernel's own agents use, so Kernel skips it.
  * - `duplicate-id`: another file has the same `name:`, so Kernel skips this one. `detail` is the file kept.
  * - `looks-like-lead`: its description says it leads, but nothing marks it Lead.
- * - `unknown-tool`: its tools line names something Claude Code doesn't have. `detail` is the name.
  */
-export type AgentWarningKind = 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead' | 'unknown-tool'
+export type AgentWarningKind = 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
 
 export interface AgentWarning {
   kind: AgentWarningKind

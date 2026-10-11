@@ -14,7 +14,7 @@ export const countRange = (n: number): (typeof COUNT)[number] => (n <= 0 ? '0' :
 /** Built-in tools an agent file can leave out. Any other name goes out as `mcp` or `other`. */
 export const TOOL_KINDS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent', 'mcp', 'other'] as const
 
-const WARNING_KINDS = ['no-description', 'cant-open-pr', 'second-lead', 'setting-missing', 'reserved-id', 'duplicate-id', 'looks-like-lead', 'unknown-tool'] as const satisfies readonly AgentWarningKind[]
+const WARNING_KINDS = ['no-description', 'cant-open-pr', 'second-lead', 'setting-missing', 'reserved-id', 'duplicate-id', 'looks-like-lead'] as const satisfies readonly AgentWarningKind[]
 // A warning kind added to AgentWarningKind and not here fails to compile.
 export const EVERY_WARNING: [Exclude<AgentWarningKind, (typeof WARNING_KINDS)[number]>] extends [never] ? true : never = true
 
@@ -46,7 +46,7 @@ export const EVENTS = {
   'agent.warning': { kind: { enum: WARNING_KINDS } },
   /** A room's team changed shape: where its Lead and reviewer come from, and how many agents it has. */
   'team.resolved': {
-    leadFrom: { enum: ['file', 'role', 'setting', 'builtin', 'none'] },
+    leadFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
     reviewerFrom: { enum: ['file', 'setting', 'builtin', 'none'] },
     agents: { enum: COUNT },
     helpers: { enum: COUNT },
