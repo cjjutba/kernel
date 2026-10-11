@@ -27,7 +27,7 @@ There is one composer. `Composer` is its spec, and the composers on the other sc
 
 Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on a loop. Open it on the canvas and press Play.
 
-- The glow rises from the bottom edge over 2.4s when plan mode turns on, and fades over 1.6s when it turns off. The border follows it.
+- The glow rises from the bottom edge over 1s when plan mode turns on, and fades over 1s when it turns off (KERNEL-418). The border follows it.
 - While the box waits for input, the glow breathes between 90% and 62% every 8s. Only its opacity changes.
 - Focus settles the glow at full over 1s and brightens the border over 0.6s.
 - A plan's Copy and Approve strip opens over 1.2s, then one soft light crosses it over 2.6s.

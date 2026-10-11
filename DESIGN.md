@@ -116,7 +116,7 @@ A button that waits on the main process shows it is working until the call retur
 ## Motion
 
 - Floor characters (hidden, D-104) bob while working and stride while walking (see `.bob` and `.stride` in `design/canvas/source/templates/_helmet.html`).
-- Plan mode (KERNEL-322): the glow rises over 2.4s, fades over 1.6s, and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays it.
+- Plan mode (KERNEL-322): the glow rises and fades over 1s each way (KERNEL-418), and breathes every 8s while the box waits for input. Focus settles it over 1s. A plan's strip opens over 1.2s, then one light crosses it over 2.6s. Send changes color in 0.16s. `design/redesign/canvas/PlanMotion.dc.html` plays it.
 - Toasts (toast-motion-and-swipe): a new toast's gap opens over 0.16s, then the toast slides in from past the right edge over 0.34s. It leaves the same way: it slides out over 0.2s, then its gap closes over 0.16s. A drag or a two-finger swipe moves it with your finger. Past 60px, or after a flick, it slides on out. Short of that it springs back.
 - Only opacity and transform loop, and nothing on a button loops.
 - Respect reduced motion: jump instead of walk, no spinners rotating, no breathing glow, toasts that appear and vanish in place.
