@@ -6,12 +6,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval } from '@shared/types'
+import type { Approval, SharedFile } from '@shared/types'
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
-const TABLES = ['rooms', 'workspaces', 'chats', 'chat_items', 'approvals', 'notifications', 'activity', 'tasks', 'meta', 'overlaps']
-const rows = (db: Database.Database, table: string) => db.prepare(`select * from ${table} order by rowid`).all() as Record<string, unknown>[]
+const TABLES = ['rooms', 'workspaces', 'chats', 'chat_items', 'approvals', 'notifications', 'activity', 'tasks', 'meta', 'overlaps', 'shared_files']
+/** A table's rows, and none for a table an older file doesn't have yet. */
+const rows = (db: Database.Database, table: string) => (db.prepare(`select 1 from sqlite_master where type = 'table' and name = ?`).get(table)
+  ? db.prepare(`select * from ${table} order by rowid`).all() as Record<string, unknown>[] : [])
 const userVersion = (file: string) => { const db = new Database(file, { readonly: true }); try { return db.pragma('user_version', { simple: true }) } finally { db.close() } }
 /** Every file in the folder with the hash of its bytes. */
 const snapshot = (d: string) => Object.fromEntries(readdirSync(d).sort().map((n) => [n, createHash('sha256').update(readFileSync(join(d, n))).digest('hex')]))
@@ -52,14 +54,14 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(2)
+    expect(LATEST).toBe(3)
     for (const t of TABLES) {
       // Approvals gain two columns; the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
       expect(now, t).toEqual(old[t])
     }
     const indexes = (store.db.prepare(`select name from sqlite_master where type = 'index'`).all() as { name: string }[]).map((r) => r.name)
-    expect(indexes).toEqual(expect.arrayContaining(['approvals_by_room_status', 'chats_by_workspace', 'activity_by_ts']))
+    expect(indexes).toEqual(expect.arrayContaining(['approvals_by_room_status', 'chats_by_workspace', 'activity_by_ts', 'shared_files_by_source', 'shared_files_by_room']))
     const settled = store.db.prepare('select id, settled_at from approvals order by id').all() as { id: string; settled_at: number | null }[]
     expect(settled[0]).toEqual({ id: 'a1', settled_at: null })
     expect(settled[1].settled_at).toBeGreaterThan(Date.now() - 60_000)
@@ -100,7 +102,7 @@ describe('kernel.db versions', () => {
     writeFileSync(join(d, 'kernel.db.bak-v0'), 'older')
     const db = new Database(file)
     const step = (v: number): Migration => ({ version: v, up: (x) => x.exec(`create table t${v} (id text)`) })
-    const list = [...migrations, step(3), step(4)]
+    const list = [...migrations.slice(0, 2), step(3), step(4)]
     expect(migrate(db, file, Date.now(), list.slice(0, 2)).backup).toBe(join(d, 'kernel.db.bak-v1'))
     expect(migrate(db, file, Date.now(), list.slice(0, 3)).backup).toBe(join(d, 'kernel.db.bak-v2'))
     expect(migrate(db, file, Date.now(), list).backup).toBe(join(d, 'kernel.db.bak-v3'))
@@ -275,5 +277,24 @@ describe('store reads', () => {
     store.saveApproval(approval({ id: 'two', status: 'allowed' }))
     expect(store.approval('two')?.status).toBe('allowed')
     expect(store.approval('nope')).toBeUndefined()
+  })
+
+  it('lists shared files newest first by room or workspace, finds one by source and deletes them with the room (KERNEL-302)', () => {
+    const store = new Store(':memory:')
+    const file = (id: string, roomId: string, workspaceId: string, source: string, updatedAt: number): SharedFile =>
+      ({ id, roomId, workspaceId, agentId: 'kai', source, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt })
+    store.saveSharedFile(file('a', 'r1', 'w1', '.kernel/shared/a.html', 1))
+    store.saveSharedFile(file('b', 'r1', 'w2', '.kernel/shared/b.html', 3))
+    store.saveSharedFile(file('c', 'r2', 'w3', '.kernel/shared/c.html', 2))
+    expect(store.sharedFiles().map((f) => f.id)).toEqual(['b', 'c', 'a'])
+    expect(store.sharedFiles({ roomId: 'r1' }).map((f) => f.id)).toEqual(['b', 'a'])
+    expect(store.sharedFiles({ workspaceId: 'w1' }).map((f) => f.id)).toEqual(['a'])
+    expect(store.sharedFiles({ limit: 1 }).map((f) => f.id)).toEqual(['b'])
+    expect(store.sharedFileAt('w2', '.kernel/shared/b.html')?.id).toBe('b')
+    expect(store.sharedFileAt('w1', '.kernel/shared/b.html')).toBeUndefined()
+    store.saveSharedFile({ ...file('a', 'r1', 'w1', '.kernel/shared/a.html', 4), title: 'Again' })
+    expect(store.sharedFiles({ roomId: 'r1' }).map((f) => [f.id, f.title])).toEqual([['a', 'Again'], ['b', 'b']])
+    store.deleteRoom('r1')
+    expect(store.sharedFiles().map((f) => f.id)).toEqual(['c'])
   })
 })

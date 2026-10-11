@@ -1,5 +1,6 @@
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk'
+import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
+import { kernelServer } from './kernelServer'
 import type { Workspace } from '@shared/types'
 import { isMerged, resolveTarget, waitRefusal } from './waits'
 
@@ -44,10 +45,7 @@ export function teammateTools(d: TeammateToolDeps) {
   ]
 }
 
-/**
- * A teammate's own MCP server. It is named `kernel` like the Lead's and a reviewer's, so Kernel's auto-allow for
- * `mcp__kernel__` tools covers it (sessions.ts canUseTool).
- */
+/** A teammate's own MCP server, named `kernel` like the Lead's and a reviewer's (`kernelServer`). */
 export function teammateMcpServer(d: TeammateToolDeps) {
-  return createSdkMcpServer({ name: 'kernel', version: '0.1.0', alwaysLoad: true, tools: teammateTools(d) })
+  return kernelServer(teammateTools(d))
 }

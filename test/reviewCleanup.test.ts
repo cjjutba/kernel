@@ -16,11 +16,13 @@ const REPO = {
   '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer. Reviews PRs.\nrole: Reviewer\n---\nYou are Theo.'
 }
 
-const WAIT = { timeout: 15_000 }
+/** Archiving runs git, which takes seconds when the whole suite runs at once (KERNEL-187). */
+const SLOW = { timeout: 15_000 }
 
 const info = (state: PrInfo['state']): PrInfo => ({ workspaceId: '', number: 42, url: 'https://github.com/o/r/pull/42', title: 'feat: table', state, baseRef: 'main', checks: [], comments: [], conflicts: [] })
 
-async function setup() {
+/** `other` adds a second piece of work and its own review, which only the first test needs. */
+async function setup(o: { other?: boolean } = {}) {
   const repo = await tempRepo(REPO)
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
@@ -29,6 +31,9 @@ async function setup() {
   await k.start()
   onTestFinished(() => k.stop())
   k.sessions.send = async () => ({ queued: false })
+  // A merge or close starts an archive pass without awaiting it, so a check that a review stays must wait for the pass.
+  const passes = vi.spyOn(k as unknown as { archiveReviews: (...a: unknown[]) => Promise<void> }, 'archiveReviews')
+  const settled = () => Promise.all(passes.mock.results.map((r) => r.value))
   const gh = { pr: null as PrInfo | null }
   k.github = { info: async (_cwd, _ref, workspaceId) => (gh.pr ? { ...gh.pr, workspaceId } : null), merge: async () => undefined, ready: async () => undefined, reopen: async () => undefined }
   const room = await k.addRoom(repo)
@@ -36,8 +41,8 @@ async function setup() {
   const author = await k.createWorkspace(room.id, { prompt: 'Build the table', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
   const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review PR #42', leadChatId: lead.id, reviewOf: author.id })
   // Other work and its own review, which a merge of the first PR must leave alone.
-  const other = await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id })
-  const otherReview = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id })
+  const other = o.other ? await k.createWorkspace(room.id, { prompt: 'Build the export', agentId: 'kai', title: 'Invoice export', leadChatId: lead.id }) : undefined
+  const otherReview = other ? await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'theo', title: 'Review the export', leadChatId: lead.id, reviewOf: other.id }) : undefined
   // The PR is open and adopted first, so a later merge or close counts.
   gh.pr = info('ready')
   await k.refreshPr(author.id)
@@ -46,43 +51,28 @@ async function setup() {
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
-  // What the tests wait for instead of a fixed time: a busy CI runner can stretch the archive's git work past one.
-  const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), WAIT)
-  /**
-   * `trigger` merges the work, and Kernel looks at the busy review and leaves it for its turn's end: no archive starts,
-   * and it stays marked for later. The mark alone proves nothing, since `archiveReviews` sets it before it checks whether
-   * the review is working, so this runs `archiveReviews` to the end and watches the archive itself.
-   */
-  const deferred = async (trigger: () => Promise<unknown>) => {
-    const archive = vi.spyOn(k, 'archiveWorkspace')
-    try {
-      await trigger()
-      await (k as unknown as { archiveReviews(id: string): Promise<void> }).archiveReviews(author.id)
-      expect(archive).not.toHaveBeenCalled()
-      expect(k.store.meta<string[]>('reviewsToArchive')).toContain(review.id)
-    } finally { archive.mockRestore() }
-  }
-  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, deferred, status }
+  const archived = () => vi.waitFor(() => expect(status(review)).toBe('archived'), SLOW)
+  // A review Kernel will archive once its turn ends.
+  const marked = () => k['reviewsToArchive'].has(review.id)
+  return { k, gh, room, lead, author, review, other, otherReview, notes, archived, marked, settled, status }
 }
 
 describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
   it('archive once the PR merges, and leave the author\'s workspace and the Lead\'s alone', async () => {
-    const { k, gh, author, review, otherReview, lead, archived, status } = await setup()
+    const { k, gh, author, otherReview, lead, archived, status } = await setup({ other: true })
     gh.pr = info('merged')
     await k.refreshPr(author.id)
     await archived()
-    expect(status(review)).toBe('archived')
     expect(status(author)).not.toBe('archived')
-    expect(status(otherReview)).not.toBe('archived')
+    expect(status(otherReview!)).not.toBe('archived')
     expect(k.store.workspace(lead.workspaceId)!.status).not.toBe('archived')
   })
 
   it('archive once the PR is closed without merging', async () => {
-    const { k, gh, author, review, archived, status } = await setup()
+    const { k, gh, author, archived } = await setup()
     gh.pr = info('closed')
     await k.refreshPr(author.id)
     await archived()
-    expect(status(review)).toBe('archived')
   })
 
   it('keep a review workspace with uncommitted changes, and say why in the log', async () => {
@@ -90,41 +80,42 @@ describe('review workspaces after the work they reviewed (KERNEL-131)', () => {
     await writeFile(join(review.path, 'scratch.md'), 'notes\n')
     gh.pr = info('merged')
     await k.refreshPr(author.id)
-    // The note comes once git has looked at the worktree. Kernel won't try again, so the review stays.
-    await vi.waitFor(() => expect(notes).toEqual(["kernel: The work it reviewed is done, but it wasn't archived: it has uncommitted changes."]), WAIT)
+    await vi.waitFor(() => expect(notes).toEqual(["kernel: The work it reviewed is done, but it wasn't archived: it has uncommitted changes."]), SLOW)
     expect(status(review)).not.toBe('archived')
   })
 
   it('archive a review workspace that was still working once its turn ends', async () => {
-    const { k, gh, author, review, archived, deferred, status } = await setup()
+    const { k, gh, author, review, archived, marked, settled, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     const running = k.sessions.isRunning
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
-    await deferred(() => k.refreshPr(author.id))
+    await k.refreshPr(author.id)
+    await settled()
+    expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     k.sessions.isRunning = running
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
     deps.onTurnDone(k.store.workspace(review.id)!, k.store.chat(chats[0])!, { ok: true, interrupted: false, by: 'lead' })
     await archived()
-    expect(status(review)).toBe('archived')
   })
 })
 
 describe('review workspaces, edge cases (KERNEL-131)', () => {
   it('waits for a message queued in the review to go out and its turn to end', async () => {
-    const { k, gh, author, review, archived, deferred, status } = await setup()
+    const { k, gh, author, review, archived, marked, settled, status } = await setup()
     const chat = k.store.chats(review.id)[0].id
     const queued = k.sessions.queued
     k.sessions.queued = (id) => (id === chat ? [{ id: 'q', chatId: chat, parts: [{ type: 'text', text: 'One more look' }], ts: 1 }] : queued.call(k.sessions, id))
     gh.pr = info('merged')
-    await deferred(() => k.refreshPr(author.id))
+    await k.refreshPr(author.id)
+    await settled()
+    expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     k.sessions.queued = queued
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
     deps.onTurnDone(k.store.workspace(review.id)!, k.store.chat(chat)!, { ok: true, interrupted: false, by: 'lead' })
     await archived()
-    expect(status(review)).toBe('archived')
   })
 
   it('archives a workspace once when two archives ask at the same time', async () => {
@@ -134,39 +125,39 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
   })
 
   it('archives at start a review that was still working when Kernel quit, and leaves one the user restored', async () => {
-    const { k, gh, author, review, deferred, status } = await setup()
+    const { k, gh, author, review, marked, settled, status } = await setup()
     const chats = k.store.chats(review.id).map((c) => c.id)
     k.sessions.isRunning = (id) => chats.includes(id)
     gh.pr = info('merged')
-    await deferred(() => k.refreshPr(author.id))
+    await k.refreshPr(author.id)
+    await settled()
+    expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
     const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o
     await k.stop()
     const k2 = new Kernel(where)
     await k2.start()
     onTestFinished(() => k2.stop())
-    // The sweep runs in the background after start(), so this waits for the archive itself.
-    await vi.waitFor(() => expect(k2.store.workspace(review.id)!.status).toBe('archived'), WAIT)
-    // The user brings it back from History. The next launch leaves it be.
+    await vi.waitFor(() => expect(k2.store.workspace(review.id)!.status).toBe('archived'), SLOW)
+    // The user brings it back from History. The next launch leaves it be: it isn't marked, and a sweep passes it over.
     await k2.restoreWorkspace(review.id)
     await k2.stop()
     const k3 = new Kernel(where)
     await k3.start()
     onTestFinished(() => k3.stop())
-    // Nothing happens to wait for here, so the test runs the start-up sweep itself and checks what it did.
-    await (k3 as unknown as { sweepReviews(): Promise<void> }).sweepReviews()
+    expect(k3['reviewsToArchive'].has(review.id)).toBe(false)
+    await k3['sweepReviews']()
     expect(k3.store.workspace(review.id)!.status).not.toBe('archived')
   })
 
   it('archives a review whose setup failed: its held brief waits for the user, not for a turn', async () => {
-    const { k, gh, author, review, archived, status } = await setup()
+    const { k, gh, author, review, archived } = await setup()
     k.store.saveWorkspace({ ...k.store.workspace(review.id)!, status: 'failed' })
     const chat = k.store.chats(review.id)[0].id
     k.sessions.hold(chat, [{ type: 'text', text: 'Review it' }])
     gh.pr = info('merged')
     await k.refreshPr(author.id)
     await archived()
-    expect(status(review)).toBe('archived')
     // Archive let go of the held brief, so a restore doesn't find the chat still waiting for setup.
     expect(k.sessions.queued(chat)).toEqual([])
   })

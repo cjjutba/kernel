@@ -41,6 +41,15 @@ export const migrations: Migration[] = [
       `)
       db.prepare(`update approvals set settled_at = ? where status != 'pending'`).run(now)
     }
+  },
+  {
+    // Files agents shared (KERNEL-302). One row per workspace and source path, with every version in `data`.
+    version: 3,
+    up: (db) => db.exec(`
+      create table if not exists shared_files (id text primary key, room_id text not null, workspace_id text not null, source text not null, data text not null, created_at integer not null, updated_at integer not null);
+      create unique index if not exists shared_files_by_source on shared_files (workspace_id, source);
+      create index if not exists shared_files_by_room on shared_files (room_id, updated_at);
+    `)
   }
 ]
 
