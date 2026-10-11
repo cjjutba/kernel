@@ -726,6 +726,15 @@ export function disabledInRoom(repo: string): NonNullable<RoomSettings['disabled
 }
 
 /**
+ * The room's `[mcp.aliases]`, merged alias by alias as `loadRepoSettings` merges them, the personal file winning. Read as a
+ * session starts, like `disabledInRoom`, so a confirmed alias reaches the next session (KERNEL-464).
+ */
+export function aliasesInRoom(repo: string): Record<string, string> {
+  const read = (name: string) => (roomValues(readTomlSync(repoFile(repo, name))).mcp as { aliases?: Record<string, string> }).aliases
+  return { ...read('settings.toml'), ...read('settings.local.toml') }
+}
+
+/**
  * Apply a patch to one of the repo's settings files (`settings.local.toml` unless `shared`) and return what the room now reads.
  * A `null` or a blank string removes the key, so the other file or the app default applies again. The other file is left alone.
  * `runScripts` writes the `[run_scripts]` table by name, and `run` writes `[scripts] run` (KERNEL-244).

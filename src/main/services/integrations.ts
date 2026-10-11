@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { Integration, McpServer } from '@shared/types'
+import type { Integration } from '@shared/types'
 
 // Settings > Integrations (KERNEL-26). The Linear token lives in its own file in the data folder, readable by the user only,
 // so it never travels with settings.json or a repo's .kernel folder.
@@ -27,17 +27,4 @@ export function integrationRows(o: { ghUser: string | null; linear: boolean }): 
     { id: 'vercel', name: 'Vercel', connected: false, detail: 'Preview deployments show up in Checks' },
     { id: 'remote', name: 'Remote Control', connected: false, detail: 'Approvals and briefs from your phone' }
   ]
-}
-
-/** MCP servers Claude Code would load for the room: the repo's `.mcp.json` and the user's own list in `~/.claude.json`. Off ones come from the room's settings. */
-export async function discoverMcp(root: string, home: string, disabled: string[]): Promise<McpServer[]> {
-  const names = async (path: string, pick: (j: any) => unknown): Promise<string[]> => {
-    try { const v = pick(JSON.parse(await readFile(path, 'utf8'))); return v && typeof v === 'object' ? Object.keys(v) : [] } catch { return [] }
-  }
-  const project = await names(join(root, '.mcp.json'), (j) => j.mcpServers)
-  const user = await names(join(home, '.claude.json'), (j) => j.mcpServers)
-  const out = new Map<string, McpServer>()
-  for (const name of project) out.set(name, { name, source: 'project', enabled: !disabled.includes(name) })
-  for (const name of user) if (!out.has(name)) out.set(name, { name, source: 'user', enabled: !disabled.includes(name) })
-  return [...out.values()]
 }
