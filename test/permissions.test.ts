@@ -6,7 +6,7 @@ import { ALWAYS_ASK, decide, guardVerdict, NETWORK_OFF, neverAllowed, rulesOf, s
 type Mode = AppSettings['permissions']['mode']
 
 function rules(o: { mode?: Mode; network?: boolean; roomAllow?: string[]; worktree?: boolean } = {}): Rules & { reads: number } {
-  const permissions = { mode: o.mode ?? 'acceptEdits', network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: ['main'], approvalTimeoutSec: 300 }
+  const permissions = { mode: o.mode ?? 'acceptEdits', bypassOnlyInWorktrees: true, network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: ['rm -rf /'], protectedBranches: ['main'], approvalTimeoutSec: 300 }
   const r = { permissions, mode: permissions.mode, worktree: o.worktree ?? true, reads: 0, roomAllow: () => { r.reads++; return o.roomAllow ?? [] } }
   return r
 }
