@@ -189,6 +189,8 @@ export class Kernel {
    * workspace keeps `waitsFor.releasing` until a turn Kernel started there ends, and a restart sends the message again.
    */
   private releaseSent = new Set<string>()
+  /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
+  private runningChats = new Set<string>()
 
   constructor(private o: {
     dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
@@ -204,6 +206,11 @@ export class Kernel {
     updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
     /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
     fetch?: typeof fetch
+    /**
+     * Asked before Restart to update quits. False means the user canceled. True means Kernel has stopped and the app
+     * is quitting (KERNEL-214). Without it the restart goes ahead.
+     */
+    confirmQuit?: (reason: 'update') => Promise<boolean>
     /**
      * Draws a PNG thumbnail of a shared file's version for its card, or null when it can't (KERNEL-302). The app passes the
      * preview host (KERNEL-303); tests pass a stub or leave it out, and a file then has no thumbnail.
@@ -321,6 +328,12 @@ export class Kernel {
       bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
     }
     const onPush = (e: PushEvent) => {
+      // A turn waiting on an approval or a question is still running, so its agent still counts as working.
+      // No database read here: the count looks the chats up when the quit asks for it.
+      if (e.type === 'chat.running') {
+        if (e.running) this.runningChats.add(e.chatId)
+        else this.runningChats.delete(e.chatId)
+      }
       if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
       // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
       if (e.type === 'pr' && e.state === 'merged') this.nudges.reset(e.workspaceId, ...this.reviewsOf(e.workspaceId))
@@ -418,8 +431,9 @@ export class Kernel {
       })
       // A server that closes or errors on its own takes the floor and the logs with it (WorkspaceHooksDown.png).
       const server = this.hookServer
-      server.on('close', () => { if (this.hookServer === server) void this.pushHooks() })
-      server.on('error', () => void this.pushHooks())
+      // A quit closes it on purpose, and the window is still up to flash Hooks are disconnected (KERNEL-214).
+      server.on('close', () => { if (this.hookServer === server && !this.stopped) void this.pushHooks() })
+      server.on('error', () => { if (!this.stopped) void this.pushHooks() })
       return true
     } catch { return false }
   }
@@ -476,7 +490,7 @@ export class Kernel {
 
   private async pushHooks(): Promise<HookStatus> {
     const status = await this.hooksStatus()
-    bus.push({ type: 'hooks', status })
+    if (!this.stopped) bus.push({ type: 'hooks', status })
     return status
   }
 
@@ -628,6 +642,12 @@ export class Kernel {
     }
   }
 
+  /** Agents with a turn running: workspaces, not chats, so a Lead with two busy chats is one (KERNEL-214). */
+  workingAgents(): number {
+    const workspaces = [...this.runningChats].map((id) => this.store.chat(id)?.workspaceId).filter(Boolean)
+    return new Set(workspaces).size
+  }
+
   /**
    * Quit, or a test done with this Kernel. Working agents get `budgetMs` to stop their turns, then their processes end.
    * Their queues are saved, and they carry on at the next start (KERNEL-215).
@@ -640,6 +660,7 @@ export class Kernel {
 
   private stopping?: Promise<void>
 
+  /** Marks itself stopped first, so nothing it closes on the way out (the hook server) pushes to the window (KERNEL-214). */
   private async doStop(o: { budgetMs?: number }) {
     this.stopped = true
     this.unlisten()
@@ -2789,7 +2810,15 @@ export class Kernel {
       ...unbuilt(),
       'update.get': async () => this.o.updater?.get() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
       'update.check': async () => this.o.updater?.check() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
-      'update.install': async () => { if (!this.o.updater) throw new Error('No update to install'); this.o.updater.install(); return { ok: true } },
+      // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
+      'update.install': async () => {
+        if (!this.o.updater) throw new Error('No update to install')
+        // Checked before asking: a confirmed restart stops Kernel, and an install that can't happen would leave it stopped.
+        if (this.o.updater.get().status !== 'ready') throw new Error('No update is ready')
+        if (this.o.confirmQuit && !(await this.o.confirmQuit('update'))) return { ok: true, canceled: true }
+        this.o.updater.install()
+        return { ok: true }
+      },
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
         // Through setSettings, so it is saved and applied like the Models page toggle.
