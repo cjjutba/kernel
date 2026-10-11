@@ -227,6 +227,8 @@ export interface KernelApi {
   'shared.thumb': { req: { sharedId: string; version: number }; res: string | null }
   /** Show in Finder: the source file while it still matches that version, else Kernel's copy. */
   'shared.reveal': { req: { sharedId: string; version: number }; res: Ok }
+  /** Open in Preview: Kernel's copy of a PDF version in the Mac's default PDF app. Refused for any other kind, which Kernel never hands to the system to open. */
+  'shared.open': { req: { sharedId: string; version: number }; res: Ok }
 
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }

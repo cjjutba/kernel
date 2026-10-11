@@ -283,6 +283,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     },
     'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
     'shared.reveal': async () => ok,
+    'shared.open': async () => ok,
     // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
     'env.get': async ({ roomId }) => {
       const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
