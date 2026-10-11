@@ -171,7 +171,10 @@ export class Team extends Feature {
       'agents.create': async ({ roomId, draft }) => this.hireFromDraft(roomId, draft),
       'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
       'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
-      'agents.status': async ({ roomId }) => this.statusOf(roomId)
+      'agents.status': async ({ roomId }) => this.statusOf(roomId),
+      'agents.setTeam': async () => { throw new Error('Not built yet.') },
+      'agents.customize': async () => { throw new Error('Not built yet.') },
+      'agents.addStarter': async () => { throw new Error('Not built yet.') }
     } satisfies Partial<Handlers>
   }
 }

@@ -38,7 +38,8 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   hooks: { requireTestOutput: true, keepTeammatesWorking: false },
   terminal: { enabled: true, preset: 'claude', onlyInWorktrees: true, custom: [] },
-  experimental: { walking: true, floor3d: false, voice: false, sharing: true }
+  experimental: { walking: true, floor3d: false, voice: false, sharing: true },
+  privacy: { telemetry: 'ask' }
 })
 
 export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {

@@ -47,6 +47,8 @@ export type Modal =
   | { name: 'confirm'; kind: 'trust'; roomId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
+  /** The one-time question about usage data, after the first room (KERNEL-397). */
+  | { name: 'telemetryAsk' }
 
 /**
  * Menus and popovers. One is open at a time. `room:<id>` is a sidebar room's menu, and `reply:<id>` the "..." menu under a reply.

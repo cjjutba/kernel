@@ -40,7 +40,7 @@ export interface NewRoomRequest {
   /** owner/repo for a repo, an absolute path for a folder, a template repo for scratch. */
   from: string
   baseBranch?: string
-  /** Starter agent ids to seat. The Lead is always included. */
+  /** Starter agent ids to seat when the repo has no agents. Kernel's own Rowan and Theo lead and review (KERNEL-397). */
   team: string[]
   /** Brief the Lead as soon as setup finishes. */
   autostart: boolean
@@ -79,6 +79,8 @@ export interface RoomSetupStep {
   /** Duration or "running". */
   meta?: string
   error?: string
+  /** On the agents step: how many agent files the repo already had, so Room setup shows the team for review (KERNEL-397). */
+  brought?: number
 }
 
 /** A repo on the user's GitHub account (ConnectRepo.png). */

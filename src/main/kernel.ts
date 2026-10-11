@@ -49,6 +49,7 @@ import { Sharing } from './features/sharing'
 import { Prs } from './features/prs'
 import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
+import { Telemetry } from './features/telemetry'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -119,6 +120,7 @@ export class Kernel {
   readonly prs = new Prs(this)
   readonly autoArchive = new AutoArchive(this)
   readonly reviews = new Reviews(this)
+  readonly telemetry = new Telemetry(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -272,7 +274,7 @@ export class Kernel {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
       this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
       this.setup.handlers(), this.trust.handlers(), this.env.handlers(), this.workspaces.handlers(), this.archive.handlers(),
-      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers())
+      this.history.handlers(), this.chats.handlers(), this.lead.handlers(), this.sharing.handlers(), this.prs.handlers(), this.telemetry.handlers())
   }
 
   // ---------- what tests and the app shell call on a Kernel (KERNEL-331)
