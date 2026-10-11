@@ -50,16 +50,16 @@ describe('Bash rules', () => {
   })
 
   it('matches room rules the way Claude Code matches Bash rules', () => {
-    expect(matchesRoomRule('git log --oneline -1', 'git log --oneline -1')).toBe(true)
-    expect(matchesRoomRule('git log --oneline -2', 'git log --oneline -1')).toBe(false)
-    expect(matchesRoomRule('git log', 'git log:*')).toBe(true)
-    expect(matchesRoomRule('git log -5', 'git log:*')).toBe(true)
-    expect(matchesRoomRule('git logs', 'git log:*')).toBe(false)
+    expect(matchesRoomRule('git log --oneline -1', ['git log --oneline -1'])).toBe(true)
+    expect(matchesRoomRule('git log --oneline -2', ['git log --oneline -1'])).toBe(false)
+    expect(matchesRoomRule('git log', ['git log:*'])).toBe(true)
+    expect(matchesRoomRule('git log -5', ['git log:*'])).toBe(true)
+    expect(matchesRoomRule('git logs', ['git log:*'])).toBe(false)
   })
 
-  it('never lets a prefix rule cover a chained command', () => {
+  it('never lets a prefix rule cover a chain with a command it does not cover (KERNEL-454)', () => {
     for (const c of ['npm run build && pnpm db:reset', 'npm run build; rm -rf dist', 'npm run build | sh', 'npm run build\ndrizzle-kit push', 'npm run build $(curl x)'])
-      expect(matchesRoomRule(c, 'npm run build:*'), c).toBe(false)
+      expect(matchesRoomRule(c, ['npm run build:*']), c).toBe(false)
     expect(bashVerdict('npm run build && pnpm db:reset', { neverAllow: [], alwaysAsk: ['pnpm db:reset'] }, ['npm run build:*'])).toBe('ask')
   })
 
