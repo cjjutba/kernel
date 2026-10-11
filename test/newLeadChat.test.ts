@@ -111,3 +111,36 @@ describe('the tab order while the New chat box is on screen', () => {
     expect(tabStop([], undefined)).toBeUndefined()
   })
 })
+
+describe('bringing the box up when the composer is asked for', () => {
+  it('looks when it starts and when asked, so opening a file later never switches to the box', async () => {
+    vi.resetModules()
+    const bus = await import('../src/renderer/src/screens/workspace/composer/bus')
+    const { bringBoxOnAsk } = await import('../src/renderer/src/screens/workspace/leadNoChat')
+    let state: { noChat: boolean; tab?: string } = { noChat: true, tab: 't1' }
+    const bringUp = vi.fn()
+    // A Lead row click with a terminal in front: the request waits, since the box isn't what a terminal gives way to.
+    bus.focusComposerIn('ws-lead')
+    const stop = bringBoxOnAsk('ws-lead', () => state, bringUp)
+    expect(bringUp).not.toHaveBeenCalled()
+    // A file opens while the request is still waiting. Nothing asks again, so nothing switches.
+    state = { noChat: true, tab: 'file:a.ts' }
+    expect(bringUp).not.toHaveBeenCalled()
+    // Asked again with the file in front, the box comes up.
+    bus.focusComposerIn('ws-lead')
+    expect(bringUp).toHaveBeenCalledTimes(1)
+    stop()
+    bus.focusComposerIn('ws-lead')
+    expect(bringUp).toHaveBeenCalledTimes(1)
+  })
+
+  it('finds a request made before the screen mounted', async () => {
+    vi.resetModules()
+    const bus = await import('../src/renderer/src/screens/workspace/composer/bus')
+    const { bringBoxOnAsk } = await import('../src/renderer/src/screens/workspace/leadNoChat')
+    const bringUp = vi.fn()
+    bus.focusComposerIn('ws-lead')
+    bringBoxOnAsk('ws-lead', () => ({ noChat: true, tab: 'diff:' }), bringUp)()
+    expect(bringUp).toHaveBeenCalledTimes(1)
+  })
+})

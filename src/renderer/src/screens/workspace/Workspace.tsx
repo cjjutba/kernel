@@ -9,11 +9,10 @@ import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
-import { leadHasNoChat, newChatOnScreen, showsNewChat, tabInFront } from './leadNoChat'
+import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { NewLeadChat } from './NewLeadChat'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
-import { composerFocusWantedIn, onComposerFocusAsked } from './composer/bus'
 import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
@@ -107,7 +106,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
   // store from before goes back to the chat, or the sidebar and closing a chat would still think it is the one on screen.
   useEffect(() => {
-    setImages([]); setTexts([])
+    setImages([]); setTexts([]); setNewChat(false)
     const t = getState().ui.tabs[workspaceId]
     if (t?.tab?.startsWith('image:') || t?.tab?.startsWith('text:')) actions.ui.setTabs(workspaceId, { tab: t.lastChat })
   }, [workspaceId])
@@ -134,13 +133,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     setNewChat(true)
     actions.ui.setTabs(workspaceId, { tab: undefined })
   }, [workspaceId])
-  // The sidebar's Lead row and ⌘⇧L ask for the composer. With no chat open and a file, diff or shared tab in front it isn't mounted, so the box takes its place first.
-  // Subscribed on every render, so it sees the tab now in front. Asked before the screen mounted, it finds the request still waiting.
-  useEffect(() => {
-    const bring = () => { if (noChat && tabInFront(tab) && composerFocusWantedIn(workspaceId)) showNew() }
-    bring()
-    return onComposerFocusAsked(bring)
-  })
+  // Asked for the composer with a file, diff or shared tab in front and no chat open, the box takes its place (leadNoChat.ts).
+  const latest = useRef({ noChat, tab })
+  latest.current = { noChat, tab }
+  useEffect(() => bringBoxOnAsk(workspaceId, () => latest.current, showNew), [workspaceId, showNew])
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
