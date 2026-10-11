@@ -34,6 +34,11 @@ export interface Room {
    * never share one. A room made before KERNEL-231 has none and keeps the slug of its name.
    */
   worktreeDir?: string
+  /**
+   * Copied files the user chose Keep copying for on Files to copy, though they look like production, as `<path>:<NAME>`. A
+   * file or a variable that isn't in here warns again (KERNEL-449).
+   */
+  keepCopying?: string[]
   createdAt: number
 }
 
@@ -80,10 +85,13 @@ export interface RoomSetupStep {
   id: 'clone' | 'worktrees' | 'install' | 'copy' | 'hooks' | 'agents'
   title: string
   detail: string
-  state: 'wait' | 'run' | 'ok' | 'fail'
+  /** `warn` finished with something to look at, which never blocks the room (KERNEL-437). */
+  state: 'wait' | 'run' | 'ok' | 'warn' | 'fail'
   /** Duration or "running". */
   meta?: string
   error?: string
+  /** On the copy step: the files to copy that look like production, by path. The step warns (KERNEL-449). */
+  production?: string[]
   /** On the agents step: how many agent files the repo already had, so Room setup shows the team for review (KERNEL-397). */
   brought?: number
 }
