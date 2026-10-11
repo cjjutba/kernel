@@ -90,7 +90,13 @@ export interface State {
   ui: UiState
 }
 
-const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false }
+/** The Changes tab's list or tree, kept across launches like the panel toggles (KERNEL-399). localStorage may be missing or blocked. */
+const CHANGES_VIEW = 'kernel.changesView'
+function changesView(): 'list' | 'tree' {
+  try { return localStorage.getItem(CHANGES_VIEW) === 'tree' ? 'tree' : 'list' } catch { return 'list' }
+}
+
+const workspaceView: WorkspaceView = { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false, changesView: changesView() }
 
 /** The sidebar and right panel toggles outlast a restart. A key is stored only while its panel is hidden, and localStorage may be missing or blocked. */
 const HIDDEN = { sidebar: 'kernel.sidebarHidden', rightPanel: 'kernel.rightPanelHidden' } as const
@@ -390,6 +396,10 @@ export const actions = {
     setStage: (stage: string | undefined) => setUi({ stage }),
     setStartError: (startError: string | undefined) => setUi({ startError }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    setChangesView: (view: 'list' | 'tree') => {
+      setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, changesView: view } } }))
+      try { localStorage.setItem(CHANGES_VIEW, view) } catch { /* not remembered */ }
+    },
     /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
     openTab: (workspaceId: string, tab: string) => {
       // A file or diff tab is not a step, so switching chats from one steps from the chat you opened it from. Leaving the workspace keeps the tab (`go`).

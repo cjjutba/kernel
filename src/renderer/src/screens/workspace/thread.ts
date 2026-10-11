@@ -83,10 +83,10 @@ export function buildThread(items: ChatItem[]): ThreadBlock[] {
   return blocks
 }
 
-/** The Changed chips under a reply: the first two files by name, then one chip for the rest. */
-export function fileChips(files: ChangedFile[]): { name: string; added: number; removed: number }[] {
+/** The Changed chips under a reply: the first two files by name, with their path for the icon, then one chip for the rest. */
+export function fileChips(files: ChangedFile[]): { name: string; path?: string; added: number; removed: number }[] {
   const name = (f: ChangedFile) => f.path.split('/').pop() ?? f.path
-  const shown = files.slice(0, 2).map((f) => ({ name: name(f), added: f.added, removed: f.removed }))
+  const shown: { name: string; path?: string; added: number; removed: number }[] = files.slice(0, 2).map((f) => ({ name: name(f), path: f.path, added: f.added, removed: f.removed }))
   const more = files.slice(2)
   if (more.length) shown.push({ name: `+${more.length} more`, added: more.reduce((n, f) => n + f.added, 0), removed: more.reduce((n, f) => n + f.removed, 0) })
   return shown

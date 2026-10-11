@@ -51,6 +51,7 @@ describe('transcript thread', () => {
       { path: 'c.ts', status: 'M', added: 4, removed: 1 }, { path: 'd.ts', status: 'M', added: 5, removed: 1 }
     ])
     expect(chips.map((c) => c.name)).toEqual(['x.ts', 'b.ts', '+2 more'])
+    expect(chips.map((c) => c.path)).toEqual(['a/x.ts', 'b.ts', undefined])
     expect(chips[2]).toMatchObject({ added: 9, removed: 2 })
   })
 })

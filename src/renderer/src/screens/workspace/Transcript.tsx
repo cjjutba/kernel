@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Approval, ChangedFile, Chat, ChatItem, ChatPart } from '@shared/types'
 import { call } from '../../api'
+import { FileIcon } from '../../components/FileIcon'
 import { Icon, Skeleton, Spinner, type IconName } from '../../ui'
 import { actions, getState, go, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
@@ -11,7 +12,7 @@ import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
 import { Markdown } from './markdown'
 import { attempt, MessageActions, type MessageAction } from './MessageActions'
-import { chipIcon, ImageButton, isPastedText, TextButton } from './composer/Chip'
+import { ChipIcon, ImageButton, isPastedText, TextButton } from './composer/Chip'
 import { buildThread, fileChips, fmtDuration, groupLabel, type ThreadBlock } from './thread'
 import { InstructionCard } from './pr/InstructionCard'
 import { instructionOf } from './pr/model'
@@ -36,8 +37,7 @@ const partsText = (parts: ChatPart[]) => parts.flatMap((p) => (p.type === 'text'
 
 function PartChip({ part }: { part: ChatPart }) {
   if (part.type === 'text') return null
-  const icon = part.type === 'skill' ? null : chipIcon(part)
-  const body = <>{icon ? <Icon name={icon} size={12} /> : <span aria-hidden="true" className="muted">/</span>}{part.name}</>
+  const body = <>{part.type === 'skill' ? <span aria-hidden="true" className="muted">/</span> : <ChipIcon part={part} />}{part.name}</>
   if (part.type === 'image' && part.dataUrl) return <ImageButton image={{ ...part, dataUrl: part.dataUrl }} className="msg-chip" data-kind="image">{body}</ImageButton>
   if (isPastedText(part)) return <TextButton paste={part} className="msg-chip" data-kind="file">{body}</TextButton>
   return <span className="msg-chip" data-kind={part.type}>{body}</span>
@@ -59,7 +59,7 @@ function ChangedFiles({ files }: { files: ChangedFile[] }) {
   return (
     <div className="row reply-files" style={{ flexWrap: 'wrap', gap: 6 }}>
       <span className="meta" style={{ marginRight: 4 }}>Changed</span>
-      {fileChips(files).map((c) => <span key={c.name} className="file-chip">{c.name}{c.added ? <span className="add">+{c.added}</span> : null}{c.removed ? <span className="del">-{c.removed}</span> : null}</span>)}
+      {fileChips(files).map((c) => <span key={c.name} className="file-chip">{c.path && <FileIcon path={c.path} size={14} />}{c.name}{c.added ? <span className="add">+{c.added}</span> : null}{c.removed ? <span className="del">-{c.removed}</span> : null}</span>)}
     </div>
   )
 }
@@ -104,14 +104,15 @@ type Tool = Extract<ChatItem, { kind: 'tool' }>
  * its chevron stays hidden, but keeps its room so the right-hand notes line up. Open state is local, so a tool going from running
  * to done keeps it. `compact` is the row inside the folded list: no icon, a right-hand note.
  */
-function StepRow({ icon, failed, label, detail, mono, meta, compact, children }: { icon?: IconName; failed?: boolean; label: string; detail?: string; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
+/** `glyph` draws in the icon's place, as a file's icon on a Read, Edit or Write row. */
+function StepRow({ icon, glyph, failed, label, detail, mono, meta, compact, children }: { icon?: IconName; glyph?: ReactNode; failed?: boolean; label: string; detail?: string; mono?: boolean; meta?: string; compact?: boolean; children?: ReactNode }) {
   const [open, setOpen] = useState(false)
   const panel = useId()
   const can = !!children
   return (
     <div className="col" style={{ gap: 4 }}>
       <button type="button" className="trow trow-btn" aria-expanded={can ? open : undefined} aria-controls={can ? panel : undefined} disabled={!can} onClick={() => setOpen(!open)}>
-        {icon && <span style={{ color: failed ? 'var(--del)' : 'var(--muted)' }}><Icon name={icon} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} /></span>}
+        {glyph ? <span className="step-glyph">{glyph}</span> : icon && <span style={{ color: failed ? 'var(--del)' : 'var(--muted)' }}><Icon name={icon} size={15} stroke={icon === 'bulb' ? 1.3 : 1.5} /></span>}
         <span className="ellipsis" style={{ maxWidth: 300, flexShrink: 0, color: failed && compact ? 'var(--del)' : 'var(--ink-2)' }}>{label}</span>
         <span className={`grow muted ellipsis${mono ? ' mono' : ''}`} style={mono ? { fontSize: 12 } : undefined} aria-hidden={mono ? undefined : true}>{mono || !open ? detail : null}</span>
         {meta && <span className="mono muted" style={{ fontSize: 11.5 }}>{meta}</span>}
@@ -170,8 +171,12 @@ function toolBody(item: Tool): ReactNode {
   )
 }
 
+/** The tools whose detail is a file. Their rows show the file's icon in place of the terminal glyph (KERNEL-399). */
+const FILE_TOOLS = new Set(['Read', 'Edit', 'Write', 'NotebookEdit'])
+
 const ToolRow = memo(function ToolRow({ item, meta, compact }: { item: Tool; meta?: string; compact?: boolean }) {
-  return <StepRow icon={compact ? undefined : 'term'} failed={item.status === 'failed'} label={item.label} detail={item.detail} mono meta={meta} compact={compact}>{toolBody(item)}</StepRow>
+  const file = !compact && FILE_TOOLS.has(item.name) && item.detail ? item.detail : undefined
+  return <StepRow icon={compact ? undefined : 'term'} glyph={file && <FileIcon path={file} size={15} />} failed={item.status === 'failed'} label={item.label} detail={item.detail} mono meta={meta} compact={compact}>{toolBody(item)}</StepRow>
 })
 
 /** Edit and Write calls show what they added and removed, read from the changed files. */

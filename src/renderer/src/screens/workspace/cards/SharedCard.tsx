@@ -1,7 +1,8 @@
 import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import { useStore } from '../../../store'
-import { Button, Icon } from '../../../ui'
-import { kindIcon, kindLabel, useOpenShared, useSharer, useThumb, versionLine, versionOf } from '../shared/shared'
+import { FileIcon } from '../../../components/FileIcon'
+import { Button } from '../../../ui'
+import { kindFile, kindLabel, useOpenShared, useSharer, useThumb, versionLine, versionOf } from '../shared/shared'
 import '../shared/shared.css'
 
 /**
@@ -42,7 +43,7 @@ export function SharedCard({ sharedId, version }: { sharedId: string; version: n
   }
   return (
     <div className="card shcard" data-layout="tile">
-      <span className="shcard-tile" aria-hidden="true"><Icon name={kindIcon[file.kind]} size={16} /></span>
+      <span className="shcard-tile" aria-hidden="true"><FileIcon path={kindFile[file.kind]} /></span>
       <div className="shcard-text">
         <span className="shcard-title ellipsis">{file.title}</span>
         <span className="shcard-meta ellipsis">{meta}</span>
@@ -64,7 +65,7 @@ export function SharedRow({ sharedId, version, title, kind }: { sharedId: string
     <div className="shrow">
       {thumb && picture(file?.kind ?? kind)
         ? <span className="shrow-thumb" aria-hidden="true" onClick={open}><img src={thumb} alt="" /></span>
-        : <span className="shrow-tile" aria-hidden="true"><Icon name={kindIcon[file?.kind ?? kind]} size={16} /></span>}
+        : <span className="shrow-tile" aria-hidden="true"><FileIcon path={kindFile[file?.kind ?? kind]} /></span>}
       <div className="shrow-text">
         <span className="shrow-title ellipsis">{name}</span>
         <span className="shrow-meta ellipsis">{meta.join(' · ')}</span>

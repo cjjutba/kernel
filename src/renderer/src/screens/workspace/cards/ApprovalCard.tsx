@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { AgentDef, Approval, Decision } from '@shared/types'
 import { call } from '../../../api'
+import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
 import { Button, Icon, IconButton, useBusy } from '../../../ui'
 import { Markdown } from '../markdown'
@@ -30,7 +31,7 @@ function PermCard({ a, who }: { a: Approval; who: string }) {
     <section aria-label={title} className="card tcard">
       <h3>{title}</h3>
       {a.detail && <span className="sub">{a.detail}</span>}
-      {code && <div className="code">{code}</div>}
+      {code && <div className="code">{!bash && path ? <FileLabel path={path} /> : code}</div>}
       {a.status === 'pending' ? (
         <div className="acts">
           <Button busy={busy === 'deny'} busyLabel="Denying" disabled={busy !== null} onClick={() => void run('deny', () => decide(a, { behavior: 'deny', message: 'Denied in Kernel.' }))}>Deny</Button>
@@ -382,7 +383,7 @@ function HireCard({ a }: { a: Approval }) {
   if (!file) return null
   return (
     <section aria-label={file.path} className="card tcard">
-      <h3>{file.path}</h3>
+      <h3><FileLabel path={file.path} size={16} /></h3>
       <div className="code">{file.text}</div>
       {a.status !== 'pending' ? <Result a={a} /> : asking ? (
         <ChangesNote onCancel={() => setAsking(false)} onSend={(note) => decide(a, { behavior: 'deny', message: note || 'Please change the agent file.' })} />

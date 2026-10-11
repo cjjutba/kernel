@@ -87,6 +87,8 @@ export interface WorkspaceView {
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
+  /** The Changes tab as a flat list or a folder tree, like VS Code's Source Control (KERNEL-399). The store starts it at what was last picked; a fixture can leave it out. */
+  changesView?: 'list' | 'tree'
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
   /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */

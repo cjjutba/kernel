@@ -24,6 +24,8 @@
   --faint: #62666d;
   --add: #4cb782;
   --del: #eb5757;
+  /* A modified file's name and letter, VS Code's gitDecoration.modifiedResourceForeground (KERNEL-399). */
+  --mod: #e2c08d;
   --merged: #b9a3f5;
   --merged-solid: #7c5ce0;
   --working: #7cb2ff;
@@ -101,6 +103,7 @@
   --faint: #636770;
   --add: #166a45;
   --del: #b32e2e;
+  --mod: #895503;
   --merged: #6b4bd0;
   --merged-solid: #7c5ce0;
   --working: #1a56b0;

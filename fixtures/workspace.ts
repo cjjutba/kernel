@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -219,6 +219,31 @@ const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
 const pastedLog = Array.from({ length: 212 }, (_, i) => `2025-03-11T10:${String(i % 60).padStart(2, '0')}:07Z ${i % 9 === 4 ? 'ERROR invoices.list: relation "invoice_lines" does not exist' : `INFO  request ${1000 + i} GET /api/invoices 200 ${12 + (i % 7)}ms`}`).join('\n')
 const screenshot = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800"><rect width="1280" height="800" fill="#141518"/><rect width="240" height="800" fill="#1b1c20"/><rect x="300" y="60" width="520" height="22" rx="4" fill="#3a3c42"/><rect x="300" y="120" width="920" height="420" rx="10" fill="#1f2024" stroke="#2c2e33"/><rect x="330" y="160" width="400" height="14" rx="3" fill="#5a2a2a"/><rect x="330" y="196" width="760" height="12" rx="3" fill="#2f3136"/><rect x="330" y="224" width="680" height="12" rx="3" fill="#2f3136"/></svg>')}`
+/** A deeper repo for the file trees (KERNEL-399): every git status, two compact folder chains (.github/workflows, lib/db) and many file types. */
+const treeChanges: ChangedFile[] = [
+  { path: 'docs/ARCHITECTURE.md', status: 'M', added: 12, removed: 3 },
+  { path: 'src/app/invoices/empty-state.tsx', status: 'A', added: 64, removed: 0 },
+  { path: 'src/app/invoices/legacy-table.tsx', status: 'D', added: 0, removed: 148 },
+  { path: 'src/app/invoices/page.tsx', status: 'M', added: 18, removed: 9 },
+  { path: 'src/app/invoices/sortable-header.tsx', status: '?', added: 41, removed: 0 },
+  { path: 'src/app/invoices/table.tsx', status: 'M', added: 212, removed: 20 },
+  { path: 'src/lib/db/schema.ts', status: 'R', added: 6, removed: 2 },
+  { path: 'tests/invoices.spec.ts', status: 'A', added: 118, removed: 9 }
+]
+const treeStatus = new Map(treeChanges.map((c) => [c.path, c.status]))
+const deepTree: FileEntry[] = [
+  '.github/', '.github/workflows/', '.github/workflows/ci.yml', 'docs/', 'docs/ARCHITECTURE.md', 'docs/DECISIONS.md',
+  'src/', 'src/app/', 'src/app/invoices/', 'src/app/invoices/empty-state.tsx', 'src/app/invoices/legacy-table.tsx', 'src/app/invoices/page.tsx',
+  'src/app/invoices/sortable-header.tsx', 'src/app/invoices/table.tsx', 'src/app/layout.tsx', 'src/components/', 'src/lib/', 'src/lib/db/',
+  'src/lib/db/client.ts', 'src/lib/db/schema.ts', 'src/styles.css', 'tests/', 'tests/invoices.spec.ts',
+  '.env.example', '.gitignore', 'CLAUDE.md', 'package.json', 'pnpm-lock.yaml', 'README.md', 'tsconfig.json', 'vite.config.ts'
+].map((p) => (p.endsWith('/') ? { path: p.slice(0, -1), dir: true } : { path: p, dir: false, ...(treeStatus.has(p) ? { status: treeStatus.get(p) } : {}) }))
+const treeScene = (right: 'files' | 'changes', tab: string, changesView?: 'list' | 'tree') => scene((f) => ({
+  tree: { ...f.tree, [ids.table]: deepTree },
+  changes: { ...f.changes, [ids.table]: treeChanges },
+  ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false, changesView }, tabs: { [ids.table]: { tab, files: tab.startsWith('file:') ? [tab.slice(5), 'package.json'] : [], diffs: tab.startsWith('diff:') ? [tab.slice(5)] : [] } } }
+}))
+
 /** What @inv finds, in the order the canvas lists it. */
 const mentionTree: FileEntry[] = ['src/app/invoices/table.tsx', 'tests/invoices.spec.ts', 'src/pdf/invoice-pdf.ts', 'src/db/schema/invoices.ts', 'src/app/invoices/invoice-row.tsx', 'package.json'].map(file)
 
@@ -871,6 +896,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceFile: scene(() => ({
     ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'file:src/app/invoices/table.tsx', files: ['src/app/invoices/table.tsx'], diffs: [] } } }
   })),
+  // All files drawn like VS Code's explorer (KERNEL-399): Material icons, compact folders, indent guides, git colors, the open file selected.
+  WorkspaceFilesTree: treeScene('files', 'file:src/app/invoices/table.tsx'),
+  // The Changes tab as VS Code's Source Control draws it, as a list and as a tree (KERNEL-399).
+  WorkspaceChangesList: treeScene('changes', 'diff:src/app/invoices/page.tsx', 'list'),
+  WorkspaceChangesTree: treeScene('changes', 'diff:', 'tree'),
   // No PNG draws a diff tab (KERNEL-144). The diff opens in a tab of its own next to the chat, with the composer below it.
   WorkspaceDiffTab: scene(() => ({
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }

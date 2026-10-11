@@ -1,7 +1,7 @@
 import type { SharedFile, Workspace } from '@shared/types'
 import { useStore, type State } from '../../../store'
-import { Icon } from '../../../ui'
-import { kindIcon, latestOf, sinceShort, useOpenShared, useSharer } from './shared'
+import { FileIcon } from '../../../components/FileIcon'
+import { kindFile, latestOf, sinceShort, useOpenShared, useSharer } from './shared'
 import './shared.css'
 
 /**
@@ -18,7 +18,7 @@ function Row({ file, open }: { file: SharedFile; open: boolean }) {
   const openShared = useOpenShared()
   return (
     <button type="button" className="shpanel-row" aria-current={open || undefined} onClick={() => openShared(file.id)}>
-      <span className="shpanel-icon" aria-hidden="true"><Icon name={kindIcon[file.kind]} size={16} /></span>
+      <span className="shpanel-icon" aria-hidden="true"><FileIcon path={kindFile[file.kind]} /></span>
       <span className="shpanel-text">
         <span className="ellipsis">{file.title}</span>
         <span className="shpanel-meta ellipsis">v{latestOf(file).n} · {by} · {sinceShort(file.updatedAt)}</span>

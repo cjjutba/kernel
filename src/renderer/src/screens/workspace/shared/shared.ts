@@ -2,12 +2,11 @@ import { useEffect, useState } from 'react'
 import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import { call } from '../../../api'
 import { actions, useStore } from '../../../store'
-import type { IconName } from '../../../ui'
 import { agoShort } from '../../rooms/roomInfo'
 import { fmtClock } from '../thread'
 
-/** The icon of a shared file's tab, card tile and panel row: code for a page, a picture for an image, a sheet for a PDF or Markdown. */
-export const kindIcon: Record<SharedKind, IconName> = { html: 'code', image: 'image', pdf: 'doc', markdown: 'doc' }
+/** A file name of each kind. A shared file's tab, card tile and panel row draw its VS Code icon (KERNEL-399). */
+export const kindFile: Record<SharedKind, string> = { html: 'page.html', image: 'image.png', pdf: 'file.pdf', markdown: 'file.md' }
 
 export const sharedTab = (sharedId: string) => `shared:${sharedId}`
 

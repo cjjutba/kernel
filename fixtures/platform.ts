@@ -156,6 +156,8 @@ export const platformFixtures: Record<string, Fixture> = {
   UpdateReadyLight: light(teamFixtures.UpdateReady),
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
+  // The VS Code file icons and git colors in the light theme (KERNEL-399).
+  WorkspaceFilesTreeLight: light(workspaceFixtures.WorkspaceFilesTree),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
   Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),

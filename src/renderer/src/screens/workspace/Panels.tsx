@@ -3,7 +3,7 @@ import type { ChangedFile, FileEntry, PrCheck, PrInfo, ScriptLine, Workspace } f
 import { call } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
 import { actions, go, useStore, type State } from '../../store'
-import { Button, Icon, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
+import { Button, Icon, IconButton, Menu, MENU_SEPARATOR, SegmentedControl, Tabs, useBusy, type MenuEntry } from '../../ui'
 import { stripRemote } from '../settings/remote'
 import { useRemote, useRoomSettings } from '../settings/useSettings'
 import { attempt } from './MessageActions'
@@ -13,46 +13,73 @@ import { SharedPanel, sharedHere } from './shared/SharedPanel'
 import { configuredTargets, detectedTarget, detectedUrl, openTarget, type PreviewTarget } from './previewUrls'
 import { pickerNames, runningRuns } from './runScripts'
 import { TerminalView } from './terminal/Terminal'
-import { openByDefault, visibleRows } from './tree'
+import { FileIcon } from '../../components/FileIcon'
+import { FileTree } from './FileTree'
+import { gitDecoration } from './gitStatus'
+import { changesToEntries, openByDefault } from './tree'
 
-const stColor = (s?: string) => (s === 'A' ? 'var(--add)' : 'var(--ink-2)')
-const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i + 1), name: path.slice(i + 1) } }
+const split = (path: string) => { const i = path.lastIndexOf('/'); return { dir: path.slice(0, i), name: path.slice(i + 1) } }
+
+/** A file's added and removed line counts, as the Changes rows and the Changes tree show them. */
+function Counts({ f }: { f?: ChangedFile }) {
+  if (!f || (!f.added && !f.removed)) return null
+  return <span className="tree-counts mono">{f.added ? <span className="add">+{f.added}</span> : null}{f.removed ? <span className="del">-{f.removed}</span> : null}</span>
+}
 
 // ---------- All files
 
-function FilesTree({ workspaceId, changes, onOpenFile }: { workspaceId: string; changes: ChangedFile[]; onOpenFile: (path: string) => void }) {
+function FilesTree({ ws, changes, onOpenFile, activePath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; activePath?: string }) {
   const [tree, setTree] = useState<FileEntry[]>([])
   const [open, setOpen] = useState<Set<string> | null>(null)
   const [failed, setFailed] = useState(false)
+  const root = useStore((s) => s.rooms.find((r) => r.id === ws.roomId)?.name) ?? split(ws.path.replace(/\/+$/, '')).name
   useEffect(() => {
     let live = true
-    call('workspaces.tree', { workspaceId }).then((t) => { if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
+    call('workspaces.tree', { workspaceId: ws.id }).then((t) => { if (live) { setTree(t); setFailed(false) } }).catch(() => { if (live) setFailed(true) })
     return () => { live = false }
-  }, [workspaceId, changes])
-  const expanded = open ?? openByDefault(tree)
-  const rows = useMemo(() => visibleRows(tree, expanded), [tree, expanded])
+  }, [ws.id, changes])
+  const initial = useMemo(() => openByDefault(tree), [tree])
+  const expanded = open ?? initial
   const toggle = (path: string) => { const next = new Set(expanded); if (next.has(path)) next.delete(path); else next.add(path); setOpen(next) }
   if (failed) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Could not list files</span><span>Try again in a moment.</span></div>
   return (
-    <div className="panel-scroll" style={{ padding: '2px 8px' }} role="tree" aria-label="All files">
-      {rows.map(({ entry, depth, name }) => (
-        <button
-          key={entry.path} type="button" role="treeitem" aria-level={depth + 1} aria-expanded={entry.dir ? expanded.has(entry.path) : undefined}
-          className="tree-row" style={{ paddingLeft: 8 + depth * 14, color: !entry.dir && entry.status ? 'var(--ink)' : 'var(--ink-2)' }}
-          onClick={() => (entry.dir ? toggle(entry.path) : onOpenFile(entry.path))}
-        >
-          <span className="tree-chev" aria-hidden="true">{entry.dir ? (expanded.has(entry.path) ? '▾' : '▸') : ''}</span>
-          <span className="grow ellipsis">{name}</span>
-          {!entry.dir && entry.status && <span style={{ color: stColor(entry.status) }} aria-label={entry.status === 'A' ? 'Added' : 'Modified'}>{entry.status}</span>}
-        </button>
-      ))}
+    <div className="panel-scroll" style={{ padding: '0 8px 8px' }}>
+      <div className="tree-head">
+        <span className="grow ellipsis">{root}</span>
+        <IconButton icon="collapse" size={14} label="Collapse all folders" onClick={() => setOpen(new Set())} />
+      </div>
+      <FileTree label="All files" entries={tree} expanded={expanded} onToggle={toggle} onOpen={onOpenFile} activePath={activePath} />
     </div>
   )
 }
 
 // ---------- Changes
 
-function ChangesList({ ws, changes, onOpenDiff }: { ws: Workspace; changes: ChangedFile[]; onOpenDiff: (path: string) => void }) {
+/** One changed file the way VS Code's Source Control lists it: icon, name in its git color, the folder after it, the counts, then the letter. */
+function ChangeRow({ f, active, onOpen }: { f: ChangedFile; active: boolean; onOpen: () => void }) {
+  const { dir, name } = split(f.path)
+  const deco = gitDecoration(f.status)
+  return (
+    <button type="button" className="tree-row change-row" aria-current={active || undefined} onClick={onOpen}>
+      <FileIcon path={f.path} />
+      <span className="tree-name ellipsis">
+        <span data-struck={deco?.struck || undefined} style={deco ? { color: deco.color } : undefined}>{name}</span>
+        {dir && <span className="change-dir">{dir}</span>}
+      </span>
+      <Counts f={f} />
+      {deco && <span className="tree-letter" style={{ color: deco.color }} aria-label={deco.label}>{deco.letter}</span>}
+    </button>
+  )
+}
+
+function ChangesList({ ws, changes, onOpenDiff, activePath }: { ws: Workspace; changes: ChangedFile[]; onOpenDiff: (path: string) => void; activePath?: string }) {
+  const view = useStore((s) => s.ui.workspace.changesView ?? 'list')
+  const entries = useMemo(() => changesToEntries(changes), [changes])
+  const byPath = useMemo(() => new Map(changes.map((f) => [f.path, f])), [changes])
+  // Every folder of the tree starts open. This keeps the ones closed by hand.
+  const [closed, setClosed] = useState<Set<string>>(() => new Set())
+  const expanded = useMemo(() => new Set(entries.filter((e) => e.dir && !closed.has(e.path)).map((e) => e.path)), [entries, closed])
+  const toggle = (path: string) => { const next = new Set(closed); if (next.has(path)) next.delete(path); else next.add(path); setClosed(next) }
   if (!changes.length) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>No file changes yet</span><span>Changes appear here.</span></div>
   const added = changes.reduce((n, f) => n + f.added, 0)
   const removed = changes.reduce((n, f) => n + f.removed, 0)
@@ -62,18 +89,12 @@ function ChangesList({ ws, changes, onOpenDiff }: { ws: Workspace; changes: Chan
         <span className="changes-count">{changes.length} {changes.length === 1 ? 'file' : 'files'} changed</span>
         <span className="grow" />
         <span className="mono changes-total">{added ? <span className="add">+{added}</span> : null}{removed ? <span className="del">-{removed}</span> : null}</span>
+        <IconButton icon="listTree" size={14} label="View as tree" aria-pressed={view === 'tree'} onClick={() => actions.ui.setChangesView(view === 'tree' ? 'list' : 'tree')} />
         <Button className="small" onClick={() => onOpenDiff('')}>Review all</Button>
       </div>
-      {changes.map((f) => {
-        const { dir, name } = split(f.path)
-        return (
-          <button key={f.path} type="button" className="change-row" onClick={() => onOpenDiff(f.path)}>
-            <span style={{ width: 12, color: stColor(f.status) }}>{f.status}</span>
-            <span className="grow ellipsis"><span className="muted">{dir}</span>{name}</span>
-            <span style={{ fontSize: 11.5 }}>{f.added ? <span className="add">+{f.added}</span> : null} {f.removed ? <span className="del">-{f.removed}</span> : null}</span>
-          </button>
-        )
-      })}
+      {view === 'tree'
+        ? <FileTree label="Changed files" entries={entries} expanded={expanded} onToggle={toggle} onOpen={onOpenDiff} activePath={activePath} trailing={(e) => <Counts f={byPath.get(e.path)} />} />
+        : changes.map((f) => <ChangeRow key={f.path} f={f} active={f.path === activePath} onOpen={() => onOpenDiff(f.path)} />)}
       {ws.mode === 'current' && <p className="muted" style={{ margin: '8px 6px 0', fontSize: 12 }}>Changes from before this workspace started are hidden.</p>}
     </div>
   )
@@ -172,7 +193,8 @@ function Checks({ ws, changes }: { ws: Workspace; changes: ChangedFile[] }) {
   )
 }
 
-export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void }) {
+/** `filePath` and `diffPath` are the file and diff tabs showing in the center, drawn selected in All files and Changes. */
+export function RightPanel({ ws, changes, onOpenFile, onOpenDiff, filePath, diffPath }: { ws: Workspace; changes: ChangedFile[]; onOpenFile: (path: string) => void; onOpenDiff: (path: string) => void; filePath?: string; diffPath?: string }) {
   // The Lead's workspace keeps its own tab, and PRs is the one only it has: elsewhere `prs` falls back to Changes, the way Shared does (KERNEL-354).
   const isLead = useStore((s) => isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
   const shown = useStore((s) => (isLead ? s.ui.workspace.leadRight ?? 'prs' : s.ui.workspace.right))
@@ -195,8 +217,8 @@ export function RightPanel({ ws, changes, onOpenFile, onOpenDiff }: { ws: Worksp
         ]} />
       </div>
       {right === 'prs' && <LeadPrs roomId={ws.roomId} />}
-      {right === 'files' && <FilesTree workspaceId={ws.id} changes={changes} onOpenFile={onOpenFile} />}
-      {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} />}
+      {right === 'files' && <FilesTree ws={ws} changes={changes} onOpenFile={onOpenFile} activePath={filePath} />}
+      {right === 'changes' && <ChangesList ws={ws} changes={changes} onOpenDiff={onOpenDiff} activePath={diffPath} />}
       {right === 'checks' && <Checks ws={ws} changes={changes} />}
       {right === 'shared' && <SharedPanel ws={ws} />}
     </div>

@@ -250,7 +250,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
           <div className="ws-aside-head">{isLead ? <LeadPrSummary roomId={ws.roomId} spread /> : <PrHeader ws={ws} spread />}</div>
-          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} />
+          <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>
       )}

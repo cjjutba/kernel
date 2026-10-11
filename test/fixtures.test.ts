@@ -14,6 +14,10 @@ const noCanvas = [
   'WorkspaceRowsOpen', // a Thinking, a Bash and an Edit row open in place, and a running tool (KERNEL-198)
   'WorkspaceRowsFolded', // the folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198)
   'WorkspaceDiffTab',
+  'WorkspaceFilesTree', // All files drawn like VS Code's explorer, with every git status and compact folders (KERNEL-399)
+  'WorkspaceChangesList', // the Changes tab as VS Code's Source Control list (KERNEL-399)
+  'WorkspaceChangesTree', // the Changes tab as a folder tree, next to All changes (KERNEL-399)
+  'WorkspaceFilesTreeLight', // WorkspaceFilesTree in the light theme (KERNEL-399)
   'WorkspaceLeadPlan', // Rowan's plan on the main checkout
   'WorkspaceLeadUpdate', // Kernel's Team update card in Rowan's chat (KERNEL-127, D-128)
   'WorkspaceContextRing',
