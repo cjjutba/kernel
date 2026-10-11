@@ -1007,7 +1007,10 @@ export class Sessions {
         verdict: (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)),
         held: () => this.paused.get(ws.roomId)?.open ?? this.global?.open,
         networkAllowed: () => this.d.settings().permissions.network !== false,
-        handoff: agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined
+        handoff: agent?.lead ? {
+          afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined),
+          atStop: () => { const t = this.handoffs.reminder(chat.id); if (t) bus.track({ name: 'handoff.reminder' }); return t }
+        } : undefined
       }),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),

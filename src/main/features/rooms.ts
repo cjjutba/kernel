@@ -54,6 +54,7 @@ export class Rooms extends Feature {
     }
     this.store.saveRoom(room)
     bus.push({ type: 'room', room })
+    bus.track({ name: 'room.created', source: req.source })
     void this.setupRoom(room, req).catch(() => undefined)
     return room
   }

@@ -33,4 +33,9 @@ export interface KernelOptions {
   openFile?: (path: string) => Promise<void>
   /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
   cipher?: Cipher
+  /**
+   * Where usage data goes, and the Mac it comes from (KERNEL-397). Only a packaged release build with a key passes it, and
+   * only when DO_NOT_TRACK and KERNEL_TELEMETRY=0 aren't set. Without it Kernel never sends, whatever Settings, Privacy says.
+   */
+  telemetry?: { key: string; host: string; os?: string; arch?: string }
 }

@@ -79,6 +79,7 @@ export function listen(k: Kernel): () => void {
     // Main moved, so the Lead's worktree follows it once the room fetches (KERNEL-181).
     const merged = e.type === 'pr' && e.state === 'merged' ? k.store.workspace(e.workspaceId)?.roomId : undefined
     if (merged) void k.lead.syncLead(merged, { fetch: true })
+    if (e.type === 'pr' && e.state === 'merged') bus.track({ name: 'pr.merged' })
     // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
     const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? k.autoArchive.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
     if (e.type === 'pr' && !reviews) k.autoArchive.unmarkReviews(...k.autoArchive.reviewsOf(e.workspaceId), e.workspaceId)

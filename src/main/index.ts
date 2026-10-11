@@ -12,6 +12,7 @@ import { fixtureHandlers, fixturePush } from './fixtures'
 import { exec } from './services/exec'
 import { hookTokenFile } from './services/hookToken'
 import { diagnostics, Log } from './services/log'
+import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
@@ -21,6 +22,7 @@ import { refreshPath } from './services/shellPath'
 import { insideRoots, isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
+import type { TelemetryEvent } from '@shared/telemetry'
 import type { Room, Toast, Workspace } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
 
@@ -88,8 +90,8 @@ log?.captureConsole()
 log?.info(`[kernel] Kernel ${app.getVersion()} started on macOS ${process.getSystemVersion()}`)
 // With no listener, Electron shows an error nothing caught in a raw dialog. Kernel logs it and keeps running: the database
 // writes in transactions, and a stuck feature beats a window that quits under the user's agents.
-process.on('uncaughtException', (err) => console.error('[kernel] uncaught exception', err))
-process.on('unhandledRejection', (reason) => console.error('[kernel] unhandled rejection', reason))
+process.on('uncaughtException', (err) => { console.error('[kernel] uncaught exception', err); bus.track(errorEvent('exception', err)) })
+process.on('unhandledRejection', (reason) => { console.error('[kernel] unhandled rejection', reason); bus.track(errorEvent('rejection', reason)) })
 app.on('child-process-gone', (_e, d) => { if (d.reason !== 'clean-exit') console.error(`[kernel] a ${d.type} process is gone (${d.reason}, exit code ${d.exitCode})`) })
 
 /** Brings the window forward, or opens one if it was closed. A headless run stays hidden. */
@@ -106,10 +108,12 @@ function focusWindow() {
 const toast = (t: Omit<Toast, 'id'>) => bus.push({ type: 'toast', toast: t })
 /** The hook port for Copy diagnostics. Unknown until the kernel exists, and in fixture runs. */
 let hookPort: () => number | undefined = () => undefined
+/** The latest usage events for Copy diagnostics (KERNEL-397). None until the kernel exists. */
+let usageEvents: () => string[] | undefined = () => undefined
 
 /** Help, Copy diagnostics: versions, the hook port and the end of the log, ready to paste into a bug report (KERNEL-288). */
 async function copyDiagnostics() {
-  const text = await diagnostics({ app: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch, electron: process.versions.electron, hookPort: hookPort(), log, ...redaction })
+  const text = await diagnostics({ app: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch, electron: process.versions.electron, hookPort: hookPort(), log, events: usageEvents(), ...redaction })
   clipboard.writeText(text)
 }
 
@@ -119,6 +123,7 @@ let crashes: number[] = []
 /** The window's page crashed or was killed. Reload it and say so, rather than leave a blank window (KERNEL-288). */
 async function rendererGone(w: BrowserWindow, d: RenderProcessGoneDetails) {
   console.error(`[kernel] the window's page is gone (${d.reason}, exit code ${d.exitCode})`)
+  if (d.reason !== 'clean-exit') bus.track({ name: 'app.renderer_gone', reason: d.reason as Extract<TelemetryEvent, { name: 'app.renderer_gone' }>['reason'] })
   if (d.reason === 'clean-exit' || w.isDestroyed()) return
   const now = Date.now()
   crashes = [...crashes.filter((t) => now - t < 60_000), now]
@@ -244,8 +249,12 @@ app.whenReady().then(async () => {
     // Draws shared HTML in locked-down views and thumbnails shared files for their cards (KERNEL-303).
     preview = new PreviewHost({ window: mainWindow, file: (id, n) => kernel.sharedFile(id, n), push: (e) => bus.push(e), dev: !app.isPackaged })
     const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
+    // Usage data goes out only from a packaged release built with a key, after the user says yes, and never from a smoke
+    // test, a fixture or headless run, or when DO_NOT_TRACK=1 or KERNEL_TELEMETRY=0 is set (KERNEL-397).
+    const sends = app.isPackaged && !smokeTest && !fixtureName && !headless && !!__KERNEL_TELEMETRY__.key && process.env.DO_NOT_TRACK !== '1' && process.env.KERNEL_TELEMETRY !== '0'
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
+      telemetry: sends ? { ...__KERNEL_TELEMETRY__, os: process.getSystemVersion(), arch: process.arch } : undefined,
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
       inBackground: () => !mainWindow()?.isFocused(),
       probeNetwork: () => probeNetwork(),
@@ -282,6 +291,7 @@ app.whenReady().then(async () => {
     app.on('browser-window-focus', (_e, w) => { if (w === mainWindow()) void started.then(() => kernel.prs.pollSoon(), () => undefined) })
     handlers = kernel.handlers() as typeof handlers
     hookPort = () => kernel.settings?.hookPort
+    usageEvents = () => kernel.telemetry.lines()
   }
   // The page asks for nothing: clipboard writes back the copy buttons, and every other request is refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done, details) => done(permission === 'clipboard-sanitized-write' && isAppUrl(details.requestingUrl, appUrl)))
