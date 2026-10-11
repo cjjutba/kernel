@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Thread } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { isLeadWorkspace, leadOf } from '../../lead'
@@ -25,6 +25,19 @@ export function closesThread(s: State, workspaceId: string, ids: string[]): Thre
   if (!open.filter((c) => threadIdOf(c) === id).every((c) => ids.includes(c.id))) return undefined
   return s.threads[id] ?? { id, roomId: ws.roomId, title: first.title, createdAt: first.createdAt }
 }
+
+/** What the "Close this chat?" dialog says about the chat these tabs close. Flat, so a live read compares equal until something in it changes. */
+export type WholeChat = { id: string; title: string; started: number }
+
+export function wholeChat(s: State, workspaceId: string, ids: string[]): WholeChat | undefined {
+  const thread = closesThread(s, workspaceId, ids)
+  const roomId = s.workspaces.find((w) => w.id === workspaceId)?.roomId
+  if (!thread || !roomId) return undefined
+  return { id: thread.id, title: thread.title, started: chatRows(s, roomId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 }
+}
+
+/** The first chat a live read finds, kept from then on, so the dialog does not change once its tabs close. */
+export const frozenWhole = (kept: WholeChat | undefined, live: WholeChat | undefined) => kept ?? live
 
 /** The Lead's chat rows as the sidebar lists them, top to bottom. */
 function chatRows(s: State, roomId: string) {
@@ -75,14 +88,13 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const chats = useStore((s) => s.chats[workspaceId])?.filter((c) => chatIds.includes(c.id)) ?? []
   const working = useStore((s) => chatIds.filter((id) => s.running[id]))
   const queued = useStore((s) => chatIds.reduce((n, id) => n + (s.queue[id]?.length ?? 0), 0))
-  // Every open tab of a Lead chat: the whole chat closes, which has its own words (GroupedCloseLastTab.png). Read once, when the dialog opens:
-  // pressing Close chat closes the tabs, and a live read would then turn this into the generic dialog while the button is still busy.
-  const [whole] = useState(() => {
-    const s = getState()
-    const thread = closesThread(s, workspaceId, chatIds)
-    const roomId = s.workspaces.find((w) => w.id === workspaceId)?.roomId
-    return thread && roomId ? { thread, started: chatRows(s, roomId).find((r) => r.thread.id === thread.id)?.owned.length ?? 0 } : undefined
-  })
+  // Every open tab of a Lead chat: the whole chat closes, which has its own words (GroupedCloseLastTab.png). Read live, since the Lead's chats may load
+  // after the dialog opens, then frozen at the first chat it finds: pressing Close chat closes the tabs, and a live read would then turn this into the
+  // generic dialog while the button is still busy.
+  const live = useStore((s) => wholeChat(s, workspaceId, chatIds))
+  const seen = useRef<WholeChat | undefined>(undefined)
+  seen.current = frozenWhole(seen.current, live)
+  const whole = seen.current
   const [closing, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   if (!ws) return null
@@ -101,14 +113,14 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
   const body = `${agent} is still working in ${where}. Closing stops ${working.length > 1 ? 'those turns' : 'the turn'}${drops}. Changes already in the worktree stay.`
 
   if (whole) {
-    const { thread, started } = whole
+    const { title, started } = whole
     const handed = started ? ` The ${started === 1 ? 'workspace' : `${started} workspaces`} it started ${started === 1 ? 'stays' : 'stay'} in the sidebar.` : ''
     return (
       <ConfirmDialog
         title="Close this chat?" body={`${agent} is still working in this chat. Closing its last tab stops that turn and closes the chat.${handed}`}
         busy={!!closing} busyLabel="Closing" confirmLabel="Close chat" onConfirm={() => void close()} onCancel={actions.ui.closeModal}
       >
-        <div className="wsc-facts mono"><span>{thread.title}</span><span>{plural(chatIds.length, 'tab')} · {agent} is working</span></div>
+        <div className="wsc-facts mono"><span>{title}</span><span>{plural(chatIds.length, 'tab')} · {agent} is working</span></div>
         {error && <p role="alert" className="wsc-error">{error}</p>}
       </ConfirmDialog>
     )
