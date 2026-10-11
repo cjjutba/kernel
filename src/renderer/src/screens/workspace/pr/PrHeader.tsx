@@ -37,7 +37,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const caret = useRef<HTMLSpanElement>(null)
   const id = ws.id
   const changed = hasChanges(ws)
-  const view = headerView(ws.prState, changed)
+  const view = headerView(ws.prState, changed, !!ws.prBlocked)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
     try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
