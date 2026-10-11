@@ -3,7 +3,7 @@ import { rm, stat } from 'node:fs/promises'
 import type { Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { cleanupSwitch, loadRepoSettings } from '../services/settings'
-import { detachWorktree, folderGone, restoreWorktree } from '../services/worktrees'
+import { branchExists, detachWorktree, dropBranch, folderGone, restoreWorktree } from '../services/worktrees'
 import { blocksOverlap, linkNodeModules, runScript, scriptTimeout, stopRuns, stopScript, timeoutText } from '../services/scripts'
 import { snapshot } from '../services/checkpoints'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from '../services/archive'
@@ -12,8 +12,8 @@ import { Feature } from './feature'
 
 /** Archiving and restoring workspaces, the worktree folders archive throws away, and discarding changes (KERNEL-328). */
 export class Archive extends Feature {
-  /** Archives under way, so a second call for the same workspace waits for the first. */
-  private archiving = new Map<string, Promise<void>>()
+  /** Archives under way, so a second call for the same workspace waits for the first, and whether each keeps its worktree. */
+  private archiving = new Map<string, { done: Promise<void>; keepWorktree?: boolean }>()
   /**
    * Worktree folders archive moved aside and hasn't deleted yet (KERNEL-284). Saved under the meta key `trash`, so a
    * delete cut short by a quit, or one that failed, runs again at the next start. `emptying` is the queue, one at a time.
@@ -33,13 +33,37 @@ export class Archive extends Feature {
     bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId, agentId: ws.agentId, actor: 'you', text: 'discarded the changes in', object: ws.name })
   }
 
-  /** One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice. */
+  /**
+   * One archive per workspace at a time: a second call while one runs waits for it, instead of removing the worktree twice.
+   * Its own choice to delete the branch still counts (KERNEL-139). Keeping it, or not saying, leaves the running one's.
+   */
   async archiveWorkspace(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}): Promise<void> {
     const running = this.archiving.get(id)
-    if (running) return running
-    const next = this.archiveNow(id, deleteBranch, o).finally(() => this.archiving.delete(id))
-    this.archiving.set(id, next)
-    return next
+    if (running) {
+      await running.done
+      // A kept worktree still has its branch checked out, so the branch stays with it.
+      if (deleteBranch && !running.keepWorktree) await this.deleteKeptBranch(id)
+      return
+    }
+    const done = this.archiveNow(id, deleteBranch, o).finally(() => this.archiving.delete(id))
+    this.archiving.set(id, { done, keepWorktree: o.keepWorktree })
+    return done
+  }
+
+  /**
+   * Deletes the branch an archive that just finished kept, with that archive's guards: never on the current branch, and
+   * never with commits that never left this machine or can't be counted (KERNEL-70). A kept branch gets a note saying why.
+   */
+  private async deleteKeptBranch(id: string) {
+    const ws = this.mustWs(id)
+    // Restored since, so its branch is checked out again.
+    if (ws.status !== 'archived' || ws.mode !== 'worktree') return
+    const room = this.mustRoom(ws.roomId)
+    if (!(await branchExists(room.path, ws.branch))) return
+    const unpushed = await unpushedCommits(room.path, ws.branch, ws.baseRef, await this.k.config.remoteFor(room.path, await loadRepoSettings(room.path)))
+    if (unpushed === 0) return dropBranch(room.path, ws.branch)
+    const why = unpushed === null ? 'kept the branch because its commits could not be counted:' : 'kept the branch because it has commits that were never pushed:'
+    bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: why, object: ws.branch, warn: true })
   }
 
   private async archiveNow(id: string, deleteBranch?: boolean, o: { keepWorktree?: boolean } = {}) {
