@@ -663,8 +663,8 @@ export async function loadRoom(roomId: string) {
   setState((s) => ({ agents: { ...s.agents, [roomId]: agents }, status: { ...s.status, [roomId]: { ...status, ...(s.status[roomId] ?? {}) } } }))
   // The Inbox lists open overlaps (D-104). Pushes keep them current after this; a failed check only leaves them out.
   void call('rooms.overlaps', { roomId }).then((list) => actions.rooms.setOverlaps(roomId, list)).catch(() => undefined)
-  // A workspace held in `trust` before this launch has no push to learn it from (KERNEL-218).
-  void call('rooms.scriptTrust', { roomId }).then((trust) => actions.rooms.setTrust(roomId, trust)).catch(() => undefined)
+  // A workspace held in `trust` before this launch has no push to learn it from. Null isn't applied: a push may have landed first, and `room.trust` clears it (KERNEL-218).
+  void call('rooms.scriptTrust', { roomId }).then((trust) => { if (trust) actions.rooms.setTrust(roomId, trust) }).catch(() => undefined)
 }
 
 export async function loadWorkspace(workspaceId: string) {

@@ -1067,7 +1067,7 @@ export type MenuId =
   | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
-export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
+export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry' | 'trust'
 
 export interface Banner {
   kind: BannerKind
