@@ -250,6 +250,8 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.prs.refreshPr(ws.id)
     gh.pr = info({ state: 'ready' })
     reads = 0
+    // The quick read runs real git before it reaches the stub, so wait for it, then check no second one follows.
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     expect(reads).toBe(1)
     expect(k.store.workspace(ws.id)?.prState).toBe('ready')
@@ -261,6 +263,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('conflict')
     gh.pr = unknown()
     reads = 0
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     // Still unknown after the quick read: the poll takes it from there.
     expect(reads).toBe(1)
@@ -270,11 +273,18 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(states).toEqual(['ready', 'checks', 'ready', 'conflict', 'ready'])
 
     // Archiving drops a pending quick read.
+    // A quick read that started while the archive was still running lands on its own time, so wait it out before counting.
+    let inflight = 0
+    const refresh = k.refreshPr.bind(k)
+    k.refreshPr = async (...a) => { inflight++; try { return await refresh(...a) } finally { inflight-- } }
     gh.pr = unknown()
     await k.prs.refreshPr(ws.id)
     await k.archive.archiveWorkspace(ws.id)
+    await vi.waitFor(() => expect(inflight).toBe(0))
     reads = 0
     await wait(100)
+    // A read that starts after the archive must still show up, even when it lands late.
+    await vi.waitFor(() => expect(inflight).toBe(0))
     expect(reads).toBe(0)
     bus.off('push', onPush)
     await k.stop()
