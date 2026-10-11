@@ -543,6 +543,11 @@ var __seed = Component.prototype.seed;
 Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
 '''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
 emit('WorkspaceQuestionLong', t, 'lead')
+# KERNEL-440 (D13): the team and agent surfaces D14, D15 and D16 build. capabilities.py draws them.
+import sys
+sys.path.insert(0,HERE)
+import capabilities
+capabilities.build(emit=emit, rd=rd, ws=ws, gsub=gsub, g_patch=g_patch)
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
 p=P+'InboxEmpty.dc.html'; t=open(p).read()
