@@ -295,8 +295,16 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     const other = await k.workspaces.createWorkspace(ws.roomId, { prompt: 'Build the inbox', agentId: 'kai', title: 'Inbox' })
     const read: string[] = []
     k.github = { ...k.github, info: async (_cwd, _ref, workspaceId) => { read.push(workspaceId); return gh.pr ? { ...gh.pr, workspaceId } : null } }
-    k.prs.recheckMs = 37
-    const timers = vi.spyOn(globalThis, 'setTimeout')
+    // The shared timer is held back instead of run on a short real delay: the reads run real git before they reach the
+    // stub, so on a busy machine a short timer fires between the two unknown reads and a second one starts, as designed.
+    k.prs.recheckMs = 60_037
+    const held: Array<() => void> = []
+    const realSetTimeout = globalThis.setTimeout
+    const timers = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => {
+      if (ms !== 60_037) return realSetTimeout(fn, ms, ...args)
+      held.push(fn)
+      return 0 as unknown as NodeJS.Timeout
+    }) as typeof setTimeout)
     // Right after a merge, GitHub checks every other PR for conflicts again.
     gh.pr = info({ state: 'conflict' })
     await k.prs.refreshPr(ws.id)
@@ -304,15 +312,16 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     gh.pr = info({ state: 'checks', conflictsUnknown: true })
     await k.prs.refreshPr(ws.id)
     await k.prs.refreshPr(other.id)
-    expect(timers.mock.calls.filter(([, ms]) => ms === 37)).toHaveLength(1)
+    expect(held).toHaveLength(1)
     timers.mockRestore()
     // No pr.ready while unknown: both stay in conflict until GitHub says MERGEABLE.
     expect([k.store.workspace(ws.id)?.prState, k.store.workspace(other.id)?.prState]).toEqual(['conflict', 'conflict'])
     gh.pr = info({ state: 'ready' })
     read.length = 0
-    await wait(120)
-    expect(read.sort()).toEqual([ws.id, other.id].sort())
-    expect([k.store.workspace(ws.id)?.prState, k.store.workspace(other.id)?.prState]).toEqual(['ready', 'ready'])
+    // The one timer fires and reads both.
+    held[0]()
+    await vi.waitFor(() => expect(read.sort()).toEqual([ws.id, other.id].sort()))
+    await vi.waitFor(() => expect([k.store.workspace(ws.id)?.prState, k.store.workspace(other.id)?.prState]).toEqual(['ready', 'ready']))
     await k.stop()
   })
 
