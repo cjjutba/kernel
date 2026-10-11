@@ -8,6 +8,8 @@ const rules = { requireGreen: false, requireReviewer: true }
 const agents = [{ id: 'rowan', name: 'Rowan', lead: true }, { id: 'kai', name: 'Kai' }, { id: 'theo', name: 'Theo' }] as AgentDef[]
 const ws = (id: string, o: Partial<Workspace> = {}) => ({ id, roomId: 'room', agentId: 'kai', status: 'ready', prState: 'ready', prNumber: 1, prHead: 'h', ...o }) as Workspace
 const verdict = (verdict: 'approved' | 'blockers', o: object = {}) => ({ workspaceId: 'rev', agentId: 'theo', verdict, summary: '', sha: 'h', prNumber: 1, ts: 1, ...o })
+// A PR as GitHub reads it, typed in full so a field the merge rule needs can't go missing (KERNEL-394).
+const info = (workspaceId: string, o: Partial<PrInfo> = {}): PrInfo => ({ workspaceId, number: 1, url: '', title: '', state: 'ready', baseRef: 'main', checks: [], comments: [], conflicts: [], head: 'h', ...o })
 const list = (workspaces: Workspace[], prs: Record<string, PrInfo> = {}) => leadPrs(workspaces, { leadId: 'rowan', roomId: 'room', prs, rules, agents })
 const ids = (workspaces: Workspace[]) => list(workspaces).map((r) => r.ws.id)
 
@@ -33,7 +35,7 @@ describe('the order', () => {
   })
 
   it('holds back a PR the reviewer rule blocks, as a Merge button would', () => {
-    const read = (id: string) => ({ [id]: { workspaceId: id, number: 1, checks: [], head: 'h' } as unknown as PrInfo })
+    const read = (id: string) => ({ [id]: info(id) })
     const [row] = list([ws('blocked', { reviews: [verdict('approved', { sha: 'old' })] })], read('blocked'))
     expect(row.ready).toBe(false)
     expect(row.state?.label).toBe('Waiting for approval')
@@ -44,8 +46,8 @@ describe('the order', () => {
     const strict = { requireGreen: true, requireReviewer: false }
     const [unread] = leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: {}, rules: strict, agents })
     expect(unread.ready).toBe(false)
-    const info = { workspaceId: 'a', number: 1, checks: [{ name: 'lint', state: 'pass' }], head: 'h' } as PrInfo
-    expect(leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: { a: info }, rules: strict, agents })[0].ready).toBe(true)
+    const green = info('a', { checks: [{ name: 'lint', state: 'pass' }] })
+    expect(leadPrs([ws('a')], { leadId: 'rowan', roomId: 'room', prs: { a: green }, rules: strict, agents })[0].ready).toBe(true)
   })
 })
 
