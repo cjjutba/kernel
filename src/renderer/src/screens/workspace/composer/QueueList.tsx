@@ -8,10 +8,11 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   offline: 'Queued. Sends when you are back online.',
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models.',
   paused: 'Queued. Sends when you resume the room.',
-  setup: 'Queued. Sends when setup passes.'
+  setup: 'Queued. Sends when setup passes.',
+  merge: 'Queued. Sends when the work it waits for merges.'
 }
 
-/** Send now can't help while the Mac is offline or setup hasn't passed. */
+/** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */
 const canSendNow = (why?: QueueReason) => why !== 'offline' && why !== 'setup'
 
 /** Messages typed while the agent works, or held for another reason (`why`). They go out in order once nothing holds them. Edit one to pull it back into the box. */

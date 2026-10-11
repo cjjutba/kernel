@@ -159,6 +159,9 @@ export type { QueueReason }
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
 
+/** Setup passed and the brief waits for PRs to merge (KERNEL-259). A chat held while its setup runs or failed waits for setup. */
+const heldForMerge = (ws?: Workspace) => ws?.status === 'ready' && !!ws.waitsFor?.held
+
 export class Sessions {
   private live = new Map<string, Live>()
   /** Per chat, whether or not its process is running. */
@@ -179,7 +182,7 @@ export class Sessions {
   private paused = new Map<string, { open: Promise<void>; release: () => void }>()
   /** Every room at once: offline or signed out. Same rules as a pause, and it lasts while any reason stands. */
   private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
-  /** Chats whose first prompt waits for the workspace's setup script to pass. */
+  /** Chats whose first prompt waits for the workspace's setup script to pass, or for the PRs it waits for to merge (KERNEL-259). */
   private waiting = new Set<string>()
   /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
   private cutOff = new Map<string, CutOffReason>()
@@ -219,7 +222,7 @@ export class Sessions {
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
       const ws = chat && this.d.store.workspace(chat.workspaceId)
-      const waiting = ws?.status === 'ready' && !!ws.waitsFor?.held
+      const waiting = heldForMerge(ws)
       if ((ws?.status !== 'failed' && !waiting) || !Array.isArray(queue)) continue
       this.waiting.add(id)
       this.setQueue(id, queue)
@@ -462,7 +465,7 @@ export class Sessions {
     const chat = this.d.store.chat(chatId)
     if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
-    if (this.waiting.has(chat.id)) return 'setup'
+    if (this.waiting.has(chat.id)) return heldForMerge(this.d.store.workspace(chat.workspaceId)) ? 'merge' : 'setup'
     if (this.global) return 'offline'
     if (this.pausedChat(chat)) return 'paused'
     if (this.atCapacity(chat.id)) return 'capacity'
@@ -698,8 +701,11 @@ export class Sessions {
     }
   }
 
-  /** A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. */
-  private pushReasons() {
+  /**
+   * A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. Kernel calls it
+   * when a workspace changes too, since a held brief waits for setup or for a merge by its workspace's state (KERNEL-361).
+   */
+  pushReasons() {
     for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
   }
 
