@@ -227,6 +227,8 @@ export class Kernel {
     capture?: { thumbnail(f: SharedFile, version: number): Promise<Buffer | null> }
     /** Shows a file in Finder, for a shared file's Show in Finder. Left out, it does nothing. */
     reveal?: (path: string) => void
+    /** Opens a file in the Mac's default app, for a shared PDF's Open in Preview. Rejects with the reason when it can't. Left out, it does nothing. */
+    openFile?: (path: string) => Promise<void>
     /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
     cipher?: Cipher
   }) {
@@ -3181,6 +3183,14 @@ export class Kernel {
       'shared.reveal': async ({ sharedId, version }) => {
         const ws = this.store.workspace(this.store.sharedFile(sharedId)?.workspaceId ?? '')
         this.o.reveal?.(await this.shared.revealPath(sharedId, version, ws))
+        return { ok: true }
+      },
+      // Only a PDF, from Kernel's own copy: opening an HTML file or a script by its default app would run it outside the lock.
+      'shared.open': async ({ sharedId, version }) => {
+        const got = this.shared.get(sharedId, version)
+        if (!got) throw new Error('That shared file or version is gone.')
+        if (got.file.kind !== 'pdf') throw new Error('Only a PDF opens in Preview.')
+        await this.o.openFile?.(got.path)
         return { ok: true }
       },
       'integrations.list': async () => this.integrations(),

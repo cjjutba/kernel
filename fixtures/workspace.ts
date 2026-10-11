@@ -610,13 +610,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
-  // width or version menu, is the shot's: WorkspaceSharedPhone and WorkspaceSharedVersions need a click (scripts/shots.ts).
+  // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
   WorkspaceSharedMarkdown: sharedTab('sh-md'),
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
+  WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({

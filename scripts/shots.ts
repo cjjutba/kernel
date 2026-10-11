@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { _electron as electron, type Page } from 'playwright-core'
+import { _electron as electron, type ElectronApplication, type Page } from 'playwright-core'
 import pngjs from 'pngjs'
 
 const { PNG } = pngjs
@@ -65,7 +65,17 @@ async function openVersions(page: Page) {
   await page.waitForTimeout(300)
 }
 
-const interactions: Record<string, (page: Page) => Promise<void>> = {
+// WorkspaceSharedCrashed is the page after its renderer died. A fixture run has no live view, so main pushes the crash for the tab's key
+// (workspace and file), as it would for the view's id.
+async function crashPage(page: Page, app: ElectronApplication) {
+  await app.evaluate(({ BrowserWindow }, viewId) => BrowserWindow.getAllWindows()[0]?.webContents.send('kernel:event', { type: 'preview', viewId, state: 'crashed' }), 'ws-invoice-table:sh-html')
+  await page.getByRole('alert').waitFor()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  WorkspaceSharedCrashed: crashPage,
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
   WorkspaceQuestionSteps: stepToSecondQuestion,
@@ -96,7 +106,7 @@ async function capture(name: string): Promise<boolean> {
     await lazyLoaded()
     // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
-    await interactions[name]?.(page)
+    await interactions[name]?.(page, app)
     await lazyLoaded()
     await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
     console.log(`shots/${name}${suffix}.png`)

@@ -205,7 +205,8 @@ app.whenReady().then(async () => {
       },
       confirmQuit: () => quit.confirmUpdate(),
       capture: preview,
-      reveal: (path) => shell.showItemInFolder(path)
+      reveal: (path) => shell.showItemInFolder(path),
+      openFile: async (path) => { const err = await shell.openPath(path); if (err) throw new Error(err) }
     })
     app.on('before-quit', (e) => quit.beforeQuit(e))
     powerMonitor.on('shutdown', () => quit.shutdown())
