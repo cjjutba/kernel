@@ -177,7 +177,9 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
   })
 
   it('saves the plan to .kernel/plans, a revision to the same file and the next plan after an approval to its own (D-092)', { timeout: 30_000 }, async () => {
-    const { k, room, chat, tool, plans } = await realLead()
+    const { k, chat, tool, plans } = await realLead()
+    // In the Lead's own worktree (KERNEL-355).
+    const dir = k.store.workspace(chat.workspaceId)!.path
     await k.sessions.configure(chat.id, { plan: true })
     /** Asks with `plan` and waits until Kernel has saved it, newest approval first. */
     const ask = async (plan: string) => {
@@ -188,7 +190,7 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
 
     const first = await ask(PLAN)
     expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'noor' }], planFile: '.kernel/plans/symlink-node-modules.md' })
-    expect(await readFile(join(room.path, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
+    expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
     k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
     expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
 
@@ -196,14 +198,14 @@ describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
     const second = await ask(revised)
     expect(second.approval.id).not.toBe(first.approval.id)
     expect(second.approval.planFile).toBe(first.approval.planFile)
-    expect(await readFile(join(room.path, second.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
+    expect(await readFile(join(dir, second.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
     k.approvals.decide(second.approval.id, { behavior: 'allow' })
     await second.asked
 
     await k.sessions.configure(chat.id, { plan: true })
     const third = await ask(PLAN)
     expect(third.approval.planFile).toBe('.kernel/plans/symlink-node-modules-2.md')
-    expect(await readFile(join(room.path, first.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
+    expect(await readFile(join(dir, first.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
   })
 
   it('describes the same call in the rule, the instructions, the tool and the starter Rowan', async () => {

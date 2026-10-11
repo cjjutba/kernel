@@ -169,8 +169,10 @@ export class Workspaces extends Feature {
     const chat = this.mustChat(chatId)
     if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
     const src = this.mustWs(chat.workspaceId)
-    // The Lead and current-branch workspaces share the main checkout, whose changes aren't only the agent's.
+    // Current-branch workspaces share the main checkout, whose changes aren't only the agent's.
     if (src.mode !== 'worktree') throw new Error('Only a workspace with its own worktree can fork into a new workspace.')
+    // The Lead's worktree is on no branch and holds no task of its own (KERNEL-355).
+    if (this.isLeadWorkspace(src)) throw new Error("The Lead's workspace can't fork into a new workspace. Fork into a new chat instead.")
     if (src.status === 'archived') throw new Error('Restore the workspace from History to fork it.')
     const room = this.mustRoom(src.roomId)
     const repo = await loadRepoSettings(room.path)

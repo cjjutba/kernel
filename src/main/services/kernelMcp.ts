@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
@@ -38,6 +38,12 @@ export interface KernelToolDeps {
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
+  /** Merges the workspace's PR as the Merge button does, refusing with the reason when it can't merge (KERNEL-349). */
+  mergeWorkspace?: (workspaceId: string) => Promise<Workspace>
+  /** Whether Settings, Pull requests lets the Lead merge. Read on each call, since the Lead's tools are built once. Left out, it can't (KERNEL-352). */
+  leadMerge?: () => boolean
+  /** Whether the user started the Lead's current turn, rather than Kernel. Left out, Kernel did. */
+  userTurn?: () => boolean
   /** Sets what the workspace waits for, by workspace id; an empty list ends the wait and starts a held brief (KERNEL-259). */
   setWait?: (workspaceId: string, on: string[]) => Promise<Workspace>
   /** Reads the PR from GitHub and saves its state, so a merge Kernel missed doesn't block archive (KERNEL-109). Left out, the saved state decides. */
@@ -80,6 +86,17 @@ export const PLAN_MODE_OFF = 'Not asked: plan mode is off in this chat, so there
 /** request_plan_approval's refusal when it gets task lines without the write-up (KERNEL-373). */
 export const NO_PLAN = 'Not asked: plan is missing. Pass the full plan as markdown in plan (context, approach, files, checks) and one line per task in steps, then call request_plan_approval again.'
 
+/** merge_workspace's refusals: the switch in Settings is off, or Kernel started the turn (KERNEL-352). */
+export const MERGE_OFF = 'Merging is off in Settings, Pull requests. Tell the user they can merge from the PRs tab.'
+export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them which PRs are ready.'
+
+/** Why merge_workspace skips a PR in this state. Nothing for the states a merge can start from, which `mergePr` checks. */
+const NOT_MERGEABLE: Partial<Record<PrState, string>> = {
+  none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',
+  checks: 'checks are still running', cifail: 'checks failing', changes: 'a review asked for changes', conflict: 'it has merge conflicts',
+  resolving: 'its conflicts are being resolved', merging: 'it is already merging', merged: 'it already merged', closed: 'it was closed'
+}
+
 /**
  * The agent `asked` names: its exact id, else the one whose id or name matches ignoring case. A miss or a name two
  * agents share comes back as the tool's refusal, listing the team, so the Lead can try again with a real id (KERNEL-119).
@@ -98,7 +115,7 @@ export function pickAgent(team: AgentDef[], asked: string): AgentDef | string {
 }
 
 /** What the Lead's server tells the model, next to the tools. */
-export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use.'
+export const LEAD_INSTRUCTIONS = 'You lead a team of agents in Kernel. While the chat is in plan mode, plan first and ask for approval with request_plan_approval: the full plan as markdown in plan, and one line per task in steps, which plan doesn\'t repeat. Once the user approves, hand each task to one teammate with create_workspace in the same turn. With plan mode off, don\'t ask for plan approval. Answer in the chat, suggest what you would hand off and to whom, and ask the user before calling create_workspace, unless their message already says to go ahead. A task that needs another task\'s PR merged first takes wait_for, and wait_for_merge sets or ends a wait later. Follow up with message_agent. Use say for a short status line people see on your card in the sidebar. When the user asks, archive finished workspaces with archive_workspace; it skips any that are still in use. Merge ready PRs with merge_workspace only when the user asks; it says when merging is off.'
 
 /**
  * The workspace a reviewer's base names: the Lead sometimes starts a review from the reviewed branch with base_ref instead
@@ -324,6 +341,39 @@ export function kernelTools(d: KernelToolDeps) {
         } catch (e) {
           const why = firstLine(e instanceof Error ? e.message : String(e))
           lines.push(`Skipped ${ws.name}: ${/[.!?…]$/.test(why) ? why : why + '.'}`)
+        }
+      }
+      return text(lines.join('\n'))
+    }),
+    tool('merge_workspace', "Merge workspaces' pull requests, only when the user's own message asks. A review's id merges the PR it reviewed. Each merge needs what Settings, Pull requests asks for, such as passing checks and the reviewer's approval, and a PR that can't merge is skipped with the reason.", {
+      workspace_ids: z.array(z.string()).min(1).describe('Workspace ids from list_workspaces')
+    }, async ({ workspace_ids }) => {
+      // Both gates hold here: mcp__kernel__* tools are auto-allowed, and the Lead's tools are built once per session (D-008).
+      if (!d.mergeWorkspace || !d.leadMerge?.()) return { ...text(MERGE_OFF), isError: true }
+      if (!d.userTurn?.()) return { ...text(MERGE_NOT_ASKED), isError: true }
+      const lines: string[] = []
+      // One id at a time, so a skip or a failed merge doesn't stop the rest, as archive_workspace does.
+      for (const id of workspace_ids) {
+        const asked = d.workspaces().find((w) => w.id === id && w.status !== 'archived')
+        if (!asked) { lines.push(`Skipped ${id}: not an open workspace in this room.`); continue }
+        // A review has no PR of its own: merging it means merging the work it reviewed.
+        const target = asked.reviewOf ? d.workspaces().find((w) => w.id === asked.reviewOf) : asked
+        if (!target || target.status === 'archived') { lines.push(`Skipped ${asked.name}: the work it reviewed is no longer open.`); continue }
+        if (isLeadWorkspace(target, d.lead?.id)) { lines.push(`Skipped ${target.name}: it is your own workspace.`); continue }
+        // A merge just before changes every other PR's base, so the saved state may be stale (KERNEL-283).
+        const ws = await latestPr(target)
+        const pr = ws.prNumber ? `#${ws.prNumber}` : ws.name
+        const not = NOT_MERGEABLE[ws.prState]
+        if (not) { lines.push(`Skipped ${pr}: ${not}.`); continue }
+        try {
+          const after = await d.mergeWorkspace(ws.id)
+          const title = after.prTitle ?? ws.prTitle
+          lines.push(`Merged ${pr}${title ? ` (${title})` : ''}.`)
+        } catch (e) {
+          // mergeBlock's reason is a finished sentence that names the reviewer and the setting, so it goes whole (KERNEL-349).
+          // A failed merge's error is gh output, of which the first line is enough.
+          const why = (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+          lines.push(`Skipped ${pr}: ${/[.!?…]$/.test(why) ? why : why + '.'}`)
         }
       }
       return text(lines.join('\n'))

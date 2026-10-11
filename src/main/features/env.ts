@@ -20,7 +20,8 @@ export class Env extends Feature {
     const list = room ? loadRepoSettingsSync(room.path).env.files : []
     const allowed = !!room && this.k.trust.envFilesOk.get(room.id) === JSON.stringify(list)
     if (room && list.length && !allowed) void this.k.trust.untrusted(room).catch(() => null)
-    const files = allowed ? readEnvFiles(ws.path, list).map((f) => keep(f.vars)) : []
+    // Nothing is copied into the Lead's worktree, so it reads the checkout's files (KERNEL-355).
+    const files = allowed ? readEnvFiles(ws.lead && room ? room.path : ws.path, list).map((f) => keep(f.vars)) : []
     const kernel: Record<string, string> = { ...kernelVars(ws, room?.path ?? ws.path), ...(o.script ? { PORT: String(ws.port), FORCE_COLOR: '0' } : {}) }
     return buildEnv({ base: process.env, app: keep(this.envStore.values()), files, room: keep(this.envStore.values(ws.roomId)), kernel })
   }
