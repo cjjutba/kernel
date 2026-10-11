@@ -29,7 +29,8 @@ const jsonLd = {
   downloadUrl: DOWNLOAD_URL
 }
 
-export default function Home() {
+export default async function Home() {
+  const latest = await latestRelease()
   return (
     <>
       <script
@@ -38,7 +39,7 @@ export default function Home() {
       />
       <SiteNav />
       <main id="content">
-        <Hero version={latestVersionLabel(latestRelease.version)} />
+        <Hero version={latestVersionLabel(latest.version)} />
         <HowItWorks />
         <ProductTour />
         <Details />

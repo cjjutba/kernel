@@ -1,4 +1,5 @@
-// Playwright's web server: a stub GitHub API that reports 1,234 stars, two production builds that read it, and
+// Playwright's web server: a stub GitHub API that reports 1,234 stars and v0.2.0 as the latest release, so 0.2.1's
+// file stays hidden (KERNEL-412), two production builds that read it, and
 // `next start` for each. Port 3100 serves the site's own content. Port 3101 serves tests/fixtures/render, the
 // releases and plans design/site/renders shows, for the render comparison in visual.spec.ts (D-135). Each build
 // goes to its own folder so it never replaces a dev or production build.
@@ -7,6 +8,7 @@ import { createServer } from 'node:http'
 import { fileURLToPath } from 'node:url'
 
 export const STUB_STARS = 1234
+export const STUB_LATEST = 'v0.2.0'
 const STUB_PORT = 4010
 const PORT = 3100
 const RENDER_PORT = 3101
@@ -15,6 +17,9 @@ const stub = createServer((req, res) => {
   if (req.url === '/repos/cjjutba/kernel') {
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ stargazers_count: STUB_STARS }))
+  } else if (req.url === '/repos/cjjutba/kernel/releases/latest') {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    res.end(JSON.stringify({ tag_name: STUB_LATEST }))
   } else {
     res.writeHead(404).end()
   }

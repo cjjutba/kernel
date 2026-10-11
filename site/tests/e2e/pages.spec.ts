@@ -1,5 +1,3 @@
-import { latestRelease } from '@/content/changelog'
-import { latestVersionLabel } from '@/lib/format'
 import { DOWNLOAD_URL } from '@/lib/links'
 import { expect, isMobile, test } from './fixtures'
 
@@ -56,7 +54,7 @@ test('release notes, the hero pill and the nav go to /changelog', async ({ page 
       '/changelog'
     )
   }
-  await page.getByRole('link', { name: `Kernel ${latestVersionLabel(latestRelease.version)} is here` }).click()
+  await page.getByRole('link', { name: 'Kernel 0.2 is here' }).click()
   await expect(page).toHaveURL('/changelog')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText("What's new in Kernel")
 })
@@ -107,4 +105,14 @@ test('the star count shows from the stub GitHub API', async ({ page }, testInfo)
   }
   await expect(star).toHaveAccessibleName('Star Kernel on GitHub, 1.2k stars')
   await expect(star).toContainText('1.2k')
+})
+
+test('a release shows only once GitHub has published it', async ({ page }) => {
+  // The stub's latest release is v0.2.0, so 0.2.1's file is merged but not yet published (KERNEL-412).
+  await page.goto('/changelog')
+  const entries = page.getByRole('article')
+  await expect(entries.first()).toContainText('0.2.0')
+  await expect(entries.first()).toContainText('Latest')
+  await expect(page.getByRole('heading', { name: 'Kernel 0.2.1' })).toHaveCount(0)
+  await expect(page.getByText('This is where it all starts.')).toHaveCount(0)
 })

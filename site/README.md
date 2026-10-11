@@ -39,7 +39,7 @@ node scripts/check-render.mjs changelog        # full page against design/site/r
 | Variable | Needed | What it does |
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | In production | The public origin, for canonical URLs, Open Graph, the sitemap and robots.txt. Defaults to `http://localhost:3000`. |
-| `GITHUB_TOKEN` | No | Sent to the GitHub API for the star count, so builds aren't rate limited. A fine grained token with no permissions is enough. |
+| `GITHUB_TOKEN` | In production | Sent to the GitHub API for the star count and the latest release, so builds and page refreshes aren't rate limited. A fine grained token with no permissions is enough. Without GitHub the star count hides, but the latest release can't be read, so the build fails. |
 | `CHANGELOG_FIXTURE` | No | Tests only. A folder to read the changelog and the hero pill's version from instead of `content/`, with `releases/` and `upNext.json`. |
 
 ## Add a changelog entry
@@ -63,11 +63,11 @@ intro: One or two sentences.
 
 `image` and `imageAlt` (a 1440x900 PNG in `public/images`) and `intro` are optional. Quote a value in double quotes when it contains `: `. Sections are free text: compiled releases use New, Improved and Fixed. An item may end with its PR, `(#41)`.
 
-`content/changelog.ts` reads the files at build time and checks them with the schema in `lib/schema.ts`, so a bad file fails the build. Every release is its own entry, patches included, newest first. The newest gets the Latest badge and sets the pill on the landing page: "Kernel 0.2 is here" for a minor, "Kernel 0.2.1 is here" for a patch. Update `content/upNext.ts` when plans change.
+`content/changelog.ts` reads the files at build time and checks them with the schema in `lib/schema.ts`, so a bad file fails the build. A file shows only once GitHub has published its release: the pages read GitHub's latest release every 5 minutes and hide any newer file, because a release PR merges, and the site deploys, before the app is built and notarized (KERNEL-412). Every release is its own entry, patches included, newest first. The newest gets the Latest badge and sets the pill on the landing page: "Kernel 0.2 is here" for a minor, "Kernel 0.2.1 is here" for a patch. Update `content/upNext.ts` when plans change.
 
 ## Deploy (Vercel)
 
 - Root Directory `site`, Framework Next.js, Node 22.
 - Ignored Build Step: `[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && [ "$VERCEL_GIT_PREVIOUS_SHA" != "$(git rev-parse HEAD)" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- .` Vercel runs it from the Root Directory, so `.` means `site/`. It compares with the last successful deployment, so a push whose last commit skips `site/` still builds. It also builds when there is nothing to compare with, and when the commit is the one already deployed, so Redeploy after an environment variable change works.
-- Set `NEXT_PUBLIC_SITE_URL` to `https://kernel.cjjutba.dev` for Production, and optionally `GITHUB_TOKEN`.
+- Set `NEXT_PUBLIC_SITE_URL` to `https://kernel.cjjutba.dev` for Production, and `GITHUB_TOKEN` for Production and Preview.
 - Domain: `kernel.cjjutba.dev`, a CNAME record at Porkbun pointing to the value Vercel shows.

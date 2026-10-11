@@ -38,7 +38,7 @@ Every PR that changes the app adds a fragment in `.changes/unreleased/`: one sen
 
 A release compiles the fragments into `site/content/releases/<version>.md` and moves them to `.changes/released/<version>/`. That one file feeds three places (D-058):
 
-- **The website.** `site/content/changelog.ts` reads every release file at build time. Every release is its own entry, newest first, so a patch shows at the top with the Latest badge as soon as it deploys. The newest version also sets the hero pill.
+- **The website.** `site/content/changelog.ts` reads every release file at build time. Every release is its own entry, newest first. Merging the release PR deploys the file, but the site hides it until GitHub has published the release, and picks it up within about 5 minutes of `pnpm release` finishing (KERNEL-412). The newest published version gets the Latest badge and sets the hero pill.
 - **The GitHub release.** `scripts/release.sh` publishes the notes as the release body, then adds GitHub's generated list of merged PRs under "Full list of changes".
 - **What's new in the app.** `scripts/release.sh` renders the notes for the app and passes them to electron-builder, which copies them into `latest-mac.yml`. Installed copies read a new version's notes from there. The script also writes them into the build as `out/release-notes/<version>.md`, so the app can show its own version's notes (KERNEL-154).
 

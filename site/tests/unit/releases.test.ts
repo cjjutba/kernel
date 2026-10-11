@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadReleases } from '@/lib/releases'
+import { loadReleases, publishedReleases } from '@/lib/releases'
 import { formatReleaseFile, parseReleaseFile, PLACEHOLDER_TITLE, type Release } from '@/lib/schema'
 
 const release = (version: string, date: string, extra: Partial<Release> = {}): Release => ({
@@ -58,6 +58,13 @@ describe('the changelog', () => {
       )
     )
     expect(loadReleases(dir).map((r) => r.version)).toEqual(['0.2.1', '0.2.0', '0.1.2', '0.1.0'])
+  })
+
+  it("hides a release file until GitHub has published its release (KERNEL-412)", () => {
+    const files = [release('0.2.1', '2026-11-05'), release('0.2.0', '2026-11-01'), release('0.1.0', '2026-10-08')]
+    expect(publishedReleases(files, '0.2.0').map((r) => r.version)).toEqual(['0.2.0', '0.1.0'])
+    expect(publishedReleases(files, '0.2.1').map((r) => r.version)).toEqual(['0.2.1', '0.2.0', '0.1.0'])
+    expect(() => publishedReleases(files, '0.0.9')).toThrow("no release file at or below 0.0.9, GitHub's latest release")
   })
 
   it('loads newest first and checks each file is named after its version', () => {
