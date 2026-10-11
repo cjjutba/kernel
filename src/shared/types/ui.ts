@@ -58,10 +58,10 @@ export type Modal =
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
   /**
-   * Someone else may already be on the issue a workspace is about to start from: the findings Kernel made, each set only when
-   * found (ConfirmIssueTaken.png, KERNEL-471). KERNEL-479 opens it from `create_workspace`'s warning.
+   * Someone else may already be on the issue a workspace is about to start from: what Kernel found, in the order to show it
+   * (ConfirmIssueTaken.png, KERNEL-471). The findings have the shape of KERNEL-479's `IssueTakenFinding`, which opens it.
    */
-  | { name: 'confirm'; kind: 'issueTaken'; issue: string; found: { branch?: string; pr?: { number: number; title: string }; assignee?: string } }
+  | { name: 'confirm'; kind: 'issueTaken'; issue: string; findings: ({ kind: 'branch'; ref: string } | { kind: 'pr'; number: number; title: string } | { kind: 'assignee'; name: string })[] }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
 

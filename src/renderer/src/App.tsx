@@ -126,7 +126,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
       if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       // KERNEL-479 makes Start anyway retry create_workspace with its confirm. Nothing opens this until it does.
-      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} found={modal.found} onStart={actions.ui.closeModal} />
+      if (modal.kind === 'issueTaken') return <ConfirmIssueTaken issue={modal.issue} findings={modal.findings} onStart={actions.ui.closeModal} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }
