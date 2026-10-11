@@ -17,6 +17,7 @@ import { appMenu } from './menu'
 import { BOOT_UPDATE_MS, Updater } from './updater'
 import { dataDirs, moveToDev, openBy, type DataDirs } from './dataDir'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
+import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
@@ -143,7 +144,7 @@ let usageEvents: () => string[] | undefined = () => undefined
 /** Help, Copy diagnostics: versions, the hook port and the end of the log, ready to paste into a bug report (KERNEL-288). */
 async function copyDiagnostics() {
   const text = await diagnostics({ app: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch, electron: process.versions.electron, hookPort: hookPort(), log, events: usageEvents(), ...redaction })
-  clipboard.writeText(text)
+  await clipboard.writeText(text)
 }
 
 /** When the window's page last crashed, so a page that crashes as it loads isn't reloaded forever. */
@@ -321,6 +322,8 @@ app.whenReady().then(async () => {
         if (!Notification.isSupported()) return
         const banner = new Notification({ title: n.heading ?? n.title, body: n.sub, silent })
         banner.on('click', () => focusWindow())
+        // macOS shows notifications only from a signed app (Electron 42), so an unsigned build says why here instead.
+        banner.on('failed', (_e, error) => console.error(`[kernel] could not show a notification: ${error}`))
         banner.show()
       },
       confirmQuit: () => quit.confirmUpdate(),
@@ -346,12 +349,16 @@ app.whenReady().then(async () => {
   // The page asks for nothing: clipboard writes back the copy buttons, and every other request is refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done, details) => done(permission === 'clipboard-sanitized-write' && isAppUrl(details.requestingUrl, appUrl)))
   for (const [channel, fn] of Object.entries(handlers)) handle(channel, async (_e, req) => { await started; return fn(req) })
+  const folders = lastFolder()
+  const images = lastFolder()
   handle('system.pickFolder' satisfies Channel, async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'], defaultPath: folders.defaultPath })
+    folders.picked(r.filePaths)
     return r.canceled ? null : r.filePaths[0]
   })
   handle('system.pickImage' satisfies Channel, async () => {
-    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }] })
+    const r = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }], defaultPath: images.defaultPath })
+    images.picked(r.filePaths)
     return r.canceled ? null : r.filePaths[0]
   })
   // Only web pages: a URL a run script printed or a room's settings name must not open a file or another app (KERNEL-246).
