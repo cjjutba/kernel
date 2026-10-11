@@ -20,7 +20,7 @@ import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
 import { hasChanges } from './pr/model'
-import { PrHeader } from './pr/PrHeader'
+import { copyBranch, PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
@@ -58,6 +58,20 @@ interface OpenedText { id: string; part: TextPart }
 const leadBase = (ws: WorkspaceModel, room?: Room) => {
   const d = room?.defaultBranch
   return d && (ws.baseRef === d || ws.baseRef.endsWith(`/${d}`)) ? d : ws.baseRef
+}
+
+/**
+ * The header's title: the task title, else the workspace's name. The issue chip beside it already says the key, so a title that starts
+ * with it ("KERNEL-155 Home and Inbox", "KERNEL-155: Home and Inbox") drops it. "KERNEL-1550 ..." is not that key, and a title that is
+ * only the key stays whole.
+ */
+export function headerTitle(ws: Pick<WorkspaceModel, 'title' | 'name' | 'source'>) {
+  const title = ws.title?.trim() || ws.name
+  const key = ws.source?.kind === 'issue' ? ws.source.id : undefined
+  if (!key || !title.toLowerCase().startsWith(key.toLowerCase())) return title
+  const rest = title.slice(key.length)
+  if (/^\w/.test(rest)) return title
+  return rest.replace(/^[\s:·|\-–—.]+/, '') || title
 }
 
 /** Header, tabs, transcript, composer, and the right and bottom panels (Workspace.png). */
@@ -155,6 +169,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const setup = ws.status === 'setup'
   // A chat with Rowan with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
   const ownPr = !isLead || (isLeadChatWorkspace(ws) && (hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
+  const title = headerTitle(ws)
+  // Rowan's shared worktree and a current-branch workspace say what they follow instead of a branch. That label carries meaning, so it
+  // stays, and it has no copy: the title is plain text there.
+  const label = ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : undefined
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const openFile = (path: string) => select(fileTab(path))
@@ -199,7 +217,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const changed = filePath ? changes.some((c) => c.path === filePath) : false
 
   // The header spans the chat column only. The right panel runs the full height and carries the PR actions at its top;
-  // while it is hidden they move into the header, so Create PR and Merge stay one click away.
+  // while it is hidden they move into the header, in a capsule, so Create PR and Merge stay one click away. The panel toggle ends
+  // whichever of the two is on screen, so it stays in the window's top-right corner.
   return (
     <div className="panel ws-panel">
       <header className="header">
@@ -207,13 +226,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
-        <h1 className="ellipsis">{ws.name}</h1>
-        <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : ws.branch}</span>
+        {label ? <h1 className="ellipsis">{title}</h1> : <WorkspaceTitle branch={ws.branch} title={title} />}
+        {label && <span className="mono muted ellipsis ws-label">{label}</span>}
         <IssueKey ws={ws} room={room} />
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
-        {!panels && (ownPr ? <PrHeader ws={ws} /> : <LeadPrSummary roomId={ws.roomId} />)}
-        <RightPanelToggle name="panels" />
+        {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule />)}
+        {!panels && <RightPanelToggle name="panels" />}
       </header>
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
@@ -254,7 +273,10 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
-          <div className="ws-aside-head">{ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}</div>
+          <div className="ws-aside-head">
+            {ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}
+            <RightPanelToggle name="panels" />
+          </div>
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>
@@ -283,6 +305,17 @@ export function LeadNewScreen({ roomId }: { roomId: string }) {
         <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} /></div>
       </section>
     </div>
+  )
+}
+
+/** The title, a real button: hovering shows the full branch and clicking copies it (HeaderBranchTooltip.png). It is the one thing in the header that gives way to a narrow window. */
+function WorkspaceTitle({ branch, title }: { branch: string; title: string }) {
+  return (
+    <h1 className="ws-title">
+      <button type="button" className="ws-title-btn" aria-label={`${title}, copy branch ${branch}`} data-tip={branch} data-tip-hint="Click to copy the branch" data-tip-align="start" onClick={() => void copyBranch(branch)}>
+        <span>{title}</span>
+      </button>
+    </h1>
   )
 }
 

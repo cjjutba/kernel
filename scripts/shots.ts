@@ -17,6 +17,8 @@ import pngjs from 'pngjs'
 const { PNG } = pngjs
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const designDir = join(root, 'design/screens')
+// The redesign's PNGs (KERNEL-274) replace the ones in design/screens for the surfaces they draw, and some screens exist only there.
+const redesignDir = join(root, 'design/redesign')
 const shotsDir = join(root, 'shots')
 const WIDTH = 1440
 const HEIGHT = 900
@@ -115,8 +117,16 @@ async function hoverChatRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
+async function hoverTitle(page: Page) {
+  await page.locator('.ws-title-btn').hover()
+  await page.locator('.tooltip').waitFor()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   GroupedChatArchive: hoverChatRow,
+  HeaderBranchTooltip: hoverTitle,
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
@@ -199,7 +209,7 @@ function compare() {
   let failed = 0
   for (const name of list) {
     const shotFile = join(shotsDir, `${name}.png`)
-    const designFile = join(designDir, `${name}.png`)
+    const designFile = [join(designDir, `${name}.png`), join(redesignDir, `${name}.png`)].find((f) => existsSync(f)) ?? join(designDir, `${name}.png`)
     if (!existsSync(shotFile)) { console.error(`${name}: no shot yet. Run pnpm shots ${name}`); failed++; continue }
     if (!existsSync(designFile)) { console.error(`${name}: no design/screens/${name}.png`); failed++; continue }
     const shot = PNG.sync.read(readFileSync(shotFile))
