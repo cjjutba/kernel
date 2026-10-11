@@ -124,6 +124,13 @@ async function hoverChatRow(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// NewWorkspaceFromGitHub and NewWorkspaceFromNone are the From popover on its Issues tab. The tab is local to the modal (KERNEL-471).
+async function openIssuesTab(page: Page) {
+  await page.getByRole('tab', { name: 'Issues' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // HeaderBranchTooltip is the header with the title hovered, long enough for the tooltip to open (KERNEL-413).
 async function hoverTitle(page: Page) {
   await page.locator('.ws-title-btn').hover()
@@ -134,6 +141,8 @@ async function hoverTitle(page: Page) {
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
   GroupedChatArchive: hoverChatRow,
   HeaderBranchTooltip: hoverTitle,
+  NewWorkspaceFromGitHub: openIssuesTab,
+  NewWorkspaceFromNone: openIssuesTab,
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),

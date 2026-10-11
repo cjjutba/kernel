@@ -1,5 +1,6 @@
 import type { ChatPart, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { plainText } from '../workspace/composer/draft'
+import { issueTracker } from '../workspace/issueKey'
 
 /** What the pickers chose, as plain lines for the Lead. A picked source already wrote its own prompt (pick.ts). */
 export function pickedLines({ mode, target, fallback, picked }: { mode: WorkspaceMode; target: string; fallback: string; picked: string }): string[] {
@@ -11,7 +12,7 @@ export function pickedLines({ mode, target, fallback, picked }: { mode: Workspac
 export function briefParts(typed: ChatPart[], source: WorkspaceSource | null, lines: string[]): ChatPart[] {
   const parts = [...typed]
   if (source?.kind === 'issue' && !parts.some((p) => p.type === 'issue' && p.name === source.id)) {
-    parts.unshift({ type: 'issue', name: source.id, title: source.title, url: source.url, source: source.id.startsWith('#') ? 'github' : 'linear' })
+    parts.unshift({ type: 'issue', name: source.id, title: source.title, url: source.url, source: issueTracker(source) })
   }
   if (lines.length) {
     const last = parts[parts.length - 1]
