@@ -113,11 +113,6 @@ export function blockedOf(pr: PrView, state: PrState): PrBlocked | undefined {
 /** An open PR GitHub is still checking for conflicts. Kernel reads it again soon (features/prs.ts). */
 const conflictsUnknown = (pr: PrView) => pr.state === 'OPEN' && !pr.isDraft && pr.mergeable === 'UNKNOWN'
 
-/** The query behind `prReviews`: review threads (inline comments) and each reviewer's latest review. */
-export const REVIEWS_QUERY = 'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){'
-  + 'reviewThreads(first:100){nodes{isResolved path line originalLine comments(first:1){nodes{id body author{login}}}}}'
-  + 'latestReviews(first:20){nodes{id state body author{login}}}}}}'
-
 /** Review comments from the GraphQL reply: one per thread, plus the body of each "changes requested" review. */
 export function parseReviews(json: string): ReviewComment[] {
   try { return reviewsOf(JSON.parse(json)?.data?.repository?.pullRequest) } catch { return [] }
@@ -265,12 +260,6 @@ export async function prBatch(cwd: string, numbers: number[]): Promise<{ views: 
 export async function ghRateLimit(cwd: string): Promise<RateLimit | undefined> {
   const r = await exec('gh', ['api', 'rate_limit'], { cwd, timeoutMs: 15000 })
   return r.code === 0 ? rateOf(parsed(r.stdout)?.resources?.graphql) : undefined
-}
-
-/** Review comments for the "Changes requested" card and the address-review instructions. Empty when gh fails. */
-export async function prReviews(cwd: string, number: number): Promise<ReviewComment[]> {
-  const r = await exec('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-F', `number=${number}`, '-f', `query=${REVIEWS_QUERY}`], { cwd, timeoutMs: 20000 })
-  return r.code === 0 ? parseReviews(r.stdout) : []
 }
 
 /** Files that conflict with the base, from a merge that touches neither the index nor the worktree (git 2.38+). */
