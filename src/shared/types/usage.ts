@@ -13,6 +13,8 @@ export interface RateLimit {
   provider?: Provider
   /** The account it was read on (`AccountProfile.id`). Absent is the CLI's own login. */
   accountId?: string
+  /** When Kernel last heard of the window, in epoch ms (KERNEL-406). */
+  readAt?: number
 }
 
 /** The Claude Code login sessions run on (AccountMenu.png, Settings > Account). */
@@ -43,6 +45,11 @@ export interface AccountProfile {
   cli: boolean
   active: boolean
   signedIn: boolean
+  /**
+   * Its usage is known only from its turns: a Claude account Kernel added runs on a `claude setup-token` token, which can't
+   * read the usage call, so its meters stand as of its last turn (KERNEL-406).
+   */
+  usageFromTurns?: boolean
 }
 
 /** Where a provider's executable comes from: Kernel's bundled copy, the one on the PATH, a path from Settings, or none found. */

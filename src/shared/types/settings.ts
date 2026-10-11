@@ -14,6 +14,14 @@ export type SettingsPage =
 /** The Claude plan the account is on, from `subscriptionType`. `unknown` covers a sign-out and a type Kernel doesn't know (KERNEL-225). */
 export type ClaudePlan = 'pro' | 'max' | 'team' | 'enterprise' | 'unknown'
 
+/** The plans a Claude account Kernel adds can be on, for the Add account sheet, which asks since its token can't tell (KERNEL-406). */
+export const CLAUDE_PLANS: { id: Exclude<ClaudePlan, 'unknown'>; label: string }[] = [
+  { id: 'pro', label: 'Pro' },
+  { id: 'max', label: 'Max' },
+  { id: 'team', label: 'Team' },
+  { id: 'enterprise', label: 'Enterprise' }
+]
+
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
 export interface AppSettings {
   /** Read-only, filled by main when it resolves the settings (KERNEL-225). A patch never writes it. */

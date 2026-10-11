@@ -1,6 +1,6 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
   PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -256,7 +256,7 @@ export interface KernelApi {
    * Add account. Claude runs `claude setup-token` and keeps the token it prints; Codex signs in with ChatGPT in the account's
    * own home. Progress arrives as `account.add` push events. Resolves with the new account once it is signed in.
    */
-  'accounts.add': { req: { provider: Provider; label?: string }; res: AccountProfile }
+  'accounts.add': { req: { provider: Provider; label?: string; plan?: Exclude<ClaudePlan, 'unknown'> }; res: AccountProfile }
   /** The code the sign-in page shows, when `claude setup-token` asks for one (an `account.add` step of `code`). */
   'accounts.code': { req: { provider: Provider; code: string }; res: Ok }
   /** Closes the Add account sheet: stops the sign-in that is running. */
