@@ -111,6 +111,8 @@ export class Prs extends Feature {
   private hasChecks = new Set<string>()
   /** Ready reads with none of the checks the PR has had: the work moves on once those checks have run and passed. */
   private readyUnchecked = new Set<string>()
+  /** The head commit each PR was on when the loop guard last started over for it being ready. */
+  private guardReadyOn = new Map<string, string>()
 
   /**
    * The work moved on, so the loop guard starts over for it and its reviews (KERNEL-125): when the PR becomes ready. Right
@@ -119,9 +121,15 @@ export class Prs extends Feature {
    */
   private guardOnReady(id: string, before: PrState, after: PrState, info: PrInfo | null | undefined) {
     if (info?.checks.length) this.hasChecks.add(id)
-    if (after !== 'ready') { this.readyUnchecked.delete(id); return }
+    if (after !== 'ready') { this.readyUnchecked.delete(id); if (after !== 'checks') this.guardReadyOn.delete(id); return }
     if (!info?.checks.length && this.hasChecks.has(id)) { this.readyUnchecked.add(id); return }
-    if (before !== 'ready' || this.readyUnchecked.delete(id)) this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
+    // Ready again on the commit the guard started over on, after only checks, isn't the work moving on. GitHub checks a
+    // PR for conflicts again each time its base moves, and it reads as checks until then (KERNEL-283).
+    const again = before === 'checks' && !!info?.head && this.guardReadyOn.get(id) === info.head
+    if ((before !== 'ready' && !again) || this.readyUnchecked.delete(id)) {
+      this.nudges.reset(id, ...this.k.autoArchive.reviewsOf(id))
+      if (info?.head) this.guardReadyOn.set(id, info.head)
+    }
   }
 
   /** Merges with the method from Settings > PRs. With "require green checks" on, refuses until every check passed. */
