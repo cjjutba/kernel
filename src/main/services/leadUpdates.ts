@@ -31,6 +31,11 @@ export interface LeadUpdateDeps {
    * when the room has no open Lead tab. Never creates one.
    */
   target: (roomId: string, owner?: string) => { chat: Chat; from?: From } | undefined
+  /**
+   * Opens a Lead tab for an update that needs the Lead when `target` finds none (KERNEL-365), and returns where it goes as
+   * `target` would. Called only when the update goes out now, so a room with no open Lead tab gets no tab it won't use.
+   */
+  open?: (roomId: string, owner?: string) => { chat: Chat; from?: From } | undefined
   /** Whether the workspace is the Lead's own. Its events are never reported back to it. */
   isLead: (ws: Workspace) => boolean
   agentName: (roomId: string, agentId: string) => string | undefined
@@ -499,12 +504,21 @@ export class LeadUpdates {
     if (!this.d.enabled()) { for (const [key] of waiting) if (!this.timers.has(key)) drop(key); return }
     const byChat = new Map<string, { chat: Chat; sources: Source[]; keys: string[]; quiet: boolean }>()
     for (const [key, p] of waiting) {
-      const t = this.d.target(roomId, p.owner)
+      const quiet = !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || this.waitTurns.has(e.workspaceId))
+      let t = this.d.target(roomId, p.owner)
+      if (!t && this.d.open) {
+        // No Lead tab is open. Once quiet, an update that needs the Lead opens one (KERNEL-365). The rest wait for the next
+        // update that does, as they would with a tab open, and one with nothing left to say goes.
+        if (!quiet) continue
+        const alone = this.compose(roomId, [{ events: p.events, owner: p.owner }])
+        if (alone && !alone.wakes) continue
+        t = alone && this.d.open(roomId, p.owner)
+      }
       if (!t) { if (!this.timers.has(key)) drop(key); continue }
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
       group.sources.push({ events: p.events, from: t.from, owner: p.owner })
       group.keys.push(key)
-      group.quiet &&= !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || this.waitTurns.has(e.workspaceId))
+      group.quiet &&= quiet
       byChat.set(t.chat.id, group)
     }
     for (const g of byChat.values()) {

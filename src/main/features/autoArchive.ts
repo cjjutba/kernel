@@ -61,7 +61,8 @@ export class AutoArchive extends Feature {
     const ws = this.store.workspace(id)
     if (ws?.mode !== 'worktree') { this.unmarkReviews(id); return }
     if (ws.status === 'archived' || ws.reviewOf) return
-    const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
+    // The mark says so even before the team is read, now that the Lead has a worktree of its own (KERNEL-355).
+    const lead = !!ws.lead || !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
     if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.roomId))) { this.unmarkReviews(id); return }
     this.markReview(id)
     await this.archiveDone(ws, 'kept the workspace', `Its PR${ws.prNumber ? ' #' + ws.prNumber : ''} merged`)

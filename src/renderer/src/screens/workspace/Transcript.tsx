@@ -260,7 +260,7 @@ const Block = memo(function Block({ block, chatId, changes, agentName, onEdit, o
       const sent = instructionOf(item)
       if (sent) return <InstructionCard part={sent} />
       const view = userView(item)
-      return view === 'update' ? <TeamUpdateCard item={item} /> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
+      return view === 'update' ? <TeamUpdateCard item={item} chatId={chatId} /> : view === 'note' ? <KernelNote item={item} /> : <UserMessage item={item} onEdit={onEdit} />
     }
     case 'text': return <ReplyMessage item={item} chatId={chatId} onFork={onFork} onForkWorkspace={onForkWorkspace} />
     case 'thinking': return <ThinkingRow item={item} />
@@ -340,8 +340,9 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
     await loadWorkspace(workspaceId)
     forked.current(next.id)
   }), [chatId, workspaceId])
-  // Only a workspace with its own worktree forks into a new one. The new workspace opens while its setup runs.
-  const worktree = ws?.mode === 'worktree'
+  // Only a workspace with its own worktree forks into a new one, and not the Lead's, which is on no branch (KERNEL-355). The new
+  // workspace opens while its setup runs.
+  const worktree = ws?.mode === 'worktree' && !ws.lead
   const forkWorkspace = useCallback((itemId: string) => attempt('Could not fork into a new workspace', async () => {
     const next = await call('workspaces.fork', { chatId, itemId })
     actions.workspaces.upsert(next)

@@ -25,7 +25,7 @@ export function useLeadWaiting(roomId: string): Approval[] {
 }
 
 /**
- * Finds the room's Lead workspace. The engine finds it, or creates it on the main checkout when nobody has briefed the Lead yet,
+ * Finds the room's Lead workspace. The engine finds it, or creates its worktree when nobody has briefed the Lead yet,
  * so the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan all work the same. A failure toasts and returns undefined.
  */
 async function leadWorkspace(roomId: string): Promise<Workspace | undefined> {

@@ -675,8 +675,8 @@ describe('kernel recovery paths', () => {
   it('refuses to discard on the current branch or while the agent works, and checkpoints before it does', async () => {
     const { k, room } = await kernel({ 'a.ts': 'one\n' })
     const h = k.handlers()
-    const lead = await k.leadChat(room.id)
-    await expect(h['workspaces.discard']({ workspaceId: lead.workspaceId })).rejects.toThrow('current branch')
+    const cur = await k.createWorkspace(room.id, { prompt: 'Look around', agentId: 'kai', title: 'Here', mode: 'current' })
+    await expect(h['workspaces.discard']({ workspaceId: cur.id })).rejects.toThrow('current branch')
     const ws = await k.createWorkspace(room.id, { prompt: 'Edit a.ts', agentId: 'kai', title: 'Edit' })
     await expect(h['workspaces.discard']({ workspaceId: ws.id })).rejects.toThrow('still working')
     sdk.calls[sdk.calls.length - 1].feed(result('done'))

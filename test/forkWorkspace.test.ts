@@ -130,9 +130,8 @@ describe('fork into new workspace (KERNEL-346)', () => {
     const { k, room, src } = await setup()
     const term = await k.handlers()['chats.create']({ workspaceId: src.id, kind: 'terminal' })
     await expect(k.workspaces.forkWorkspace(term.id)).rejects.toThrow('cannot be forked')
-    const lead = await k.handlers()['lead.open']({ roomId: room.id })
-    const leadChat = k.store.chats(lead.id).find((c) => c.kind === 'chat')!
-    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow('Only a workspace with its own worktree')
+    const leadChat = await k.lead.leadChat(room.id)
+    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("The Lead's workspace can't fork")
     const other = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
     await k.archiveWorkspace(other.id, false)
     await expect(k.workspaces.forkWorkspace(k.store.chats(other.id)[0].id)).rejects.toThrow('Restore the workspace')
