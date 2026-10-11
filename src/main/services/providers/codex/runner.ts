@@ -343,6 +343,8 @@ export class CodexRunner implements Runner {
     if (turn.id && this.turnId && turn.id !== this.turnId) return
     this.turnId = undefined
     const ok = turn.status === 'completed'
+    // A finished turn means OpenAI's API answered, so the network works (KERNEL-231).
+    if (ok) this.host.reached()
     const info = turn.error?.codexErrorInfo
     if (info === 'usageLimitExceeded' || info === 'rateLimitExceeded') { await this.usage(); this.host.limited({ always: true }) }
     else if (info === 'unauthorized') this.host.failed('auth', { notify: true })

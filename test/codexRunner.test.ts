@@ -42,10 +42,11 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const approvals = new Approvals(store)
   const settings = { permissions: { mode: o.mode ?? 'acceptEdits', network: o.network ?? true, alwaysAsk: ['drizzle-kit push'], neverAllow: o.neverAllow ?? ['git push origin main'], protectedBranches: ['main'], approvalTimeoutSec: 300 }, providers: { codex: { path: fake.bin, useSystem: false, personality: 'pragmatic' } } } as unknown as AppSettings
   const pings: unknown[] = []
+  const reached = { count: 0 }
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } })]
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => fake.env,
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) },
+    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onReached: () => { reached.count++ },
     codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined })
   })
   const items = () => store.items(chat.id)
@@ -54,7 +55,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const answers = async (method: string) => (await fake.messages()).filter((m) => m.answer === method).map((m) => m.result)
   const idle = () => until(() => !sessions.isRunning(chat.id))
   const pending = () => until(() => store.approvals({ pendingOnly: true })[0])
-  return { fake, store, sessions, approvals, chat, ws, allow, items, of, sent, answers, idle, pending, pings, settings, repo }
+  return { fake, store, sessions, approvals, chat, ws, allow, items, of, sent, answers, idle, pending, pings, settings, repo, reached }
 }
 
 let open: Sessions[] = []
@@ -77,6 +78,8 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.store.chat('chat')?.sessionId).toBe('thread-1')
     expect(t.of('text').map((i) => i.text)).toEqual(['Done.'])
     expect(t.of('result')).toMatchObject([{ ok: true, durationMs: 1200 }])
+    // The finished turn tells Kernel's network check that the API answered (KERNEL-231).
+    expect(t.reached.count).toBe(1)
     // Stopped and sent again, it resumes the thread rather than starting another.
     t.sessions.stop('chat')
     await t.sessions.send('chat', [{ type: 'text', text: 'again' }])
