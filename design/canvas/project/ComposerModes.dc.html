@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel composer modes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.k{--canvas:#08090a;--panel:#0f1011;--surface:#141516;--surface-2:#18191b;--surface-3:#1c1d21;--hover:#232428;--line:#1a1b1e;--line-2:#23252a;--line-3:#2a2b30;--line-4:#3a3c42;--ink:#f7f8f8;--ink-2:#d0d6e0;--ink-3:#b7bcc4;--muted:#8a8f98;--faint:#62666d;--on-ink:#08090a;--input-bg:#0b0c0d;--plan:#5aa2ff}
+.k{font-family:'Inter',-apple-system,system-ui,sans-serif;font-feature-settings:'cv01','ss03';-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45;color:var(--ink);background:var(--panel)}
+.k *{box-sizing:border-box}
+.k button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.cap{font-size:12px;color:var(--muted);margin:0 0 10px}
+.cmp{position:relative;display:flex;flex-direction:column;gap:6px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 12px 10px}
+.cmp > *{position:relative}
+.cmp::before{content:'';position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%);opacity:0}
+.cmp.plan{border-color:rgba(90,162,255,.45)}
+.cmp.plan::before{opacity:.9}
+.cmp-text{min-height:34px;font-size:14px;line-height:24px;color:var(--ink)}
+.cmp-text.ph{color:var(--muted)}
+.cmp-foot{display:flex;align-items:center;gap:12px}
+.cmp-agent{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 10px;border:1px solid var(--line-3);border-radius:999px;font-size:12.5px}
+.cmp-agent .n{color:var(--ink-2)}
+.cmp-agent .r,.cmp-model .r{color:var(--muted)}
+.cmp-model{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2)}
+.k button.mode{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 6px;margin-left:-6px;border-radius:7px;font-size:12.5px;color:var(--muted)}
+.k button.mode.on-plan{color:var(--plan)}
+.k button.mode.bypass{height:22px;margin-left:0;padding:0 9px 0 8px;border:1px solid var(--line-4);border-radius:999px;color:var(--ink)}
+.k .ib{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.k .ib.open{background:var(--surface-3);color:var(--ink)}
+.k .send{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-3);color:var(--muted)}
+.k .cmp.plan .send{background:var(--surface-3)}
+.menu{position:absolute;z-index:5;background:var(--surface-2);border:1px solid var(--line-3);border-radius:10px;padding:6px}
+.menu .h{margin:0;padding:6px 8px 4px;font-size:12px;color:var(--muted)}
+.mi{display:flex;align-items:flex-start;gap:10px;padding:7px 8px;border-radius:6px}
+.mi.row{align-items:center;height:32px;padding:0 8px}
+.mi.sel{background:var(--hover)}
+.mi .ic{color:var(--muted);margin-top:1px}
+.mi.row .ic{margin-top:0}
+.mi .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+.mi .t{font-size:13px;font-weight:500;color:var(--ink)}
+.mi .d{font-size:12px;line-height:1.4;color:var(--muted)}
+.mi .ck{color:var(--ink);margin-top:1px}
+.mi.off .t{color:var(--muted)}
+.mi.off .ic{opacity:.55}
+.mi .sc{font-size:12px;color:var(--muted)}
+.sep{height:1px;margin:6px 4px;background:var(--line-3)}
+.foot{display:flex;align-items:center;gap:8px;padding:6px 8px 4px;font-size:12px;color:var(--muted)}
+.kbd{display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 6px;border-radius:5px;border:1px solid var(--line-3);background:var(--surface);font-size:11.5px;color:var(--ink-2)}
+.note{font-size:13px;line-height:1.55;color:var(--muted);max-width:520px}
+.note b{font-weight:500;color:var(--ink-2)}
+</style>
+</helmet>
+<div class="k" style="position: relative; width: 1440px; height: 900px; box-sizing: border-box; overflow: hidden; border-radius: 12px; border: 1px solid #26272b; display: flex; align-items: center; justify-content: center">
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 80px; row-gap: 36px; width: 1280px">
+<div>
+<p class="cap">Manual</p>
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<button class="mode" aria-label="Permission mode: Manual. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 2.5 13 4.5V8c0 3-2.2 5-5 5.5C5.2 13 3 11 3 8V4.5Z"></path></svg>Manual</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Accept edits</p>
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<button class="mode" aria-label="Permission mode: Accept edits. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M10.6 3.2a1.4 1.4 0 0 1 2 2l-7.1 7.1-2.7.7.7-2.7ZM9.4 4.4l2 2"></path></svg>Accept edits</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Plan</p>
+<div class="cmp plan">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<button class="mode on-plan" aria-label="Permission mode: Plan. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M10.5 3.5h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h1M6.5 2h3a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-3A.5.5 0 0 1 6 4.5v-2a.5.5 0 0 1 .5-.5ZM6 7.7h4M6 10.3h4"></path></svg>Plan</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Auto</p>
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<button class="mode" aria-label="Permission mode: Auto. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 2.5 9.3 6.7 13.5 8 9.3 9.3 8 13.5 6.7 9.3 2.5 8 6.7 6.7Z"></path></svg>Auto</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div>
+<p class="cap">Bypass permissions</p>
+<div class="cmp">
+<div class="cmp-text ph">Ask Rowan to make changes, @mention files, run /skills</div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span class="n">Rowan</span><span class="r">Lead</span></span>
+<span class="cmp-model">Opus 5.5<span class="r">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></span>
+<button class="mode bypass" aria-label="Permission mode: Bypass permissions. Shift+Tab to change" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="m3 3.5 5 4.5-5 4.5M8.5 3.5l5 4.5-5 4.5"></path></svg>Bypass</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib" aria-label="Add context" aria-haspopup="menu"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; stroke-width: 1.8"><path d="M8 13V3.5M3.8 7.6 8 3.4l4.2 4.2"></path></svg></button>
+</div>
+</div>
+</div>
+
+<div class="note">
+<p style="margin: 0 0 8px"><span class="kbd">⇧ Tab</span></p>
+<p style="margin: 0"><b>Shift+Tab cycles the modes</b> for this chat: Manual, Accept edits, Plan, Auto, Bypass, then Manual again. It skips a mode the chat’s agent can’t run, like Auto on a Codex agent.</p>
+<p style="margin: 10px 0 0">The label opens the same list as Permission mode in the + menu. Bypass gets a hairline pill, because it is the one mode that skips prompts.</p>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
