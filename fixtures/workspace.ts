@@ -1006,21 +1006,20 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
-  // A long answer wraps with its number on the first line, and ask_user options show their descriptions (KERNEL-407).
+  // Long options read as an ink label with a muted description, and the recommended one carries a tag (KERNEL-414, KERNEL-416). Nothing is picked, so Send waits.
   WorkspaceQuestionLong: scene((f) => {
     const options = [
-      { label: 'Kernel runs claude setup-token, opens the sign-in in my browser, shows a paste field if it asks for a code, and saves the token' },
-      { label: 'Guided sign-in', description: 'Kernel runs claude setup-token and opens the sign-in in your browser. Recommended.' },
-      { label: 'Paste a token', description: 'You make the token in a terminal and paste it into Kernel.' }
+      { label: 'Use a token', recommended: true, description: 'MCPs, plugins, skills and history are shared exactly. Added accounts show the name you give them, and you pick their plan once when adding. Usage refreshes only while agents work.' },
+      { label: 'Separate config folder per account', description: 'Full usage, plan and email, and the normal browser login. But Kernel has to keep MCP servers, plugins, skills and history in sync across folders, which is more code and can break when Claude Code updates.' }
     ]
-    const question = 'How should adding a Claude account in Settings, Providers work?'
-    return scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
-      userMsg('ql1', 'Build T-15b from the approved plan.', true),
-      ...folded('ql', 6, 0),
-      { kind: 'result', id: 'ql-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+    const question = 'Which way should extra Claude accounts work?'
+    return scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Extra Claude accounts', [
+      userMsg('ql1', 'Can I add a second Claude account to Kernel, for my team plan next to my Max one?'),
+      { kind: 'thinking', id: 'ql-th', ts: at(10, 28), text: 'Two ways to do it. They differ in what Kernel can show and how much it has to keep in sync.' },
+      tool('ql-t1', 'Read how sessions pick their account', 'rg -n "CLAUDE_CONFIG_DIR|oauthToken" src/main', { name: 'Read' })
     ], {
-      approvals: [pending('question', 'kai', { title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
-    })
+      approvals: [pending('question', 'rowan', { workspaceId: ids.lead, title: question, options: options.map((o) => o.label), questions: [{ question, options }] }), ...f.approvals]
+    }, { model: 'claude-opus-5-5' })
   }),
   WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
     userMsg('qs1', 'Build T-15b from the approved plan.', true),

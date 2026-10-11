@@ -12,41 +12,30 @@
 .steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; min-height: 24.6px; font-size: 13.5px; color: var(--ink); }
 .steps .n { color: var(--muted); font-size: 12px; }
 .steps .open { border: 0; background: transparent; margin-left: 12px; padding: 0; color: var(--ink-2); font-size: 12.5px; text-decoration: underline; text-underline-offset: 2px; }
-.opts { display: flex; flex-direction: column; gap: 6px; }
-/* Grows with a long answer or a description; the number and spinner stay on the first line (KERNEL-407). */
-.opt { display: flex; align-items: flex-start; gap: 10px; min-height: 36px; box-sizing: border-box; padding: 7px 11px; border-radius: 7px; border: 1px solid var(--line-3); background: transparent; color: var(--ink); font-size: 13.5px; line-height: 20px; text-align: left; }
-.opt:hover { background: var(--surface-3); }
-.opt:disabled { opacity: 0.55; cursor: default; }
-.opt[aria-busy='true'] { opacity: 1; background: var(--surface-3); }
-.opt .n { flex-shrink: 0; color: var(--muted); font-size: 12px; line-height: 20px; }
-.opt .spin { margin-top: 4.5px; }
 .qtabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -10px; }
 .qtab { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
 .qtab:hover { color: var(--ink-2); }
 .qtab[aria-current='step'] { background: var(--surface-3); color: var(--ink); }
 .qtab:disabled { opacity: 0.55; cursor: default; }
 .qrows { display: flex; flex-direction: column; gap: 6px; }
-.qrow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--ink); font-size: 13px; line-height: normal; text-align: left; }
-.qrow[data-desc='true'] { align-items: flex-start; padding: 10px 12px; }
+/* Every row aligns to its first line, with or without a description, and grows with a long label (KERNEL-416). */
+.qrow { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-height: 36px; box-sizing: border-box; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; color: var(--ink); font-size: 13px; line-height: 18px; text-align: left; }
+.qrow[data-desc='true'] { padding: 10px 12px; line-height: 19.5px; }
 .qrow:hover { background: var(--surface-3); }
 .qrow:disabled { opacity: 0.55; cursor: default; }
-.qrow[aria-busy='true'] { opacity: 1; background: var(--surface-3); }
-.qrow[aria-checked='true'], .qrow[aria-pressed='true'], .qrow[aria-expanded='true'] { border-color: var(--line-4); }
-.qrow .n { color: var(--muted); font-size: 12px; }
-.qrow[data-desc='true'] .spin { margin-top: 3px; }
+.qrow[aria-checked='true'] { border-color: var(--line-4); }
+.qrow .n { flex-shrink: 0; color: var(--muted); font-size: 12px; }
 .qrow .qbox, .qother .qbox { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 16px; height: 16px; box-sizing: border-box; border-radius: 4px; border: 1px solid var(--faint); color: var(--on-ink); }
 .qrow[aria-checked='true'] .qbox, .qother .qbox { border-color: var(--ink); background: var(--ink); }
-.qrow[data-desc='true'] .qbox { margin-top: 1px; }
+.qrow .qbox { margin-top: 1px; }
 .qother { display: flex; align-items: flex-start; gap: 10px; flex: 1; min-width: 0; box-sizing: border-box; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-4); }
 .qother .n { flex-shrink: 0; padding: 7px 0; color: var(--muted); font-size: 12px; line-height: 20px; }
 .qother .qbox { margin-top: 9px; padding: 0; cursor: pointer; }
 .qother textarea { flex: 1; min-width: 0; box-sizing: border-box; max-height: 94px; padding: 7px 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; color: var(--ink); font-family: inherit; font-size: 13px; line-height: 20px; }
 .qother textarea::placeholder { color: var(--muted); }
-.qother-line { display: flex; align-items: flex-start; gap: 8px; }
-.qother-line .btn { height: 36px; }
-.opts .qother { border-radius: 7px; padding: 0 11px; font-size: 13.5px; }
-.opts .qother textarea { font-size: 13.5px; }
 .qtext { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.qlabel { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.qtag { display: inline-flex; align-items: center; height: 18px; box-sizing: border-box; padding: 0 6px; border: 1px solid var(--line-3); border-radius: 5px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1; }
 .qdesc { color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 .qans { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .qans li { display: flex; gap: 10px; }
