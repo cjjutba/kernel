@@ -165,6 +165,49 @@ describe('Archive on merge (KERNEL-114)', () => {
     await vi.waitFor(() => expect(status(author)).toBe('archived'), SLOW)
   })
 
+  it('never archives merged work on the room\'s own checkout, where uncommitted changes can\'t be checked', async () => {
+    const { k, room, author, status, land, settled } = await setup()
+    // Work on the room's checkout, as a current-branch workspace is, with a file left uncommitted there.
+    k.store.saveWorkspace({ ...k.store.workspace(author.id)!, mode: 'current', path: room.path, branch: 'main' })
+    await writeFile(join(room.path, 'scratch.md'), 'notes\n')
+    await land('merged')
+    await settled()
+    expect(status(author)).not.toBe('archived')
+    expect(k['reviewsToArchive'].has(author.id)).toBe(false)
+  })
+
+  it('never archives the Lead\'s workspace, even before the team is read', async () => {
+    const { k, lead } = await setup()
+    k.store.saveWorkspace({ ...k.store.workspace(lead.workspaceId)!, prState: 'merged' })
+    // A cold cache: nothing says which agent is the Lead.
+    k['agentCache'].clear()
+    await k['archiveMerged'](lead.workspaceId)
+    k.store.saveMeta('mergedSwept', false)
+    await k['sweepMerged']()
+    expect(k.store.workspace(lead.workspaceId)!.status).not.toBe('archived')
+  })
+
+  it('leaves merged work that moved to a fresh branch before the archive', async () => {
+    const { k, gh, author, status, land, settled, turnDone } = await setup()
+    const chats = k.store.chats(author.id).map((c) => c.id)
+    const running = k.sessions.isRunning
+    k.sessions.isRunning = (id) => chats.includes(id)
+    await land('merged')
+    await settled()
+    expect(k['reviewsToArchive'].has(author.id)).toBe(true)
+    // The turn puts the worktree on a new branch, which has no PR on GitHub. The archive's git check drops the merged one.
+    await run('git', ['-C', author.path, 'checkout', '-q', '-b', 'feat/next'])
+    gh.pr = null
+    k.sessions.isRunning = running
+    const passes = (k['archiveMerged'] as unknown as { mock: { results: { value: Promise<void> }[] } }).mock.results.length
+    turnDone(author)
+    await vi.waitFor(() => expect((k['archiveMerged'] as unknown as { mock: { results: unknown[] } }).mock.results.length).toBeGreaterThan(passes), SLOW)
+    await settled()
+    expect(k.store.workspace(author.id)).toMatchObject({ branch: 'feat/next', prState: 'none' })
+    expect(k['reviewsToArchive'].has(author.id)).toBe(false)
+    expect(status(author)).not.toBe('archived')
+  })
+
   it('releases the workspaces waiting on the merge, and still tells the Lead the work merged', async () => {
     const { k, room, lead, author, status, land } = await setup()
     // Not handed off in the Lead's chat, so the merge is the last of that chat's work.

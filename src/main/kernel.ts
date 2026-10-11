@@ -342,7 +342,8 @@ export class Kernel {
       const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? this.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
       if (e.type === 'pr' && !reviews) this.unmarkReviews(...this.reviewsOf(e.workspaceId), e.workspaceId)
       // A merge releases the workspaces that wait for it, and a close breaks their wait (KERNEL-259). Here, not in
-      // LeadUpdates, which drops events while Lead updates are off. The work itself is archived after both (KERNEL-114).
+      // LeadUpdates, which drops events while Lead updates are off. The reviews and the waits run together, and the work
+      // itself is archived once both are done (KERNEL-114).
       if (e.type === 'pr') {
         const waits = this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
         if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => this.archiveMerged(e.workspaceId)).catch(() => undefined)
@@ -2056,12 +2057,14 @@ export class Kernel {
 
   /**
    * The workspace's PR merged, so with Archive on merge on it is done (KERNEL-114). It goes through the same checks as a
-   * review, and is also kept when its branch has commits GitHub doesn't. The Lead's workspace never goes. A closed PR keeps
-   * its workspace, because its author may reopen it. Reviews go through `archiveReviews`.
+   * review, and is also kept when its branch has commits GitHub doesn't. Only a worktree goes: a workspace on the room's
+   * own checkout, as the Lead's is, can't be checked for uncommitted changes, and that holds even before the team is read.
+   * A closed PR keeps its workspace, because its author may reopen it. Reviews go through `archiveReviews`.
    */
   private async archiveMerged(id: string) {
     const ws = this.store.workspace(id)
-    if (!ws || ws.status === 'archived' || ws.reviewOf) return
+    if (ws?.mode !== 'worktree') { this.unmarkReviews(id); return }
+    if (ws.status === 'archived' || ws.reviewOf) return
     const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
     if (ws.prState !== 'merged' || lead || !(await this.archiveOnMerge(ws.roomId))) { this.unmarkReviews(id); return }
     this.markReview(id)
@@ -2088,6 +2091,8 @@ export class Kernel {
     }
     let why = await archiveSkip(r, { isOwnLead: (w) => this.isLeadWorkspace(w), isRunning: (id) => this.working(id), latestPr: async (w) => w, unsaved: (id) => this.unsavedOf(id) })
     if (why === 'its agent is still working') return
+    // The git check followed the branch the work is on now. Work that moved to a fresh branch isn't the merged work.
+    if (!r.reviewOf && this.store.workspace(r.id)?.prState !== 'merged') { this.unmarkReviews(r.id); return }
     // Archive keeps a branch with unpushed commits, but the work would leave the sidebar unfinished (KERNEL-114).
     if (!why && !r.reviewOf) {
       const unpushed = await this.unpushedOf(this.store.workspace(r.id) ?? r)
@@ -2098,7 +2103,8 @@ export class Kernel {
     // Checked again after the git calls: a message may have started a turn meanwhile, the user may have restored it,
     // or another archive got there first.
     if (this.working(r.id) || !this.reviewsToArchive.has(r.id)) return
-    if (this.store.workspace(r.id)?.status === 'archived') { this.unmarkReviews(r.id); return }
+    const now = this.store.workspace(r.id)
+    if (now?.status === 'archived' || (!r.reviewOf && now?.prState !== 'merged')) { this.unmarkReviews(r.id); return }
     try { await this.archiveWorkspace(r.id); this.unmarkReviews(r.id) } catch (e) { keep(firstLine(e instanceof Error ? e.message : String(e))) }
   }
 
@@ -2140,7 +2146,7 @@ export class Kernel {
     if (this.store.meta<boolean>('mergedSwept')) return
     for (const ws of this.store.workspaces()) {
       if (this.stopped) return
-      if (ws.status !== 'archived' && ws.prState === 'merged' && !ws.reviewOf) await this.archiveMerged(ws.id).catch(() => undefined)
+      if (ws.mode === 'worktree' && ws.status !== 'archived' && ws.prState === 'merged' && !ws.reviewOf) await this.archiveMerged(ws.id).catch(() => undefined)
     }
     if (!this.stopped) this.store.saveMeta('mergedSwept', true)
   }
