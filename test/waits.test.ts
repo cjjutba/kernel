@@ -680,7 +680,9 @@ describe('a hand-off whose Linear issue is blocked (KERNEL-263)', () => {
         const { k, room, lead, target } = await setup({}, o)
         await target(k, 164, 'Tool rows', 'KERNEL-197')
         const { text: out, w } = await handOff(k, room, lead, { issue: 'KERNEL-198' })
-        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.`)
+        // A Linear that fails doesn't hold the start up either, and the Lead hears what went unchecked (KERNEL-479).
+        const note = o.linearToken ? " Couldn't check who KERNEL-198 is assigned to in Linear: Linear answered 500." : ''
+        expect(out).toBe(`Created ${w.id} on ${w.branch} for kai.${note}`)
         expect(w).toMatchObject({ status: 'ready', source: { kind: 'issue', id: 'KERNEL-198', title: 'Thinking rows' } })
         expect(w.waitsFor).toBeUndefined()
         expect(users(k, chatOf(k, w))).toEqual([['Build T-15', 'lead']])

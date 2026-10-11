@@ -1,0 +1,5 @@
+{"started":null,"cwd":"/Users/cjjutba/kernel/worktrees/kernel/feat-kernel-479-warn-before-starting-issue-someone"}
+{"id":1,"method":"initialize","params":{"clientInfo":{"name":"kernel","title":"Kernel","version":"0.2.2"},"capabilities":{"experimentalApi":true,"requestAttestation":false}}}
+{"method":"initialized","params":{}}
+{"id":2,"method":"account/read","params":{"refreshToken":false}}
+{"id":3,"method":"account/rateLimits/read"}

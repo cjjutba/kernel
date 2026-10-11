@@ -420,7 +420,7 @@ export class Lead extends Feature {
       if (pushed) { this.updateWs(id, { naming: undefined }); return }
       // Two chats with Rowan named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
       const to = wanted === ws.branch ? wanted : await this.k.workspaces.withBranchLock(room.id, async () => {
-        const free = await freeBranch(room.path, wanted)
+        const free = await freeBranch(room.path, wanted, remote)
         if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
         await renameBranch(ws.path, free)
         return free
@@ -495,6 +495,8 @@ export class Lead extends Feature {
         const code = this.k.setup.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
+      // A branch on the remote, an open PR or another assignee says someone else may be on the issue (KERNEL-479).
+      issueTaken: (key) => this.k.integrations.issueTaken(roomId, key),
       // Settings, Models' agent limit, or three when it is 0 (KERNEL-220).
       agentCap: () => this.settings.models.agentLimit || DEFAULT_OPEN_CAP,
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),

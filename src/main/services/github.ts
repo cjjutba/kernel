@@ -2,6 +2,7 @@ import { exec, run, SLOW_MS, type ExecResult } from './exec'
 import type { IssueSummary, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 import { gatingChecks } from '@shared/merge'
 import { mergeTreeConflicts, stripRemote } from './worktrees'
+import type { OpenPr } from './issueTaken'
 
 // Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
 
@@ -463,6 +464,23 @@ export async function openPrs(cwd: string, query?: string): Promise<PrSummary[]>
   const q = query?.trim()
   const r = await exec('gh', ['pr', 'list', '--state', 'open', '--limit', '50', '--json', 'number,title,headRefName,author', ...(q ? ['--search', q.replace(/^#/, '')] : [])], { cwd, timeoutMs: 20000 })
   return r.code === 0 ? parsePrList(r.stdout) : []
+}
+
+/**
+ * Open PRs GitHub's search finds for an issue key, within `timeoutMs`, for the check before a start (KERNEL-479). The search
+ * is loose, so the caller still matches the key in each title, description and branch. Throws with gh's first line, or the
+ * timeout, when gh can't answer.
+ */
+export async function prsNaming(cwd: string, key: string, timeoutMs: number): Promise<OpenPr[]> {
+  const n = /^#?(\d+)$/.exec(key.trim())?.[1]
+  const r = await exec('gh', ['pr', 'list', '--state', 'open', '--limit', '30', '--search', n ?? `"${key.trim()}"`, '--json', 'number,title,url,headRefName,body'], { cwd, timeoutMs })
+  if (r.code === 127) throw new Error('the GitHub CLI (gh) is not installed')
+  if (r.timedOut) throw new Error(`no answer in ${Math.max(1, Math.round(timeoutMs / 1000))} seconds`)
+  if (r.code !== 0) throw new Error(r.stderr.trim().split('\n')[0] || r.stdout.trim().split('\n')[0] || `gh exited with code ${r.code}`)
+  try {
+    return (JSON.parse(r.stdout) as { number: number; title: string; url?: string; headRefName: string; body?: string | null }[])
+      .map((p) => ({ number: p.number, title: p.title, ...(p.url ? { url: p.url } : {}), branch: p.headRefName, body: p.body ?? '' }))
+  } catch { throw new Error('gh sent something Kernel could not read') }
 }
 
 export function parseIssueList(json: string): IssueSummary[] {

@@ -1,14 +1,15 @@
-import type { Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
+import type { IssueTaken, Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { ghUser as ghUserName, openIssues, openPrs } from '../services/github'
+import { ghUser as ghUserName, openIssues, openPrs, prsNaming } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
 import { loadRepoSettings } from '../services/settings'
-import { trackerKind } from '../services/trackers'
+import { issueTaken, TAKEN_TIMEOUT_MS } from '../services/issueTaken'
+import { trackerKind, trackerName } from '../services/trackers'
 import { githubKey, githubTracker } from '../services/trackers/github'
 import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
 import { noneTracker } from '../services/trackers/none'
-import { remoteRepo } from '../services/worktrees'
+import { remoteBranches, remoteRepo } from '../services/worktrees'
 import { Feature } from './feature'
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
@@ -71,6 +72,36 @@ export class Integrations extends Feature {
   }
 
   /**
+   * Whether someone else may already be on the issue `key` (KERNEL-479): a branch on the room's remote named after it, an open
+   * PR that names it, when the room's code host is GitHub, and an assignee other than the user, when the room's tracker reads
+   * the key. The room's own workspaces don't count. Each check has `TAKEN_TIMEOUT_MS`, and a check that can't answer adds a
+   * note. Never rejects, so nothing waits on a slow remote for long.
+   */
+  async issueTaken(roomId: string, key: string): Promise<IssueTaken> {
+    const room = this.mustRoom(roomId)
+    try {
+      const repo = await loadRepoSettings(room.path)
+      const remote = await this.k.config.remoteFor(room.path, repo)
+      const tracker = await this.trackerFor(roomId)
+      // A GitHub room's tracker reads "41" as #41, the way create_workspace links it (`issueSource`).
+      const id = (tracker.kind === 'github' ? githubKey(key) : undefined) ?? key.trim()
+      const github = room.host !== 'local' && !!(room.repo ?? (await remoteRepo(room.path, remote)))
+      // A `#41` key is a GitHub issue, which only a GitHub room's tracker reads (KERNEL-462).
+      const reads = tracker.kind !== 'none' && (tracker.kind === 'github' || !id.startsWith('#'))
+      const own = this.store.workspaces(roomId)
+      return await issueTaken(id, {
+        remote,
+        branches: () => remoteBranches(room.path, remote, TAKEN_TIMEOUT_MS),
+        ...(github ? { prs: () => prsNaming(room.path, id, TAKEN_TIMEOUT_MS) } : {}),
+        ...(reads ? { assignees: async () => (await tracker.issue(id)).assignees ?? [], tracker: trackerName(tracker.kind === 'none' ? undefined : tracker.kind) } : {}),
+        own: { branches: new Set(own.map((w) => w.branch)), prs: new Set(own.flatMap((w) => (w.prNumber ? [w.prNumber] : []))) }
+      })
+    } catch (e) {
+      return { findings: [], notes: [`Couldn't check whether someone else is on ${key.trim()}: ${(e as Error).message.split('\n')[0].replace(/\.$/, '')}.`] }
+    }
+  }
+
+  /**
    * The room's issue tracker, built on every call, so a change to the room's settings, a new token or a new remote applies
    * at once (KERNEL-462). Jira reads as no tracker until Kernel can read it (KERNEL-474).
    */
@@ -98,6 +129,7 @@ export class Integrations extends Feature {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
       'issues.list': async ({ roomId, query }) => (await this.trackerFor(roomId)).search(query),
+      'issues.taken': async ({ roomId, issue }) => this.issueTaken(roomId, issue),
       'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
       'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),

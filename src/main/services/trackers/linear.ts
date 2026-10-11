@@ -202,7 +202,9 @@ export function linearTracker(token: () => Promise<string | undefined>, fetchImp
       const key = await token()
       if (!key) throw new Error(LINEAR_SIGNED_OUT)
       try {
-        return await getIssue(key, id, fetchImpl)
+        const issue = await getIssue(key, id, fetchImpl)
+        // Linear has one assignee, and says whether it is the token's user (KERNEL-479).
+        return issue.assignee ? { ...issue, assignees: [issue.assignee] } : issue
       } catch (e) {
         // Linear answers an unknown key with "Entity not found: Issue".
         if (/not found|could not find/i.test((e as Error).message)) throw new Error(`Linear has no issue ${id}, or this token can't see it.`)

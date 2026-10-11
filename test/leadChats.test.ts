@@ -302,8 +302,8 @@ describe("the issue in a hand-off's brief, and get_issue for every agent (KERNEL
     expect(await read(leadWs)).toEqual({ isError: true, text: "Not read: this workspace isn't linked to an issue. Pass key to read one." })
     expect(await read(leadWs, { key: 'KERNEL-83' })).toEqual({ text: framed, isError: false })
     expect(await read(leadWs, { key: 'KERNEL-99' })).toEqual({ isError: true, text: "Not read: Linear has no issue KERNEL-99, or this token can't see it." })
-    // The hand-off read it once for the brief, then each get_issue read it again.
-    expect(asked).toEqual(['KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-99'])
+    // The hand-off read it to see who else is on it (KERNEL-479) and again for the brief, then each get_issue read it again.
+    expect(asked).toEqual(['KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-83', 'KERNEL-99'])
     // Codex gets the same tools as dynamic tools. teammateWait.test.ts checks the `kernel` server Claude gets.
     expect(k.tools.codexTools(work, agents.find((a) => a.id === 'kai'), k.store.chats(work.id)[0]).tools.map((t) => t.name)).toEqual(['wait_for_merge', 'get_issue', 'share_file'])
   })
