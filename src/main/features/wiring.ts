@@ -71,7 +71,7 @@ export function listen(k: Kernel): () => void {
       if (e.running) k['runningChats'].add(e.chatId)
       else k['runningChats'].delete(e.chatId)
     }
-    if (e.type === 'agent.status') k['statuses'].set(e.roomId, { ...(k['statuses'].get(e.roomId) ?? {}), [e.agentId]: e.status })
+    if (e.type === 'agent.status') k.team.onStatus(e)
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k['nudges'].reset(e.workspaceId, ...k['reviewsOf'](e.workspaceId))
     // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
