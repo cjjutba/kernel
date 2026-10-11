@@ -7,7 +7,7 @@ import type { CanUseTool } from '@anthropic-ai/claude-agent-sdk'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import { teammateTools } from '../src/main/services/teammateMcp'
-import { TEAMMATE_RULE } from '../src/main/services/handoff'
+import { SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { tempRepo } from './helpers'
 
 // KERNEL-262: a teammate that finds a dependency mid-task tells Kernel with wait_for_merge, and Kernel moves it on at the merge.
@@ -176,7 +176,7 @@ describe('who gets wait_for_merge', () => {
     expect(deps.mcpFor(kai, agent('kai'), chatOf(k, kai))?.kernel.tools).toEqual(['wait_for_merge', 'share_file'])
     expect(deps.mcpFor(review, agent('theo'), chatOf(k, review))?.kernel.tools).toEqual(['submit_review', 'share_file'])
     expect(deps.mcpFor(leadWs, agent('rowan'), lead)?.kernel.tools).not.toContain('submit_review')
-    expect(deps.rulesFor(kai, agent('kai'))).toBe(TEAMMATE_RULE)
+    expect(deps.rulesFor(kai, agent('kai'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
     expect(deps.rulesFor(review, agent('theo'))).not.toContain('wait_for_merge')
     expect(deps.rulesFor(leadWs, agent('rowan'))).not.toContain('wait_for_merge')
     expect(TEAMMATE_RULE).toContain("If you can't go on until another teammate's PR merges, call mcp__kernel__wait_for_merge and end your turn. Don't poll or loop.")

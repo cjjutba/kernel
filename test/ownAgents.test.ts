@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { TelemetryEvent } from '@shared/telemetry'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
-import { LEAD_REVIEW_RULE } from '../src/main/services/handoff'
+import { LEAD_REVIEW_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { tempRepo } from './helpers'
 
@@ -81,6 +81,8 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect(tracked).toContainEqual({ name: 'handoff.refused', reason: 'helper' })
     // Kernel's Theo takes a review of a teammate's work.
     const work = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'web', title: 'Cart' })
+    // The repo's own agent, whose file says nothing about Kernel, gets Kernel's teammate and sharing rules.
+    expect(k.tools.rulesFor(work, team.find((a) => a.id === 'web'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
     const reviewed = await call('create_workspace', { agent: 'kernel-reviewer', title: 'Review the cart', brief: 'Review it.', review_of: work.id })
     expect(reviewed).toMatchObject({ isError: false, text: expect.stringMatching(/^Created \S+ on \S+ for kernel-reviewer\./) })
     const review = k.store.workspaces(room.id).find((w) => w.reviewOf === work.id)!

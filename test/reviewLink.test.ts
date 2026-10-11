@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import type { AgentDef, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { reviewTools } from '../src/main/services/reviewMcp'
-import { reviewRule, TEAMMATE_RULE } from '../src/main/services/handoff'
+import { reviewRule, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { git } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
 
@@ -58,7 +58,7 @@ describe('the review link (KERNEL-130)', () => {
     expect(rule).toContain(`You are reviewing Kai's work on "Remove the Try section" (workspace ${author.id})`)
     expect(rule).toContain(`git reset --hard ${author.branch}`)
     expect(rule).toContain('mcp__kernel__submit_review')
-    expect(deps.rulesFor(author, agent('kai'))).toBe(TEAMMATE_RULE)
+    expect(deps.rulesFor(author, agent('kai'))).toBe(`${TEAMMATE_RULE}\n${SHARE_RULE}`)
   })
 
   it('adds share_file to the reviewer and the author while sharing is on, as it is by default (KERNEL-302, KERNEL-308)', async () => {
