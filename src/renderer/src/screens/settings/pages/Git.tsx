@@ -51,7 +51,7 @@ export function Git({ s }: { s: AppSettings }) {
       </Section>
       <Section title="Cleanup">
         <Row label="Delete branch on archive"><Toggle label="Delete branch on archive" checked={w.deleteBranchOnArchive} onChange={(v) => set({ deleteBranchOnArchive: v })} /></Row>
-        <Row label="Archive on merge"><Toggle label="Archive on merge" checked={w.archiveOnMerge} onChange={(v) => set({ archiveOnMerge: v })} /></Row>
+        <Row label="Archive on merge" desc="Review workspaces go too, once the PR they reviewed merges or closes"><Toggle label="Archive on merge" checked={w.archiveOnMerge} onChange={(v) => set({ archiveOnMerge: v })} /></Row>
         <Row label="Set upstream on first push"><Toggle label="Set upstream on first push" checked={w.setUpstream} onChange={(v) => set({ setUpstream: v })} /></Row>
       </Section>
     </Page>
