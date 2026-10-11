@@ -23,7 +23,7 @@ export const LEAD_RULE = [
   'The user may have several chats with you at once. mcp__kernel__list_workspaces marks the workspaces you handed off in this chat as yours. Leave the others to the chat that handed them off unless the user asks you to step in.'
 ].join('\n')
 
-/** Appended to the Lead's prompt after LEAD_RULE, only while sharing is on (KERNEL-302). */
+/** Appended to the Lead's prompt after LEAD_RULE while sharing is on, which it is by default (KERNEL-302, KERNEL-308). */
 export const LEAD_SHARING_RULE = 'Team updates list files teammates shared. Tell the user what each shows; they open it from the update.'
 
 /**
