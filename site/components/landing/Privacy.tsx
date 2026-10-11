@@ -9,7 +9,7 @@ const columns = [
   {
     label: 'Data',
     title: 'Stays on your Mac',
-    text: 'Rooms, chats and history live in a local database. The only network calls are your agent, git, GitHub, the update check, and Linear if you connect it.'
+    text: 'Rooms, chats and history live in a local database. Kernel only calls your agent, git, GitHub, the update check, and Linear or usage data if you turn them on.'
   },
   {
     label: 'Code',

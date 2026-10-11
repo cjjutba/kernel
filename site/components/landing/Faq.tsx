@@ -13,11 +13,11 @@ const faqs = [
   },
   {
     q: 'Does my code leave my Mac?',
-    a: 'Only the way it already does when you use your agent and push with git. Kernel adds no servers of its own.'
+    a: 'Only the way it already does when you use your agent and push with git. Kernel adds no servers of its own, and the usage data you can turn on never carries code, prompts, paths or names.'
   },
   {
     q: 'Can I change the team?',
-    a: "Yes. Agents are plain files in your repo. Edit them, add new ones, or retire one you don't need."
+    a: "Yes. Agents are plain files in your repo, and a repo that brings its own works as it is. Edit them, add new ones, or retire one you don't need."
   },
   { q: 'Does it work on Intel Macs or Windows?', a: 'Not right now. Kernel is built for Macs with Apple silicon.' },
   {
