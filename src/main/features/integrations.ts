@@ -8,8 +8,8 @@ import { Feature } from './feature'
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
 export class Integrations extends Feature {
-  /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY. */
-  private async linearKey() { return (await storedLinearToken(this.o.dataDir)) ?? linearToken() }
+  /** The Linear token every Linear call uses: the one saved in Settings > Integrations, else LINEAR_API_KEY (KERNEL-445). */
+  private async linearKey() { return (await storedLinearToken(this.o.dataDir, this.o.cipher)) ?? linearToken() }
   private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
 
   /**
@@ -73,7 +73,7 @@ export class Integrations extends Feature {
         if (id === 'linear') {
           const clean = (token ?? '').trim()
           if (clean) await searchIssues(clean, '', this.linearFetch)
-          await saveLinearToken(this.o.dataDir, clean)
+          await saveLinearToken(this.o.dataDir, clean, this.o.cipher)
         } else if (id === 'github') throw new Error('GitHub signs in through the GitHub CLI. Run gh auth login in a terminal.')
         else throw new Error(`${id === 'vercel' ? 'Vercel' : 'Remote Control'} is not available yet.`)
         return (await this.integrations()).find((i) => i.id === id)!
