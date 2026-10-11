@@ -4,7 +4,11 @@ import { Keys, Page, Row, Section } from '../kit'
 export const SHORTCUTS: { title: string; rows: [string, string[]][] }[] = [
   { title: 'Workspaces', rows: [
     ['New chat', ['⌘', 'N']], ['New chat tab', ['⌘', 'T']], ['Big terminal tab', ['⌘', '⇧', 'T']],
-    ['Create PR', ['⌘', '⇧', 'P']], ['Open diff', ['⌘', '⇧', 'D']], ['Run dev script', ['⌘', 'R']]
+    ['Create PR or mark ready', ['⌘', '⇧', 'P']],
+    ['Merge PR', ['⌘', '⇧', 'M']],
+    ['Fix conflicts, checks or review', ['⌘', '⇧', 'F']],
+    ['Archive merged or closed', ['⌘', '⇧', 'A']],
+    ['Open diff', ['⌘', '⇧', 'D']], ['Run dev script', ['⌘', 'R']]
   ] },
   { title: 'Agents', rows: [
     ['Approve request', ['⌘', '↵']], ['Deny request', ['⌘', '⌫']], ['Toggle plan mode', ['⇧', 'Tab']], ['Focus composer', ['⌘', 'L']], ['Open Lead chat', ['⌘', '⇧', 'L']]
