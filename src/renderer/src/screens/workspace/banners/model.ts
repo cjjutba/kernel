@@ -7,9 +7,9 @@ import { MODELS } from '@shared/types'
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review'
 
-export type BannerId = 'signedOut' | 'offline' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -90,6 +90,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
   if (!i.online) return {
     id: 'offline', kind: 'offline', title: "You're offline", sub: 'Messages send when you reconnect. Agents finish their step, then wait.',
     actions: [{ id: 'tryAgain', label: 'Try again' }], blocks: false
+  }
+
+  // KERNEL-209 holds the workspace until the user trusts the room's scripts. Its brief waits in the queue, so the composer stays open.
+  if (ws.status === 'trust') return {
+    id: 'trust', kind: 'trust', title: "Waiting for you to trust this repo's scripts", sub: `Setup has not run yet. ${name} starts once you trust them.`,
+    actions: [{ id: 'review', label: 'Review', primary: true }], blocks: false
   }
 
   if (ws.status === 'failed') {
