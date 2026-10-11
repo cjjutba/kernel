@@ -7,6 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { git, run } from '../src/main/services/exec'
 import { agentPrompt } from '../src/main/services/sessions'
 import { slugify } from '../src/main/services/worktrees'
+import { bus } from '../src/main/bus'
 import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-355: each room's Lead works in its own worktree, detached at the latest main, instead of the main checkout.
@@ -230,5 +231,129 @@ describe("the Lead's worktree (KERNEL-355)", () => {
     expect(sdk.calls[1].options.cwd).toBe(kai.path)
     expect(sdk.calls[1].options).not.toHaveProperty('projectConfigRoot')
     expect(agentPrompt(undefined, kai)).toContain(`on branch ${kai.branch}, created from main`)
+  })
+})
+
+// KERNEL-181: the Lead's worktree follows the latest main.
+
+/** A room whose repo has an `origin`, and its Lead's worktree, made at origin/main. */
+async function syncedRoom() {
+  const repo = await tempRepo(REPO)
+  const bare = await mkdtemp(join(tmpdir(), 'kernel-remote-'))
+  await run('git', ['init', '-q', '--bare', bare])
+  await run('git', ['-C', repo, 'remote', 'add', 'origin', bare])
+  await run('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'main'])
+  const k = await boot(await dirs())
+  const room = await k.addRoom(repo)
+  const chat = await k.lead.leadChat(room.id)
+  const ws = k.store.workspace(chat.workspaceId)!
+  expect(ws.baseRef).toBe('origin/main')
+  return { k, repo, bare, room, chat, ws }
+}
+
+/** Commits on main in `repo` and pushes, so origin/main moves there without a fetch. */
+async function landOnMain(repo: string, file: string, n = 1) {
+  for (let i = 0; i < n; i++) {
+    await writeFile(join(repo, `${file}-${i}.txt`), `${file} ${i}\n`)
+    await run('git', ['-C', repo, 'add', '-A'])
+    await run('git', ['-C', repo, 'commit', '-q', '-m', `${file} ${i}`])
+  }
+  await run('git', ['-C', repo, 'push', '-q', 'origin', 'main'])
+}
+
+/** Someone else pushes a commit to main on the remote, which the room hasn't fetched. Its sha. */
+async function pushElsewhere(bare: string, file: string) {
+  const other = await mkdtemp(join(tmpdir(), 'kernel-clone-'))
+  await run('git', ['clone', '-q', '-b', 'main', bare, other])
+  await writeFile(join(other, `${file}.txt`), `${file}\n`)
+  await run('git', ['-C', other, 'add', '-A'])
+  await run('git', ['-C', other, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', file])
+  await run('git', ['-C', other, 'push', '-q', 'origin', 'main'])
+  return sha(other, 'HEAD')
+}
+
+const syncNotes = (k: Kernel, roomId: string) => k.store.activity(roomId, 500).filter((a) => a.actor === 'kernel' && /^(updated|didn't update) Rowan's worktree/.test(a.text)).reverse()
+
+describe("keeping the Lead's worktree on the latest main (KERNEL-181)", () => {
+  it('fast-forwards a worktree that is behind and idle, logs one line, and does nothing once it is current', async () => {
+    const { k, repo, room, ws } = await syncedRoom()
+    await landOnMain(repo, 'merged', 3)
+    await k.lead.syncLead(room.id)
+    expect(await sha(ws.path, 'HEAD')).toBe(await sha(repo, 'origin/main'))
+    expect((await git(ws.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe('HEAD')
+    await k.lead.syncLead(room.id)
+    expect(syncNotes(k, room.id).map((a) => a.text)).toEqual(["updated Rowan's worktree to origin/main, 3 new commits"])
+  })
+
+  it("moves the worktree before a new Lead chat's first turn, without fetching", async () => {
+    const { k, repo, bare, room, ws } = await syncedRoom()
+    await landOnMain(repo, 'fetched')
+    // Pushed by someone else and not fetched yet: a new chat doesn't wait for it.
+    const elsewhere = await pushElsewhere(bare, 'elsewhere')
+    let atSend = ''
+    k.sessions.send = async () => { atSend = await sha(ws.path, 'HEAD'); return { queued: false } }
+    await k.lead.startLeadChat(room.id, { prompt: 'What changed?' })
+    expect(atSend).toBe(await sha(repo, 'origin/main'))
+    expect(atSend).not.toBe(elsewhere)
+  })
+
+  it('fetches and moves the worktree when a PR in the room merges', async () => {
+    const { k, bare, room, ws } = await syncedRoom()
+    const kai = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build' })
+    const merged = await pushElsewhere(bare, 'merged')
+    bus.push({ type: 'pr', workspaceId: kai.id, state: 'merged' })
+    await vi.waitFor(async () => expect(await sha(ws.path, 'HEAD')).toBe(merged), { timeout: 10000 })
+  })
+
+  it('moves nothing while a Lead chat is running or has messages queued, and catches up when the last Lead turn ends', async () => {
+    const { k, repo, room, chat, ws } = await syncedRoom()
+    const was = await sha(ws.path, 'HEAD')
+    await landOnMain(repo, 'while-running')
+    const isRunning = k.sessions.isRunning.bind(k.sessions)
+    const queued = k.sessions.queued.bind(k.sessions)
+    k.sessions.isRunning = (id) => id === chat.id || isRunning(id)
+    await k.lead.syncLead(room.id)
+    expect(await sha(ws.path, 'HEAD')).toBe(was)
+    k.sessions.isRunning = isRunning
+    k.sessions.queued = (id) => (id === chat.id ? [{ id: 'q', chatId: id, parts: [{ type: 'text', text: 'next' }], ts: Date.now() }] : queued(id))
+    await k.lead.syncLead(room.id)
+    expect(await sha(ws.path, 'HEAD')).toBe(was)
+    expect(syncNotes(k, room.id)).toEqual([])
+    k.sessions.queued = queued
+    // The turn ends: Sessions calls back with the chat idle.
+    ;(k.sessions as unknown as { d: { onTurnDone: (...a: unknown[]) => void } }).d.onTurnDone(ws, chat, { ok: true, interrupted: false, by: 'user' })
+    await vi.waitFor(async () => expect(await sha(ws.path, 'HEAD')).toBe(await sha(repo, 'origin/main')))
+  })
+
+  it('moves nothing when tracked files have changes, and logs that once per origin/main sha', async () => {
+    const { k, repo, room, ws } = await syncedRoom()
+    const was = await sha(ws.path, 'HEAD')
+    await writeFile(join(ws.path, 'README.md'), '# edited by the Lead\n')
+    await landOnMain(repo, 'first')
+    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(room.id)
+    expect(await sha(ws.path, 'HEAD')).toBe(was)
+    expect(await readFile(join(ws.path, 'README.md'), 'utf8')).toBe('# edited by the Lead\n')
+    expect(syncNotes(k, room.id).map((a) => [a.text, a.object])).toEqual([["didn't update Rowan's worktree to origin/main:", 'tracked files have changes']])
+    // main moved again, so the same refusal is news.
+    await landOnMain(repo, 'second')
+    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(room.id)
+    expect(syncNotes(k, room.id)).toHaveLength(2)
+    expect(await sha(ws.path, 'HEAD')).toBe(was)
+  })
+
+  it('moves nothing when the worktree has commits of its own, and never merges or rebases', async () => {
+    const { k, repo, room, ws } = await syncedRoom()
+    await writeFile(join(ws.path, 'lead.txt'), 'the Lead committed\n')
+    await run('git', ['-C', ws.path, 'add', '-A'])
+    await run('git', ['-C', ws.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'own'])
+    const own = await sha(ws.path, 'HEAD')
+    await landOnMain(repo, 'merged')
+    await k.lead.syncLead(room.id)
+    await k.lead.syncLead(room.id)
+    expect(await sha(ws.path, 'HEAD')).toBe(own)
+    expect((await git(ws.path, 'rev-list', '--count', 'HEAD')).trim()).toBe('2')
+    expect(syncNotes(k, room.id).map((a) => a.object)).toEqual(['it has a commit of its own'])
   })
 })

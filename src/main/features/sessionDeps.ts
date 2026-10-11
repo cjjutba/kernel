@@ -29,7 +29,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
       const lead = !!k.team.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
       const done = { ...turn, lead, queued: k.sessions.queued(chat.id).length > 0 }
       k.notifications.turnDone(ws, chat, done)
-      // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh. A teammate's
+      // The Lead never opens a PR of its own, so there is nothing to refresh. A teammate's
       // update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub takes.
       const teammate = !k.team.isLeadWorkspace(ws)
       if (teammate) k.leadUpdates.readingPr(ws.id)
@@ -40,6 +40,8 @@ export function sessionDeps(k: Kernel): SessionDeps {
       if (teammate) void k.refreshPr(ws.id).catch(() => undefined).then(() => k.leadUpdates.readPr(ws.id)).catch(() => undefined)
       void k.overlaps.check(ws.roomId).catch(() => undefined)
       k.waits.releaseTaken(ws.id, chat.id, turn.by)
+      // A sync skipped while a Lead turn ran happens once the last one ends. It does nothing while another runs (KERNEL-181).
+      if (!teammate) void k.lead.syncLead(ws.roomId)
     },
     onFailure: (failure) => {
       if (failure === 'auth') k.account.signedOut()

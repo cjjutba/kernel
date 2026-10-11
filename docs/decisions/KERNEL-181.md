@@ -1,0 +1,7 @@
+**The Lead's worktree follows the latest main by fast-forward only, and only while every Lead chat in the room is idle.** KERNEL-355 cut the worktree once, so it went stale as PRs merged, and a new chat with Rowan planned against old code. Kernel moves it to `<remote>/<default>` (the local default branch when the remote doesn't have it) with `fastForward`. It never merges or rebases, and it doesn't touch the main checkout, which stays CJ's to pull.
+
+It moves at three points. Before a new Lead chat's first turn, without fetching, so a new chat never waits on the network. When a PR in the room merges, after a `fresh` fetch, which runs outside the room's sync queue so a new chat's sync never waits behind it. And when a Lead turn ends, to catch a sync skipped while a turn ran. Any Lead chat running or holding queued messages skips the sync: the files would change under a turn. Joining an existing Lead chat from Ask Rowan opens a new tab, and syncs too, since nothing in the room is running then.
+
+A worktree with changes to tracked files or commits of its own stays where it is. Those are the Lead's own work, and a merge or rebase could lose it or stop on a conflict nobody is watching. The refusal is an activity line, logged once per target sha and reason rather than on every attempt, since every turn end tries again. A success logs one line with the number of new commits. Kernel remembers refusals in memory only, so a restart can log the same one once more.
+
+KERNEL-181.
