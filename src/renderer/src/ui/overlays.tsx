@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { isWebUrl } from '@shared/previewUrl'
+import { call } from '../api'
 import { Icon, type IconName } from '../icons'
 import { Button } from './controls'
 import { useLayer } from './hooks'
@@ -185,7 +187,8 @@ export function Toast({ title, sub, action, onDismiss }: ToastProps) {
     <div className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
       <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{sub}</span>}</span>
       {action && (action.href
-        ? <a className="toast-action" href={action.href} onClick={action.onClick}>{action.label}</a>
+        // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
+        ? <a className="toast-action" href={action.href} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); action.onClick?.() }}>{action.label}</a>
         : <button type="button" className="toast-action" onClick={action.onClick}>{action.label}</button>)}
       <button type="button" className="toast-x" aria-label="Dismiss" onClick={onDismiss}><Icon name="close" size={10} stroke={2} /></button>
     </div>

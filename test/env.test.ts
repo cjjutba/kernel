@@ -7,7 +7,8 @@ import { join, relative } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { buildEnv, envFileReadable, EnvStore, MAX_ENV_FILE, readEnvFiles, type Cipher } from '../src/main/services/env'
+import { buildEnv, envFileReadable, EnvStore, MAX_ENV_FILE, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
+import { isClaudeVar } from '../src/shared/kernelVars'
 import { sessionEnv } from '../src/main/services/sessions'
 import { loadRepoSettings, scriptsToTrust } from '../src/main/services/settings'
 
@@ -29,6 +30,15 @@ describe('buildEnv', () => {
       kernel: { F: 'kernel' }
     })
     expect(env).toEqual({ A: 'mac', B: 'app', C: 'file1', D: 'file2', E: 'room', F: 'kernel' })
+  })
+})
+
+describe('withoutClaudeNames', () => {
+  it('drops exactly the names the Environment page says chats and terminals ignore', () => {
+    const names = ['ANTHROPIC_BASE_URL', 'CLAUDE_CODE_USE_BEDROCK', 'ANTHROPIC', 'MY_ANTHROPIC_KEY', 'claude_code_x', 'NODE_OPTIONS']
+    const kept = withoutClaudeNames(Object.fromEntries(names.map((n) => [n, 'v'])))
+    for (const n of names) expect(n in kept, n).toBe(!isClaudeVar(n))
+    expect(Object.keys(kept)).toEqual(['ANTHROPIC', 'MY_ANTHROPIC_KEY', 'claude_code_x', 'NODE_OPTIONS'])
   })
 })
 

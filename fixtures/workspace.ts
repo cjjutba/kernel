@@ -192,20 +192,28 @@ const toolCalls: ChatItem[] = [
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
-/** A chat 34% full, with the rows Claude Code's /context lists, adding up to the 200k window. */
-const contextChat = (f: Fixture) => f.chats.map((c) => c.id === ids.tableChat ? {
-  ...c,
-  context: 34,
-  contextUsage: { used: 68_000, max: 200_000, rows: [
-    { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
-    { name: 'System tools', tokens: 11_800, kind: 'used' as const },
-    { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
-    { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
-    { name: 'Messages', tokens: 44_000, kind: 'used' as const },
-    { name: 'Free space', tokens: 99_000, kind: 'free' as const },
-    { name: 'Autocompact buffer', tokens: 33_000, kind: 'buffer' as const }
-  ] }
-} : c)
+/**
+ * A chat with the rows Claude Code's /context lists, adding up to the 200k window. `messages` sets how full it is: 44k is 34%, 132k is 78%, 160k is 92%.
+ * Past the 167k auto compact line there is no free space left and the buffer shrinks to what remains.
+ */
+const contextChat = (f: Fixture, messages = 44_000) => {
+  const max = 200_000
+  const used = 3_200 + 11_800 + 6_400 + 2_600 + messages
+  const free = Math.max(0, max - used - 33_000)
+  return f.chats.map((c) => c.id === ids.tableChat ? {
+    ...c,
+    context: Math.round((used / max) * 100),
+    contextUsage: { used, max, rows: [
+      { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
+      { name: 'System tools', tokens: 11_800, kind: 'used' as const },
+      { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
+      { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
+      { name: 'Messages', tokens: messages, kind: 'used' as const },
+      { name: 'Free space', tokens: free, kind: 'free' as const },
+      { name: 'Autocompact buffer', tokens: max - used - free, kind: 'buffer' as const }
+    ] }
+  } : c)
+}
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
@@ -704,6 +712,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
   WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
+  /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */
+  WorkspaceContextRingNear: scene((f) => ({ chats: contextChat(f, 132_000), ui: open })),
+  /** KERNEL-334: from 90% the ring and the popover's top meter are red. */
+  WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
   WorkspaceQueued: scene((f) => ({

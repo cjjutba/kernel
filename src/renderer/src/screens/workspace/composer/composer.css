@@ -137,6 +137,11 @@
 
 /* context ring and its popover (KERNEL-96) */
 .ctx-ring { flex-shrink: 0; }
+.ctx-arc { stroke: var(--ink); }
+.ctx-near .ctx-arc { stroke: var(--needs); }
+.ctx-full .ctx-arc { stroke: var(--del); }
+.ctx-pop.ctx-near > .meter span { background: var(--needs); }
+.ctx-pop.ctx-full > .meter span { background: var(--del); }
 .ctx-pop { width: 330px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; }
 .ctx-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .ctx-title { color: var(--ink); font-weight: 500; }

@@ -17,7 +17,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 ## Where things are
 
-- `src/main/` main process: `kernel.ts` (orchestrator and the IPC handler map), `db.ts` (SQLite), `bus.ts` (events), `services/` (sessions, hooks, approvals, worktrees, scripts, github, agents, settings, preflight, kernelMcp)
+- `src/main/` main process: `kernel.ts` (wiring: builds the services and features, starts and stops them, joins their IPC handler maps), `features/` (one file per feature: its state, logic and IPC channels; moving out of `kernel.ts` in KERNEL-324 to KERNEL-331), `db.ts` (SQLite), `bus.ts` (events), `services/` (sessions, hooks, approvals, worktrees, scripts, github, agents, settings, preflight, kernelMcp)
 - `src/preload/` the `window.kernel` bridge
 - `src/shared/` contracts used by every process: `types.ts`, `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
@@ -70,6 +70,7 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` and `docs/decisions/` before changing a deliberate choice. When you make a new one, add a file in `docs/decisions/` named after the issue (`docs/decisions/README.md`).
+- Don't add code to `src/main/kernel.ts`. A feature's state, logic and IPC channels go in its file under `src/main/features/`, a reaction to a finished turn in `features/sessionDeps.ts`, and a reaction to a push event in `listen` in `features/wiring.ts`. A feature imports `kernel.ts` and other features only as types and reaches them through its `k` (KERNEL-324). Until KERNEL-331 lands, change a feature that is still in `kernel.ts` where it is.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
