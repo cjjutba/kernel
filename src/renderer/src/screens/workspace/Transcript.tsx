@@ -20,6 +20,7 @@ import { userView } from './sender'
 import { KernelNote } from './KernelNote'
 import { SharedCard } from './cards/SharedCard'
 import { TeamUpdateCard } from './cards/TeamUpdateCard'
+import { LocalMergeRow } from './pr/LocalMerge'
 import { ReviewCard } from './pr/ReviewCard'
 import { ChatWelcome, LEAD_SUGGESTIONS, SUGGESTIONS } from './ChatWelcome'
 
@@ -374,6 +375,7 @@ export const Transcript = memo(function Transcript({ chat, workspaceId, changes,
         {blocks.map((b) => <Block key={b.kind === 'item' ? b.item.id : b.id} block={b} chatId={chatId} changes={changes} agentName={agentName} onEdit={editMessage} onFork={fork} onForkWorkspace={worktree ? forkWorkspace : undefined} onTerminal={terminal} />)}
         {loose.map((a) => <ApprovalCard key={a.id} approval={a} inChat />)}
         {ws?.prState === 'changes' && pr && <ReviewCard ws={ws} pr={pr} agentName={agentName} />}
+        {ws && <LocalMergeRow ws={ws} />}
         {running && !planWaits && <Elapsed since={since} />}
         <div ref={end} />
       </div>
