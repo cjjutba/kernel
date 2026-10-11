@@ -2,11 +2,11 @@
 
 ## What it is
 
-A Mac app that turns Claude Code into a small software team. Agents are Claude Code subagents defined in each repo's `.claude/agents/`. Rowan, the Lead, plans with you and hands each task to an agent, and every agent works in its own git worktree on its own branch. Kernel shows who is doing what in the sidebar and brings everything that needs you to the Inbox.
+A Mac app that turns Claude Code and Codex into a small software team. Agents are defined in each repo's `.claude/agents/`, and each runs on Claude Code or Codex, as Settings, Models and effort or the agent's own file says. Rowan, the Lead, plans with you and hands each task to an agent, and every agent works in its own git worktree on its own branch. Kernel shows who is doing what in the sidebar and brings everything that needs you to the Inbox.
 
 ## Who it is for
 
-Developers who already use Claude Code and want several agents working on one repo at once, each on its own branch, without losing track of who is doing what. Kernel is single-user: you, your Mac and your Claude plan.
+Developers who already use Claude Code and want several agents working on one repo at once, each on its own branch, without losing track of who is doing what. Kernel is single-user: you, your Mac and your Claude or ChatGPT plan, or several of each.
 
 ## The core loop
 
@@ -21,8 +21,9 @@ Developers who already use Claude Code and want several agents working on one re
 
 - **Room**: one repo (a folder with a git checkout). Has a team, a Lead chat and workspaces.
 - **Workspace**: one task's working copy, usually a git worktree on its own branch, with its own port. Can also run on the current branch of the main checkout.
-- **Chat**: a Claude Code session inside a workspace. A workspace can have several chats and a big terminal.
-- **Agent**: a subagent file in `.claude/agents/`, or Kernel's own Rowan or Theo where the repo has no Lead or reviewer. Has a name, role, model, tools and instructions. Its tools line holds in Kernel.
+- **Chat**: a Claude Code or Codex session inside a workspace. A workspace can have several chats, on either provider, and a big terminal.
+- **Agent**: a subagent file in `.claude/agents/`, or Kernel's own Rowan or Theo where the repo has no Lead or reviewer. Has a name, role, tools and instructions. Its model comes from its role in Settings, Models and effort, unless its file pins one. Its tools line holds in Kernel.
+- **Provider**: the CLI an agent runs on, Claude Code or Codex. Each signs in with its own subscription, and can hold several accounts to switch between.
 - **Lead**: the agent marked `lead: true` or `role: Lead`, the one picked in Settings, Agents, or Kernel's own Rowan. Plans and hands out work through Kernel's MCP tools.
 - **Reviewer**: the agent that reviews each pull request: the one picked in Settings, Agents, an agent whose role says review, or Kernel's own Theo.
 - **Helper**: an agent the Lead hands no task, because its tools can't open a pull request or Settings, Agents says so.
@@ -45,7 +46,7 @@ The isometric floor and the Board are hidden for now (D-104). Their code stays, 
 
 ## Not in v1
 
-Multiple users or shared rooms, cloud sync, Windows and Linux builds, API key billing (Kernel runs on the Claude subscription through Claude Code).
+Multiple users or shared rooms, cloud sync, Windows and Linux builds, API key billing (Kernel runs on your Claude or ChatGPT subscription, through Claude Code and Codex).
 
 ## Definition of done
 
