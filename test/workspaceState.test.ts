@@ -66,13 +66,14 @@ describe('workspace saves read the store, not a stale copy', () => {
     gh.slow = true
     const refresh = k.refreshPr(ws.id)
     await vi.waitFor(() => expect(gh.release).toBeDefined(), SLOW)
+    // Only the refresh's read waits. The merge reads GitHub too before it starts (KERNEL-376).
+    gh.slow = false
     // mergePr reads the branch the work is on before it marks the PR merging.
     const merge = k.mergePr(ws.id)
     await vi.waitFor(() => expect(k.store.workspace(ws.id)?.prState).toBe('merging'), SLOW)
     gh.release!()
     await refresh
     expect(k.store.workspace(ws.id)?.prState).toBe('merging')
-    gh.slow = false
     gh.mergeRelease()
     expect((await merge).prState).toBe('merged')
     await k.stop()
