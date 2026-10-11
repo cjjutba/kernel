@@ -190,13 +190,17 @@ export class Setup extends Feature {
       // A workspace that also waits for a PR keeps waiting, ready, until it merges. Otherwise its brief goes now, and
       // a wait that merged meanwhile ends with it (KERNEL-259).
       const wait = this.mustWs(ws.id).waitsFor
+      // The Lead heard in create_workspace's result that the teammate waits for trust, so it hears the release too, the
+      // way it hears setup passing on Run again (KERNEL-261).
       if (wait?.held && wait.on.length && chat && !waitMet(wait, this.store.workspaces(ws.roomId))) {
         const base = await head(ws.path)
-        this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
+        const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
+        if (held.status === 'ready') this.leadUpdates.setup(held, true, { trusted: true, wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
         void this.k.waits.settleWait(ws.id).catch(() => undefined)
         return
       }
-      await this.startBrief(this.mustWs(ws.id), room, chat, { released: wait?.held ? wait : undefined })
+      const started = await this.startBrief(this.mustWs(ws.id), room, chat, { released: wait?.held ? wait : undefined })
+      if (started.status === 'ready') this.leadUpdates.setup(started, true, { trusted: true })
     } finally { this.settingUp.delete(workspaceId) }
   }
 

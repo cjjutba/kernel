@@ -58,9 +58,10 @@ export class Reviews extends Feature {
     const { verdicts, current } = reviewVerdicts(ws)
     const blockers = current.some((v) => v.verdict === 'blockers')
     const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
-    // A review runs while its setup runs, or while its reviewer works on it and hasn't sent a verdict on the head commit.
-    // A review whose setup failed isn't running: it waits for the user.
-    const busy = (r: Workspace) => r.status === 'setup' || (r.status === 'ready' && this.chatTabs(r.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
+    // A review runs while its setup runs or waits for the user to trust the room's scripts (KERNEL-261), or while its
+    // reviewer works on it and hasn't sent a verdict on the head commit. A review whose setup failed isn't running: it
+    // waits for the user.
+    const busy = (r: Workspace) => r.status === 'setup' || r.status === 'trust' || (r.status === 'ready' && this.chatTabs(r.id).some((c) => this.sessions.isRunning(c.id) || this.sessions.queued(c.id).length > 0))
     const open = reviews[0]
     return {
       approvedBy: blockers ? [] : current.filter((v) => v.verdict === 'approved').map((v) => name(v.agentId)),
