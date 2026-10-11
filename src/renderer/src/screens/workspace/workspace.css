@@ -47,8 +47,8 @@ button.ws-issue:hover { background: var(--surface-3); }
 /* transcript */
 .ws-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 16px 32px 8px; }
 .thread { width: 100%; max-width: 760px; margin: auto auto 0; display: flex; flex-direction: column; gap: 12px; }
-/* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. */
-.thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 10px; }
+/* Rows far above the end skip layout and paint while off screen, and `auto` remembers the height each last had. The last twelve are left alone, so a short chat draws as it always did. The clip margin keeps focus rings, which reach past a row, from being cut. A step row bleeds 8px past its row for its hover fill, and its focus ring sits 1px further out and is 2px thick, so a ring reaches 11px out. 12px covers it (KERNEL-375). */
+.thread > :nth-last-child(n+13) { content-visibility: auto; contain-intrinsic-block-size: auto 60px; overflow-clip-margin: 12px; }
 .msg { display: flex; flex-direction: column; }
 .msg-user { align-self: flex-end; max-width: 82%; align-items: flex-end; gap: 4px; }
 .bubble { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 14px; border-radius: var(--r-md); background: var(--line); color: var(--ink); font-size: 14px; line-height: 1.7; }
@@ -111,8 +111,11 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .md-code { padding: 1px 5px; border-radius: 5px; background: var(--surface-3); font: 12.5px var(--mono); overflow-wrap: anywhere; }
 .md a { color: var(--ink); }
 .trow { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.trow-btn { width: calc(100% + 8px); margin: -2px -4px; padding: 2px 4px; border: 0; background: transparent; text-align: left; cursor: default; }
+.trow-btn { width: calc(100% + 16px); margin: -4px -8px; padding: 4px 8px; border: 0; border-radius: var(--r-sm); background: transparent; text-align: left; cursor: default; transition: background 0.12s; }
 .trow-btn:not(:disabled) { cursor: pointer; }
+/* A row with something to open fills under the pointer and on focus (KERNEL-375). The padding gives the fill room and the margin
+   cancels it, so text and icons stay where they were. The fill is the button only, never the opened body under it. */
+.trow-btn:not(:disabled):hover, .trow-btn:not(:disabled):focus-visible { background: var(--surface-3); }
 /* The chevron takes its room at rest, so a row never shifts when it appears, and an inert row keeps it hidden so the notes line up.
    The button's padding is cancelled by its margin, so the focus ring clears the icon and the row stays where it was. */
 .chev.step-chev { flex-shrink: 0; color: var(--muted); opacity: 0; transition: opacity 0.12s, transform 0.12s; }

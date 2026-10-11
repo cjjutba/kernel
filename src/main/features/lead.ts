@@ -1,9 +1,11 @@
+import { existsSync } from 'node:fs'
 import type { AgentDef, Approval, Chat, ChatPart, Effort, ModelId, Thread, Workspace } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { saveAgent } from '../services/agents'
 import { parsePlanSteps } from '../services/approvals'
 import { NUDGE_LIMIT } from '../services/nudges'
+import { revisedPlanFile, savePlan } from '../services/plans'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
@@ -176,11 +178,17 @@ export class Lead extends Feature {
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.
         const agents = await this.k.team.agents(roomId)
+        const reuse = o.kind === 'plan' ? revisedPlanFile(this.store.approvals({ roomId }), chat.id) : undefined
         const { approval, decision } = this.approvals.request({
           kind: o.kind, source: 'sdk', roomId, workspaceId: chat.workspaceId, chatId: chat.id, agentId: lead.id, title: o.title, detail: o.detail, options: o.options,
           steps: o.steps && parsePlanSteps(o.steps, agents), agentFile: o.agentFile
         })
         this.sessions.placeApproval(chat.id, approval.id)
+        // Saved like ExitPlanMode's plan, so a chat can build from it after the card is gone (D-092, KERNEL-373).
+        const ws = this.store.workspace(chat.workspaceId)
+        if (o.kind === 'plan' && o.detail?.trim() && ws && existsSync(ws.path)) {
+          void savePlan(ws.path, o.detail, { fallback: o.title, reuse }).then((planFile) => this.approvals.update(approval.id, { planFile }), () => undefined)
+        }
         // An answer is the user stepping in, so the loop guard starts over for this chat's work (KERNEL-125).
         return decision.then((d) => { if (d) this.userSpoke(chat.id); return d })
       },

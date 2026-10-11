@@ -7,8 +7,9 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
-import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
-import { kernelTools, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
+import { BLOCKER_RULE, HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE, reviewRule } from '../src/main/services/handoff'
+import { reviewTools } from '../src/main/services/reviewMcp'
+import { kernelTools, LEAD_INSTRUCTIONS, NO_PLAN, PLAN_MODE_OFF, type KernelToolDeps } from '../src/main/services/kernelMcp'
 
 /** The Lead's tools with a user who answers every card with `answer`, in a chat whose plan mode `plan` holds. */
 function leadTools(answer: Decision | null, plan = { on: true }) {
@@ -31,16 +32,36 @@ function leadTools(answer: Decision | null, plan = { on: true }) {
   return { call, run, askUser, planApproved, handedOff }
 }
 
+const PLAN = '# Symlink node_modules\n\nWorktrees reinstall every package. Link them to the main checkout instead.\n\n## Checks\n\n- pnpm test'
+
+/** request_plan_approval in a real Kernel's Lead chat, and the room's plan approvals. */
+async function realLead() {
+  const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.', '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\nrole: Engine\n---\nYou are Noor.' })
+  const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+  const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+  const k = new Kernel({ dataDir, home })
+  onTestFinished(() => k.stop())
+  await k.start()
+  const room = await k.addRoom(repo)
+  const chat = await k.leadChat(room.id)
+  const lead = (await k.agents(room.id)).find((a) => a.lead)!
+  const deps = k.lead.leadToolDeps(room.id, lead, chat)
+  const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
+  const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
+  return { k, room, chat, tool, plans }
+}
+
 describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
   it('answers an approval with "hand it off now" and marks the plan approved', async () => {
     const t = leadTools({ behavior: 'allow' })
-    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', steps: ['Symlink node_modules · Noor'] })).toBe(`approved. ${HANDOFF_NOW}`)
+    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })).toBe(`approved. ${HANDOFF_NOW}`)
     expect(t.planApproved).toHaveBeenCalledOnce()
   })
 
   it('does not mark a plan approved when the user asks for changes', async () => {
     const t = leadTools({ behavior: 'deny', message: 'Split it in two' })
-    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', steps: ['Symlink node_modules · Noor'] })).toBe('changes requested: Split it in two')
+    expect(await t.call('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] })).toBe('changes requested: Split it in two')
     expect(t.planApproved).not.toHaveBeenCalled()
   })
 
@@ -52,7 +73,7 @@ describe('request_plan_approval and create_workspace (KERNEL-67)', () => {
 })
 
 describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () => {
-  const plan = { title: 'KERNEL-53', steps: ['Symlink node_modules · Noor'] }
+  const plan = { title: 'KERNEL-53', plan: PLAN, steps: ['Symlink node_modules · Noor'] }
 
   it('refuses with plan mode off and creates no approval', async () => {
     const t = leadTools({ behavior: 'allow' }, { on: false })
@@ -82,24 +103,6 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect((await tool.handler(plan as never, {})).isError).toBe(true)
     expect(askUser).not.toHaveBeenCalled()
   })
-
-  /** request_plan_approval in a real Kernel's Lead chat, and the room's plan approvals. */
-  async function realLead() {
-    const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.' })
-    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
-    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-    const k = new Kernel({ dataDir, home })
-    onTestFinished(() => k.stop())
-    await k.start()
-    const room = await k.addRoom(repo)
-    const chat = await k.leadChat(room.id)
-    const lead = (await k.agents(room.id)).find((a) => a.lead)!
-    const deps = k.lead.leadToolDeps(room.id, lead, chat)
-    const tool = kernelTools(deps).find((x) => x.name === 'request_plan_approval')!
-    const plans = () => k.store.approvals({ roomId: room.id }).filter((a) => a.kind === 'plan')
-    return { k, chat, tool, plans }
-  }
 
   it("follows the Lead chat's saved toggle in a real Kernel, not the one the session started with", { timeout: 30_000 }, async () => {
     const { k, chat, tool, plans } = await realLead()
@@ -146,6 +149,65 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
     expect(dontAsk).toEqual([expect.stringMatching(/^After an approved plan, don't end the turn with only the plan, and don't ask again whether to hand it off\./)])
     const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
     expect(tool.description).toContain('Only while the chat is in plan mode. With plan mode off it refuses, and you ask in the chat before handing off.')
+  })
+})
+
+describe('request_plan_approval carries the full plan (KERNEL-373)', () => {
+  const steps = ['Symlink node_modules · Noor']
+
+  it('refuses task lines without the plan and says what is missing', async () => {
+    const t = leadTools({ behavior: 'allow' })
+    expect(await t.run('request_plan_approval', { title: 'KERNEL-53', steps })).toEqual({ isError: true, text: NO_PLAN })
+    expect(await t.run('request_plan_approval', { title: 'KERNEL-53', plan: '  \n', steps })).toEqual({ isError: true, text: NO_PLAN })
+    expect(NO_PLAN).toContain('plan is missing')
+    expect(t.askUser).not.toHaveBeenCalled()
+  })
+
+  it('asks with the plan as the detail and the task lines as they are', async () => {
+    const t = leadTools({ behavior: 'allow' })
+    await t.run('request_plan_approval', { title: 'KERNEL-53', plan: PLAN, steps })
+    expect(t.askUser).toHaveBeenCalledWith({ kind: 'plan', title: 'KERNEL-53', detail: PLAN, steps })
+  })
+
+  it('saves the plan to .kernel/plans, a revision to the same file and the next plan after an approval to its own (D-092)', { timeout: 30_000 }, async () => {
+    const { k, room, chat, tool, plans } = await realLead()
+    await k.sessions.configure(chat.id, { plan: true })
+    /** Asks with `plan` and waits until Kernel has saved it, newest approval first. */
+    const ask = async (plan: string) => {
+      const asked = tool.handler({ title: 'KERNEL-53', plan, steps } as never, {})
+      for (let i = 0; i < 100 && !(plans()[0]?.status === 'pending' && plans()[0].planFile); i++) await new Promise((r) => setTimeout(r, 20))
+      return { asked, approval: plans()[0] }
+    }
+
+    const first = await ask(PLAN)
+    expect(first.approval).toMatchObject({ detail: PLAN, steps: [{ title: 'Symlink node_modules', agentId: 'noor' }], planFile: '.kernel/plans/symlink-node-modules.md' })
+    expect(await readFile(join(room.path, first.approval.planFile!), 'utf8')).toBe(`${PLAN}\n`)
+    k.approvals.decide(first.approval.id, { behavior: 'deny', message: 'Add a rollback step' })
+    expect(((await first.asked).content[0] as { text: string }).text).toBe('changes requested: Add a rollback step')
+
+    const revised = `${PLAN}\n- Rollback: remove the link`
+    const second = await ask(revised)
+    expect(second.approval.id).not.toBe(first.approval.id)
+    expect(second.approval.planFile).toBe(first.approval.planFile)
+    expect(await readFile(join(room.path, second.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
+    k.approvals.decide(second.approval.id, { behavior: 'allow' })
+    await second.asked
+
+    await k.sessions.configure(chat.id, { plan: true })
+    const third = await ask(PLAN)
+    expect(third.approval.planFile).toBe('.kernel/plans/symlink-node-modules-2.md')
+    expect(await readFile(join(room.path, first.approval.planFile!), 'utf8')).toBe(`${revised}\n`)
+  })
+
+  it('describes the same call in the rule, the instructions, the tool and the starter Rowan', async () => {
+    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
+    const tool = kernelTools({} as KernelToolDeps).find((x) => x.name === 'request_plan_approval')!
+    for (const said of [LEAD_RULE, LEAD_INSTRUCTIONS, tool.description, rowan]) {
+      expect(said).toMatch(/full plan as markdown in plan/)
+      expect(said).toMatch(/one line per task in steps/)
+    }
+    expect(LEAD_RULE).not.toContain('ExitPlanMode')
+    expect(LEAD_INSTRUCTIONS).not.toContain('ExitPlanMode')
   })
 })
 
@@ -312,5 +374,29 @@ describe('create_workspace with review_of (KERNEL-130)', () => {
     expect(await t.review('done')).toEqual({ isError: true, text: "Not created: done's PR is already merged, so there is nothing left to review." })
     expect(await t.review('main')).toEqual({ isError: true, text: 'Not created: main works on the main checkout, not a branch of its own, so there is no branch to review. Ask its teammate to commit and open a pull request first.' })
     expect(t.made).toEqual([])
+  })
+})
+
+describe('reviews block only on real problems (KERNEL-377)', () => {
+  const rule = reviewRule({ author: 'Kai', task: 'T', workspaceId: 'w', branch: 'feat/x', base: 'origin/main' })
+
+  it('gives the reviewer, submit_review and both Theo files the same blocker list', async () => {
+    const [submit] = reviewTools({ submit: async () => '' })
+    const theos = await Promise.all([join('docs', 'starter-agents', 'theo.md'), join('.claude', 'agents', 'theo.md')].map((f) => readFile(join(__dirname, '..', f), 'utf8')))
+    for (const text of [rule, submit.description, ...theos]) expect(text).toContain(BLOCKER_RULE)
+    for (const theo of theos) expect(theo).not.toMatch(/nits|file, line, fix/)
+  })
+
+  it('keeps blockers short, approves with notes, and scopes a re-review to the earlier blockers', () => {
+    expect(rule).toContain('Write each blocker in one or two sentences: what breaks, and its file and line. No code and no design proposal. Kai picks the fix.')
+    expect(rule).toContain('When nothing blocks, approve. Put minor findings in the summary as at most three short notes.')
+    expect(rule).toContain('check only your earlier blockers and anything the fix broke')
+    expect(rule).toContain('Raise nothing new unless the fix caused it.')
+    expect(rule).toContain('Run shots only for screens the PR changes, and run a test only to confirm a bug you suspect.')
+  })
+
+  it('has the Lead pass on blockers only and mention notes to the user', () => {
+    expect(LEAD_RULE).toContain('When a review found blockers, pass on the blockers and nothing else.')
+    expect(LEAD_RULE).toContain("mention them to the user in one line and don't send them to the author")
   })
 })
