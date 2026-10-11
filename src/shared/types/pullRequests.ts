@@ -20,6 +20,11 @@ export interface ReviewComment {
   line?: number
   body: string
   resolved: boolean
+  /**
+   * Whether GitHub counts the author as part of the repo: OWNER, MEMBER and COLLABORATOR are `trusted`, anyone else, bots
+   * included, is `outside`. Only trusted comments reach the agent (KERNEL-222). Left out when GitHub didn't say.
+   */
+  association?: 'trusted' | 'outside'
 }
 
 /** Everything the PR header and the Checks panel show (WorkspaceCIFailed.png, WorkspaceChangesRequested.png). */

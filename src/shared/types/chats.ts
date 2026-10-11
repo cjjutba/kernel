@@ -147,10 +147,11 @@ export interface QueuedMessage {
 
 /**
  * What a chat's queue waits for: the running turn, the workspace's setup, a PR to merge before the brief goes out (KERNEL-259),
- * a paused room, every room held (`offline` covers a lost connection and a sign-out alike), or the agent limit in Settings,
- * Models. Computed, never saved (KERNEL-271, KERNEL-361).
+ * a paused room, every room held (`offline` covers a lost connection and a sign-out alike), the agent limit in Settings,
+ * Models, or a usage window close to its limit while Settings, Account pauses new work there (`limit`, KERNEL-220).
+ * Computed, never saved (KERNEL-271, KERNEL-361).
  */
-export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity'
+export type QueueReason = 'running' | 'setup' | 'merge' | 'paused' | 'offline' | 'capacity' | 'limit'
 
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'

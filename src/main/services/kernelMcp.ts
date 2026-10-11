@@ -71,7 +71,8 @@ const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
   capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
   paused: { because: 'The room is paused', until: 'when the user resumes it' },
-  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' }
+  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
+  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
 }
 
 /**

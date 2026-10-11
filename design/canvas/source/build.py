@@ -236,7 +236,6 @@ su=rd('Setup.dc.html')
 for n,k in [
     ('SetupClaudeMissing','missing'),
     ('SetupClaudeOld','old'),
-    ('SetupTeamsOff','teams'),
     ('SetupGhSignedOut','gh'),
     ('SetupPortBusy','port'),
     ('RoomSetup','room'),

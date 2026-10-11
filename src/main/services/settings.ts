@@ -303,8 +303,8 @@ export async function saveTeamSettings(repo: string, patch: TeamPatch): Promise<
   return loadRepoSettings(repo)
 }
 
-/** The text a room runs or copies on its own: the scripts, the files.copy list and the env files list, as the room reads them. */
-export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles'>
+/** The text a room runs or copies on its own: the scripts, the files.copy list, the env files list and the repo's install scripts, as the room reads them. */
+export type TrustSubject = Pick<ScriptTrust, 'scripts' | 'runScripts' | 'copy' | 'envFiles' | 'installScripts'>
 
 /**
  * What the user has to trust before Kernel runs anything from the repo's settings (KERNEL-209): each script, the

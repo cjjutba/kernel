@@ -114,7 +114,7 @@ export class Hooks extends Feature {
 
   private async preflight() {
     await this.o.refreshPath?.()
-    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
+    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening })
   }
 
   private get hookToken() { return hookToken(this.o.dataDir) }
@@ -124,9 +124,7 @@ export class Hooks extends Feature {
     return {
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
-        // Through setSettings, so it is saved and applied like the Models page toggle.
-        if (id === 'teams') await this.k.config.setSettings({ models: { agentTeams: true } })
-        else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
+        if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
         return this.preflight()
       },
       'hooks.status': async () => this.hooksStatus(),

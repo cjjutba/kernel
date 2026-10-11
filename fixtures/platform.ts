@@ -16,10 +16,9 @@ const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], it
 // The checks, in canvas order. Copy matches src/main/services/preflight.ts.
 const claudeOk: PreflightCheck = { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
 const authOk: PreflightCheck = { id: 'auth', ok: true, blocking: true, title: 'Signed in', detail: 'Claude Max' }
-const teamsOk: PreflightCheck = { id: 'teams', ok: true, blocking: false, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
 const ghOk: PreflightCheck = { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera', meta: 'gh 2.62' }
 const hooksOk: PreflightCheck = { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
-const allOk = [claudeOk, authOk, teamsOk, ghOk, hooksOk]
+const allOk = [claudeOk, authOk, ghOk, hooksOk]
 /** Every check passing except the one at `id`, which is replaced by `failing`. */
 const failing = (failed: PreflightCheck) => allOk.map((c) => (c.id === failed.id ? failed : c))
 
@@ -273,7 +272,6 @@ export const platformFixtures: Record<string, Fixture> = {
   // The four Setup PNGs below draw a failing check as a blocking one (red x, Continue off), so these fixtures mark theirs blocking. preflight.ts decides which checks block in real runs (KERNEL-213).
   SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
   SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: true, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),
-  SetupTeamsOff: setup(failing({ id: 'teams', ok: false, blocking: true, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
   SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: true, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
   // KERNEL-217: what a failing gh really looks like. A warning icon and Continue on. No PNG.
   SetupGhWarning: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),

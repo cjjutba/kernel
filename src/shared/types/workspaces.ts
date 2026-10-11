@@ -189,6 +189,12 @@ export interface ScriptTrust {
    * for trust like a script (KERNEL-247). Left out when the repo sets none.
    */
   envFiles?: string[]
+  /**
+   * The lifecycle scripts in the repo's root `package.json` that a package install runs (`preinstall`, `install`, `postinstall`
+   * and the prepare ones). The room's Install step and its setup script run that install, so the list waits for trust like a
+   * script (KERNEL-260). Left out when the repo has none.
+   */
+  installScripts?: { name: string; command: string }[]
   /** Open workspaces held in `trust` until the room is trusted. */
   workspaceIds: string[]
 }
