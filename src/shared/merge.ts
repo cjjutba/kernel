@@ -1,9 +1,12 @@
-import type { AppSettings, PrCheck, PrInfo, ReviewVerdict, Workspace } from './types'
+import type { AppSettings, PrCheck, PrInfo, PrState, ReviewVerdict, Workspace } from './types'
 
 /**
  * Whether a PR may merge, one rule for every Merge button and the Lead's tools (KERNEL-115). Pure, so main and the
  * renderer agree on it.
  */
+
+/** The PR states a merge can start from. Any other state, a merge already running included, offers no Merge (KERNEL-349). */
+export const mergeableState = (state: PrState): state is 'ready' | 'open' => state === 'ready' || state === 'open'
 
 /** Every check passed or was skipped. A PR with no checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
@@ -29,7 +32,7 @@ export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSett
  * the reviewer's name.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id): string | undefined {
-  if (ws.prState !== 'ready' && ws.prState !== 'open') return 'This pull request is not ready to merge.'
+  if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
   if (rules.requireGreen && pr && !allGreen(pr.checks)) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
   if (!rules.requireReviewer) return undefined
