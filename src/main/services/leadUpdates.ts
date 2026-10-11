@@ -7,7 +7,7 @@ import type { TurnDone } from './notifications'
 import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
-import { blockedWhy } from '@shared/merge'
+import { blockedWhy, reviewPhrase, type ReviewPhrase } from '@shared/merge'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
@@ -159,6 +159,8 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
     case 'pr.blocked': return `GitHub won't merge ${pr} yet: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}.`
     case 'pr.unblocked': return `GitHub no longer blocks ${pr}.`
+    // A card segment only, never an event the Lead reads.
+    case 'pr.review': return ''
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash':
@@ -189,11 +191,13 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
   }
 }
 
-/** The event in a few words, for the card. */
-function cardText(e: TeamEvent, status = ''): string {
+/** The event in a few words, for the card. A ready PR's review is a segment of its own (`reviewCard`). */
+function cardText(e: TeamEvent): string {
   switch (e.kind) {
     case 'pr.opened': return e.pr ? `Opened PR #${e.pr}` : 'Opened a pull request'
-    case 'pr.ready': return `Passed checks, no conflicts${status ? `. ${status.replace(/\.$/, '')}` : ''}`
+    case 'pr.ready': return 'Ready to merge'
+    // Only the card has it, after a ready PR: Kernel never records one as an event.
+    case 'pr.review': return ''
     case 'pr.cifail': return 'Checks failed'
     case 'pr.changes': return 'Changes requested'
     case 'pr.conflict': return 'Has conflicts with its base branch'
@@ -263,7 +267,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
  * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
  * off. `shares` are its shared files, which the card draws apart from `events`.
  */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; card?: ReviewPhrase; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
 interface Source { events: TeamEvent[]; from?: From; owner?: string }
@@ -293,6 +297,17 @@ function reviewStatus(review: ReviewState | undefined, reviewer: AgentDef | unde
   if (review.blockers) return `${review.open?.name ?? 'Its review'} found blockers.`
   if (review.stale) return `${review.open ? `${review.open.name}'s review` : 'Its last review'} was of a different commit.`
   return reviewer || review.open ? 'Nobody has reviewed it yet.' : ''
+}
+
+/** The same review in the card's words (KERNEL-411), a segment of its own after Ready to merge, or nothing when Kernel can't tell. */
+function reviewCard(review: ReviewState | undefined, reviewer: AgentDef | undefined): ReviewPhrase | undefined {
+  if (!review) return undefined
+  const name = review.open?.name
+  if (review.inProgress) return reviewPhrase({ reviewing: name ?? 'The reviewer' })
+  if (review.approvedBy.length) return reviewPhrase({ approvedBy: review.approvedBy })
+  if (review.blockers) return reviewPhrase({ blockers: { name: name ?? 'The review' } })
+  if (review.stale) return reviewPhrase({ stale: name ?? true })
+  return reviewer || review.open ? reviewPhrase({}) : undefined
 }
 
 /** PR states that mean the PR is still being created or checked, so a turn that just ended isn't news on its own. */
@@ -620,7 +635,7 @@ export class LeadUpdates {
         const review = kept.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? this.d.reviewState?.(ws) : undefined
         const reviewer = this.d.reviewer?.(ws.roomId)
         const block: Block = {
-          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer),
+          ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer), card: reviewCard(review, reviewer),
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
         }
         if (source.owner) {
@@ -661,7 +676,11 @@ export class LeadUpdates {
       return {
         workspaceId: b.ws.id, agentId: b.ws.agentId, name: b.name, task: b.ws.title ?? b.ws.name,
         ...(prNumber ? { prNumber } : {}),
-        events: b.events.map((e) => ({ kind: e.kind, text: cardText(e, b.status), actionable: b.wake.has(e) })),
+        // A ready PR's review follows as a grey segment of its own, so only "Ready to merge" is green (KERNEL-411).
+        events: b.events.flatMap((e) => [
+          { kind: e.kind, text: cardText(e), actionable: b.wake.has(e) },
+          ...((e.kind === 'pr.ready' || e.kind === 'pr.unblocked') && b.card ? [{ kind: 'pr.review' as const, text: b.card.text, actionable: false }] : [])
+        ]),
         ...(b.reply ? { reply: b.reply } : {}),
         ...(b.from ? { fromChat: b.from.title, ...(b.from.tab ? { fromTab: true } : {}) } : {}),
         ...(b.shares.length ? { shared: b.shares.flatMap((e) => (e.shared ? [{ sharedId: e.shared.sharedId, version: e.shared.version, title: e.shared.title, kind: e.shared.kind }] : [])) } : {})

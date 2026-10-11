@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { AgentDef, AppSettings, PrInfo, Workspace } from '@shared/types'
-import { mergeBlock, mergeNeedsPr, mergeableState, reviewVerdicts } from '@shared/merge'
+import { mergeBlock, mergeNeedsPr, mergeableState, reviewPhrase, reviewVerdicts } from '@shared/merge'
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
@@ -15,6 +15,7 @@ export interface LeadPr {
   name: string
   /** The issue the workspace started on, when it started on one. */
   key?: string
+  /** It can merge, or its merge is running (KERNEL-411). */
   ready: boolean
   /** What a PR that can't merge yet waits on, in the sidebar icon's words, with the icon's tone and the rule's reason. Ready PRs have none. */
   state?: { label: string; tone: GlyphTone; why?: string }
@@ -25,20 +26,22 @@ export interface LeadPr {
 export const listsPr = (ws: Workspace, leadId: string | undefined) =>
   !ws.reviewOf && ws.status !== 'archived' && !!ws.prNumber && !['none', 'merged', 'closed'].includes(ws.prState) && !isLeadWorkspace(ws, ws.roomId, leadId)
 
-/** "Theo approved", "Theo found 2 blockers" or "Not reviewed", from the verdicts on the PR's head commit (KERNEL-349). */
+/**
+ * "Theo approved", "Theo found 2 blockers" or "Not reviewed", from the verdicts on the PR's head commit (KERNEL-349), in the
+ * words the Team update card uses too (`reviewPhrase`, KERNEL-411).
+ */
 export function reviewLine(ws: Workspace, pr: PrInfo | null | undefined, name: (agentId: string) => string): LeadPr['review'] {
   const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })
-  if (!verdicts.length) return { text: 'Not reviewed', tone: 'faint' }
+  if (!verdicts.length) return reviewPhrase({})
   const latest = <T extends { ts: number }>(vs: T[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))
   const blocking = current.filter((v) => v.verdict === 'blockers')
   if (blocking.length) {
     const v = latest(blocking)
-    const n = v.blockers?.length || 1
-    return { text: `${name(v.agentId)} found ${n} ${n === 1 ? 'blocker' : 'blockers'}`, tone: 'bad' }
+    return reviewPhrase({ blockers: { name: name(v.agentId), count: v.blockers?.length || 1 } })
   }
   const approved = current.filter((v) => v.verdict === 'approved')
-  if (approved.length) return { text: `${name(latest(approved).agentId)} approved`, tone: 'good' }
-  return { text: `${name(latest(verdicts).agentId)} reviewed an earlier commit`, tone: 'faint' }
+  if (approved.length) return reviewPhrase({ approvedBy: [name(latest(approved).agentId)] })
+  return reviewPhrase({ stale: name(latest(verdicts).agentId) })
 }
 
 /**
@@ -51,7 +54,8 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     const pr = o.prs[ws.id]
     const why = mergeBlock(ws, pr, o.rules, name)
     const base = { ws, name: name(ws.agentId), key: ws.source?.kind === 'issue' ? ws.source.id : undefined, review: reviewLine(ws, pr, name) }
-    if (!why) return { ...base, ready: true }
+    // A PR merging stays where Merge was pressed, with the ready ones, until GitHub says it merged (KERNEL-411).
+    if (!why || ws.prState === 'merging') return { ...base, ready: true }
     const glyph = workspaceGlyph(ws, { waiting: [], running: false })
     // A PR GitHub calls open, held back by the reviewer rule alone, waits for the reviewer's approval.
     const approval = mergeableState(ws.prState) && mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined

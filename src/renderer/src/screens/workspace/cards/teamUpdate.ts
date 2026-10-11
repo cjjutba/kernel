@@ -69,6 +69,8 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
     // GitHub no longer blocking a ready PR reads like the PR being ready (KERNEL-401). A block takes the default below.
     case 'pr.ready': case 'pr.unblocked': return 'add'
     case 'review': return /^Approved/.test(e.text) ? 'add' : 'del'
+    // A ready PR's review in the PRs tab's colors: an approval green, blockers red, the rest grey (KERNEL-411).
+    case 'pr.review': return / approved$/.test(e.text) ? 'add' : / found .*blockers?$/.test(e.text) ? 'del' : 'muted'
     default: return e.actionable ? 'ink2' : 'muted'
   }
 }
