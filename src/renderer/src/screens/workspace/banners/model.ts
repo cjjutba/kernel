@@ -1,6 +1,6 @@
 import type { BannerKind, Chat, ClaudeAccount, HookStatus, ModelId, RateLimit, ScriptLine, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
-import { clock, resetPhrase } from '@shared/usage'
+import { clock, nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
 
 export { clock, resetPhrase }
 
@@ -12,7 +12,7 @@ export type BannerAction =
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
   | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive'
 
-export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'overloaded' | 'context' | 'hooks'
+export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'long' | 'hooks'
 
 export interface BannerView {
   id: BannerId
@@ -41,11 +41,24 @@ export interface BannerInput {
   /** The workspace's script output, for the setup command that failed. */
   scripts?: ScriptLine[]
   setupCode?: number | null
+  /** The workspace is the Lead's. The near-limit hold doesn't apply to it, so it has no banner for it (KERNEL-224). */
+  isLead?: boolean
+  /** The Lead's name, for "Rowan can still answer you". */
+  leadName?: string
+  /** Settings, Account. A switch left out counts as on, which is the default. */
+  usageSettings?: { pauseNearLimit?: boolean; warnBeforeWeekly?: boolean }
   now: number
 }
 
 /** From this much context use the chat offers to compact. */
 export const CONTEXT_WARN = 90
+
+/**
+ * From this many tokens in the context, whatever the window's size, the chat offers a new one: every turn re-reads all of it,
+ * and a 1M window reaches 90% far too late for that to be cheap. It comes before `CONTEXT_WARN` on a big window and
+ * after it on a small one (KERNEL-224, which amends KERNEL-334's one percent threshold for the banner; the ring keeps its levels).
+ */
+export const CONTEXT_LONG = 150_000
 
 const DAY = 24 * 3600_000
 
@@ -59,6 +72,9 @@ export function resetIn(resetsAt: number, now: number): string {
   const days = Math.ceil((ms - now) / DAY)
   return `in ${days} days`
 }
+
+/** "3:40 PM" within a day, else "Monday at 9:00 AM": the time something waits until. */
+const untilPhrase = (resetsAt: number, now: number) => resetPhrase(resetsAt, now).replace(/^at /, '')
 
 /** The model to offer when `current` hits its own limit: the first one, in picker order, that is not limited. */
 export function fallbackModel(current: ModelId, usage: RateLimit[], now: number): ModelId | undefined {
@@ -141,6 +157,20 @@ export function bannerFor(i: BannerInput): BannerView | null {
     }
   }
 
+  // A window close to its limit holds teammates' new work (KERNEL-220). Nothing is blocked: turns that run go on, and the Lead can still answer.
+  const held = !i.isLead && i.usageSettings?.pauseNearLimit !== false ? nearLimit(i.usage, now) : undefined
+  if (held?.resetsAt) return {
+    id: 'nearLimit', kind: 'limit', title: `Close to your ${held.type === 'five_hour' ? '5-hour' : 'weekly'} limit`,
+    sub: `New work from teammates waits until ${untilPhrase(held.resetsAt, now)}. ${i.leadName ?? 'Rowan'} can still answer you.`,
+    actions: [{ id: 'usage', label: 'Open /usage' }], blocks: false
+  }
+
+  const week = i.usage.find((l) => l.type === 'seven_day' && l.resetsAt !== undefined && l.resetsAt * 1000 > now && (l.utilization ?? 0) >= WEEKLY_WARN)
+  if (week?.resetsAt && i.usageSettings?.warnBeforeWeekly !== false) return {
+    id: 'weeklyWarn', kind: 'limit', title: `You've used ${Math.round((week.utilization ?? WEEKLY_WARN) * 100)}% of this week's limit`,
+    sub: `It resets ${resetPhrase(week.resetsAt, now)}.`, actions: [{ id: 'usage', label: 'Open /usage' }], blocks: false
+  }
+
   if (i.retry) {
     const secs = Math.max(0, Math.ceil((i.retry.nextAt - now) / 1000))
     return {
@@ -153,6 +183,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
   if (chat && (chat.context ?? 0) >= CONTEXT_WARN) return {
     id: 'context', kind: 'context', title: 'Context is almost full', sub: 'Compacting keeps a summary and frees space. A new tab starts clean in this chat.',
     actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
+  }
+
+  // Past 150k tokens a chat costs more with every turn, however empty the window still is (KERNEL-224).
+  if (chat && (chat.contextUsage?.used ?? 0) >= CONTEXT_LONG) return {
+    id: 'long', kind: 'context', title: 'This chat is long', sub: 'Starting a new chat keeps the next turns cheaper.',
+    actions: [{ id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.

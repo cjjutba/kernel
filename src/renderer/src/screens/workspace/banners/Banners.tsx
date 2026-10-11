@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Chat, ScriptLine, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { call } from '../../../api'
+import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, getState, go, loadWorkspace, useStore } from '../../../store'
 import { archiveChatFromSidebar } from '../archiveChat'
 import { archiveByHand } from '../byHand'
@@ -29,6 +30,11 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const setupCmd = useStore((s) => (ws?.status === 'failed' ? setupCommand(s.scripts[ws.id]) : undefined))
   const scripts = useMemo<ScriptLine[] | undefined>(() => (setupCmd ? [{ kind: 'setup', line: `$ ${setupCmd}`, stream: 'stdout' }] : undefined), [setupCmd])
   const setupCode = useStore((s) => (ws ? s.scriptExit[ws.id]?.setup : undefined))
+  // The near-limit hold leaves the Lead alone, and its banner names the Lead (KERNEL-224).
+  const isLead = useStore((s) => !!ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id))
+  const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.roomId)?.name : undefined))
+  const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
+  const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!retry) return
@@ -37,7 +43,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, online, hooks, retry, scripts, setupCode, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
