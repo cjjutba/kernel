@@ -26,7 +26,7 @@ Release Kernel, following docs/RELEASING.md. I start it, I read the notes, and I
 
 6. **Verify** once the log says `published`:
    - `gh release view v<version> --repo cjjutba/kernel --json body,assets`: the body starts with the notes and ends with "Full list of changes", and the DMG, zip, blockmaps and `latest-mac.yml` are attached.
-   - `curl -sL https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`: `version: <version>` and the notes under `releaseNotes`.
+   - `curl -sL https://github.com/cjjutba/kernel/releases/latest/download/latest-mac.yml`: `version: <version>`, the notes under `releaseNotes`, and a `minimumSystemVersion` line (22.0.0 while Kernel needs macOS 13).
    - `curl -sIL https://github.com/cjjutba/kernel/releases/latest/download/Kernel-arm64.dmg`: the redirect points at the `v<version>` asset.
    - `curl -s https://kernel.cjjutba.dev/changelog`: the page shows `<version>` as its own entry at the top, with the Latest badge. The site checks GitHub's latest release every 5 minutes, and the first visit after that refreshes the page, so it can take up to 5 minutes and a second request. If it isn't there yet, say so and stop; don't poll.
 

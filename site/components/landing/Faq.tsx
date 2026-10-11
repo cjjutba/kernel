@@ -9,7 +9,7 @@ const faqs = [
   { q: 'Which coding agents does it support?', a: 'Claude Code today. Support for more agents is on the roadmap.' },
   {
     q: 'What do I need to run it?',
-    a: 'A Mac with Apple silicon, Claude Code signed in to a Claude plan, git, and the GitHub CLI for pull requests. Kernel checks all of this on first launch and tells you how to fix anything missing.'
+    a: 'A Mac with Apple silicon on macOS 13 or later, Claude Code signed in to a Claude plan, git, and the GitHub CLI for pull requests. Kernel checks all of this on first launch and tells you how to fix anything missing.'
   },
   {
     q: 'Does my code leave my Mac?',

@@ -1,5 +1,5 @@
 ---
-type: internal
+type: improved
 issue: KERNEL-223
 ---
-Kernel runs on Electron 44, a release that still gets Chromium security fixes, and now needs macOS 13 or later.
+Kernel now needs macOS 13 or later, since it moved to Electron 44 to keep getting security fixes, and Macs on macOS 12 aren't offered this update.
