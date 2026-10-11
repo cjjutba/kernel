@@ -1,4 +1,4 @@
-import type { ChatPart } from '@shared/types'
+import type { ChatPart, QueuedMessage } from '@shared/types'
 
 type Listener = (part: ChatPart) => void
 const listeners = new Set<Listener>()
@@ -61,4 +61,14 @@ export function commandComposer(c: ComposerCommand) { for (const l of commands) 
 export function onComposerCommand(listener: (c: ComposerCommand) => void) {
   commands.add(listener)
   return () => { commands.delete(listener) }
+}
+
+/** Edit on a queued message drawn outside the composer, as the setup wait's bubbles are: the composer pulls it back into the box (KERNEL-430). */
+const edits = new Set<(q: QueuedMessage) => void>()
+
+export function editQueuedInComposer(q: QueuedMessage) { for (const l of edits) l(q) }
+
+export function onEditQueued(listener: (q: QueuedMessage) => void) {
+  edits.add(listener)
+  return () => { edits.delete(listener) }
 }

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { AppUpdate } from '../src/shared/types'
 import { bus } from '../src/main/bus'
-import { parseNotes, Updater, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
+import { blockedReason, parseNotes, Updater, type UpdateEngine, type UpdateInfo } from '../src/main/updater'
 import { packagedClaude } from '../src/main/services/sessions'
 
 /** Stands in for electron-updater's autoUpdater. `next` is what the following check emits. */
@@ -140,6 +140,35 @@ describe('Updater', () => {
     await new Updater({ current: '0.1.0', dataDir, engine }).check()
     await saved(dataDir, { version: '0.2.0' })
     expect(new Updater({ current: '0.1.0', dataDir, engine: new FakeEngine() }).get().installed).toBeUndefined()
+  })
+})
+
+// KERNEL-443: a copy outside Applications can't replace itself, so it never checks and says why.
+describe('Updater outside Applications', () => {
+  it('says where it runs and how to fix it, and never asks GitHub', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const engine = new FakeEngine()
+    const checks = vi.spyOn(engine, 'checkForUpdates')
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine, outside: 'Downloads' })
+    const blocked = 'Kernel is running from Downloads. Move it to Applications and open it from there.'
+    expect(blockedReason('Downloads')).toBe(blocked)
+    expect(u.get()).toMatchObject({ status: 'idle', blocked })
+    u.start()
+    expect(warn).toHaveBeenCalledWith(`[kernel] updates are off: ${blocked}`)
+    expect(await u.check()).toMatchObject({ status: 'idle', blocked })
+    expect(await u.readyWithin(5000)).toBeUndefined()
+    expect(checks).not.toHaveBeenCalled()
+    u.stop()
+    warn.mockRestore()
+  })
+
+  it('checks as before in Applications', async () => {
+    const engine = new FakeEngine()
+    engine.next = download
+    const u = new Updater({ current: '0.1.0', dataDir: await dir(), engine })
+    expect(u.get().blocked).toBeUndefined()
+    expect(await u.check()).toMatchObject({ status: 'ready', version: '0.2.0' })
   })
 })
 
