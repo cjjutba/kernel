@@ -69,6 +69,11 @@ interface Live {
   proc: Proc
   /** Called once when the running turn ends. Set by `shutdown`, which waits for interrupted turns. */
   whenIdle?: () => void
+  /**
+   * Kernel's quit interrupted this turn. Claude Code answers a running tool with its own rejection text, which reads as the
+   * user refusing it, so the row says Kernel quit instead (KERNEL-396).
+   */
+  quit?: boolean
   /** This turn carries on a chat a quit cut off (KERNEL-215): the nudge, or what was queued before it. */
   carrying?: boolean
   /** This turn hit a sign-out or a dropped connection. */
@@ -879,6 +884,7 @@ export class Sessions {
       // Like Send now, the turn ends without dropping the queue, and no interrupted row: the note at launch says it.
       live.interrupted = true
       live.sendNext = true
+      live.quit = true
       void live.query.interrupt().catch(() => undefined)
     })))
     await Promise.race([ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, budgetMs) })])
@@ -990,9 +996,12 @@ export class Sessions {
 
   private async consume(chatId: string, ws: Workspace, live: Live) {
     let ended: string | null = null
+    // Kernel is quitting and ended this process. The stream ends on its own time, often after Kernel has closed the store,
+    // and nothing of it changes what carries on: `shutdown` already froze the journal and kept the queue (KERNEL-396).
+    const quitEnded = () => this.closing && live.abort.signal.aborted
     try {
       // A stopped process can still deliver lines it had already written. Once a newer session owns the chat, they are dropped.
-      for await (const msg of live.query) if (!this.replaced(chatId, live)) this.handle(chatId, ws, live, msg)
+      for await (const msg of live.query) if (!this.replaced(chatId, live) && !quitEnded()) this.handle(chatId, ws, live, msg)
       // Nobody asked it to stop, so the process went away on its own.
       if (!live.abort.signal.aborted) ended = ''
     } catch (err) {
@@ -1001,19 +1010,21 @@ export class Sessions {
         this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
       }
     } finally {
-      const replaced = this.replaced(chatId, live)
-      const midTurn = live.running
-      if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
-      const chat = this.d.store.chat(chatId)
-      if (chat && !replaced) this.setRunning(chat, ws, live, false)
-      if (chat && !replaced) this.drainWaiting()
-      if (chat && !replaced && ended !== null) {
-        // A message that waited for this chat may have started a new session just now. Then it is working again.
-        const resumed = !!this.live.get(chatId)?.running
-        // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
-        if (midTurn && !resumed) this.crashed.add(chatId)
-        if (!resumed) this.offline(ws, ended)
-        this.d.onExit?.(ws, chat, ended, midTurn, resumed)
+      if (!quitEnded()) {
+        const replaced = this.replaced(chatId, live)
+        const midTurn = live.running
+        if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
+        const chat = this.d.store.chat(chatId)
+        if (chat && !replaced) this.setRunning(chat, ws, live, false)
+        if (chat && !replaced) this.drainWaiting()
+        if (chat && !replaced && ended !== null) {
+          // A message that waited for this chat may have started a new session just now. Then it is working again.
+          const resumed = !!this.live.get(chatId)?.running
+          // Kernel's own messages wait until the user acts on a session that died mid-turn, so they can't loop a broken one.
+          if (midTurn && !resumed) this.crashed.add(chatId)
+          if (!resumed) this.offline(ws, ended)
+          this.d.onExit?.(ws, chat, ended, midTurn, resumed)
+        }
       }
     }
   }
@@ -1151,7 +1162,9 @@ export class Sessions {
           if (!item) continue
           const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
           const cut = output.length > TOOL_TEXT_MAX
-          const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, TOOL_TEXT_MAX), outputCut: cut || undefined, ts: item.ts } as ChatItem & { kind: 'tool' }
+          const done = (live.quit
+            ? { ...item, status: 'failed', output: TOOL_STOPPED, outputCut: undefined }
+            : { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, TOOL_TEXT_MAX), outputCut: cut || undefined, ts: item.ts }) as ChatItem & { kind: 'tool' }
           live.toolItems.set(block.tool_use_id, done)
           this.item(chat, done)
         }

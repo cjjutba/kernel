@@ -249,6 +249,23 @@ describe('agents that were working when Kernel quit or crashed (KERNEL-215)', ()
     store.db.close()
   }, 30000)
 
+  it('sends the nudge to a chat a quit cut off by the abort once the launch check finishes (KERNEL-396)', async () => {
+    const { k, where, kai } = await working()
+    for (const q of k.sessions.queued(kai.id)) k.sessions.unqueue(kai.id, q.id)
+    // The turn ignores the interrupt and there is no budget, as in the live test's abort case.
+    sdk.deaf = true
+    try { await k.stop({ budgetMs: 0 }) } finally { sdk.deaf = false }
+    let answer!: (signedIn: boolean) => void
+    const { k: k2 } = await relaunch(where, { signedIn: () => new Promise((r) => { answer = r }) })
+    // `claude auth status` is still running when start() returns, so the nudge hasn't gone out yet.
+    expect(notes(k2, kai)).toEqual([QUIT_NOTE])
+    expect(users(k2, kai)).not.toContain(RELAUNCH_NUDGE)
+    answer(true)
+    await flush()
+    expect(k2.sessions.isRunning(kai.id)).toBe(true)
+    expect(users(k2, kai).at(-1)).toBe(RELAUNCH_NUDGE)
+  }, 30000)
+
   it("loads a cut-off list saved before KERNEL-215 as a limit, and the chat carries on with its agent's prompt", async () => {
     const { k, where, ws, kai } = await working()
     await k.stop()
