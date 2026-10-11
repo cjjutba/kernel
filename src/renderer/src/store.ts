@@ -1,7 +1,7 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, GitHubStatus, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  ForcedUi, GitHubStatus, HookStatus, MenuId, MergeQueue, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
   RoomSettingsSection, RoomSetupStep, Route, ScriptKind, ScriptTrust, SettingsPage, ScriptLine, SharedFile, Task, Theme, Thread, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { KernelApi, PushEvent, Retry } from '@shared/ipc'
@@ -76,6 +76,8 @@ export interface State {
   // pull requests
   /** By workspace id. */
   prs: Record<string, PrInfo>
+  /** By room id, the Merge all run going in that room (KERNEL-411). */
+  mergeQueues: Record<string, MergeQueue>
   // usage, account, settings, system
   usage: RateLimit[]
   account: ClaudeAccount | null
@@ -147,7 +149,7 @@ let state: State = {
   workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
   chats: {}, threads: {}, lastThread: {}, lastTabs: lastTabs(), items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, terminalReplays: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
-  prs: {},
+  prs: {}, mergeQueues: {},
   usage: [], account: null, settings: null, roomSettings: {}, shared: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null, github: {} },
   quickAsk: {},
@@ -573,7 +575,11 @@ export const actions = {
   },
   prs: {
     set: (info: PrInfo) => setState((s) => ({ prs: { ...s.prs, [info.workspaceId]: info } })),
-    setState: (workspaceId: string, prState: Workspace['prState']) => setState((s) => ({ workspaces: s.workspaces.map((w) => (w.id === workspaceId ? { ...w, prState } : w)) }))
+    setState: (workspaceId: string, prState: Workspace['prState']) => setState((s) => ({ workspaces: s.workspaces.map((w) => (w.id === workspaceId ? { ...w, prState } : w)) })),
+    setQueue: (roomId: string, queue: MergeQueue | undefined) => setState((s) => {
+      const { [roomId]: _, ...rest } = s.mergeQueues
+      return { mergeQueues: queue ? { ...rest, [roomId]: queue } : rest }
+    })
   },
   usage: {
     set: (limits: RateLimit[]) => setState({ usage: limits })
@@ -632,6 +638,7 @@ export function apply(e: PushEvent) {
     case 'usage': return actions.usage.set(e.limits)
     case 'pr': return actions.prs.setState(e.workspaceId, e.state)
     case 'pr.info': return actions.prs.set(e.info)
+    case 'pr.queue': return actions.prs.setQueue(e.roomId, e.queue)
     case 'thread': return actions.threads.upsert(e.thread)
     case 'shared': return actions.shared.upsert(e.file)
     case 'hooks': return actions.system.setHooks(e.status)

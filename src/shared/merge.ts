@@ -62,3 +62,22 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   const holder = blocking.length ? latest(blocking) : verdicts.length && !current.some((v) => v.verdict === 'approved') ? latest(verdicts) : undefined
   return holder && `${name(holder.agentId)} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`
 }
+
+/** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
+export interface ReviewPhrase { text: string; tone: 'good' | 'bad' | 'faint' }
+
+/**
+ * One wording for a PR's review wherever it shows (KERNEL-411): "Theo is reviewing", "Theo found 2 blockers", "Theo approved",
+ * "Lumi reviewed an earlier commit" or "Not reviewed". Names come resolved. A review in progress wins, then blockers on the
+ * head commit, then approvals of it, then a review of an earlier commit.
+ */
+export function reviewPhrase(r: { reviewing?: string; blockers?: { name: string; count?: number }; approvedBy?: string[]; stale?: string | true }): ReviewPhrase {
+  if (r.reviewing) return { text: `${r.reviewing} is reviewing`, tone: 'faint' }
+  if (r.blockers) {
+    const n = r.blockers.count
+    return { text: `${r.blockers.name} found ${n ? `${n} ${n === 1 ? 'blocker' : 'blockers'}` : 'blockers'}`, tone: 'bad' }
+  }
+  if (r.approvedBy?.length) return { text: `${r.approvedBy.join(' and ')} approved`, tone: 'good' }
+  if (r.stale) return { text: r.stale === true ? 'Reviewed an earlier commit' : `${r.stale} reviewed an earlier commit`, tone: 'faint' }
+  return { text: 'Not reviewed', tone: 'faint' }
+}

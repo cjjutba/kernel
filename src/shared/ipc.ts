@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrBlocked, PrInfo, PrState,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
   PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -212,6 +212,8 @@ export interface KernelApi {
   'pr.create': { req: { workspaceId: string; draft?: boolean }; res: Workspace }
   'pr.refresh': { req: { workspaceId: string }; res: Workspace }
   'pr.merge': { req: { workspaceId: string }; res: Workspace }
+  /** Merges the room's ready PRs one at a time, in the order given, and stops at the first that can't merge (KERNEL-411). */
+  'pr.mergeAll': { req: { roomId: string; workspaceIds: string[] }; res: MergeAllResult }
   /** One button for conflicts, failing checks and review comments. Sends the matching instructions to the agent. */
   'pr.resolve': { req: { workspaceId: string }; res: Ok }
   'pr.ready': { req: { workspaceId: string }; res: Workspace }
@@ -402,6 +404,8 @@ export type PushEvent =
   | { type: 'pr.info'; info: PrInfo }
   /** A ready PR GitHub started blocking (`blocked` set) or stopped blocking, while its state stayed ready (KERNEL-401). */
   | { type: 'pr.blocked'; workspaceId: string; blocked?: PrBlocked }
+  /** A room's Merge all run moved on to its next PR, or ended (no `queue`) (KERNEL-411). */
+  | { type: 'pr.queue'; roomId: string; queue?: MergeQueue }
   | { type: 'github'; status: GitHubStatus }
   | { type: 'hooks'; status: HookStatus }
   | { type: 'update'; update: AppUpdate }
