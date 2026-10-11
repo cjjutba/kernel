@@ -1,10 +1,11 @@
-import type { AgentDef, Approval, Room, Route, SettingsPage, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Room, Route, SettingsPage, SharedFile, Workspace } from '@shared/types'
 
 import { roomLetter } from '../rooms/roomInfo'
 import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
+import { kindLabel, latestOf, sinceShort } from '../workspace/shared/shared'
 
-export type Section = 'Suggested' | 'Go to' | 'Rooms' | 'Results'
+export type Section = 'Suggested' | 'Shared' | 'Go to' | 'Rooms' | 'Results'
 
 export interface PaletteItem {
   id: string
@@ -16,6 +17,8 @@ export interface PaletteItem {
   keys?: string[]
   /** Lowercase extra words the fuzzy search also matches, so "preferences" finds Settings. */
   also?: string
+  /** Muted text on the right, in place of shortcut caps: what a shared file is and who shared it. */
+  meta?: string
   run: () => void
 }
 
@@ -64,6 +67,8 @@ export interface PaletteInput {
   rooms: Room[]
   workspaces: Workspace[]
   approvals: Approval[]
+  /** Every shared file, from the store. */
+  shared: SharedFile[]
   /** By room id. */
   agents: Record<string, AgentDef[]>
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
@@ -79,6 +84,8 @@ export interface PaletteInput {
     openLead: (roomId: string) => void
     /** Where a room opens: its Lead chat, or Team when it has no Lead (D-104). */
     openRoom: (roomId: string) => void
+    /** Opens a shared file's tab in a workspace and shows that workspace. */
+    openShared: (workspaceId: string, sharedId: string) => void
   }
 }
 
@@ -87,6 +94,9 @@ export function roomInView(route: Route, rooms: Room[], workspaces: Workspace[])
   const id = 'roomId' in route ? route.roomId : route.name === 'workspace' ? workspaces.find((w) => w.id === route.workspaceId)?.roomId : undefined
   return rooms.find((r) => r.id === id) ?? rooms.find((r) => !r.hidden && !r.archived)
 }
+
+/** How many shared files the palette lists before you type. */
+const SHARED_DEFAULT = 5
 
 const live = (w: Workspace) => w.status !== 'archived' && w.name !== 'lead'
 
@@ -137,8 +147,31 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     item('room-new', 'Rooms', '+', 'New room', act.newRoom, { also: 'add connect repo' })
   ]
 
+  // The sharing workspace if it is still open, else the workspace on screen, else the room's Lead workspace (KERNEL-307).
+  const sharedTarget = (f: SharedFile): Workspace | undefined => {
+    const open = (w?: Workspace) => (w && w.status !== 'archived' ? w : undefined)
+    const leadId = i.agents[f.roomId]?.find((a) => a.lead)?.id
+    return open(workspaces.find((w) => w.id === f.workspaceId)) ?? open(current) ?? open(workspaces.find((w) => w.roomId === f.roomId && (w.agentId === leadId || w.name === 'lead')))
+  }
+  const sharedItems = i.shared
+    .slice()
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .flatMap((f) => {
+      const target = sharedTarget(f)
+      if (!target || !f.versions.length) return []
+      const latest = latestOf(f)
+      const by = nameOf(f.roomId, f.agentId) ?? f.agentId
+      const kind = kindLabel(f.kind, latest.mime)
+      const it = item(`shared-${f.id}`, 'Shared', '◇', f.title, () => act.openShared(target.id, f.id), { also: `${kind} ${f.kind} ${f.source} ${by}`, meta: `${kind} · v${latest.n} · ${by} · ${sinceShort(f.updatedAt)}` })
+      return [{ roomId: f.roomId, it }]
+    })
+  // With nothing typed: the five newest in the room in view. Typing searches the rest as well.
+  const sharedNow = sharedItems.filter((x) => x.roomId === room?.id).slice(0, SHARED_DEFAULT).map((x) => x.it)
+  const sharedRest = sharedItems.map((x) => x.it).filter((x) => !sharedNow.includes(x))
+
   // Typing searches these too, so the default list stays short.
   const more: PaletteItem[] = [
+    ...sharedRest,
     goto('go-home', 'Home', { name: 'home' }),
     goto('go-rooms', 'All rooms', { name: 'rooms' }),
     ...visible.flatMap((r) => {
@@ -156,14 +189,14 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))
   ]
 
-  return { items: [...suggested, ...goDefault, ...roomItems], more }
+  return { items: [...suggested, ...sharedNow, ...goDefault, ...roomItems], more }
 }
 
 /** What the list shows for a query. No query: the three sections. A query: one ranked list over everything. */
 export function visibleItems(items: PaletteItem[], more: PaletteItem[], query: string): { section: Section; list: PaletteItem[] }[] {
-  if (!query.trim()) return (['Suggested', 'Go to', 'Rooms'] as const).map((section) => ({ section, list: items.filter((x) => x.section === section) })).filter((g) => g.list.length)
+  if (!query.trim()) return (['Suggested', 'Shared', 'Go to', 'Rooms'] as const).map((section) => ({ section, list: items.filter((x) => x.section === section) })).filter((g) => g.list.length)
   const seen = new Set<string>()
-  const all = [...items, ...more].filter((x) => (seen.has(x.label) ? false : (seen.add(x.label), true)))
+  const all = [...items, ...more].filter((x) => { const key = x.section === 'Shared' ? x.id : x.label; return seen.has(key) ? false : (seen.add(key), true) })
   const list = rank(all, query)
   return list.length ? [{ section: 'Results', list }] : []
 }
