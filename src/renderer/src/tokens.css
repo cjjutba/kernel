@@ -69,7 +69,7 @@
   --chip-line: #2e3036;
   --pill-line: #1f2024;
   --track: #3e3e44;
-  --scrim: rgba(0, 0, 0, 0.55);
+  --scrim: rgba(0, 0, 0, 0.3);
   --focus: rgba(247, 248, 248, 0.55);
   --term-black: #62666d;
   --term-red: #eb5757;
@@ -145,7 +145,7 @@
   --chip-line: #d2d2d8;
   --pill-line: #e4e4e7;
   --track: #bdbdc3;
-  --scrim: rgba(20, 21, 24, 0.28);
+  --scrim: rgba(20, 21, 24, 0.14);
   --focus: rgba(24, 25, 27, 0.55);
   --term-black: #18191b;
   --term-red: #b32e2e;
@@ -242,7 +242,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .menu-item:hover { background: var(--hover); }
 
 /* modal: one shell for every dialog */
-.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(8px); }
+.scrim { position: fixed; inset: 0; z-index: 40; background: var(--scrim); backdrop-filter: blur(2px); }
 /* Modal sets `--modal-y`, the dialog's top in px on the canvas. A dialog taller than the window scrolls (D-084). */
 .modal { --modal-y: 140; --modal-top: calc(var(--modal-y) * 1px); position: fixed; z-index: 50; left: 50%; top: var(--modal-top); transform: translateX(-50%); width: 620px; max-width: calc(100vw - 40px); max-height: calc(100vh - var(--modal-top) - 16px); overflow-y: auto; display: flex; flex-direction: column; border-radius: var(--r-xl); border: 1px solid var(--line-3); background: var(--surface-2); }
 .modal-head { display: flex; align-items: center; height: 52px; padding: 0 10px 0 18px; }
