@@ -16,12 +16,18 @@ import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
 import { insideRoots, isAppUrl } from './windowGuard'
+import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
 import type { Room, Workspace } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
 
 const here = dirname(fileURLToPath(import.meta.url))
 let win: BrowserWindow | null = null
+/** Kernel's own window. Thumbnails draw in offscreen windows, so events, focus and dialogs go here, never to the first window. */
+const mainWindow = () => (win && !win.isDestroyed() ? win : null)
+let preview: PreviewHost | undefined
+// Shared HTML loads from kernel-shared: in its own locked-down view (KERNEL-303). Schemes register before the app is ready.
+registerPreviewScheme()
 
 // The fuses turn ELECTRON_RUN_AS_NODE off in the packaged app, so scripts/release.sh checks the native modules through
 // this argument instead: load both the way the app does, print ok and quit, before any window, lock or database.
@@ -67,7 +73,7 @@ app.on('second-instance', () => focusWindow())
 
 /** Brings the window forward, or opens one if it was closed. A headless run stays hidden. */
 function focusWindow() {
-  const w = BrowserWindow.getAllWindows()[0]
+  const w = mainWindow()
   if (!w) { if (app.isReady()) createWindow(); return }
   if (headless) return
   if (w.isMinimized()) w.restore()
@@ -100,6 +106,7 @@ function createWindow() {
     }
   })
   if (!headless) win.once('ready-to-show', () => win?.show())
+  win.on('closed', () => { preview?.closeAll(); win = null })
   // The window only ever shows the app. A dropped HTML file, a link or a redirect would otherwise load in it, and
   // a foreign page in this window gets the bridge.
   const stay = (e: { url: string; preventDefault(): void }) => { if (!isAppUrl(e.url, appUrl)) e.preventDefault() }
@@ -140,8 +147,15 @@ app.whenReady().then(async () => {
   }
   let handlers: Record<string, (req: unknown) => Promise<unknown>>
   let started: Promise<void> = Promise.resolve()
-  if (fixture) handlers = fixtureHandlers(fixture) as typeof handlers
-  else {
+  if (fixture) {
+    handlers = fixtureHandlers(fixture) as typeof handlers
+    // A fixture run has no live previews, except in test/preview.e2e.test.ts: a dev build there serves copies from the
+    // fixture's data folder, and the test reaches the host for thumbnails.
+    if (!app.isPackaged && process.env.KERNEL_E2E_PREVIEWS === '1') {
+      preview = new PreviewHost({ window: mainWindow, file: copiesIn(app.getPath('userData')), push: (e) => bus.push(e), dev: true })
+      ;(globalThis as { kernelPreview?: PreviewHost }).kernelPreview = preview
+    }
+  } else {
     // Only a packaged, signed app can update itself. Dev runs report no update. scripts/release.sh writes the version's
     // notes into the build for What's new (KERNEL-154).
     const updater = app.isPackaged
@@ -157,7 +171,7 @@ app.whenReady().then(async () => {
       working: (): number => kernel.workingAgents(),
       ask: async (d) => {
         // A closed window gets no dialog parent, and the dialog shows on its own. focusWindow would open a new one.
-        const w = BrowserWindow.getAllWindows()[0]
+        const w = mainWindow()
         if (!w) return (await dialog.showMessageBox(d)).response === 0
         focusWindow()
         return (await dialog.showMessageBox(w, d)).response === 0
@@ -166,11 +180,13 @@ app.whenReady().then(async () => {
       quit: () => app.quit(),
       quiet: headless
     })
+    // Draws shared HTML in locked-down views and thumbnails shared files for their cards (KERNEL-303).
+    preview = new PreviewHost({ window: mainWindow, file: (id, n) => kernel.sharedFile(id, n), push: (e) => bus.push(e), dev: !app.isPackaged })
     const installed = isInstalledCopy({ packaged: app.isPackaged, inApplicationsFolder: app.isPackaged && app.isInApplicationsFolder(), exePath: app.getPath('exe'), home: app.getPath('home') })
     const kernel = new Kernel({
       dataDir: app.getPath('userData'),
       starterDir: join(app.getAppPath(), 'docs', 'starter-agents'),
-      inBackground: () => !BrowserWindow.getAllWindows().some((w) => w.isFocused()),
+      inBackground: () => !mainWindow()?.isFocused(),
       probeNetwork: () => probeNetwork(),
       refreshPath,
       // Variables are kept with the Keychain. Where it can't be used, Kernel saves none rather than plain text (KERNEL-247).
@@ -187,7 +203,10 @@ app.whenReady().then(async () => {
         banner.on('click', () => focusWindow())
         banner.show()
       },
-      confirmQuit: () => quit.confirmUpdate()
+      confirmQuit: () => quit.confirmUpdate(),
+      capture: preview,
+      reveal: (path) => shell.showItemInFolder(path),
+      openFile: async (path) => { const err = await shell.openPath(path); if (err) throw new Error(err) }
     })
     app.on('before-quit', (e) => quit.beforeQuit(e))
     powerMonitor.on('shutdown', () => quit.shutdown())
@@ -217,6 +236,8 @@ app.whenReady().then(async () => {
     await shell.openExternal(url)
     return { ok: true }
   })
+  const previews: PreviewHandlers = preview?.handlers() ?? previewFixture(fixture!)
+  for (const [channel, fn] of Object.entries(previews) as [string, (req: unknown) => Promise<unknown>][]) handle(channel, async (_e, req) => { await started; return fn(req) })
   handle('system.fixture' satisfies Channel, async () => (fixture ? { ui: { ...fixture.ui, ...fixtureTheme() }, push: fixturePush(fixture) } : null))
   handle('system.trafficLights' satisfies Channel, async (e, { at }: KernelApi['system.trafficLights']['req']) => { BrowserWindow.fromWebContents(e.sender)?.setWindowButtonPosition(LIGHTS[at]); return { ok: true } })
   // Never shell.openPath: on a tracked run.command or .terminal file it runs the file, and checkouts carry no quarantine
@@ -230,9 +251,9 @@ app.whenReady().then(async () => {
     if (r.code !== 0) shell.showItemInFolder(path)
     return { ok: true }
   })
-  bus.on('push', (event) => { for (const w of BrowserWindow.getAllWindows()) w.webContents.send('kernel:event', event) })
+  bus.on('push', (event) => mainWindow()?.webContents.send('kernel:event', event))
   createWindow()
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })
+  app.on('activate', () => { if (!mainWindow()) createWindow() })
 }).catch(bootFailed)
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

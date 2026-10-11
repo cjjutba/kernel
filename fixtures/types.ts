@@ -80,8 +80,11 @@ export interface Fixture {
   update?: AppUpdate
   /** Files agents shared (KERNEL-302). `shared.list` filters them by room or workspace. */
   shared?: SharedFile[]
-  /** By shared id, then version: what `shared.read` returns. Images and PDFs as a data URL, Markdown and HTML as text. */
-  sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string }>>
+  /**
+   * By shared id, then version: what `shared.read` returns. Images and PDFs as a data URL, Markdown and HTML as text.
+   * `still` is what `system.preview.open` returns in place of a live view, the thumbnail when unset (KERNEL-303).
+   */
+  sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string; still?: string }>>
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run

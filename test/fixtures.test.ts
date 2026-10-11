@@ -14,7 +14,9 @@ const noCanvas = [
   'WorkspaceLeadPlan', // Rowan's plan on the main checkout
   'WorkspaceLeadUpdate', // Kernel's Team update card in Rowan's chat (KERNEL-127, D-128)
   'WorkspaceContextRing',
+  'WorkspaceContextRingNear',
   'WorkspaceContextPopover',
+  'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
   'InboxOverlap',
   'TeamEmpty',

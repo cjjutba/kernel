@@ -25,6 +25,18 @@ function newChat(workspaceId: string, kind?: 'terminal') {
   }).catch(fail('Could not open the tab'))
 }
 
+/** A shared file opens in the workspace the model picked, and that workspace comes on screen. */
+function openShared(workspaceId: string, sharedId: string) {
+  go({ name: 'workspace', workspaceId })
+  actions.ui.openShared(workspaceId, sharedId)
+}
+
+/** The room has no Lead workspace yet: open it (the engine makes it), then the file's tab, now that it is on screen. */
+async function openSharedInLead(roomId: string, sharedId: string) {
+  const ws = await openLead(roomId)
+  if (ws) actions.ui.openShared(ws.id, sharedId)
+}
+
 /** CommandPalette.png: search and run anything, from the keyboard (⌘K). */
 export function CommandPalette() {
   const route = useStore((s) => s.ui.route)
@@ -32,6 +44,7 @@ export function CommandPalette() {
   const workspaces = useStore((s) => s.workspaces)
   const approvals = useStore((s) => s.approvals)
   const agents = useStore((s) => s.agents)
+  const shared = useStore((s) => s.shared)
   const terminalSettings = useStore((s) => s.settings?.terminal)
   const presets = useTerminalPresets()
   const terminal = useMemo(() => terminalSettings && { enabled: terminalSettings.enabled, preset: presets ? selectedPreset(presets, terminalSettings)?.name : undefined }, [terminalSettings, presets])
@@ -40,9 +53,9 @@ export function CommandPalette() {
   const list = useRef<HTMLDivElement>(null)
 
   const { items, more } = useMemo(() => buildItems({
-    route, rooms, workspaces, approvals, agents, terminal,
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId) }
-  }), [route, rooms, workspaces, approvals, agents, terminal])
+    route, rooms, workspaces, approvals, agents, terminal, shared: Object.values(shared),
+    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }) }
+  }), [route, rooms, workspaces, approvals, agents, terminal, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)
   const cur = Math.min(at, Math.max(0, flat.length - 1))
@@ -75,6 +88,7 @@ export function CommandPalette() {
               <div key={it.id} id={`cp-${it.id}`} role="option" aria-selected={flat[cur]?.id === it.id} className="cp-row" onMouseMove={() => setAt(flat.indexOf(it))} onClick={() => run(it)}>
                 <span className="cp-glyph" aria-hidden="true">{it.glyph}</span>
                 <span className="grow ellipsis">{it.label}</span>
+                {it.meta && <span className="cp-meta ellipsis">{it.meta}</span>}
                 {it.keys && <span className="cp-keys" aria-label={`Shortcut ${it.keys.join(' ')}`}>{it.keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>}
               </div>
             ))}

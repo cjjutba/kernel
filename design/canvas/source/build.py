@@ -178,8 +178,13 @@ WS=[
     ('WorkspaceSharedCrashed','sharedcrashed'),
     ('WorkspaceSharedPanel','sharedpanel'),
     ('WorkspaceSharedPanelEmpty','sharedpanelempty'),
+    ('WorkspaceSharedComment','sharedcomment'),
+    ('WorkspaceSharedCommentImage','sharedcommentimage'),
+    ('WorkspaceSharedCommentSent','sharedcommentsent'),
+    ('WorkspaceSharedCommentArchived','sharedcommentarchived'),
+    ('WorkspaceSharedCommentOlder','sharedcommentolder'),
 ]
-for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel') else 'ws', hooks_down=sc=='hooks')
+for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
