@@ -11,6 +11,9 @@ const DAY = 24 * 60 * 60 * 1000
 export const KEEP_ACTIVITY_MS = 30 * DAY
 /** A tool approval settled longer ago than this keeps its row and a short summary of its input. */
 export const KEEP_APPROVAL_INPUT_MS = 7 * DAY
+/** The file compacts at start when free pages hold more than this many bytes and more than this share of it (KERNEL-333). */
+export const COMPACT_MIN_FREE_BYTES = 32 * 1024 * 1024
+export const COMPACT_MIN_FREE_SHARE = 0.2
 
 export class Store {
   readonly db: Database.Database
@@ -33,6 +36,7 @@ export class Store {
       throw err
     }
     this.safePrune()
+    this.safeCompact()
     // kernel.ts closes `db` itself on stop, so the timer checks it is still open.
     this.pruneTimer = setInterval(() => { if (this.db.open) this.safePrune() }, DAY)
     this.pruneTimer.unref()
@@ -64,6 +68,25 @@ export class Store {
     try { this.prune() } catch (err) { console.warn('[db] prune failed', err) }
   }
 
+  /**
+   * Deleting rows leaves free pages and the file keeps its size. When they pass both thresholds, `vacuum` rewrites the file
+   * without them (KERNEL-333). It runs at start, before any session, so nothing waits on it; it reclaims what Delete in
+   * History and pruning freed. Returns whether it ran.
+   */
+  compact(minBytes = COMPACT_MIN_FREE_BYTES, minShare = COMPACT_MIN_FREE_SHARE): boolean {
+    const pages = (name: string) => Number(this.db.pragma(name, { simple: true }))
+    const free = pages('freelist_count')
+    if (free * pages('page_size') <= minBytes || free <= pages('page_count') * minShare) return false
+    this.db.exec('vacuum')
+    // In WAL mode the vacuumed pages sit in the log until a checkpoint copies them in and the files shrink.
+    this.db.pragma('wal_checkpoint(truncate)')
+    return true
+  }
+
+  private safeCompact() {
+    try { this.compact() } catch (err) { console.warn('[db] compact failed', err) }
+  }
+
   // rooms
   rooms(): Room[] { return this.all('select data from rooms order by created_at') }
   room(id: string): Room | undefined { return this.one('select data from rooms where id = ?', id) }
@@ -83,6 +106,24 @@ export class Store {
       this.db.prepare('delete from overlaps where room_id = ?').run(id)
       this.db.prepare('delete from shared_files where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
+    })()
+  }
+
+  /**
+   * Kernel's record of workspaces, for Delete in History (KERNEL-333): their chats and chat items, shared files, and the
+   * approvals, activity and notifications that name them. Nothing on disk, and nothing in the room. The ids go in once as
+   * JSON, so deleting many is one statement per table.
+   */
+  deleteWorkspaces(ids: string[]) {
+    if (!ids.length) return
+    const json = JSON.stringify(ids)
+    const mine = 'select value from json_each(?)'
+    this.db.transaction(() => {
+      this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${mine}))`).run(json)
+      this.db.prepare(`delete from chats where workspace_id in (${mine})`).run(json)
+      this.db.prepare(`delete from workspaces where id in (${mine})`).run(json)
+      this.db.prepare(`delete from shared_files where workspace_id in (${mine})`).run(json)
+      for (const table of ['approvals', 'activity', 'notifications']) this.db.prepare(`delete from ${table} where json_extract(data, '$.workspaceId') in (${mine})`).run(json)
     })()
   }
 

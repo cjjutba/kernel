@@ -149,6 +149,20 @@ export function snapshot(ws: CheckpointWorkspace, o: { chatId: string; title: st
   })
 }
 
+/**
+ * Deletes every checkpoint ref of a workspace: its turns and its head (KERNEL-333). Run it in the main repo, since refs live
+ * there and the worktree folder is gone. `kernel/backup/*` branches that Revert made are the user's, and stay. The commits
+ * are unreachable afterwards and git collects them in its own time. Returns how many refs went.
+ */
+export async function dropCheckpoints(repo: string, workspaceId: string): Promise<number> {
+  // An id that isn't a plain id would widen the patterns below to other workspaces' refs.
+  if (!/^[A-Za-z0-9-]+$/.test(workspaceId)) return 0
+  const refs = (await git(repo, ['for-each-ref', '--format=delete %(refname)', `refs/kernel/checkpoints/${workspaceId}/`, headRef(workspaceId)])).trim()
+  if (!refs) return 0
+  await git(repo, ['update-ref', '--stdin'], undefined, refs + '\n')
+  return refs.split('\n').length
+}
+
 const pad = (n: number) => String(n).padStart(2, '0')
 /** 10:24, the time the drawer and the revert note show. */
 export const clock = (ts: number) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }

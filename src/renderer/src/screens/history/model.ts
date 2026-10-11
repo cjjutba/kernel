@@ -35,3 +35,18 @@ export function matches(w: Workspace, query: string, room?: string, agent?: stri
   const hay = [w.name, w.title, w.branch, room, agent].filter(Boolean).join(' ').toLowerCase()
   return query.toLowerCase().split(/\s+/).filter(Boolean).every((word) => hay.includes(word))
 }
+
+/** The bulk Delete button: it acts on the rows in view, so its words follow the search and the tab. */
+export function deleteAllLabel(tab: HistoryTab, searching: boolean, n: number): string {
+  if (searching) return `Delete ${n} matching`
+  return tab === 'all' ? `Delete all ${n}` : tab === 'merged' ? `Delete ${n} merged` : `Delete ${n} not merged`
+}
+
+/** 640 MB, 3.3 MB, 12 KB. */
+export function sizeLabel(bytes: number): string {
+  const mb = bytes / 1048576
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
+  if (mb >= 10) return `${Math.round(mb)} MB`
+  if (mb >= 0.1) return `${mb.toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}

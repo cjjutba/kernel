@@ -300,6 +300,13 @@ function dropTabs(tabs: UiState['tabs'], gone: (workspaceId: string) => boolean)
   for (const id of ids) delete out[id]
   return out
 }
+/** `record` without the keys in `keys`. A record with nothing to drop keeps its identity. */
+function omit<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
+  if (!keys.some((k) => k in record)) return record
+  const out = { ...record }
+  for (const k of keys) delete out[k]
+  return out
+}
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
 
@@ -414,6 +421,18 @@ export const actions = {
   workspaces: {
     set: (list: Workspace[]) => setState((s) => ({ workspaces: list, ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => !list.some((w) => w.id === id && w.status !== 'archived')) } })),
     upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws), ui: ws.status === 'archived' ? { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => id === ws.id) } : s.ui })),
+    /** Workspaces deleted from History: their chats, chat items, script lines and tabs go with them (KERNEL-333). */
+    remove: (ids: string[]) => setState((s) => {
+      const gone = new Set(ids)
+      const chatIds = ids.flatMap((id) => (s.chats[id] ?? []).map((c) => c.id))
+      return {
+        workspaces: s.workspaces.filter((w) => !gone.has(w.id)),
+        chats: omit(s.chats, ids),
+        items: omit(s.items, chatIds),
+        scripts: omit(s.scripts, ids),
+        ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => gone.has(id)) }
+      }
+    }),
     appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
       const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
       const next = [...(s.scripts[workspaceId] ?? []), named]

@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
   PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
@@ -73,6 +73,10 @@ export interface KernelApi {
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */
   'workspaces.restore': { req: { workspaceId: string }; res: Workspace }
+  /** History > Delete, before the confirm opens: what it would remove and skip (KERNEL-333). */
+  'workspaces.deletePreview': { req: { workspaceIds: string[] }; res: DeletePreview }
+  /** History > Delete: forgets archived workspaces for good, with their branches, checkpoints and Claude Code transcripts. `deleteUnpushed` also deletes branches whose commits are pushed nowhere. */
+  'workspaces.delete': { req: { workspaceIds: string[]; deleteUnpushed: boolean }; res: DeleteResult }
   'workspaces.gitStatus': { req: { workspaceId: string }; res: WorkspaceGitStatus }
   'workspaces.changes': { req: { workspaceId: string }; res: ChangedFile[] }
   'workspaces.diff': { req: { workspaceId: string; file?: string }; res: string }
