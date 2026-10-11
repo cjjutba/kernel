@@ -12,11 +12,16 @@ import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-105: with several chats open with the Lead, each workspace reports to the chat that handed it off.
 
-// Keeps the deps the Kernel hands the Lead's server, so the tests can call one chat's tools.
+// Keeps the deps the Kernel hands the Lead's server, so the tests can call one chat's tools. With sharing on, the
+// server is built from kernelTools next to share_file rather than by kernelMcpServer (KERNEL-308), so both keep them.
 let wired: KernelToolDeps | undefined
 vi.mock('../src/main/services/kernelMcp', async (original) => {
   const m = await original<typeof import('../src/main/services/kernelMcp')>()
-  return { ...m, kernelMcpServer: (d: KernelToolDeps) => { wired = d; return m.kernelMcpServer(d) } }
+  return {
+    ...m,
+    kernelMcpServer: (d: KernelToolDeps) => { wired = d; return m.kernelMcpServer(d) },
+    kernelTools: (d: KernelToolDeps) => { wired = d; return m.kernelTools(d) }
+  }
 })
 
 const REPO = {
