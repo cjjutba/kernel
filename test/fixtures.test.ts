@@ -6,8 +6,30 @@ import { fixtureHandlers } from '../src/main/fixtures'
 
 const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
-const noCanvas = ['WorkspaceTabStates', 'WorkspaceRowsOpen', 'WorkspaceRowsFolded', 'WorkspaceDiffTab', 'WorkspaceLeadPlan', 'WorkspaceLeadUpdate', 'WorkspaceContextRing', 'WorkspaceContextRingNear', 'WorkspaceContextPopover', 'WorkspaceContextPopoverFull', 'WorkspaceQueuedCapacity', 'InboxOverlap', 'TeamEmpty', 'QuickAskAnswered', 'QuickAskOpenChat', 'QuickAskLeadGone', 'NavMemory', 'SidebarLeadChats', 'WhatsNewCurrent', 'UpdateReadyLight',
-  ...['NoChanges', 'None', 'Creating', 'Open', 'Checks', 'Conflict', 'Resolving', 'Ready', 'Merging'].map((s) => `WorkspacePR${s}`)]
+const noCanvas = [
+  'WorkspaceTabStates',
+  'WorkspaceRowsOpen', // a Thinking, a Bash and an Edit row open in place, and a running tool (KERNEL-198)
+  'WorkspaceRowsFolded', // the folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198)
+  'WorkspaceDiffTab',
+  'WorkspaceLeadPlan', // Rowan's plan on the main checkout
+  'WorkspaceLeadUpdate', // Kernel's Team update card in Rowan's chat (KERNEL-127, D-128)
+  'WorkspaceContextRing',
+  'WorkspaceContextRingNear',
+  'WorkspaceContextPopover',
+  'WorkspaceContextPopoverFull',
+  'WorkspaceQueuedCapacity',
+  'InboxOverlap',
+  'TeamEmpty',
+  'QuickAskAnswered', // Ask Rowan reopened after a question, with the answer in (KERNEL-146)
+  'QuickAskOpenChat',
+  'QuickAskLeadGone',
+  'NavMemory',
+  'SidebarLeadChats',
+  'WhatsNewCurrent', // What's new with no update ready, showing the running version's notes (KERNEL-154)
+  'UpdateReadyLight', // the update card in the light theme (KERNEL-164)
+  // The PR states the PR header canvas didn't draw (KERNEL-274, drawn in design/redesign/).
+  ...['NoChanges', 'None', 'Creating', 'Open', 'Checks', 'Conflict', 'Resolving', 'Ready', 'Merging'].map((s) => `WorkspacePR${s}`),
+]
 
 describe('fixtures', () => {
   it('every fixture key has a PNG in design/screens, except the DevUi component gallery and noCanvas', () => {
