@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, symlink } from 'node:fs/promises'
 import { execFileSync, spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -123,14 +123,20 @@ describe('questions to the user', () => {
     expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe(process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW)
   })
 
-  it('leaves plan mode once the plan is approved', async () => {
+  it('leaves plan mode once the plan is approved, and tells the composer', async () => {
     const { options, approvals, store } = await setup()
     store.saveChat({ ...store.chat('chat')!, plan: true })
+    const pushed: Chat[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat') pushed.push(e.chat) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
     const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Go' }, { signal: new AbortController().signal, toolUseID: 'p2', requestId: 'r3' })
     await flush()
     approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
     await answer
     expect(store.chat('chat')?.plan).toBe(false)
+    // Without it the box stays blue until the workspace reloads.
+    expect(pushed.at(-1)).toMatchObject({ id: 'chat', plan: false })
   })
 
   const asked = {
