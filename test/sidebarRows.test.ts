@@ -36,14 +36,21 @@ describe('sidebar rows', () => {
     expect(keys(rows)).toEqual(['chat:c1'])
   })
 
-  it('numbers the same rows top to bottom and stops at nine', () => {
-    const many = Array.from({ length: 12 }, (_, i) => ws(`w${i}`, { leadChatId: i < 6 ? 'c1' : undefined }))
-    const chats = { home: [chat('c1'), chat('c2')] }
-    expect(keys(slotsFor(room, agents, [home, ...many], chats))).toEqual([
-      'chat:c1', 'workspace:w0', 'workspace:w1', 'workspace:w2', 'workspace:w3', 'workspace:w4', 'workspace:w5', 'chat:c2', 'workspace:w6'
-    ])
-    // A room with only the Lead row numbers it first.
+  it('numbers only the chats, in sidebar order, whatever workspaces sit between them', () => {
+    const workspaces = [home, ws('w1', { leadChatId: 'c1' }), ws('w2', { leadChatId: 'c1' }), ws('w3', { leadChatId: 'c2' }), ws('loose')]
+    const chats = { home: [chat('c1'), chat('c2'), chat('c3')] }
+    expect(keys(slotsFor(room, agents, workspaces, chats))).toEqual(['chat:c1', 'chat:c2', 'chat:c3'])
+  })
+
+  it('numbers nine of ten open chats', () => {
+    const chats = { home: Array.from({ length: 10 }, (_, i) => chat(`c${i}`)) }
+    expect(keys(slotsFor(room, agents, [home], chats))).toEqual(Array.from({ length: 9 }, (_, i) => `chat:c${i}`))
+  })
+
+  it('numbers the Lead row when no chat is open, and nothing when the room has no Lead', () => {
     expect(keys(slotsFor(room, agents, [], {}))).toEqual(['lead'])
+    expect(keys(slotsFor(room, agents, [home, ws('w1')], { home: [chat('c1', { closed: true })] }))).toEqual(['lead'])
+    expect(slotsFor(room, { a: [kai] }, [ws('w1')], {})).toEqual([])
   })
 
   it('draws a workspace as unowned when its chat is archived with it or no chat is open', () => {
@@ -91,12 +98,13 @@ describe('sidebar rows with threads (KERNEL-338)', () => {
     expect(keys(sidebarRows(room, agents, [home, ws('w1', { leadChatId: 'a1' })], chats))).toEqual(['chat:t1', 'workspace:w1'])
   })
 
-  it('folds by thread id, and numbers ⌘1 to ⌘9 over the rows, so tabs add no numbers', () => {
+  it('folds by thread id, and numbers ⌘1 to ⌘9 over the chats, so tabs and workspaces add no numbers', () => {
     const chats = { home: [chat('a1', { threadId: 't1' }), chat('a2', { threadId: 't1' }), chat('a3', { threadId: 't1' }), chat('b1', { threadId: 't2' })] }
     const workspaces = [home, ws('w1', { threadId: 't1' }), ws('w2', { threadId: 't1' })]
     const threads = threadsOf(thread('t1'), thread('t2'))
-    expect(keys(slotsFor(room, agents, workspaces, chats, threads))).toEqual(['chat:t1', 'workspace:w1', 'workspace:w2', 'chat:t2'])
-    expect(keys(slotsFor(room, agents, workspaces, chats, threads, ['t1']))).toEqual(['chat:t1', 'chat:t2'])
+    expect(keys(sidebarRows(room, agents, workspaces, chats, threads))).toEqual(['chat:t1', 'workspace:w1', 'workspace:w2', 'chat:t2'])
+    expect(keys(sidebarRows(room, agents, workspaces, chats, threads, ['t1']))).toEqual(['chat:t1', 'chat:t2'])
+    expect(keys(slotsFor(room, agents, workspaces, chats, threads))).toEqual(['chat:t1', 'chat:t2'])
   })
 
   it('keeps a fold saved under a chat id from before threads, which migration 5 turned into a thread of its own', () => {
@@ -104,7 +112,7 @@ describe('sidebar rows with threads (KERNEL-338)', () => {
     const workspaces = [home, ws('w1', { threadId: 'new-uuid-1' }), ws('w2', { threadId: 'new-uuid-2' })]
     const threads = threadsOf(thread('new-uuid-1'), thread('new-uuid-2'))
     expect(keys(sidebarRows(room, agents, workspaces, chats, threads, ['c2']))).toEqual(['chat:new-uuid-1', 'chat:new-uuid-2', 'workspace:w2'])
-    expect(keys(slotsFor(room, agents, workspaces, chats, threads))).toEqual(['chat:new-uuid-1', 'workspace:w1', 'chat:new-uuid-2', 'workspace:w2'])
+    expect(keys(sidebarRows(room, agents, workspaces, chats, threads))).toEqual(['chat:new-uuid-1', 'workspace:w1', 'chat:new-uuid-2', 'workspace:w2'])
   })
 
   it('opens a thread on the tab last shown in it, else its first tab', () => {
@@ -149,9 +157,9 @@ describe('folded chats', () => {
     expect(rows.filter((r) => r.kind === 'workspace').map((r) => r.kind === 'workspace' && r.nested)).toEqual([false])
   })
 
-  it('numbers only the rows you can see, so the chat after a folded one takes the next number', () => {
-    expect(slotsFor(room, agents, workspaces, lists, {}, ['c1']).map(slotKey)).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
-    expect(slotsFor(room, agents, workspaces, lists).map(slotKey).slice(0, 3)).toEqual(['chat:c1', 'workspace:w1', 'workspace:w2'])
+  it('keeps every number when a chat is folded', () => {
+    expect(keys(slotsFor(room, agents, workspaces, lists))).toEqual(['chat:c1', 'chat:c2', 'chat:c3'])
+    expect(keys(sidebarRows(room, agents, workspaces, lists, {}, ['c1']))).toEqual(['chat:c1', 'chat:c2', 'workspace:w3', 'chat:c3', 'workspace:loose'])
   })
 })
 
