@@ -5,7 +5,7 @@ import { Icon } from '../../ui'
 import { useStore } from '../../store'
 import { leadOf, useLeadWaiting } from '../../lead'
 import { agoShort } from '../../screens/rooms/roomInfo'
-import { chatFoot, chatLine, chatSince, chatWaits } from './chatCard'
+import { chatFoot, chatLine, chatSince, chatTrusts, chatWaits } from './chatCard'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 
 const OPEN_MS = 450
@@ -188,17 +188,19 @@ export function ChatCard({ roomId, thread, tabs, owned, at, id }: { roomId: stri
   // The newest line in any tab. Tabs that haven't loaded their transcript add nothing.
   const lastItem = useStore((s) => tabs.reduce((t, c) => (s.items[c.id] ?? []).reduce((m, i) => Math.max(m, i.ts), t), 0))
   const waits = useMemo(() => chatWaits({ tabs, owned, approvals }), [tabs, owned, approvals])
-  const g = chatGlyph({ waiting: waits.map((w) => w.approval), running: working > 0 })
-  const needing = new Set(waits.map((w) => w.key)).size
+  const trusts = useMemo(() => chatTrusts(owned), [owned])
+  const g = chatGlyph({ waiting: waits.map((w) => w.approval), running: working > 0, trust: trusts.length > 0 })
+  // A workspace waiting on an approval and on trust counts once.
+  const needing = new Set([...waits.map((w) => w.key), ...trusts.map((w) => `ws:${w.id}`)]).size
   const when = chatSince(waits, lastItem, thread.createdAt)
   return (
     <HoverCard at={at} id={id}>
       <Card
         eyebrow={`${room ?? ''} · Chat with ${lead ?? 'the Lead'}`}
         // A chat with nothing running or waiting shows no pill, since the row shows only the chat icon then.
-        status={waits.length || working ? <Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={g.icon === 'spin' ? undefined : g.icon} label={g.label} /> : null}
+        status={waits.length || trusts.length || working ? <Status accent={glyphAccent(g)} spin={g.icon === 'spin'} icon={g.icon === 'spin' ? undefined : g.icon} label={g.label} /> : null}
         title={thread.title}
-        line={chatLine(waits, agents)} wrap
+        line={chatLine(waits, agents, trusts)} wrap
         meta={<span className="grow ellipsis">{chatFoot(tabs.length, needing, working)}</span>}
         when={agoShort(when).replace(' ago', '')}
       />

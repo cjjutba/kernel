@@ -11,7 +11,7 @@ import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
-import { chatWaits } from './chatCard'
+import { chatTrusts, chatWaits } from './chatCard'
 import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
@@ -121,7 +121,8 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
     const r = s.ui.route
     return r.name === 'workspace' && r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id
   })
-  const g = chatGlyph({ waiting, running })
+  // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
+  const g = chatGlyph({ waiting, running, trust: folded && chatTrusts(owned).length > 0 })
   return (
     <div {...card.bind} className="hv chat-row">
       <button
