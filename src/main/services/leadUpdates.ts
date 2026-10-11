@@ -7,6 +7,7 @@ import type { TurnDone } from './notifications'
 import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
+import { blockedText } from '@shared/merge'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
@@ -641,7 +642,11 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
 export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
 
 /** The To do line for a PR that passed checks and was approved. The review's own line says the same, so it shows once. */
-const readyToMerge = (pr: string, by: string[]) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. Tell the user it is ready to merge.`
+const readyToMerge = (pr: string, by: string[], blocked?: Workspace['prBlocked']) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. ${blocked ? stillBlocked(blocked) : 'Tell the user it is ready to merge.'}`
+
+/** The end of a "ready to merge" line for a PR GitHub won't merge yet, with GitHub's reason (KERNEL-388). */
+const stillBlocked = (blocked: NonNullable<Workspace['prBlocked']>) => `It can't merge yet: ${lowerFirst(blockedText(blocked, ''))} Tell the user.`
+const lowerFirst = (t: string) => (t.startsWith('GitHub') ? t : t.charAt(0).toLowerCase() + t.slice(1))
 
 /** The To do line for a PR whose review was of another commit. The PR's own line says the same, so it shows once. */
 const anotherReview = (pr: string, name: string, at: string) => `${upper(pr)} needs another review: the last one was of a different commit. Ask ${name} to review it again with message_agent (workspace ${at}).`
@@ -680,7 +685,7 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}).${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true); break }
         // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge.
         if (!r.current && of?.prNumber) { wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
-        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name]), true); break }
+        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name], of.prBlocked), true); break }
         if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
         wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
         break
@@ -708,10 +713,10 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         const review = c.review
         // Blockers come with the review's own update, and a review that runs will say what it found.
         if (review?.blockers || review?.inProgress) break
-        if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy)); break }
+        if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy, ws.prBlocked)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in ${review.open.name}'s review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // With auto review off, only a review the user asked for is followed up: nobody looked at this PR, so it is the user's to merge (KERNEL-115).
-        if (c.autoReview === false && !review?.open && !review?.stale) { wake(`${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.`); break }
+        if (c.autoReview === false && !review?.open && !review?.stale) { wake(`${upper(pr)} passed checks and has no conflicts. ${ws.prBlocked ? stillBlocked(ws.prBlocked) : 'Tell the user it is ready to merge.'}`); break }
         if (review?.open) { wake(review.stale ? anotherReview(pr, review.open.name, review.open.workspaceId) : `${upper(pr)} needs a review. Ask ${review.open.name} to review it with message_agent (workspace ${review.open.workspaceId}).`); break }
         // A review of an earlier commit with nobody left to review again: a merge that needs an approval waits (KERNEL-115).
         if (review?.stale && !c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts, but its last review was of an earlier commit and no reviewer is on this team now. Tell the user the review is out of date.`); break }

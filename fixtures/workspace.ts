@@ -95,6 +95,9 @@ function terminalPresets(): Fixture {
   }
 }
 
+/** The invoice table's PR as one GitHub won't merge until someone approves it (KERNEL-388). */
+const blocked = (f: Fixture): Fixture => ({ ...f, workspaces: f.workspaces.map((w) => (w.id === ids.table ? { ...w, prBlocked: 'review' as const } : w)) })
+
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
@@ -1144,9 +1147,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceTerminalPresets: terminalPresets(),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
+  // A ready PR whose repo requires only Release note: Test failed and Vercel still runs, both optional (KERNEL-388).
+  WorkspacePRChecksOptional: prScene('ready', [], {
+    prs: prInfo('ready', { checks: [{ name: 'Release note', state: 'pass', meta: '28s' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'running', optional: true }] })
+  }, 'checks'),
   WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
   WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),
   WorkspacePRReady: prScene('ready', [], { prs: prInfo('ready') }),
+  // A ready PR GitHub won't merge until someone approves it: the header reads Open, as PrOpen.png draws it (KERNEL-388).
+  WorkspacePRBlocked: blocked(prScene('ready', [], { prs: prInfo('ready', { blocked: 'review' }) })),
   WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),

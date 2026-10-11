@@ -91,8 +91,12 @@ export interface RoomSettings {
   disabled?: { skills: string[]; mcp: string[] }
   /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
-  /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
-  pr?: Partial<PrInstructions>
+  /**
+   * The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). `optionalChecks` names checks
+   * that never fail a PR in a repo that requires none, `*` matching any run of characters ("Vercel*"). A check the repo
+   * requires always counts (KERNEL-388).
+   */
+  pr?: Partial<PrInstructions> & { optionalChecks?: string[] }
   /**
    * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
    * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
