@@ -41,7 +41,7 @@ async function fill(path: string) {
 /** Holds the delete queue until the returned function is called. */
 function hold(k: Kernel) {
   let release = () => {}
-  ;(k as unknown as { emptying: Promise<void> }).emptying = new Promise<void>((r) => { release = r })
+  k.archive['emptying'] = new Promise<void>((r) => { release = r })
   return () => release()
 }
 

@@ -297,7 +297,7 @@ describe('port blocks (KERNEL-244)', () => {
 
   it('running out of ports leaves no worktree or branch behind', async () => {
     const { k, room, repo } = await kernelOn({})
-    const reserved = (k as unknown as { reservedPorts: Set<number> }).reservedPorts
+    const reserved = k.workspaces['reservedPorts']
     for (const p of BLOCK_STARTS) reserved.add(p)
     await expect(k.createWorkspace(room.id, { prompt: 'a', agentId: 'kai', title: 'One' })).rejects.toThrow('No free block of ports')
     expect((await git(repo, 'branch', '--format=%(refname:short)')).trim()).toBe('main')

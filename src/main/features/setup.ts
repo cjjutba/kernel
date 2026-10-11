@@ -80,12 +80,12 @@ export class Setup extends Feature {
     if (wait?.held && chat) {
       if (waitMet(wait, this.store.workspaces(ws.roomId))) {
         this.updateWs(ws.id, { status: 'ready' })
-        await this.k['releaseWait'](ws.id)
+        await this.k.waits.releaseWait(ws.id)
         return passed(this.mustWs(ws.id))
       }
       const base = await head(ws.path)
       const held = this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
-      if (held.status === 'ready') this.k.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k['waitLabelOf'](held), held: true } })
+      if (held.status === 'ready') this.k.leadUpdates.setup(held, true, { wait: { on: wait.on, label: this.k.waits.waitLabelOf(held), held: true } })
       return held
     }
     return passed(await this.startBrief(ws, room, chat))
@@ -165,7 +165,7 @@ export class Setup extends Feature {
       if (wait?.held && wait.on.length && chat && !waitMet(wait, this.store.workspaces(ws.roomId))) {
         const base = await head(ws.path)
         this.updateWs(ws.id, { status: 'ready', waitsFor: { ...wait, ...(base ? { base } : {}) } })
-        void this.k['settleWait'](ws.id).catch(() => undefined)
+        void this.k.waits.settleWait(ws.id).catch(() => undefined)
         return
       }
       await this.startBrief(this.mustWs(ws.id), room, chat, { released: wait?.held ? wait : undefined })

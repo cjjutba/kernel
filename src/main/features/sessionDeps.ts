@@ -22,7 +22,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     mcpFor: (ws, agent, chat) => (k['sharing'] ? { kernel: kernelServer(k.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
       : agent?.lead ? { kernel: k['leadTools'](ws.roomId, agent, chat) }
       : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => k.submitReview(ws.id, review) }) }
-      : { kernel: teammateMcpServer(k['teammateToolDeps'](ws.id)) }),
+      : { kernel: teammateMcpServer(k.waits.teammateToolDeps(ws.id)) }),
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     // The Lead's rule is LEAD_RULE, which agentPrompt adds itself. Sharing adds a line after it, only while on (KERNEL-302).
     rulesFor: (ws, agent) => (agent?.lead ? (k['sharing'] ? LEAD_SHARING_RULE : undefined) : ws.reviewOf ? k['reviewRuleFor'](ws) : TEAMMATE_RULE),
@@ -50,7 +50,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
       void k.changes(ws.id).catch(() => undefined)
       if (teammate) void k.refreshPr(ws.id).catch(() => undefined).then(() => k.leadUpdates.readPr(ws.id)).catch(() => undefined)
       void k.overlaps.check(ws.roomId).catch(() => undefined)
-      k['releaseTaken'](ws.id, chat.id, turn.by)
+      k.waits.releaseTaken(ws.id, chat.id, turn.by)
     },
     onFailure: (failure) => {
       if (failure === 'auth') k.account.signedOut()
