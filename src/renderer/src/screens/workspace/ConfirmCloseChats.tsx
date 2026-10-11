@@ -7,6 +7,8 @@ import { actions, getState, go, loadWorkspace, useStore, type State } from '../.
 import { openRow, sidebarRows, type Slot } from '../../components/sidebar/slots'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { dropDrafts } from './composer/draftStore'
+import { archiveChatFromSidebar } from './archiveChat'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
@@ -101,6 +103,9 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
 
   const close = () => run('close', async () => {
     setError(null)
+    // A chat with Rowan's last tabs archive the chat, which asks in its own words when that stops something (KERNEL-405).
+    const thread = whole && isLeadChatWorkspace(ws) ? getState().threads[whole.id] : undefined
+    if (thread) { actions.ui.closeModal(); return archiveChatFromSidebar(thread) }
     try {
       await closeChats(workspaceId, chatIds, tabOf(getState(), workspaceId), (tab) => actions.ui.openTab(workspaceId, tab))
       actions.ui.closeModal()

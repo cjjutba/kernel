@@ -7,6 +7,9 @@ import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 // KERNEL-131: review workspaces go once the work they reviewed merges or closes, through archive_workspace's checks.
 
 const REPO = {

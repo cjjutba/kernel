@@ -39,10 +39,10 @@ export function fixtureHandlers(f: Fixture): Handlers {
     if (!a) throw new Error(`Unknown agent ${id}`)
     return a
   }
-  /** The Lead's own workspace, the one `Kernel.leadChat` finds. */
+  /** The workspace of the room's newest open chat with Rowan, the one `lead.open` finds (KERNEL-405). */
   const leadWs = (roomId: string) => {
     const lead = f.agents[roomId]?.find((a) => a.lead)
-    return f.workspaces.find((w) => w.roomId === roomId && isLeadWorkspace(w, lead?.id))
+    return f.workspaces.filter((w) => w.roomId === roomId && isLeadWorkspace(w, lead?.id)).at(-1)
   }
   let settings = f.settings ?? DEFAULT_SETTINGS('/Users/you')
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
@@ -202,13 +202,20 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { chatId: c.id }
     },
     'lead.open': async ({ roomId }) => {
-      const ws = leadWs(roomId)
-      if (!ws) throw new Error('This fixture has no workspace for the Lead.')
-      return ws
+      if (!f.agents[roomId]?.some((a) => a.lead)) throw new Error('This fixture has no Lead.')
+      return leadWs(roomId) ?? null
     },
     'lead.start': async () => { throw new Error('Fixture mode does not start chats.') },
     'threads.list': async ({ roomId }) => (f.threads ?? []).filter((t) => !roomId || t.roomId === roomId),
     'threads.rename': async () => { throw new Error('Fixture mode does not rename chats.') },
+    'threads.archivePreview': async ({ threadId }) => {
+      const t = f.threads?.find((x) => x.id === threadId)
+      const rows = f.workspaces.filter((w) => w.threadId === threadId && w.status !== 'archived')
+      // A workspace runs while a chat in it does, as the fixture's pushes say.
+      const running = (wsId: string) => f.push.some((e) => e.type === 'chat.running' && e.running && f.chats.some((c) => c.id === e.chatId && c.workspaceId === wsId))
+      return { threadId, title: t?.title ?? '', workspaces: [...rows.filter((w) => !w.lead), ...rows.filter((w) => w.lead)].map((w) => ({ id: w.id, name: w.name, own: !!w.lead, running: running(w.id), ...(w.prNumber && !['none', 'merged', 'closed'].includes(w.prState) ? { pr: w.prNumber } : {}), dirty: w.stat?.files ?? 0, unpushed: 0 })) }
+    },
+    'threads.archive': async () => { throw new Error('Fixture mode does not archive chats.') },
     'pr.get': async ({ workspaceId }) => f.prs?.[workspaceId] ?? null,
     'pr.create': async ({ workspaceId }) => workspace(workspaceId),
     'pr.refresh': async ({ workspaceId }) => workspace(workspaceId),

@@ -114,7 +114,8 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const start = async (room: string, parts: ChatPart[]) => {
     setError(null)
     let chat
-    try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan }) }
+    // The chat's own worktree starts from the target branch picked here, else the latest default branch (KERNEL-405).
+    try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan, ...(baseRef ? { baseRef } : {}) }) }
     catch (e) { setError({ message: cleanError(e) }); return }
     saveDraft(NEW_CHAT_DRAFT, [], '')
     // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.

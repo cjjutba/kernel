@@ -108,17 +108,19 @@ export const base: Fixture = {
     [ids.roomA]: { rowan: 'idle', kai: 'working', noor: 'working', theo: 'working', ivy: 'idle' }
   },
   workspaces: [
-    ws(ids.lead, 'lead', 'HEAD', 'rowan', 4300, { lead: true, createdAt: at(9, 5) }),
+    // Rowan's chat, in a workspace of its own (KERNEL-405).
+    ws(ids.lead, 'lead', 'rowan/lead', 'rowan', 4300, { lead: true, threadId: 't-lead', path: '/Users/you/kernel/worktrees/client-a/rowan-lead', createdAt: at(9, 5) }),
     ws(ids.table, 'invoice-table', 'feat/t-14-invoice-table', 'kai', 4312, { stat: { files: 4, added: 412, removed: 38 } }),
     ws(ids.schema, 'invoice-schema', 'feat/t-12-invoice-schema', 'noor', 4313, { createdAt: at(10, 3) }),
     ws(ids.invites, 'org-invites', 'feat/t-09-org-invites', 'kai', 4314, { prNumber: 41, prUrl: 'https://github.com/samrivera/client-a/pull/41', prState: 'open', createdAt: at(10, 4) })
   ],
   chats: [
-    { id: ids.leadChat, workspaceId: ids.lead, title: 'Lead', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, createdAt: at(9, 5) },
+    { id: ids.leadChat, workspaceId: ids.lead, title: 'Lead', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: true, threadId: 't-lead', createdAt: at(9, 5) },
     { id: ids.tableChat, workspaceId: ids.table, title: 'Invoice table', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 2) },
     { id: ids.schemaChat, workspaceId: ids.schema, title: 'Invoice schema', kind: 'chat', model: 'claude-opus-5-5', effort: 'high', plan: false, createdAt: at(10, 3) },
     { id: ids.invitesChat, workspaceId: ids.invites, title: 'Org invites', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 4) }
   ],
+  threads: [{ id: 't-lead', roomId: ids.roomA, title: 'Lead', createdAt: at(9, 5) }],
   items: { [ids.tableChat]: tableItems },
   approvals: waiting,
   activity: [

@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,9 @@ import { Kernel } from '../src/main/kernel'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { run } from '../src/main/services/exec'
 import { tempRepo } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-299: a review the Lead started with base_ref set to the reviewed branch, instead of review_of, is still a review,
 // and is archived once that work merges or closes.

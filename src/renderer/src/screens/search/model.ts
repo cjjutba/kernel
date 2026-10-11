@@ -75,7 +75,7 @@ export interface PaletteInput {
   /** By room id. */
   agents: Record<string, AgentDef[]>
   /** The open Lead chats of the room in view, in sidebar order, each with its open tabs (KERNEL-339). */
-  chats?: { thread: Thread; tabs: Chat[] }[]
+  chats?: { thread: Thread; tabs: Chat[]; ws?: Workspace }[]
   /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
   terminal?: { enabled: boolean; preset?: string }
   act: {
@@ -86,15 +86,15 @@ export interface PaletteInput {
     approve: (a: Approval) => void
     /** A tab in the workspace you are in. In the Lead's workspace it joins the chat on screen. */
     newChat: (workspaceId: string, kind?: 'terminal') => void
-    /** A chat of the room, on the tab last shown in it. */
-    openChat: (roomId: string, thread: Thread, tabs: Chat[]) => void
-    /** The room's Lead chat, made on first use (`lead.open`). */
+    /** A chat of the room, on the tab last shown in it, in its own workspace (KERNEL-405). */
+    openChat: (roomId: string, thread: Thread, tabs: Chat[], ws?: Workspace) => void
+    /** The room's newest chat with Rowan, or New chat with Rowan when none is open (`lead.open`, KERNEL-405). */
     openLead: (roomId: string) => void
     /** Where a room opens: its Lead chat, or Team when it has no Lead (D-104). */
     openRoom: (roomId: string) => void
     /** Opens a shared file's tab in a workspace and shows that workspace. */
     openShared: (workspaceId: string, sharedId: string) => void
-    /** Opens the room's Lead workspace, which the engine creates when there is none, then the file's tab in it. */
+    /** Opens the room's newest chat with Rowan, then the file's tab in it. */
     openSharedInLead: (roomId: string, sharedId: string) => void
     /** A toast with only a title. */
     toast: (title: string) => void
@@ -110,7 +110,8 @@ export function roomInView(route: Route, rooms: Room[], workspaces: Workspace[])
 /** How many shared files the palette lists before you type. */
 const SHARED_DEFAULT = 5
 
-const live = (w: Workspace) => w.status !== 'archived' && w.name !== 'lead'
+/** A workspace row of the sidebar. A chat with Rowan's own workspace is its chat, listed under Chats (KERNEL-405). */
+const live = (w: Workspace) => w.status !== 'archived' && !w.lead
 
 /** "Run pnpm drizzle-kit push" becomes "pnpm drizzle-kit push", for "Approve Noor: pnpm drizzle-kit push". */
 const approvalLabel = (a: Approval, who?: string) => `Approve ${who ? `${who}: ` : ''}${a.title.replace(/^Run (?:(?:pnpm|npm|yarn|npx) )?/, '')}`
@@ -144,7 +145,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
 
   // The room's open chats, each with its tab count. Typing searches them with everything else.
   const chatItems: PaletteItem[] = room
-    ? (i.chats ?? []).map(({ thread, tabs }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(room.id, thread, tabs), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${room.name}`, also: 'chat tabs' }))
+    ? (i.chats ?? []).map(({ thread, tabs, ws }) => item(`chat-${thread.id}`, 'Chats', '◇', thread.title, () => act.openChat(room.id, thread, tabs, ws), { meta: `${tabs.length} tab${tabs.length === 1 ? '' : 's'}`, group: `Chats in ${room.name}`, also: 'chat tabs' }))
     : []
 
   const shown = current ?? workspaces.filter((w) => live(w) && (!room || w.roomId === room.id)).sort((a, b) => b.createdAt - a.createdAt)[0]
@@ -172,7 +173,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     if (target) return act.openShared(target.id, f.id)
     const leadId = i.agents[f.roomId]?.find((a) => a.lead)?.id
     if (leadId) {
-      const leadWs = workspaces.find((w) => isLeadWorkspace(w, f.roomId, leadId))
+      const leadWs = workspaces.filter((w) => isLeadWorkspace(w, f.roomId, leadId)).at(-1)
       return leadWs ? act.openShared(leadWs.id, f.id) : act.openSharedInLead(f.roomId, f.id)
     }
     const any = workspaces.find((w) => w.roomId === f.roomId && w.status !== 'archived')

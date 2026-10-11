@@ -5,7 +5,8 @@ import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
-import { isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
+import { chatWorkspaces, isLeadWorkspace, leadOf, useLeadWaiting } from '../../lead'
+import { archiveChatFromSidebar } from '../../screens/workspace/archiveChat'
 import { currentThread } from '../../nav'
 import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
@@ -16,7 +17,7 @@ import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
 import { RoomsMenu } from './RoomsMenu'
-import { leadHomeOf, liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
+import { liveWorkspaces, mergeChatList, openRow, sidebarRows, slotKey, slotsFor, type Slot } from './slots'
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
@@ -79,13 +80,13 @@ function Glyph({ g }: { g: WorkspaceGlyph }) {
 }
 
 /**
- * The room's Lead, shown only while it has no open chat to list. It opens the Lead's chat, and works before the first brief too:
- * `lead.open` makes the workspace. Its icon shows the Lead's floor status.
+ * The room's Lead, shown only while it has no open chat to list. It opens New chat with Rowan, where the first message starts a chat in its
+ * own workspace (KERNEL-405). Its icon shows the Lead's floor status.
  */
 function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
   const lead = useStore((s) => leadOf(s.agents, roomId))
   const status = useStore((s) => (lead ? s.status[roomId]?.[lead.id] : undefined) ?? 'idle')
-  const current = useStore((s) => { const r = s.ui.route; return r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id)) })
+  const current = useStore((s) => { const r = s.ui.route; return (r.name === 'leadNew' && r.roomId === roomId) || (r.name === 'workspace' && s.workspaces.some((w) => w.id === r.workspaceId && isLeadWorkspace(w, roomId, lead?.id))) })
   const waiting = useLeadWaiting(roomId)
   if (!lead) return null
   const g = leadGlyph(status, waiting)
@@ -102,25 +103,27 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
 
 /**
  * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
- * needs you in any tab wins, then a running turn in any tab, else the chat icon. They read the same approvals and `running` flags as the tabs.
- * It opens the Lead's workspace on the tab last shown in the chat, A chat that handed off workspaces folds
- * like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a hidden workspace needs
- * from you, so nothing waits out of sight.
+ * needs you in any tab wins, then its own workspace's setup, trust, failed setup or missing folder (KERNEL-405), then a running turn in any tab, else
+ * the chat icon. They read the same approvals and `running` flags as the tabs. It opens the chat's own workspace on the tab last shown in it. A chat
+ * that handed off workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a
+ * hidden workspace needs from you, so nothing waits out of sight. Hover shows Archive, like a workspace row's (KERNEL-405).
  */
-function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
+function ChatItem({ roomId, thread, ws, tabs, owned, folded, slot }: { roomId: string; thread: Thread; ws?: Workspace; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
   // A folded chat counts its workspaces: an unfolded one shows its own icon in its own row.
   const waiting = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }).map((w) => w.approval), [approvals, tabs, folded, owned])
   const running = useStore((s) => tabs.some((c) => s.running[c.id]))
-  // The chat the Lead's workspace shows, which stays the one you were on while a file or diff tab is open there.
+  // The chat's own workspace is on screen (KERNEL-405).
   const current = useStore((s) => {
     const r = s.ui.route
-    return r.name === 'workspace' && r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id
+    return r.name === 'workspace' && (ws ? r.workspaceId === ws.id : r.workspaceId === tabs[0]?.workspaceId && currentThread(s, r.workspaceId) === thread.id)
   })
   // A folded chat stands in for the workspaces it hides, so one held for script trust shows here too.
-  const g = chatGlyph({ waiting, running, trust: folded && chatTrusts(owned).length > 0 })
+  const g = chatGlyph({ ws, waiting, running, trust: folded && chatTrusts(owned).length > 0 })
+  const [busy, run] = useBusy()
+  const archive = () => void run('archive', () => archiveChatFromSidebar(thread))
   return (
-    <div className="hv chat-row">
+    <div className={`hv chat-row${busy ? ' busy' : ''}`} data-key={slot?.hint || undefined}>
       <button
         className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title}
         aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
@@ -129,6 +132,12 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
+      {ws && (
+        <div className="more ws-archive">
+          {/* Just the icon, with no spinner or word, like a workspace row's (DESIGN.md, Busy buttons). useBusy still ignores a second click. */}
+          <IconButton icon="archive" size={14} label={`Archive ${thread.title}`} style={{ width: 24, height: 24 }} disabled={!!busy} onClick={archive} />
+        </div>
+      )}
       {owned.length > 0 && (
         <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
           <Icon name="right" size={14} />
@@ -222,9 +231,9 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
-  const leadHome = leadHomeOf(room, agents, workspaces)
+  const homes = chatWorkspaces(workspaces, threads, room.id).map((w) => w.id)
   // A folded room in view still loads the Lead's chats, since ⌘1 to ⌘9 count them.
-  useChatLists(expanded ? [...(leadHome ? [leadHome] : []), ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : numbered && leadHome ? [leadHome] : [])
+  useChatLists(expanded ? [...homes, ...liveWorkspaces(workspaces, room.id).map((w) => w.id)] : numbered ? homes : [])
   return (
     <div className="nav-list">
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
@@ -245,7 +254,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       {expanded && rows.map((row) => {
         const key = slotKey(row)
         if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
-        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
+        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} thread={row.thread} ws={row.ws} tabs={row.tabs} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
         return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} />
       })}
     </div>

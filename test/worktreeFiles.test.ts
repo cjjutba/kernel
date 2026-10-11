@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, stat, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { tempRepo, trustRoom } from './helpers'
+import { tempRepo, trustRoom, setUp } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { saveRepoSettings } from '../src/main/services/settings'
 import { copyLocalFiles } from '../src/main/services/scripts'
@@ -190,6 +190,8 @@ describe('Files to copy patterns in worktrees (KERNEL-245)', () => {
 
     await k.archiveWorkspace(ws.id, false)
     await k.restoreWorkspace(ws.id)
+    // files.copy runs again with setup, before the agent goes on (KERNEL-77).
+    await setUp(k, ws.id)
     for (const f of preview) expect(await readFile(join(ws.path, f.path), 'utf8')).toBe(local[f.path as keyof typeof local])
   }, 30000)
 })

@@ -7,13 +7,14 @@ export const SUGGESTIONS: { text: string; icon: IconName }[] = [{ text: 'Review 
 
 /**
  * The centred welcome of a chat with nothing in it (NewChat.png): the heading, the subtitle and the suggestions. `children` sit between
- * the subtitle and the suggestions, which is where the Lead's New chat state draws its own composer.
+ * the subtitle and the suggestions, which is where the Lead's New chat state draws its own composer. A new chat with Rowan gets its own
+ * worktree (KERNEL-405), so it passes its own `sub`.
  */
-export function ChatWelcome({ title, suggestions, onPick, children }: { title: string; suggestions: { text: string; icon: IconName }[]; onPick: (text: string) => void; children?: ReactNode }) {
+export function ChatWelcome({ title, sub = 'Same worktree and branch, fresh context.', suggestions, onPick, children }: { title: string; sub?: string; suggestions: { text: string; icon: IconName }[]; onPick: (text: string) => void; children?: ReactNode }) {
   return (
     <div className="chat-empty">
       <h2>{title}</h2>
-      <span className="muted">Same worktree and branch, fresh context.</span>
+      <span className="muted">{sub}</span>
       {children}
       <div className="chat-suggest">
         {suggestions.map(({ text, icon }) => (

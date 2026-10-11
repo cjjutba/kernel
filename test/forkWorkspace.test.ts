@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -7,6 +7,9 @@ import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import type { Chat, ChatItem, ChatPart } from '../src/shared/types'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-346: Fork into new workspace, from the "..." menu under a reply.
 
@@ -131,7 +134,7 @@ describe('fork into new workspace (KERNEL-346)', () => {
     const term = await k.handlers()['chats.create']({ workspaceId: src.id, kind: 'terminal' })
     await expect(k.workspaces.forkWorkspace(term.id)).rejects.toThrow('cannot be forked')
     const leadChat = await k.lead.leadChat(room.id)
-    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("The Lead's workspace can't fork")
+    await expect(k.workspaces.forkWorkspace(leadChat.id)).rejects.toThrow("A chat with the Lead can't fork")
     const other = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Other' })
     await k.archiveWorkspace(other.id, false)
     await expect(k.workspaces.forkWorkspace(k.store.chats(other.id)[0].id)).rejects.toThrow('Restore the workspace')

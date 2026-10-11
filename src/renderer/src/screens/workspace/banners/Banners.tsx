@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Chat, ScriptLine, Workspace } from '@shared/types'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { call } from '../../../api'
-import { actions, go, loadWorkspace, useStore } from '../../../store'
+import { actions, getState, go, loadWorkspace, useStore } from '../../../store'
+import { archiveChatFromSidebar } from '../archiveChat'
+import { archiveByHand } from '../byHand'
 import { Banner, Button, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
 import { commandComposer, focusComposerWhenOpen } from '../composer/bus'
@@ -11,7 +14,7 @@ import './banners.css'
 /** What a banner button says while its call runs. Actions that only move focus or open a screen have none. */
 const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   notify: 'Setting up', usage: 'Opening', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
-  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting'
+  tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving'
 }
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
@@ -96,6 +99,13 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
       case 'review': return actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: ws.roomId })
       case 'checkHooks': return actions.ui.openModal({ name: 'checkHooks' })
       case 'reconnect': return run(id, 'Could not restart the hook server', async () => actions.system.setHooks(await call('hooks.restart', {})))
+      // A chat with Rowan archives with the workspaces it started, the way its row does (KERNEL-405).
+      case 'archive': return run(id, `Could not archive ${ws.name}`, async () => {
+        const thread = isLeadChatWorkspace(ws) ? getState().threads[ws.threadId!] : undefined
+        if (thread) return archiveChatFromSidebar(thread)
+        await archiveByHand({ workspaceId: ws.id })
+        actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
+      })
     }
   }
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,9 @@ import { Kernel } from '../src/main/kernel'
 import { LEAD_REVIEW_RULE, SHARE_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { kernelTools } from '../src/main/services/kernelMcp'
 import { tempRepo } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-397: a repo that brings its own .claude/agents works as it is. Kernel's Rowan and Theo fill a missing Lead and
 // reviewer without writing a file, and [team] in .kernel/settings.toml holds what the user changes.

@@ -11,7 +11,7 @@ import './team.css'
  */
 export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: string }) {
   const agents = useStore((s) => s.agents[roomId])
-  const open = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived' && w.name !== 'lead').length)
+  const open = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived' && !w.lead).length)
   const reviews = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived' && !!w.reviewOf).length)
   const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)

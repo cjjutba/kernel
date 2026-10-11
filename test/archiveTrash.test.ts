@@ -2,7 +2,7 @@ import { describe, expect, it, onTestFinished } from 'vitest'
 import { chmod, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, setUp } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
 import { linkNodeModules } from '../src/main/services/scripts'
@@ -116,7 +116,9 @@ describe('archive moves the worktree aside and deletes it later (KERNEL-284)', (
     const release = hold(k)
     await k.archiveWorkspace(ws.id, false)
     const back = await k.restoreWorkspace(ws.id)
-    expect(back.status).toBe('ready')
+    // Setup runs again before the agent goes on (KERNEL-77).
+    expect(back.status).toBe('setup')
+    await setUp(k, ws.id)
     release()
     await k.trashEmptied()
     expect(await readFile(join(ws.path, 'README.md'), 'utf8')).toBe('# client\n')

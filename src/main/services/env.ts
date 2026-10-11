@@ -1,5 +1,5 @@
 import { chmodSync, closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { parseEnv } from 'node:util'
 import { ENV_NAME, isClaudeVar, isKernelVar, type KernelVar } from '@shared/kernelVars'
 
@@ -14,24 +14,65 @@ export interface Cipher {
 
 /**
  * Every variable a process in a workspace gets, where a later layer wins: the Mac's environment, the app's variables, the
- * room's env files in list order, the room's variables, then Kernel's own (KERNEL-247).
+ * room's env files in list order, the room's variables, what the workspace's setup wrote to `$KERNEL_ENV` (KERNEL-405), then
+ * Kernel's own (KERNEL-247).
  */
 export function buildEnv(l: {
   base: NodeJS.ProcessEnv
   app?: Record<string, string>
   files?: Record<string, string>[]
   room?: Record<string, string>
+  setup?: Record<string, string>
   kernel: Record<string, string>
 }): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(l.base)) if (v !== undefined) out[k] = v
-  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.kernel]) Object.assign(out, layer)
+  for (const layer of [l.app ?? {}, ...(l.files ?? []), l.room ?? {}, l.setup ?? {}, l.kernel]) Object.assign(out, layer)
   return out
 }
 
 /** Kernel's own variables for a workspace. The same set for sessions, scripts and terminals. */
-export const kernelVars = (ws: { id: string; path: string; port: number }, root: string): Record<KernelVar, string> =>
-  ({ KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: root })
+export const kernelVars = (ws: { id: string; name: string; path: string; port: number; branch: string; baseRef: string }, room: { path: string; defaultBranch?: string } | undefined): Record<KernelVar, string> => ({
+  KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id, KERNEL_WORKSPACE: ws.path, KERNEL_ROOT_PATH: room?.path ?? ws.path,
+  KERNEL_WORKSPACE_NAME: ws.name, KERNEL_BRANCH: ws.branch, KERNEL_BASE_REF: ws.baseRef, KERNEL_DEFAULT_BRANCH: room?.defaultBranch ?? ''
+})
+
+/** The file a workspace's setup writes NAME=value lines to, `$KERNEL_ENV` (KERNEL-405). Kept on archive, removed on Delete. */
+export const setupEnvPath = (dataDir: string, workspaceId: string) => join(dataDir, 'setup-env', `${workspaceId}.env`)
+
+/** The most a setup's `$KERNEL_ENV` file may hold. A bigger file gives nothing. */
+export const MAX_SETUP_ENV = 64 * 1024
+
+/** Empties the workspace's `$KERNEL_ENV` file before setup runs, so a run starts from nothing. Returns its path. */
+export function resetSetupEnv(dataDir: string, workspaceId: string): string {
+  const file = setupEnvPath(dataDir, workspaceId)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, '', { mode: 0o600 })
+  return file
+}
+
+/**
+ * What setup wrote to `$KERNEL_ENV`: the names Kernel passes on, and the ones it drops because they aren't valid names or are
+ * Kernel's own. Nothing for a missing, odd or oversized file.
+ */
+export function readSetupEnv(file: string): { vars: Record<string, string>; dropped: string[] } {
+  let fd: number
+  try { fd = openSync(file, OPEN_FLAGS) } catch { return { vars: {}, dropped: [] } }
+  let text: string
+  try {
+    const st = fstatSync(fd)
+    if (!st.isFile() || st.size > MAX_SETUP_ENV) return { vars: {}, dropped: [] }
+    const buf = Buffer.alloc(st.size)
+    text = buf.subarray(0, readSync(fd, buf, 0, st.size, 0)).toString('utf8')
+  } catch { return { vars: {}, dropped: [] } } finally { closeSync(fd) }
+  const vars: Record<string, string> = {}
+  const dropped: string[] = []
+  for (const [k, v] of Object.entries(parseEnv(text) as Record<string, string>)) {
+    if (!ENV_NAME.test(k) || OBJECT_NAMES.has(k) || isKernelVar(k)) dropped.push(k)
+    else vars[k] = v
+  }
+  return { vars, dropped }
+}
 
 /**
  * A layer without the names `isClaudeVar` matches: `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`,

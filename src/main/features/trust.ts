@@ -17,6 +17,8 @@ export class Trust extends Feature {
    * synchronous and can't wait for the check (KERNEL-247).
    */
   readonly envFilesOk = new Map<string, string>()
+  /** Per room, whether its scripts were trusted at the last check. `envFor` passes on setup's `$KERNEL_ENV` only then (KERNEL-405). */
+  readonly roomTrusted = new Map<string, boolean>()
 
   /**
    * What the room's scripts and files.copy list wait on, or null when the user trusted this text already or there is
@@ -29,6 +31,7 @@ export class Trust extends Feature {
     const trusted = !subject || await this.trusted.has(room.id, hash!)
     // What envFor may read until the next check: the room's list, unless it is the repo's and waits for trust (KERNEL-247).
     this.envFilesOk.set(room.id, JSON.stringify(trusted || !subject?.envFiles ? settings.env.files : []))
+    this.roomTrusted.set(room.id, trusted)
     if (trusted) return null
     const workspaceIds = this.store.workspaces(room.id).filter((w) => w.status === 'trust').map((w) => w.id)
     return { roomId: room.id, hash: hash!, ...subject!, workspaceIds }
@@ -136,7 +139,8 @@ export class Trust extends Feature {
     for (const [chatId, queue] of Object.entries(held)) {
       const ws = this.store.chat(chatId) && this.store.workspace(this.store.chat(chatId)!.workspaceId)
       const waiting = ws?.status === 'trust' || (ws?.status === 'setup' && !setups[ws.id])
-      if (!waiting || !Array.isArray(queue)) continue
+      // A setup that started in this run, as a moved chat's (KERNEL-405), already holds its queue.
+      if (!waiting || !Array.isArray(queue) || this.k.setup.fresh.has(ws.id)) continue
       // A forked workspace's chat waits with nothing in its queue (KERNEL-346).
       if (!queue.length) this.sessions.hold(chatId)
       for (const m of queue) this.sessions.hold(chatId, m.parts, { ...(m.from ? { from: m.from } : {}), ...(m.update ? { update: m.update } : {}) })

@@ -1,5 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import type { AgentDef, PrState, Workspace } from '@shared/types'
@@ -8,7 +9,10 @@ import { bus } from '../src/main/bus'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { Kernel } from '../src/main/kernel'
 import { git } from '../src/main/services/exec'
-import { tempRepo } from './helpers'
+import { setUp, tempRepo, trustRoom } from './helpers'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // Keeps the deps the Kernel hands the Lead's server, so the wiring test can call the same tools.
 let wired: KernelToolDeps | undefined
@@ -180,7 +184,7 @@ describe('archive_workspace in the Kernel (KERNEL-93)', () => {
     const tool = kernelTools(wired!).find((t) => t.name === 'archive_workspace')!
     const result = await tool.handler({ workspace_ids: [lead.workspaceId, busy.id, dirty.id, done.id] } as never, {})
     expect((result.content[0] as { text: string }).text).toBe([
-      'Skipped lead: it is your own workspace.',
+      `Skipped ${k.store.workspace(lead.workspaceId)!.name}: it is your own workspace.`,
       `Skipped ${busy.name}: its agent is still working.`,
       `Skipped ${dirty.name}: it has uncommitted changes.`,
       `Archived ${done.name}.`
@@ -339,5 +343,114 @@ describe('archiving clears the inbox, on every path (KERNEL-155)', () => {
     await k.refreshPr(author.id)
     await archived
     await s.check()
+  })
+})
+
+describe('archiving a chat with Rowan (KERNEL-405)', () => {
+  /** A room whose archive script logs each workspace it runs in, with Rowan's chat and a teammate it handed off. */
+  async function chatWithWork(workspace: Record<string, unknown> = {}) {
+    const log = join(await mkdtemp(join(tmpdir(), 'kernel-log-')), 'archived.txt')
+    const repo = await tempRepo({
+      'README.md': '# client\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\n---\nYou are Kai.',
+      '.kernel/settings.toml': `[scripts]\narchive = "echo $KERNEL_WORKSPACE_NAME >> ${log}"\n`
+    })
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main', ...workspace } }))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    onTestFinished(() => k.stop({ budgetMs: 0 }))
+    k.sessions.send = async () => ({ queued: false })
+    const room = await k.addRoom(repo)
+    await trustRoom(k, room.id)
+    // No first message, so nothing runs in it once setup passes.
+    const chat = await k.lead.newLeadChat(room.id, { prompt: '' })
+    const own = await setUp(k, chat.id)
+    const kai = await k.workspaces.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Build', leadChatId: chat.id })
+    const loose = await k.workspaces.createWorkspace(room.id, { prompt: 'Other', agentId: 'kai', title: 'Loose' })
+    const lines = async () => (await readFile(log, 'utf8').catch(() => '')).trim().split('\n').filter(Boolean)
+    return { k, repo, room, chat, own, kai, loose, lines, dataDir }
+  }
+
+  it('archives the workspaces the chat handed off, then its own, each with the archive script, and the chat goes to History', async () => {
+    const { k, chat, own, kai, loose, lines } = await chatWithWork()
+    const pushed: string[] = []
+    const on = (e: PushEvent) => { if (e.type === 'thread') pushed.push(`${e.thread.id}:${e.thread.closedAt ? 'closed' : 'open'}`) }
+    bus.on('push', on)
+    onTestFinished(() => { bus.off('push', on) })
+    expect(await k.handlers()['threads.archive']({ threadId: chat.threadId! })).toEqual({ ok: true })
+    expect(k.store.workspace(kai.id)?.status).toBe('archived')
+    expect(k.store.workspace(own.id)?.status).toBe('archived')
+    expect(k.store.workspace(loose.id)?.status).toBe('ready')
+    expect(await lines()).toEqual([kai.name, own.name])
+    expect(k.store.thread(chat.threadId!)!.closedAt).toBeGreaterThan(0)
+    expect(pushed).toEqual([`${chat.threadId}:closed`])
+    expect(await k.handlers()['lead.open']({ roomId: own.roomId })).toBeNull()
+  })
+
+  it('leaves the workspaces it handed off open when Archive a chat\'s workspaces is off', async () => {
+    const { k, chat, own, kai } = await chatWithWork({ archiveChatWorkspaces: false })
+    expect((await k.handlers()['threads.archivePreview']({ threadId: chat.threadId! })).workspaces.map((w) => w.id)).toEqual([own.id])
+    await k.lead.archiveLeadChat(chat.threadId!)
+    expect(k.store.workspace(own.id)?.status).toBe('archived')
+    expect(k.store.workspace(kai.id)).toMatchObject({ status: 'ready', threadId: chat.threadId })
+  })
+
+  it("deletes Rowan's branch when it has no commits of its own, whatever Delete branch on archive says, and keeps one with commits", async () => {
+    const { k, repo, room, chat, own } = await chatWithWork()
+    await k.lead.archiveLeadChat(chat.threadId!)
+    expect(await git(repo, 'branch', '--list', own.branch)).toBe('')
+    const other = await k.lead.newLeadChat(room.id, { prompt: 'Write the plan down' })
+    const ws = await setUp(k, other.id)
+    await writeFile(join(ws.path, 'plan.md'), '# Plan\n')
+    await git(ws.path, 'add', '-A')
+    await git(ws.path, '-c', 'user.email=t@t.dev', '-c', 'user.name=Test', 'commit', '-q', '-m', 'plan')
+    await k.lead.archiveLeadChat(other.threadId!)
+    expect((await git(repo, 'branch', '--list', ws.branch)).trim()).toBe(ws.branch)
+  })
+
+  it('says what archiving would stop, per workspace, its own last', async () => {
+    const { k, chat, own, kai } = await chatWithWork()
+    expect((await k.lead.archivePreview(chat.threadId!)).workspaces).toEqual([
+      { id: kai.id, name: kai.name, own: false, running: false, dirty: 0, unpushed: 0 },
+      { id: own.id, name: own.name, own: true, running: false, dirty: 0, unpushed: 0 }
+    ])
+    await writeFile(join(kai.path, 'draft.ts'), 'export {}\n')
+    k.store.saveWorkspace({ ...k.store.workspace(kai.id)!, prNumber: 41, prState: 'open' })
+    const isRunning = k.sessions.isRunning.bind(k.sessions)
+    k.sessions.isRunning = (id) => id === chat.id || isRunning(id)
+    const preview = await k.lead.archivePreview(chat.threadId!)
+    expect(preview).toMatchObject({ threadId: chat.threadId, title: 'New tab' })
+    expect(preview.workspaces).toEqual([
+      { id: kai.id, name: kai.name, own: false, running: false, pr: 41, dirty: 1, unpushed: 0 },
+      { id: own.id, name: own.name, own: true, running: true, dirty: 0, unpushed: 0 }
+    ])
+  })
+
+  it('restores the chat with its tabs and a new branch when the old one was deleted, and sets it up again', async () => {
+    const { k, repo, chat, own } = await chatWithWork()
+    await k.lead.archiveLeadChat(chat.threadId!)
+    expect(await git(repo, 'branch', '--list', own.branch)).toBe('')
+    const back = await k.restoreWorkspace(own.id)
+    expect(back).toMatchObject({ status: 'setup', branch: own.branch, baseRef: 'main' })
+    expect(k.store.thread(chat.threadId!)!.closedAt).toBeUndefined()
+    expect(k.chatTabs(own.id).map((c) => c.id)).toEqual([chat.id])
+    await setUp(k, own.id)
+    expect((await git(back.path, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()).toBe(own.branch)
+    expect((await k.handlers()['lead.open']({ roomId: own.roomId }))?.id).toBe(own.id)
+  })
+
+  it('never archives a chat with Rowan when its PR merges, and Delete removes the chat with its workspace', async () => {
+    const { k, chat, own, dataDir } = await chatWithWork()
+    k.store.saveWorkspace({ ...k.store.workspace(own.id)!, prNumber: 7, prState: 'merged' })
+    await k.autoArchive.archiveMerged(own.id)
+    expect(k.store.workspace(own.id)?.status).toBe('ready')
+    await k.lead.archiveLeadChat(chat.threadId!)
+    const r = await k.deleteWorkspaces([own.id], { deleteUnpushed: true })
+    expect(r.deleted).toEqual([own.id])
+    expect(k.store.thread(chat.threadId!)).toBeUndefined()
+    expect(existsSync(join(dataDir, 'setup-env', `${own.id}.env`))).toBe(false)
   })
 })

@@ -46,9 +46,12 @@ export function reviewBranch(title: string, task?: string): string {
   return capBranch(`review/${key || shortSlug(title)}`)
 }
 
-/** Fill a branch pattern like "{type}/{task}-{slug}" or "feat/{slug}", cut to 60 characters. */
-export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat' }): string {
-  return capBranch(pattern.replace('{type}', vars.type ?? 'feat').replace('{slug}', vars.slug).replace('{task}', vars.task ? taskToken(vars.task) : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, ''))
+/**
+ * Fill a branch pattern like "{type}/{task}-{slug}", "feat/{slug}" or a chat with Rowan's "{lead}/{slug}", cut to 60 characters.
+ * `{lead}` is the Lead's name as a slug (KERNEL-405).
+ */
+export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat'; lead?: string }): string {
+  return capBranch(pattern.replace('{type}', vars.type ?? 'feat').replace('{lead}', slugify(vars.lead ?? 'lead', 30)).replace('{slug}', vars.slug).replace('{task}', vars.task ? taskToken(vars.task) : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/^[-/]+|[-/]+$/g, ''))
 }
 
 /**

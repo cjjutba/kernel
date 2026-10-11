@@ -23,6 +23,10 @@
 .chat-chev[aria-expanded='true'] svg { transform: rotate(90deg); }
 .chat-row:hover .chat-chev, .chat-row:has(:focus-visible) .chat-chev { opacity: 1; }
 .chat-row:hover .nav-glyph[data-owned], .chat-row:has(:focus-visible) .nav-glyph[data-owned] { visibility: hidden; }
+/* A chat row shows Archive on hover like a workspace row (KERNEL-405), and its title stops short of it. ⌘ held hides it for the ⌘N. */
+.chat-row:not([data-key]):hover > .nav-item, .chat-row:not([data-key]):has(:focus-visible) > .nav-item, .chat-row.busy:not([data-key]) > .nav-item { padding-right: 32px; }
+.chat-row.busy .more { opacity: 1; }
+.chat-row[data-key] .ws-archive { visibility: hidden; }
 /* A room's menu sits in a portal at a fixed spot (RoomMenu.tsx), so the scrolling rooms list can't clip it. */
 .room-menu { position: fixed; z-index: 60; }
 .room-menu .menu-anchor { position: static; }

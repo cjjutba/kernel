@@ -1,5 +1,5 @@
-import type { Chat, Route, UiState } from '@shared/types'
-import { isLeadWorkspace } from '@shared/leadWorkspace'
+import type { Chat, Route, Thread, UiState, Workspace } from '@shared/types'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import type { State } from './store'
 
 /**
@@ -57,11 +57,15 @@ export const isChatTab = (tab: string) => !/^(file|diff|shared|image|text):/.tes
 /** The same route and the same tab. */
 export const samePlace = (a: Place, b: Place) => a.tab === b.tab && JSON.stringify(a.route) === JSON.stringify(b.route)
 
-/** Is the route still somewhere to go? Not an archived workspace, a hidden or archived room, or a Settings page of a room that is gone. */
+/**
+ * Is the route still somewhere to go? Not an archived workspace or one whose folder was deleted outside Kernel (KERNEL-291), a
+ * hidden or archived room, or a Settings page of a room that is gone. Opening a workspace with no folder still works: only
+ * reopening at launch, ⌘[ and Back to app skip it.
+ */
 export function stillThere(route: Route, s: State): boolean {
   if (route.name === 'workspace') {
     const ws = s.workspaces.find((w) => w.id === route.workspaceId)
-    return !!ws && ws.status !== 'archived' && roomVisible(s, ws.roomId)
+    return !!ws && ws.status !== 'archived' && !ws.folderGone && roomVisible(s, ws.roomId)
   }
   if (route.name === 'onboarding') return true
   if (route.name === 'settings') return route.page !== 'room' || (!!route.roomId && roomVisible(s, route.roomId))
@@ -69,14 +73,22 @@ export function stillThere(route: Route, s: State): boolean {
   return true
 }
 
+/** The workspaces of the room's open chats with Rowan, oldest chat first, as the sidebar lists them (KERNEL-405). */
+export function chatWorkspaces(workspaces: Workspace[], threads: Record<string, Thread>, roomId: string): Workspace[] {
+  const born = (w: Workspace) => threads[w.threadId!]?.createdAt ?? w.createdAt
+  return workspaces.filter((w) => w.roomId === roomId && isLeadChatWorkspace(w) && w.status !== 'archived').sort((a, b) => born(a) - born(b) || a.createdAt - b.createdAt)
+}
+
 /**
- * A room's front door: the Lead's workspace, or Team when the room has none (D-104). The Lead is found by its agent once agents
- * have loaded, and by the workspace's `lead` mark alone before, since agents load after the first route is chosen.
+ * A room's front door: its newest open chat with Rowan, New chat with Rowan when none is open, or Team when the room has no Lead
+ * (D-104, KERNEL-405). Before agents load, which is after the first route is chosen, a room with a workspace marked `lead` has one.
  */
 export function roomHome(roomId: string, s: State): Route {
-  const leadId = s.agents[roomId]?.find((a) => a.lead)?.id
-  const lead = s.workspaces.find((w) => w.roomId === roomId && (leadId ? isLeadWorkspace(w, leadId) : !!w.lead && w.status !== 'archived'))
-  return lead ? { name: 'workspace', workspaceId: lead.id } : { name: 'team', roomId }
+  const chat = chatWorkspaces(s.workspaces, s.threads, roomId).filter((w) => !w.folderGone).at(-1)
+  if (chat) return { name: 'workspace', workspaceId: chat.id }
+  const agents = s.agents[roomId]
+  const lead = agents ? agents.some((a) => a.lead) : s.workspaces.some((w) => w.roomId === roomId && !!w.lead)
+  return lead ? { name: 'leadNew', roomId } : { name: 'team', roomId }
 }
 
 /** The route if it is still there, else its room's Lead workspace, then the room's Team page, then Home. */
@@ -116,6 +128,7 @@ function soundRoute(r: any): Route | undefined {
     case 'home': case 'inbox': case 'history': case 'rooms': return { name: r.name }
     case 'issues': return isText(r.issueId) ? { name: 'issues', issueId: r.issueId } : { name: 'issues' }
     case 'workspace': return isText(r.workspaceId) ? { name: 'workspace', workspaceId: r.workspaceId } : undefined
+    case 'leadNew': return isText(r.roomId) ? { name: 'leadNew', roomId: r.roomId } : undefined
     // Agents load after the first route is chosen, and the floor and the Board are hidden (D-104), so these open their room's Team page.
     case 'team': case 'agent': case 'task': case 'floor': case 'board': return isText(r.roomId) ? { name: 'team', roomId: r.roomId } : undefined
     default: return undefined // onboarding, devUi, settings and anything unknown are never reopened

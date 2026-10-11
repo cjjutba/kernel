@@ -3,6 +3,7 @@ import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/typ
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
@@ -18,6 +19,7 @@ import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { SharedView } from './shared/SharedView'
 import { LeadPrSummary } from './pr/LeadPrSummary'
+import { hasChanges } from './pr/model'
 import { PrHeader } from './pr/PrHeader'
 import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
@@ -49,8 +51,9 @@ interface OpenedImage { id: string; part: ImagePart }
 interface OpenedText { id: string; part: TextPart }
 
 /**
- * The branch the Lead's worktree follows, for the header's "latest main" (KERNEL-355): the room's default branch when the base
- * is that branch on its remote or locally, so only a remote name comes off ("release/v2" stays whole), else the base as it is.
+ * The branch the shared Lead worktree from before KERNEL-405 follows, for the header's "latest main" (KERNEL-355): the room's default
+ * branch when the base is that branch on its remote or locally, so only a remote name comes off ("release/v2" stays whole), else the
+ * base as it is.
  */
 const leadBase = (ws: WorkspaceModel, room?: Room) => {
   const d = room?.defaultBranch
@@ -150,6 +153,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
+  // A chat with Rowan with work of its own shows its PR actions, Create PR included, like a teammate's (KERNEL-405, D-106).
+  const ownPr = !isLead || (isLeadChatWorkspace(ws) && (hasChanges(ws) || !!ws.prNumber || ws.prState !== 'none'))
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
   const openFile = (path: string) => select(fileTab(path))
@@ -203,11 +208,11 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
-        <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead ? `latest ${leadBase(ws, room)}` : ws.branch}</span>
+        <span className="mono muted ellipsis ws-branch">{ws.mode === 'current' ? `current branch · ${ws.branch}` : ws.lead && ws.branch === 'HEAD' ? `latest ${leadBase(ws, room)}` : ws.branch}</span>
         <IssueKey ws={ws} room={room} />
         <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
-        {!panels && (isLead ? <LeadPrSummary roomId={ws.roomId} /> : <PrHeader ws={ws} />)}
+        {!panels && (ownPr ? <PrHeader ws={ws} /> : <LeadPrSummary roomId={ws.roomId} />)}
         <RightPanelToggle name="panels" />
       </header>
       <OpenImage.Provider value={openImage}>
@@ -231,7 +236,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
                   : showNewChat
-                    ? <NewLeadChat workspaceId={workspaceId} roomId={ws.roomId} />
+                    ? <NewLeadChat roomId={ws.roomId} focusIn={workspaceId} />
                   : chat?.kind === 'terminal'
                     ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
@@ -249,11 +254,34 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
             targetRef={aside} edge="left" label="Resize panel" width={panelWidth ?? panelDefault()} min={PANEL_MIN} limit={panelLimit} defaultWidth={panelDefault}
             storageKey={PANEL_KEY} hideBelow={PANEL_HIDE_BELOW} onHide={() => actions.ui.setRightPanel(false)} onCommit={setPanelWidth}
           />
-          <div className="ws-aside-head">{isLead ? <LeadPrSummary roomId={ws.roomId} spread /> : <PrHeader ws={ws} spread />}</div>
+          <div className="ws-aside-head">{ownPr ? <PrHeader ws={ws} spread /> : <LeadPrSummary roomId={ws.roomId} spread />}</div>
           <RightPanel ws={ws} changes={changes} onOpenFile={openFile} onOpenDiff={openDiff} filePath={filePath} diffPath={diffPath || undefined} />
           <BottomPanel ws={ws} />
         </aside>
       )}
+    </div>
+  )
+}
+
+/**
+ * New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists before the first message, which makes the chat's own
+ * worktree (KERNEL-405), so there are no tabs and no right panel.
+ */
+export function LeadNewScreen({ roomId }: { roomId: string }) {
+  const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
+  return (
+    <div className="panel ws-panel">
+      <header className="header">
+        <SidebarToggle />
+        <RoomIcon room={room} className="crumb-avatar" />
+        <span className="crumb">{room?.name}</span>
+        <span className="muted"><Icon name="right" size={12} /></span>
+        <h1 className="ellipsis">New chat</h1>
+        <span className="grow" />
+      </header>
+      <section aria-label="Agent" className="ws-main">
+        <div className="col grow" style={{ minHeight: 0 }}><NewLeadChat roomId={roomId} /></div>
+      </section>
     </div>
   )
 }

@@ -54,19 +54,32 @@ export function Git({ s }: { s: AppSettings }) {
         <Row label="Archive on merge" desc="Review workspaces go too, once the PR they reviewed merges or closes"><Toggle label="Archive on merge" checked={w.archiveOnMerge} onChange={(v) => set({ archiveOnMerge: v })} /></Row>
         <Row label="Set upstream on first push"><Toggle label="Set upstream on first push" checked={w.setUpstream} onChange={(v) => set({ setUpstream: v })} /></Row>
       </Section>
+      <Section title="Lead chats">
+        <Row label="Branch name pattern" desc="{lead} is the Lead's name. Renamed from the chat's title until it is pushed">
+          <BranchPattern value={w.leadBranchPattern} field="leadBranchPattern" label="Lead chat branch name pattern" />
+        </Row>
+        <Row label="Wait for setup before the first message" desc="The first message waits in the chat until the setup script passes">
+          <Toggle label="Wait for setup before the first message" checked={w.leadWaitForSetup} onChange={(v) => set({ leadWaitForSetup: v })} />
+        </Row>
+        <Row label="Archive a chat's workspaces with it" desc="Off leaves them in the sidebar under the room">
+          <Toggle label="Archive a chat's workspaces with it" checked={w.archiveChatWorkspaces} onChange={(v) => set({ archiveChatWorkspaces: v })} />
+        </Row>
+      </Section>
     </Page>
   )
 }
 
-/** The pattern must keep `{slug}`, or every workspace would get the same branch name. */
-function BranchPattern({ value }: { value: string }) {
+/** The pattern must keep `{slug}`, or every workspace would get the same branch name. A chat with Rowan's has its own (KERNEL-405). */
+export function BranchPattern({ value, field = 'branchPattern', label = 'Branch name pattern', save = (v) => set({ [field]: v }), placeholder }: { value: string; field?: 'branchPattern' | 'leadBranchPattern'; label?: string; save?: (v: string | null) => void; placeholder?: string }) {
   const [text, setText] = useState(value)
   useEffect(() => { setText(value) }, [value])
   const commit = () => {
     const next = text.trim()
     if (next === value) return
+    // Empty goes back to the default where there is one to go back to, as on a room's page.
+    if (!next && placeholder) { save(null); return }
     if (!next.includes('{slug}')) { setText(value); return }
-    set({ branchPattern: next })
+    save(next)
   }
-  return <input className="set-inline" aria-label="Branch name pattern" spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+  return <input className="set-inline" aria-label={label} spellCheck={false} value={text} placeholder={placeholder} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
 }

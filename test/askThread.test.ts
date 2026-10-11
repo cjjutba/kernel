@@ -30,6 +30,12 @@ describe('the chat Ask Rowan joins (KERNEL-339)', () => {
     expect(askThreadOf(getState())).toBe('t1')
   })
 
+  it("is the chat a chat with Rowan's own workspace hosts, whatever tab is open there (KERNEL-405)", () => {
+    actions.workspaces.upsert(ws('chat-t2', { lead: true, threadId: 't2', agentId: 'rowan' }))
+    at({ name: 'workspace', workspaceId: 'chat-t2' })
+    expect(askThreadOf(getState())).toBe('t2')
+  })
+
   it('is the chat that started the workspace you are in, named by its thread or by the tab that handed it off', () => {
     at({ name: 'workspace', workspaceId: 'under-t2' })
     expect(askThreadOf(getState())).toBe('t2')

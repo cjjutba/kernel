@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { access, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,6 +8,9 @@ import { searchFiles } from '../src/main/services/files'
 import { attachmentNote, planName, saveAttachments, savePlan } from '../src/main/services/plans'
 import { Kernel } from '../src/main/kernel'
 import type { Approval } from '@shared/types'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // D-092: plan-mode plans are saved as files a later chat can build from, and git never sees them.
 

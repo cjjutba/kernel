@@ -1,12 +1,15 @@
-import { describe, expect, it, onTestFinished } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { tempRepo, setUp } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { run } from '../src/main/services/exec'
 import { snapshot } from '../src/main/services/checkpoints'
 import type { Workspace } from '@shared/types'
+
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
 
 // KERNEL-333: Delete in History forgets archived workspaces with their branches, checkpoints and Claude Code transcripts.
 
@@ -208,11 +211,11 @@ describe('deleting workspaces from History', () => {
     expect(await hasBranch(a.branch)).toBe(true)
   })
 
-  it('skips an id that is not archived, not found or the Lead, and touches nothing of theirs', async () => {
+  it('skips an id that is not archived, not found or the shared Lead workspace from before KERNEL-405, and touches nothing of theirs', async () => {
     const { k, room, hasBranch } = await setup()
     const live = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Still working' })
-    const lead = await k.leadChat(room.id).then((c) => k.store.workspace(c.workspaceId)!)
-    k.store.saveWorkspace({ ...lead, status: 'archived', archivedAt: 1 })
+    const lead = { ...await k.leadChat(room.id).then((c) => setUp(k, c.workspaceId)), id: 'shared-lead', name: 'lead', threadId: undefined, status: 'archived' as const, archivedAt: 1 }
+    k.store.saveWorkspace(lead)
 
     const r = await k.deleteWorkspaces([live.id, 'nope', lead.id], { deleteUnpushed: true })
 

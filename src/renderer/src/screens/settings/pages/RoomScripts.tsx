@@ -16,7 +16,12 @@ export function RoomScripts({ roomId }: { roomId?: string }) {
       <RunScripts roomId={roomId} rs={rs} />
       <PreviewUrls roomId={roomId} rs={rs} />
       <Section title="Workspace scripts">
-        <Row label="Setup" {...field('setup')} desc="Runs when a workspace is created" full={<TextField label="Setup script" value={rs?.scripts.setup ?? ''} onSave={save('setup')} placeholder="pnpm install" />} />
+        <Row label="Setup" {...field('setup')} desc="Runs when a workspace is created" full={
+          <>
+            <TextField label="Setup script" value={rs?.scripts.setup ?? ''} onSave={save('setup')} placeholder="pnpm install" />
+            <p className="set-hint">Setup can write NAME=value lines to <code>$KERNEL_ENV</code>. Agents, run scripts and terminals in the workspace get them.</p>
+          </>
+        } />
         <Row label="Archive" {...field('archive')} desc="Runs before a workspace is archived" full={<TextField label="Archive script" value={rs?.scripts.archive ?? ''} onSave={save('archive')} placeholder="docker compose down" />} />
       </Section>
     </RoomPage>

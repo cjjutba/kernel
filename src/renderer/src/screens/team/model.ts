@@ -69,7 +69,7 @@ export function recentWork(agentId: string, tasks: Task[], workspaces: Workspace
     return { id: t.id, title: `${t.id} ${t.title}`, meta, workspaceId: ws?.id }
   })
   const linked = new Set(fromTasks.map((r) => r.workspaceId))
-  const fromWorkspaces = workspaces.filter((w) => w.agentId === agentId && w.name !== 'lead' && !linked.has(w.id)).sort((a, b) => b.createdAt - a.createdAt).map((w): RecentItem => ({
+  const fromWorkspaces = workspaces.filter((w) => w.agentId === agentId && !w.lead && !linked.has(w.id)).sort((a, b) => b.createdAt - a.createdAt).map((w): RecentItem => ({
     id: w.id, title: w.title ?? w.name, meta: w.prNumber ? `${w.prState === 'merged' ? 'Merged' : 'PR'} · #${w.prNumber}` : w.status === 'archived' ? 'Archived' : w.name, workspaceId: w.id
   }))
   return [...fromTasks, ...fromWorkspaces].slice(0, limit)

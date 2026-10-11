@@ -46,10 +46,11 @@ import { WhatsNew } from './screens/update/WhatsNew'
 import { EnvVarForm } from './screens/settings/pages/EnvVarForm'
 import { openSlot } from './components/sidebar/slots'
 import { ConfirmArchive } from './screens/workspace/ConfirmArchive'
+import { ConfirmArchiveChat } from './screens/workspace/ConfirmArchiveChat'
 import { ConfirmCloseChats } from './screens/workspace/ConfirmCloseChats'
 import { ConfirmDiscard } from './screens/workspace/ConfirmDiscard'
 import { NewWorkspace } from './screens/workspace/NewWorkspace'
-import { Workspace } from './screens/workspace/Workspace'
+import { LeadNewScreen, Workspace } from './screens/workspace/Workspace'
 import { DevUi } from './ui/DevUi'
 
 /**
@@ -96,6 +97,7 @@ function Screen({ route }: { route: Route }): ReactNode {
     case 'team': return <Team roomId={route.roomId} />
     case 'agent': return <AgentProfile roomId={route.roomId} agentId={route.agentId} />
     case 'workspace': return <Workspace workspaceId={route.workspaceId} />
+    case 'leadNew': return <LeadNewScreen roomId={route.roomId} />
     case 'settings': return <Settings page={route.page} roomId={route.roomId} section={route.section} />
     case 'devUi': return <DevUi page={route.page} />
   }
@@ -121,6 +123,7 @@ function ModalView({ modal }: { modal: Exclude<Modal, null> }): ReactNode {
       if (modal.kind === 'trust') return <TrustScripts roomId={modal.roomId} />
       if (modal.kind === 'deleteHistory') return <ConfirmDeleteHistory workspaceIds={modal.workspaceIds} />
       if (modal.kind === 'closeChats') return <ConfirmCloseChats workspaceId={modal.workspaceId} chatIds={modal.chatIds} />
+      if (modal.kind === 'archiveChat') return <ConfirmArchiveChat threadId={modal.threadId} />
       return <ConfirmRetire roomId={modal.roomId} agentId={modal.agentId} />
   }
 }

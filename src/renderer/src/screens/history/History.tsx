@@ -3,8 +3,9 @@ import type { Workspace } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
-import { archivedList, deleteAllLabel, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
+import { archivedList, historyName, deleteAllLabel, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import { restoredFromHistory } from '../workspace/byHand'
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import './history.css'
 import { SidebarToggle } from '../../components/PanelToggles'
 
@@ -24,9 +25,11 @@ export function History() {
   const [busy, run] = useBusy()
   const roomName = (w: Workspace) => rooms.find((r) => r.id === w.roomId)?.name
   const agentName = (w: Workspace) => agents[w.roomId]?.find((a) => a.id === w.agentId)?.name ?? w.agentId
+  const threads = useStore((s) => s.threads)
+  const nameOf = (w: Workspace) => historyName(w, threads)
 
   const all = useMemo(() => archivedList(workspaces), [workspaces])
-  const found = all.filter((w) => matches(w, q, roomName(w), agentName(w)))
+  const found = all.filter((w) => matches({ ...w, name: nameOf(w) }, q, roomName(w), agentName(w)))
   const rows = found.filter((w) => inTab(w, tab))
   const count = (t: HistoryTab) => found.filter((w) => inTab(w, t)).length
 
@@ -35,10 +38,11 @@ export function History() {
       const back = await call('workspaces.restore', { workspaceId: w.id })
       restoredFromHistory(w.id)
       actions.workspaces.upsert(back)
-      actions.ui.toast({ title: `Restored ${w.name}`, sub: `Back on ${w.branch}` })
+      // A worktree sets up again before its agent goes on, and the workspace shows it (KERNEL-77).
+      actions.ui.toast({ title: `Restored ${nameOf(w)}`, sub: `Back on ${back.branch}` })
       go({ name: 'workspace', workspaceId: w.id })
     } catch (e) {
-      actions.ui.toast({ title: `Could not restore ${w.name}`, sub: cleanError(e) })
+      actions.ui.toast({ title: `Could not restore ${nameOf(w)}`, sub: cleanError(e) })
     }
   })
 
@@ -67,14 +71,14 @@ export function History() {
               <ul className="hs-list">
                 {list.map((w) => (
                   <li key={w.id} className="hs-row">
-                    <span className="col hs-name"><span className="ellipsis hs-title">{w.name}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
+                    <span className="col hs-name"><span className="ellipsis hs-title">{isLeadChatWorkspace(w) && <Icon name="chat" size={13} />}{nameOf(w)}</span><span className="ellipsis hs-sub">{agentName(w)}</span></span>
                     <span className="mono ellipsis hs-branch">{w.branch}</span>
                     <span className="ellipsis hs-room">{roomName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
                     <span className="hs-actions">
-                      <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${w.name}` : `Restore ${w.name}`} onClick={() => void restore(w)}>Restore</Button>
-                      <IconButton icon="trash" label={`Delete ${w.name}`} disabled={busy !== null} onClick={() => confirmDelete([w.id])} />
+                      <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${nameOf(w)}` : `Restore ${nameOf(w)}`} onClick={() => void restore(w)}>Restore</Button>
+                      <IconButton icon="trash" label={`Delete ${nameOf(w)}`} disabled={busy !== null} onClick={() => confirmDelete([w.id])} />
                     </span>
                   </li>
                 ))}

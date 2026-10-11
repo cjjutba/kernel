@@ -199,4 +199,6 @@ TeamUpdateShared, TeamUpdateMerge, LeadPrs and LeadPrsEmpty are drawn in `design
 
 The Lead's workspace screens (WorkspaceLead and the Grouped set, except GroupedCloseLastTab) show the Lead after KERNEL-354 and KERNEL-355 (KERNEL-356): the header reads `lead` with "latest main" and has no Create PR button, and the right panel opens on the PRs tab under the "2 ready to merge" band from LeadPrs. The Client A rows in that tab are fixture content in LeadPrs's row layout. LeadPrs and LeadPrsEmpty read the same way (KERNEL-356).
 
+Since KERNEL-405 each chat with Rowan is its own workspace, so WorkspaceLead and the Grouped set show the chat's own name and branch in the header, `rowan/<a few words>`, where the PNGs read `lead` and "latest main". A chat with changes shows the PR header with Create PR in place of the "ready to merge" band. GroupedCloseLastTab now draws ConfirmArchiveChat, since closing a chat's last tab archives it, and GroupedCloseLastTabAfter draws the chat's workspaces gone to History. LeadNoChats is New chat with Rowan with no workspace, tab row or right panel. The new states (a chat row's hover Archive, ConfirmArchiveChat, a chat setting up or failed, a missing folder) have no PNG and are in `noCanvas`.
+
 Fixtures for screens the canvas doesn't draw are listed in `noCanvas` in `test/fixtures.test.ts`, each with a comment saying what it shows.

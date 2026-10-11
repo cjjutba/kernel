@@ -9,6 +9,9 @@ import { run } from '../src/main/services/exec'
 import { afterArchive } from '../src/renderer/src/screens/workspace/pr/model'
 import { tempRepo } from './helpers'
 
+// A chat with Rowan's held first message goes out through the real send once its setup passes (KERNEL-405).
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({ ...await original<object>(), ...await import('./sdkStub') }))
+
 // KERNEL-114: Archive on merge in Settings, Git archives the work whose PR merged, and covers review cleanup (KERNEL-131).
 
 const REPO = {

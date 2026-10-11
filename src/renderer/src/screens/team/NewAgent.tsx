@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { AgentDraft, NewAgentPrefill } from '@shared/types'
 import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
+import { openLeadChat } from '../../lead'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
 import './team.css'
@@ -58,9 +59,9 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
   const refine = () => draft && run('refine', async () => {
     setError(null)
     try {
-      await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
-      const home = getState().workspaces.find((w) => w.roomId === roomId && w.name === 'lead' && w.status !== 'archived')
-      actions.ui.go(home ? { name: 'workspace', workspaceId: home.id } : { name: 'team', roomId })
+      // The question joins the room's newest chat with Rowan, or starts one (KERNEL-405). The answer lands on that tab.
+      const { chatId } = await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
+      await openLeadChat(roomId, chatId)
     } catch (e) { setError(cleanError(e)) }
   })
 

@@ -167,6 +167,14 @@ export class Store {
   chats(workspaceId: string): Chat[] { return this.all('select data from chats where workspace_id = ? order by created_at', workspaceId) }
   chat(id: string): Chat | undefined { return this.one('select data from chats where id = ?', id) }
   // An upsert, not insert or replace, so a saved chat keeps its rowid, which orders tabs made in the same millisecond (KERNEL-337)
+  /** Chats and their items, as the first tab a chat with Rowan's workspace was cut with when its own tabs move in (KERNEL-405). */
+  deleteChats(ids: string[]) {
+    const json = JSON.stringify(ids)
+    this.db.transaction(() => {
+      this.db.prepare('delete from chat_items where chat_id in (select value from json_each(?))').run(json)
+      this.db.prepare('delete from chats where id in (select value from json_each(?))').run(json)
+    })()
+  }
   saveChat(c: Chat) { this.db.prepare('insert into chats (id, workspace_id, data, created_at) values (?, ?, ?, ?) on conflict(id) do update set workspace_id = excluded.workspace_id, data = excluded.data, created_at = excluded.created_at').run(c.id, c.workspaceId, JSON.stringify(c), c.createdAt); return c }
 
   // Lead chats, each holding one or more Lead tabs (KERNEL-337), oldest first
@@ -174,6 +182,8 @@ export class Store {
     return roomId ? this.all('select data from threads where room_id = ? order by created_at, rowid', roomId) : this.all('select data from threads order by created_at, rowid')
   }
   thread(id: string): Thread | undefined { return this.one('select data from threads where id = ?', id) }
+  /** A chat with Rowan whose workspace is deleted from History, or that never got one (KERNEL-405). Its tabs go with their workspace. */
+  deleteThread(id: string) { this.db.prepare('delete from threads where id = ?').run(id) }
   saveThread(t: Thread) { this.db.prepare('insert or replace into threads (id, room_id, data, created_at) values (?, ?, ?, ?)').run(t.id, t.roomId, JSON.stringify(t), t.createdAt); return t }
   /** Every tab of the chat's thread, closed ones too, oldest first. Just the chat when it has no thread, none when it is gone. */
   threadTabs(chatId: string): Chat[] {

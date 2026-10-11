@@ -9,7 +9,7 @@ import './rooms.css'
 export function ConfirmRemoveRoom({ roomId }: { roomId: string }) {
   const room = useStore((s) => s.rooms.find((r) => r.id === roomId))
   const agents = useStore((s) => s.agents[roomId]?.length ?? 0)
-  const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && w.name !== 'lead').length)
+  const workspaces = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.status !== 'archived' && !w.lead).length)
   const root = useStore((s) => s.settings?.worktreeRoot)
   const [worktrees, setWorktrees] = useState(false)
   const [busy, run] = useBusy()

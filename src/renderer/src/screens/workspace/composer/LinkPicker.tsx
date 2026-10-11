@@ -91,7 +91,7 @@ export function WorkspacePicker({ roomId, exclude, anchorRef, onPick, onClose, s
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase()
     // The Lead's own workspace isn't one of the room's workspaces, as in the sidebar.
-    return all.filter((w) => w.roomId === roomId && w.id !== exclude && w.status !== 'archived' && w.name !== 'lead' && (!needle || `${w.name} ${w.branch}`.toLowerCase().includes(needle)))
+    return all.filter((w) => w.roomId === roomId && w.id !== exclude && w.status !== 'archived' && !w.lead && (!needle || `${w.name} ${w.branch}`.toLowerCase().includes(needle)))
   }, [all, roomId, exclude, q])
   useEffect(() => { setAt(0) }, [q])
 

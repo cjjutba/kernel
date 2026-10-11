@@ -1,3 +1,4 @@
+import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { isLeadWorkspace, leadOf } from '../../lead'
 import { currentThread, threadIdOf } from '../../nav'
 import type { State } from '../../store'
@@ -12,6 +13,8 @@ export function askThreadOf(s: State): string | undefined {
   if (route.name !== 'workspace') return undefined
   const ws = s.workspaces.find((w) => w.id === route.workspaceId)
   if (!ws || ws.status === 'archived') return undefined
+  // A chat with Rowan's own workspace is that chat (KERNEL-405). The shared Lead workspace from before shows one chat of several.
+  if (isLeadChatWorkspace(ws)) return ws.threadId
   if (isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id)) return currentThread(s, ws.id)
   // A workspace names the chat that handed it off, by thread or, from before threads, by the tab that did.
   const from = ws.leadChatId ? Object.values(s.chats).flat().find((c) => c.id === ws.leadChatId) : undefined

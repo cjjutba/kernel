@@ -302,9 +302,9 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live relaunch', () => {
   }
 })
 
-// KERNEL-355: a Lead chat that ran on the main checkout before the Lead moved into its own worktree still remembers its
-// turns, resumed by session id from the worktree (KERNEL-348). Two short Sonnet turns in a throwaway repo in a temp folder,
-// nothing in KERNEL_LIVE_REPO. `-t "live lead move"`.
+// KERNEL-355, KERNEL-405: a Lead chat that ran on the main checkout, in the shared Lead workspace from before KERNEL-405, still
+// remembers its turns once it moves into a worktree of its own, resumed by session id from there (KERNEL-348). Two short Sonnet
+// turns in a throwaway repo in a temp folder, nothing in KERNEL_LIVE_REPO. `-t "live lead move"`.
 describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
   it('resumes a Lead chat from the checkout in its new worktree', { timeout: 300_000 }, async () => {
     const repo = await mkdtemp(join(tmpdir(), 'kernel-live-lead-'))
@@ -326,11 +326,12 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
     await k.start()
     try {
       const room = await k.addRoom(repo)
-      // The Lead as it was before the move: on the checkout.
-      const made = k.store.workspace((await k.handlers()['lead.open']({ roomId: room.id })).id)!
-      await exec('git', ['-C', repo, 'worktree', 'remove', '--force', made.path])
-      k.store.saveWorkspace({ ...made, mode: 'current', path: repo, branch: 'main', baseRef: 'main' })
-      const chat = await k.lead.startLeadChat(room.id, { prompt: 'Remember the word kumquat for later. Reply with just ok. Use no tools.', plan: false })
+      // The Lead as it was before the move: one shared workspace on the checkout, with a chat in it.
+      const made = k.store.saveWorkspace({ id: 'old-lead', roomId: room.id, name: 'lead', branch: 'main', baseRef: 'main', path: repo, mode: 'current', agentId: 'rowan', lead: true, port: 4300, status: 'ready', prState: 'none', createdAt: Date.now() })
+      k.store.saveThread({ id: 'kumquat', roomId: room.id, title: 'Kumquat', createdAt: Date.now() })
+      const chat = k.store.saveChat({ id: 'kumquat-tab', workspaceId: made.id, title: 'Kumquat', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, threadId: 'kumquat', createdAt: Date.now() })
+      k.store.saveMeta('leadChatsMoved', false)
+      await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Remember the word kumquat for later. Reply with just ok. Use no tools.' }] })
       const items = () => k.store.items(chat.id)
       await waitFor('the first turn', () => items().some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
       const session = k.store.chat(chat.id)?.sessionId
@@ -341,9 +342,11 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live lead move', () => {
 
       k = new Kernel(where)
       await k.start()
-      const moved = k.store.workspace(made.id)!
-      evidence.after = { mode: moved.mode, path: moved.path, baseRef: moved.baseRef }
-      expect(moved).toMatchObject({ mode: 'worktree', branch: 'HEAD', baseRef: 'main' })
+      const moved = k.store.workspace(k.store.chat(chat.id)!.workspaceId)!
+      evidence.after = { mode: moved.mode, path: moved.path, branch: moved.branch, baseRef: moved.baseRef }
+      expect(moved).toMatchObject({ mode: 'worktree', branch: 'rowan/kumquat', baseRef: 'main', lead: true, threadId: 'kumquat' })
+      expect(k.store.workspace(made.id)?.status).toBe('archived')
+      await waitFor('setup', () => k.store.workspace(moved.id)?.status === 'ready')
       const from = items().length
       await k.handlers()['chats.send']({ chatId: chat.id, parts: [{ type: 'text', text: 'Which word did I ask you to remember? Reply with just that word.' }] })
       await waitFor('the word', () => items().slice(from).some((i) => i.kind === 'result') && !k.sessions.isRunning(chat.id))
