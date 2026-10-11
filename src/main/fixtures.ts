@@ -64,6 +64,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'hooks.install': async () => ({ path: '(fixture)', events: [] }),
     'hooks.uninstall': async () => f.hooks ?? { port: 7420, listening: true, installed: false, events: [] },
     'hooks.status': async () => hooks,
+    'github.status': async () => f.github ?? {},
     'hooks.test': async () => hooks,
     'hooks.restart': async () => hooks,
     'rooms.list': async () => f.rooms,

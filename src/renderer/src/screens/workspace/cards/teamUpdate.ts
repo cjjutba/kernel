@@ -66,7 +66,8 @@ export function eventTone(e: { kind: TeamEventKind; text: string; actionable: bo
   switch (e.kind) {
     case 'error': case 'crash': case 'setup.failed': case 'pr.cifail': case 'pr.changes': case 'pr.conflict': return 'del'
     case 'pr.merged': return 'merged'
-    case 'pr.ready': return 'add'
+    // GitHub no longer blocking a ready PR reads like the PR being ready (KERNEL-401). A block takes the default below.
+    case 'pr.ready': case 'pr.unblocked': return 'add'
     case 'review': return /^Approved/.test(e.text) ? 'add' : 'del'
     default: return e.actionable ? 'ink2' : 'muted'
   }

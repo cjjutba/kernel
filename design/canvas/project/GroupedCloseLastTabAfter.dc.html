@@ -599,6 +599,8 @@ class Component extends DCLogic {
     if (sc === 'signedout') B('auth', 'Claude Code is signed out', 'Agents cannot run until you sign in. Workspaces and chats are safe.', [{ id: 'term', label: 'Open terminal' }, { id: 'signin', label: 'Sign in', primary: true }], { block: true });
     if (sc === 'setupfail') B('setup', 'Setup script failed', 'pnpm install exited with code 1. Kai waits until setup passes.', [{ id: 'editscript', label: 'Edit script' }, { id: 'rerun', label: 'Run again', primary: true }], { bottom: 'setup', block: true, msgs: [], setupFailed: true, right: 'files' });
     if (sc === 'hooks') B('hooks', 'Hooks are disconnected', 'Agent statuses stop updating. Agents keep working, approvals fall back to the terminal.', [{ id: 'checkhooks', label: 'Check hooks' }, { id: 'reconnect', label: 'Reconnect', primary: true }]);
+    // KERNEL-401: the footer says a GitHub rate limit holds PR reads off; the page is an open PR that passed its checks.
+    if (sc === 'ghpaused') Object.assign(s, { pr: 'ready' });
     if (sc === 'newchat') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 'c2', kind: 'chat', title: 'New chat', empty: true }], tab: 'c2', newMenu: true });
     if (sc === 'terminal') Object.assign(s, { tabs: [{ id: 'c1', kind: 'chat', title: 'Invoice table' }, { id: 't1', kind: 'term', title: 'Terminal (claude)' }], tab: 't1' });
     if (sc === 'lead') Object.assign(s, { agent: 'rowan', model: 'opus', plan: true, wsName: 'export-invoices-as-pdf', badge: 'feat/export-invoices-as-pdf', filesKey: 'rowan', tabs: [{ id: 'c1', kind: 'chat', title: 'Export invoices as PDF' }], msgs: [

@@ -848,6 +848,15 @@
       "x": 12160,
       "y": 16900
     },
+    "WorkspaceGitHubPaused.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "GitHub paused",
+      "w": 1440,
+      "x": 13680,
+      "y": 16900
+    },
     "WorkspaceHunks.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1833,6 +1842,7 @@
     "WorkspaceSignedOut.dc.html",
     "WorkspaceSetupFailed.dc.html",
     "WorkspaceHooksDown.dc.html",
+    "WorkspaceGitHubPaused.dc.html",
     "ConfirmArchive.dc.html",
     "ConfirmDiscard.dc.html",
     "ConfirmRemoveRoom.dc.html",

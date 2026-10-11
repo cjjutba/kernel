@@ -45,7 +45,8 @@ export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running:
     case 'creating': return spin('Creating PR')
     case 'resolving': return spin('Resolving')
     case 'merging': return spin('Merging')
-    case 'ready': return { icon: 'pr', tone: 'add', label: 'Ready to merge' }
+    // A ready PR GitHub won't merge yet reads open, as the header does (KERNEL-401).
+    case 'ready': return ws.prBlocked ? { icon: 'pr', tone: 'add', label: 'PR open' } : { icon: 'pr', tone: 'add', label: 'Ready to merge' }
     case 'open': return { icon: 'pr', tone: 'add', label: 'PR open' }
     case 'checks': return { icon: 'pr', tone: 'muted', label: 'Checks running' }
     case 'conflict': return { icon: 'pr', tone: 'del', label: 'Merge conflicts' }

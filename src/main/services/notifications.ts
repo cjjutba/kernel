@@ -77,10 +77,12 @@ export class Notifications {
   attach() {
     // A ready PR that already has its row keeps it across a restart, so the next base move doesn't alert again.
     const rows = this.d.store.notifications()
-    for (const w of this.d.store.workspaces()) if (w.prState === 'ready' && w.prHead && rows.some((n) => n.workspaceId === w.id && n.kind === 'merge')) this.readyOn.set(w.id, w.prHead)
+    // One GitHub blocks has no row to keep, so its unblock makes one (KERNEL-401).
+    for (const w of this.d.store.workspaces()) if (w.prState === 'ready' && w.prHead && !w.prBlocked && rows.some((n) => n.workspaceId === w.id && n.kind === 'merge')) this.readyOn.set(w.id, w.prHead)
     const on = (e: PushEvent) => {
       if (e.type === 'approval') this.onApproval(e.approval)
       else if (e.type === 'pr') this.onPr(e.workspaceId, e.state)
+      else if (e.type === 'pr.blocked') this.onBlocked(e.workspaceId, !!e.blocked)
       else if (e.type === 'chat.running' && e.running) { const ws = this.d.store.chat(e.chatId)?.workspaceId; if (ws) this.cancelIdle(ws) }
     }
     bus.on('push', on)
@@ -218,6 +220,9 @@ export class Notifications {
       const n = this.save({ id: `n-pr-${workspaceId}-${state}-${this.d.now?.() ?? Date.now()}`, kind, roomId: ws.roomId, workspaceId, agentId: ws.agentId, title, sub: `${kind === 'merge' ? 'Merge' : 'Check failed'}${room ? ` · ${room.name}` : ''}`, heading, body, needsYou: true, read: false, createdAt: this.d.now?.() ?? Date.now() })
       this.alert(n, gate)
     }
+    // A ready PR GitHub won't merge isn't ready to merge. Its row waits for the block to lift, which `onBlocked` hears. This
+    // comes before the check below, since a PR usually falls behind as ready again on the same head (KERNEL-401).
+    if (state === 'ready' && ws.prBlocked) { this.holdMerge(workspaceId); return }
     // Ready again on the commit its row is for, after only checks, isn't news. GitHub checks a PR for conflicts again
     // each time its base moves, and it reads as checks until then (KERNEL-283).
     if (state !== 'ready' && state !== 'checks') this.readyOn.delete(workspaceId)
@@ -228,6 +233,26 @@ export class Notifications {
     else if (state === 'changes') make('check', `Changes requested on PR ${num}`, `Changes requested on PR ${num}`, `A reviewer asked for changes on ${ws.prTitle ?? ws.name}.`, 'checkFailed')
     else if (state === 'merged') settle('Merged.')
     else if (state === 'closed') settle('The PR was closed.')
+  }
+
+  /**
+   * GitHub started or stopped blocking a ready PR (KERNEL-401). A block takes back its "ready to merge" row; the end of one
+   * makes the row a ready PR gets.
+   */
+  private onBlocked(workspaceId: string, blocked: boolean) {
+    const ws = this.d.store.workspace(workspaceId)
+    if (!ws || ws.status === 'archived' || ws.prState !== 'ready') return
+    if (blocked) this.holdMerge(workspaceId)
+    else this.onPr(workspaceId, 'ready')
+  }
+
+  /** Settles the PR's open rows, a "ready to merge" one as one GitHub blocks, and forgets the head its row was for. */
+  private holdMerge(workspaceId: string) {
+    this.readyOn.delete(workspaceId)
+    for (const n of this.d.store.notifications()) {
+      if (n.workspaceId !== workspaceId || !n.needsYou || (n.kind !== 'merge' && n.kind !== 'check')) continue
+      this.save({ ...n, needsYou: false, read: true, resolved: n.kind === 'merge' ? 'GitHub blocks the merge.' : 'The PR changed after this.' })
+    }
   }
 
   private alert(n: Notification, gate: 'permission' | 'plan' | 'merge' | 'checkFailed' | 'finished' | 'idle') {

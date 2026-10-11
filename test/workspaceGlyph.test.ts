@@ -62,3 +62,12 @@ describe('glyphs for a workspace held for script trust (KERNEL-342)', () => {
     expect(chatGlyph({ waiting: [bash], running: true, trust: true })).toMatchObject({ label: 'Needs you' })
   })
 })
+
+describe('a ready PR GitHub blocks (KERNEL-401)', () => {
+  it('reads open, as the header does, not ready to merge', () => {
+    const ws = (o: Partial<Workspace>) => ({ id: 'w', status: 'ready', prState: 'ready', ...o }) as Workspace
+    const idle = { waiting: [], running: false }
+    expect(workspaceGlyph(ws({}), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'Ready to merge' })
+    expect(workspaceGlyph(ws({ prBlocked: 'behind' }), idle)).toEqual({ icon: 'pr', tone: 'add', label: 'PR open' })
+  })
+})

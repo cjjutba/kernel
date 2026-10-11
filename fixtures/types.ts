@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Thread, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -79,6 +79,8 @@ export interface Fixture {
   localFiles?: Record<string, FileToCopy[]>
   account?: ClaudeAccount
   hooks?: HookStatus
+  /** A GitHub rate limit holding Kernel's PR reads off (WorkspaceGitHubPaused, KERNEL-401). */
+  github?: GitHubStatus
   /** By workspace id. What the archive and discard confirmations read. Defaults to the fixture's changes and nothing unpushed. */
   gitStatus?: Record<string, WorkspaceGitStatus>
   update?: AppUpdate

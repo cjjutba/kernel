@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
+import type { AgentDef, Chat, PrBlocked, PrState, ReviewVerdict, SharedFile, SharedKind, SharedVersion, TeamEventKind, TeamUpdate, TeamUpdateRow, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import type { Store } from '../db'
 import { bus } from '../bus'
@@ -7,7 +7,7 @@ import type { TurnDone } from './notifications'
 import { CRASH_REASON, QUIT_REASON, type TurnBy } from './sessions'
 import { capText, firstLine } from './text'
 import { isBroken } from './waits'
-import { blockedText } from '@shared/merge'
+import { blockedWhy } from '@shared/merge'
 
 /**
  * Tells the Lead what its teammates did (KERNEL-72). Without it, Rowan hands off and never hears back: nobody asks the
@@ -81,6 +81,8 @@ export interface TeamEvent {
   wait?: WaitNews
   /** A file the teammate shared, at the version it shared (KERNEL-302). `source` is its path in the workspace. */
   shared?: { sharedId: string; version: number; title: string; kind: SharedKind; source: string }
+  /** `pr.blocked`: why GitHub won't merge the ready PR (KERNEL-401). */
+  blocked?: PrBlocked
 }
 
 /**
@@ -93,8 +95,11 @@ export interface WaitNews { on: string[]; label: string; held?: boolean; target?
 /** Events waiting for one Lead chat, or for a room's first Lead chat when `owner` is unset. */
 interface Pending { roomId: string; owner?: string; events: TeamEvent[] }
 
-/** What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). */
-interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[] }
+/**
+ * What waits for the Lead, saved under the meta key `leadUpdates` so a quit doesn't lose it (KERNEL-123). `toldBlocked` is
+ * what the Lead last heard about GitHub's block on each ready PR, so an unblock after a restart still reaches it (KERNEL-401).
+ */
+interface Saved { v: 1; seq: number; pending: [string, Pending][]; stopped: string[]; toldBlocked?: [string, PrBlocked][] }
 const SAVED = 'leadUpdates'
 
 /** PR states GitHub reports. Moving into one of these from none or creating means the PR was just opened. */
@@ -150,6 +155,8 @@ function sentence(e: TeamEvent, name: string, status = ''): string {
     case 'pr.conflict': return `${upper(pr)} has conflicts with its base branch.`
     case 'pr.merged': return `${upper(pr)} was merged.`
     case 'pr.closed': return `${upper(pr)} was closed without merging.`
+    case 'pr.blocked': return `GitHub won't merge ${pr} yet: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}.`
+    case 'pr.unblocked': return `GitHub no longer blocks ${pr}.`
     case 'turn': return 'Finished a turn.'
     case 'error': return 'Stopped with an error. Open the workspace to see it.'
     case 'crash':
@@ -187,6 +194,8 @@ function cardText(e: TeamEvent, status = ''): string {
     case 'pr.conflict': return 'Has conflicts with its base branch'
     case 'pr.merged': return e.pr ? `Merged PR #${e.pr}` : 'Merged'
     case 'pr.closed': return `Closed ${prOf(e)} without merging`
+    case 'pr.blocked': return `Blocked on GitHub: ${e.blocked ? blockedWhy[e.blocked] : "the branch's rules"}`
+    case 'pr.unblocked': return 'GitHub no longer blocks it'
     case 'turn': return 'Finished a turn'
     case 'error': return 'Stopped with an error'
     case 'crash': return relaunched(e) ? `Stopped when ${e.reason === QUIT_REASON ? 'Kernel quit' : 'Kernel closed'}` : 'Session ended unexpectedly'
@@ -219,6 +228,7 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
   const setup = last((e) => e.kind === 'setup.failed' || e.kind === 'setup.passed')
   const review = last((e) => e.kind === 'review')
   const wait = last((e) => e.kind.startsWith('wait.'))
+  const block = last((e) => e.kind === 'pr.blocked' || e.kind === 'pr.unblocked')
   const shares = new Map<string, TeamEvent>()
   for (const e of sorted) if (e.kind === 'shared' && e.shared) shares.set(e.shared.sharedId, e)
   // Once per PR: after Continue moved the workspace on, its new PR's opening is news too.
@@ -231,6 +241,12 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
     if (e.kind === 'review') return e === review
     if (e.kind.startsWith('wait.')) return e === wait
     if (e.kind === 'shared') return !!e.shared && shares.get(e.shared.sharedId) === e
+    // GitHub's block on a ready PR: the last word only, and only while the PR still reads that way (KERNEL-401).
+    if (e.kind === 'pr.blocked' || e.kind === 'pr.unblocked') {
+      if (e !== block) return false
+      if (!ws) return true
+      return ws.prState === 'ready' && (e.kind === 'pr.blocked' ? ws.prBlocked === e.blocked : !ws.prBlocked)
+    }
     // A close the PR has since left, by reopening or Continue, says nothing any more.
     if (e.kind === 'pr.closed' && ws && ws.prState !== 'closed') return false
     if (ONCE.has(e.kind)) { const key = `${e.kind}:${e.pr ?? ''}`; if (seen.has(key)) return false; seen.add(key); return true }
@@ -285,6 +301,8 @@ export class LeadUpdates {
   private prev = new Map<string, PrState>()
   /** The head commit each PR was on when an update told the Lead it was ready, until the PR leaves ready and checks. */
   private toldReady = new Map<string, string>()
+  /** GitHub's block on each ready PR as the Lead last heard it, until it hears the block lifted or the PR leaves ready and checks (KERNEL-401). */
+  private toldBlocked = new Map<string, PrBlocked>()
   /**
    * Lead chats the user stopped. Stop means stop: their updates wait for the chat's next turn that ends normally,
    * usually the user's next message, instead of starting a Kernel turn right after the Stop (KERNEL-122).
@@ -311,6 +329,7 @@ export class LeadUpdates {
     this.load()
     const on = (e: PushEvent) => {
       if (e.type === 'pr') this.onPr(e.workspaceId, e.state)
+      else if (e.type === 'pr.blocked') { const ws = this.d.store.workspace(e.workspaceId); if (ws) this.blockedNews(ws) }
       // However the turn ended, a stop or archive included, which never reach turnDone (KERNEL-262).
       else if (e.type === 'chat.running' && !e.running) this.waitTurnOver(e.chatId)
     }
@@ -341,12 +360,13 @@ export class LeadUpdates {
         if (events.length) this.pending.set(key, { ...p, events })
       }
       for (const id of saved.stopped ?? []) { const chat = this.d.store.chat(id); if (chat && !chat.closed) this.stopped.add(id) }
-    } catch { this.pending.clear(); this.stopped.clear() }
+      for (const [id, blocked] of saved.toldBlocked ?? []) if (this.d.store.workspace(id)) this.toldBlocked.set(id, blocked)
+    } catch { this.pending.clear(); this.stopped.clear(); this.toldBlocked.clear() }
     this.save()
   }
 
   private save() {
-    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped] })
+    this.d.store.saveMeta<Saved>(SAVED, { v: 1, seq: this.seq, pending: [...this.pending], stopped: [...this.stopped], ...(this.toldBlocked.size ? { toldBlocked: [...this.toldBlocked] } : {}) })
   }
 
   /**
@@ -453,10 +473,28 @@ export class LeadUpdates {
     // Ready again on the commit the Lead already heard was ready, after only checks, is old news. GitHub checks a PR for
     // conflicts again each time its base moves, and it reads as checks until then (KERNEL-283).
     const again = state === 'ready' && before === 'checks' && !!ws.prHead && this.toldReady.get(workspaceId) === ws.prHead
-    if (state !== 'ready' && state !== 'checks') this.toldReady.delete(workspaceId)
+    if (state !== 'ready' && state !== 'checks') {
+      this.toldReady.delete(workspaceId)
+      if (this.toldBlocked.delete(workspaceId)) this.save()
+    }
+    // Ready again on the same head is how a PR usually falls behind its base: the base moved and GitHub checked it again.
+    // The block, or its end, is the news then (KERNEL-401).
+    if (again) this.blockedNews(ws)
     if (kind && !again) this.add(ws, { kind })
     // A PR that moved on without news, as checks starting again, still waits for things to settle before its events go.
     else if (!opened) this.rearm(ws)
+  }
+
+  /**
+   * GitHub's block on a ready PR against what the Lead last heard (KERNEL-401): a block, or a new reason, is news, and so is
+   * the end of a block the Lead heard about. An end it never heard of is no news. Called on the 'pr.blocked' push, and on a
+   * ready push that `onPr` lets pass as nothing new.
+   */
+  private blockedNews(ws: Workspace) {
+    if (this.d.isLead(ws) || ws.prState !== 'ready') return
+    const told = this.toldBlocked.get(ws.id)
+    if (ws.prBlocked && ws.prBlocked !== told) this.add(ws, { kind: 'pr.blocked', blocked: ws.prBlocked })
+    else if (!ws.prBlocked && told) this.add(ws, { kind: 'pr.unblocked' })
   }
 
   private keyOf(ws: Workspace) { return ws.leadChatId ?? `room:${ws.roomId}` }
@@ -532,8 +570,14 @@ export class LeadUpdates {
       if (!this.d.post(g.chat.id, message.text, message.update)) continue
       for (const key of g.keys) drop(key)
       for (const row of message.update.rows) {
-        const head = this.d.store.workspace(row.workspaceId)?.prHead
-        if (head && row.events.some((e) => e.kind === 'pr.ready')) this.toldReady.set(row.workspaceId, head)
+        const w = this.d.store.workspace(row.workspaceId)
+        if (w?.prHead && row.events.some((e) => e.kind === 'pr.ready')) this.toldReady.set(row.workspaceId, w.prHead)
+        // What the Lead now knows of GitHub's block on the PR: a ready PR's update says it either way (KERNEL-401).
+        if (row.events.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.blocked' || e.kind === 'pr.unblocked')) {
+          if (w?.prState === 'ready' && w.prBlocked) this.toldBlocked.set(row.workspaceId, w.prBlocked)
+          else this.toldBlocked.delete(row.workspaceId)
+          changed.any = true
+        }
       }
       this.d.delivered?.(roomId, g.chat, message.update)
     }
@@ -564,7 +608,7 @@ export class LeadUpdates {
         const turn = kept.find((e) => e.kind === 'turn')
         const verdict = kept.find((e) => e.kind === 'review')?.review
         const name = this.d.agentName(roomId, ws.agentId) ?? ws.agentId
-        const review = kept.some((e) => e.kind === 'pr.ready') ? this.d.reviewState?.(ws) : undefined
+        const review = kept.some((e) => e.kind === 'pr.ready' || e.kind === 'pr.unblocked') ? this.d.reviewState?.(ws) : undefined
         const reviewer = this.d.reviewer?.(ws.roomId)
         const block: Block = {
           ws, name, events: kept.filter((e) => e.kind !== 'shared'), shares: kept.filter((e) => e.kind === 'shared'), reply: verdict?.summary ?? turn?.reply, summary: !!verdict, status: reviewStatus(review, reviewer),
@@ -642,11 +686,18 @@ export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you clos
 export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; autoReview?: boolean; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
 
 /** The To do line for a PR that passed checks and was approved. The review's own line says the same, so it shows once. */
-const readyToMerge = (pr: string, by: string[], blocked?: Workspace['prBlocked']) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. ${blocked ? stillBlocked(blocked) : 'Tell the user it is ready to merge.'}`
+const readyToMerge = (pr: string, by: string[]) => `${upper(pr)} passed checks, has no conflicts and ${by.join(' and ')} approved it. Tell the user it is ready to merge.`
 
-/** The end of a "ready to merge" line for a PR GitHub won't merge yet, with GitHub's reason (KERNEL-388). */
-const stillBlocked = (blocked: NonNullable<Workspace['prBlocked']>) => `It can't merge yet: ${lowerFirst(blockedText(blocked, ''))} Tell the user.`
-const lowerFirst = (t: string) => (t.startsWith('GitHub') ? t : t.charAt(0).toLowerCase() + t.slice(1))
+/**
+ * The To do line for a ready PR GitHub won't merge, in the same words from every event that meets it, so it shows once
+ * (KERNEL-401). A branch behind its base is its agent's to update, onto `base`, the way a released wait asks (KERNEL-259).
+ * A required review, or another rule, is the user's to know.
+ */
+export function blockedTodo(pr: string, name: string, at: string, blocked: PrBlocked, base: string): string {
+  if (blocked === 'behind') return `Ask ${name} to update ${pr}: fetch, rebase onto ${base}, re-run the tests and force push, with message_agent ${at}. GitHub won't merge it while its branch is behind.`
+  if (blocked === 'review') return `${upper(pr)} can't merge until someone approves it on GitHub. Tell the user.`
+  return `GitHub's branch rules block ${pr}. Tell the user.`
+}
 
 /** The To do line for a PR whose review was of another commit. The PR's own line says the same, so it shows once. */
 const anotherReview = (pr: string, name: string, at: string) => `${upper(pr)} needs another review: the last one was of a different commit. Ask ${name} to review it again with message_agent (workspace ${at}).`
@@ -685,7 +736,8 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
         if (r.verdict === 'blockers') { wake(`Send ${name}'s blockers to ${r.ofName} with message_agent (workspace ${r.of}).${archived ? '' : ` When ${r.ofName} is done, ask ${name} to review again with message_agent (workspace ${ws.id}).`}`, true); break }
         // An approval of a commit the PR no longer has, or doesn't have yet, says nothing about what would merge.
         if (!r.current && of?.prNumber) { wake(anotherReview(`PR #${of.prNumber}`, name, ws.id)); break }
-        if (of?.prState === 'ready' && of.prNumber) { wake(readyToMerge(`PR #${of.prNumber}`, [name], of.prBlocked), true); break }
+        // A PR GitHub still blocks is its author's to update, or the user's to know (KERNEL-401).
+        if (of?.prState === 'ready' && of.prNumber) { wake(of.prBlocked ? blockedTodo(`PR #${of.prNumber}`, r.ofName, `(workspace ${r.of})`, of.prBlocked, of.baseRef) : readyToMerge(`PR #${of.prNumber}`, [name]), true); break }
         if (!of?.prNumber) { wake(`${name} approved ${r.ofName}'s work. Ask ${r.ofName} to open a pull request with message_agent (workspace ${r.of}).`, true); break }
         wake(`${name} approved PR #${of.prNumber}. Its checks haven't passed yet; tell the user it is ready to merge once they do.`, true)
         break
@@ -709,24 +761,38 @@ export function decide(b: { ws: Workspace; name: string; events: TeamEvent[]; fr
       case 'pr.merged':
         if (c.allMerged()) wake(b.fromChat ? `Every task handed off in the closed Lead chat "${b.fromChat}" has merged. Tell the user in one line.` : ALL_MERGED, true)
         break
+      case 'pr.blocked': if (e.blocked) wake(blockedTodo(pr, name, at, e.blocked, ws.baseRef)); break
+      case 'pr.unblocked': {
+        const review = c.review
+        // A review still to come, or one that found blockers, says what's next itself.
+        if (review?.blockers || review?.inProgress) break
+        if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy)); break }
+        if (review?.open || review?.stale) break
+        if (c.autoReview === false || !c.reviewer) wake(`GitHub no longer blocks ${pr}, so it is ready to merge. Tell the user.`)
+        break
+      }
       case 'pr.ready': {
         const review = c.review
+        const blocked = ws.prBlocked && blockedTodo(pr, name, at, ws.prBlocked, ws.baseRef)
         // Blockers come with the review's own update, and a review that runs will say what it found.
         if (review?.blockers || review?.inProgress) break
-        if (review?.approvedBy.length) { wake(readyToMerge(pr, review.approvedBy, ws.prBlocked)); break }
+        // A branch behind its base is updated first: the update makes a new head, which any review would have to see again (KERNEL-401).
+        if (ws.prBlocked === 'behind' && blocked) { wake(blocked); break }
+        if (review?.approvedBy.length) { wake(blocked || readyToMerge(pr, review.approvedBy)); break }
         if (review?.open?.failed) { wake(`${upper(pr)} needs a review, and setup failed in ${review.open.name}'s review workspace. Tell the user to fix it and click Run again there (workspace ${review.open.workspaceId}).`); break }
         // With auto review off, only a review the user asked for is followed up: nobody looked at this PR, so it is the user's to merge (KERNEL-115).
-        if (c.autoReview === false && !review?.open && !review?.stale) { wake(`${upper(pr)} passed checks and has no conflicts. ${ws.prBlocked ? stillBlocked(ws.prBlocked) : 'Tell the user it is ready to merge.'}`); break }
+        if (c.autoReview === false && !review?.open && !review?.stale) { wake(blocked || `${upper(pr)} passed checks and has no conflicts. Tell the user it is ready to merge.`); break }
         if (review?.open) { wake(review.stale ? anotherReview(pr, review.open.name, review.open.workspaceId) : `${upper(pr)} needs a review. Ask ${review.open.name} to review it with message_agent (workspace ${review.open.workspaceId}).`); break }
         // A review of an earlier commit with nobody left to review again: a merge that needs an approval waits (KERNEL-115).
-        if (review?.stale && !c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts, but its last review was of an earlier commit and no reviewer is on this team now. Tell the user the review is out of date.`); break }
-        if (!c.reviewer) { wake(`${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
+        if (review?.stale && !c.reviewer) { wake(blocked || `${upper(pr)} passed checks and has no conflicts, but its last review was of an earlier commit and no reviewer is on this team now. Tell the user the review is out of date.`); break }
+        if (!c.reviewer) { wake(blocked || `${upper(pr)} passed checks and has no conflicts. No reviewer is on this team, so tell the user it is ready for them to review and merge.`); break }
         wake(`${upper(pr)} needs a review. ${c.reviewer.name} (${c.reviewer.id}) reviews on this team: call create_workspace with agent "${c.reviewer.id}" and review_of "${ws.id}".`)
         break
       }
       case 'turn':
         // A turn whose PR is being created or checked, or that a newer PR event follows, has that event to speak for it.
-        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && (x.kind.startsWith('pr.') || x.kind === 'review'))) break
+        // An unblock that rides along says nothing for the turn, so it doesn't count (KERNEL-401).
+        if (e.by === 'user' || SETTLING.includes(ws.prState) || b.events.some((x) => x.n > e.n && ((x.kind.startsWith('pr.') && x.kind !== 'pr.unblocked') || x.kind === 'review'))) break
         // The turn ended by waiting for another PR. Its wait line already wakes the Lead, once (KERNEL-262).
         if (b.events.some((x) => x.kind === 'wait.started' && !x.wait?.told)) break
         wake(`Read ${name}'s reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`)

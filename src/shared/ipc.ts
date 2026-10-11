@@ -1,7 +1,7 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
+  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrBlocked, PrInfo, PrState,
   PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -22,6 +22,8 @@ export interface KernelApi {
   'preflight.fix': { req: { id: PreflightCheck['id'] }; res: PreflightCheck[] }
   'hooks.install': { req: { port: number }; res: { path: string; events: string[] } }
   'hooks.status': { req: void; res: HookStatus }
+  /** Whether a GitHub rate limit holds Kernel's PR reads off, and until when (the footer, KERNEL-401). */
+  'github.status': { req: void; res: GitHubStatus }
   /** Settings > Hooks "Send test event". */
   'hooks.test': { req: void; res: HookStatus }
   /** Restart the hook server, on the given port when set (SetupPortBusy "Use 7421", WorkspaceHooksDown "Reconnect"). */
@@ -364,6 +366,9 @@ export type PushEvent =
   | { type: 'usage'; limits: RateLimit[] }
   | { type: 'pr'; workspaceId: string; state: PrState }
   | { type: 'pr.info'; info: PrInfo }
+  /** A ready PR GitHub started blocking (`blocked` set) or stopped blocking, while its state stayed ready (KERNEL-401). */
+  | { type: 'pr.blocked'; workspaceId: string; blocked?: PrBlocked }
+  | { type: 'github'; status: GitHubStatus }
   | { type: 'hooks'; status: HookStatus }
   | { type: 'update'; update: AppUpdate }
   | { type: 'account'; account: ClaudeAccount }

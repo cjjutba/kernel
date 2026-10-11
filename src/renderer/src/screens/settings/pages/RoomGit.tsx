@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppSettings, RoomSettings } from '@shared/types'
 import { call } from '../../../api'
 import { SegmentedControl, Select } from '../../../ui'
-import { isOverride, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
+import { isOverride, LinesField, NoRoom, Row, RoomPage, Section, sourceLine, useRoomPage } from '../kit'
 import { patchRoomSettings } from '../useSettings'
 
 const USE_DEFAULT = ''
@@ -24,6 +24,8 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
   const reset = (key: 'mode' | 'baseRef' | 'remote') => (isOverride(rs, `workspace.${key}`) ? () => set({ [key]: null }) : undefined)
   // The source line when the room's file says where the value is from, else what the app default is.
   const note = (key: 'mode' | 'baseRef' | 'remote' | 'deleteBranchOnArchive' | 'archiveOnMerge', appValue: string) => ({ source: sourceLine(rs, `workspace.${key}`), desc: sourceLine(rs, `workspace.${key}`) ? undefined : `The app default is ${appValue}` })
+  // An empty list is saved as one when settings.toml has a list, so the field can be cleared; else the key goes (KERNEL-401).
+  const saveOptional = (lines: string[]) => void patchRoomSettings(roomId, { pr: { optionalChecks: lines.length || rs?.sources['pr.optionalChecks'] === 'shared' || rs?.sources['pr.optionalChecks'] === 'override' ? lines : null } })
   const base = rs?.workspace.baseRef ?? app.baseRef
   const remote = rs?.workspace.remote ?? app.remote
   const remotes = [...new Set(branches.filter((b) => b.includes('/')).map((b) => b.split('/')[0]))]
@@ -47,6 +49,14 @@ export function RoomGit({ roomId, s }: { roomId?: string; s: AppSettings }) {
         <Row label="Archive on merge" {...note('archiveOnMerge', app.archiveOnMerge ? 'On' : 'Off')}>
           <SegmentedControl label="Archive on merge" value={onOff(rs?.workspace.archiveOnMerge)} onChange={(v) => set({ archiveOnMerge: v ? v === 'on' : null })} options={ON_OFF} />
         </Row>
+      </Section>
+      <Section title="Pull requests">
+        <Row label="Optional checks" source={sourceLine(rs, 'pr.optionalChecks')} onReset={isOverride(rs, 'pr.optionalChecks') ? () => void patchRoomSettings(roomId, { pr: { optionalChecks: null } }) : undefined} full={
+          <>
+            <LinesField label="Optional checks" value={rs?.pr?.optionalChecks ?? []} onSave={saveOptional} />
+            <p className="set-hint">One check name per line. <code>*</code> matches anything, like <code>Vercel*</code>. A check on this list that fails doesn’t mark a pull request as failed, when GitHub requires no checks on this repo. A check GitHub requires always counts.</p>
+          </>
+        } />
       </Section>
     </RoomPage>
   )

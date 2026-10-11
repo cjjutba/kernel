@@ -367,3 +367,55 @@ describe('Kernel start (KERNEL-155)', () => {
     expect(k.store.notification(approvalNotificationId('plan'))).toMatchObject({ needsYou: false, read: true, resolved: 'This request ended before you answered.' })
   })
 })
+
+describe("the Inbox and GitHub's merge block (KERNEL-401)", () => {
+  const set = (store: Store, o: Partial<Workspace>) => store.saveWorkspace({ ...store.workspace('w')!, ...o })
+  const merges = (n: Notifications) => n.list().filter((x) => x.kind === 'merge')
+
+  it('makes no "ready to merge" row while GitHub blocks the PR, and makes it when the block lifts', async () => {
+    const { store, n, shown } = await setup()
+    set(store, { prState: 'ready', prHead: 'abc', prBlocked: 'review' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(merges(n)).toEqual([])
+    expect(shown).toEqual([])
+    set(store, { prBlocked: undefined })
+    bus.push({ type: 'pr.blocked', workspaceId: 'w' })
+    expect(merges(n).map((x) => [x.title, x.needsYou])).toEqual([['PR #41 is ready to merge', true]])
+    expect(shown.map((x) => x.title)).toEqual(['PR #41 is ready to merge'])
+  })
+
+  it('takes the row back when a block starts, as when the PR falls behind on the same head after main moved', async () => {
+    const { store, n } = await setup()
+    set(store, { prState: 'ready', prHead: 'abc' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(merges(n).map((x) => x.needsYou)).toEqual([true])
+    // Main moved: GitHub checks the PR again, then reads it ready but behind, on the same head.
+    set(store, { prState: 'checks', prBlocked: undefined })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'checks' })
+    set(store, { prState: 'ready', prBlocked: 'behind' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    expect(merges(n)).toMatchObject([{ needsYou: false, resolved: 'GitHub blocks the merge.' }])
+    // A block that starts while the state stays ready does the same.
+    set(store, { prBlocked: undefined })
+    bus.push({ type: 'pr.blocked', workspaceId: 'w' })
+    expect(merges(n).filter((x) => x.needsYou)).toHaveLength(1)
+    set(store, { prBlocked: 'rules' })
+    bus.push({ type: 'pr.blocked', workspaceId: 'w', blocked: 'rules' })
+    expect(merges(n).filter((x) => x.needsYou)).toEqual([])
+  })
+
+  it('still makes the row after a restart when a PR blocked since then unblocks', async () => {
+    const { store, n, shown } = await setup()
+    set(store, { prState: 'ready', prHead: 'abc' })
+    bus.push({ type: 'pr', workspaceId: 'w', state: 'ready' })
+    set(store, { prBlocked: 'review' })
+    bus.push({ type: 'pr.blocked', workspaceId: 'w', blocked: 'review' })
+    n.detach()
+    const again = new Notifications({ store, settings: () => DEFAULT_SETTINGS('/h'), agentName: () => undefined, show: (x) => { shown.push(x) }, inBackground: () => true, now: () => new Date(2026, 0, 1, 12, 5).getTime() })
+    again.attach()
+    open.push(again)
+    set(store, { prBlocked: undefined })
+    bus.push({ type: 'pr.blocked', workspaceId: 'w' })
+    expect(again.list().filter((x) => x.kind === 'merge' && x.needsYou)).toHaveLength(1)
+  })
+})

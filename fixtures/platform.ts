@@ -169,8 +169,13 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
   // KERNEL-371: Archive on merge is off in the personal file over settings.toml, and Delete branch on archive follows the app.
+  // KERNEL-401: the optional checks come from settings.toml.
   SettingsRoomGit: roomPage('git', {
-    ...clientA({ workspace: { ...kernelFiles.workspace, archiveOnMerge: false }, sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override' } }),
+    ...clientA({
+      workspace: { ...kernelFiles.workspace, archiveOnMerge: false },
+      pr: { ...kernelFiles.pr, optionalChecks: ['Vercel*', 'codecov/patch'] },
+      sources: { ...kernelFiles.sources, 'workspace.archiveOnMerge': 'override', 'pr.optionalChecks': 'shared' }
+    }),
     branches: ['origin/main', 'origin/dev', 'main']
   }, 'settingsFiles'),
   // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
@@ -282,6 +287,8 @@ export const platformFixtures: Record<string, Fixture> = {
     ui: { ...open, workspace: { right: 'files', bottom: 'setup', checkpoints: false, toolsOpen: false } }
   })),
   WorkspaceHooksDown: scene(() => ({ hooks: { port: 7420, listening: false, installed: true, events: hookEvents }, ui: open })),
+  // KERNEL-401: a GitHub rate limit holds PR reads off until 3:41 PM, over a PR that passed its checks.
+  WorkspaceGitHubPaused: scene(() => ({ ...workspaceFixtures.WorkspacePRReady, github: { pausedUntil: next(15, 41) } })),
   ConfirmArchive: scene((f) => ({
     gitStatus: { [ids.table]: { branch: 'feat/t-14-invoice-table', ahead: 2, behind: 0, dirty: { files: 0, added: 0, removed: 0 } } },
     push: f.push,

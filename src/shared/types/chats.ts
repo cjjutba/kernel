@@ -149,6 +149,8 @@ export type MessageFrom = 'kernel' | 'lead'
 export type TeamEventKind =
   | 'turn' | 'error' | 'crash' | 'setup.failed' | 'setup.passed'
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
+  // A ready PR GitHub starts or stops blocking: a required review, a branch behind its base, other rules (KERNEL-401).
+  | 'pr.blocked' | 'pr.unblocked'
   | 'review'
   | 'wait.started' | 'wait.released' | 'wait.broken'
   | 'shared'
