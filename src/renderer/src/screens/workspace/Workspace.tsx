@@ -9,10 +9,11 @@ import { isLeadWorkspace, leadOf, openRoom } from '../../lead'
 import { currentThread, tabOf, threadIdOf } from '../../nav'
 import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
-import { leadHasNoChat, showsNewChat } from './leadNoChat'
+import { leadHasNoChat, newChatOnScreen, showsNewChat, tabInFront } from './leadNoChat'
 import { NewLeadChat } from './NewLeadChat'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
+import { composerFocusWantedIn, onComposerFocusAsked } from './composer/bus'
 import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
@@ -94,6 +95,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   // A terminal tab is shown while it is the one open, until + or ⌘T ask for the box (`newChat`).
   const noChat = leadHasNoChat(isLead, everyChat)
   const showNewChat = showsNewChat(noChat, newChat, chats, tab)
+  const newChatShown = newChatOnScreen(noChat, newChat, chats, tab)
   const chat = filePath || diffPath !== undefined || sharedId || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
   const files = tabs?.files ?? NO_TABS
   const diffs = tabs?.diffs ?? NO_TABS
@@ -132,6 +134,13 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     setNewChat(true)
     actions.ui.setTabs(workspaceId, { tab: undefined })
   }, [workspaceId])
+  // The sidebar's Lead row and ⌘⇧L ask for the composer. With no chat open and a file, diff or shared tab in front it isn't mounted, so the box takes its place first.
+  // Subscribed on every render, so it sees the tab now in front. Asked before the screen mounted, it finds the request still waiting.
+  useEffect(() => {
+    const bring = () => { if (noChat && tabInFront(tab) && composerFocusWantedIn(workspaceId)) showNew() }
+    bring()
+    return onComposerFocusAsked(bring)
+  })
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
@@ -198,7 +207,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
       <OpenImage.Provider value={openImage}>
       <OpenText.Provider value={openText}>
         <section aria-label="Agent" className="ws-main">
-          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={showNewChat ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
+          <ChatTabs workspaceId={workspaceId} threadId={isLead ? chats.find((c) => c.kind === 'chat')?.threadId : undefined} noChat={noChat} onNewChat={showNew} chats={chats} files={files} diffs={diffs} shared={shared} images={images.map((i) => ({ id: i.id, name: i.part.name }))} texts={texts.map((t) => ({ id: t.id, name: t.part.name }))} active={newChatShown ? undefined : tab} onSelect={select} onCloseFile={closeFile} onCloseDiff={closeDiff} onCloseShared={closeShared} onCloseImage={closeImage} onCloseText={closeText} />
           <div className="col grow" style={{ minHeight: 0 }}>
             {diffPath !== undefined
               ? <DiffView ws={ws} path={diffPath} changes={changes} />

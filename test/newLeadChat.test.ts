@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatPart } from '../src/shared/types'
-import { leadHasNoChat, newChatTab, showsNewChat } from '../src/renderer/src/screens/workspace/leadNoChat'
+import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabInFront } from '../src/renderer/src/screens/workspace/leadNoChat'
 
 // KERNEL-366: a room with no chats opens on New chat with Rowan, and + and ⌘T there start no chat.
 
@@ -69,5 +69,36 @@ describe("a room's New chat box draft", () => {
     expect(loadDraft(NEW_CHAT_DRAFT)).toBeUndefined()
     pruneDrafts({ workspaces: [], chats: {} }, () => true)
     expect(loadDraft(newChatDraftOf('room-a'))).toEqual(words('plan the week'))
+  })
+})
+
+describe('the tab row in a room with no chat', () => {
+  const terminal = { id: 't1' }
+
+  it('selects no tab only while the box is what is on screen, and keeps a file, diff, shared or terminal tab selected in front', () => {
+    expect(newChatOnScreen(true, false, [], undefined)).toBe(true)
+    expect(newChatOnScreen(true, true, [terminal], 't1')).toBe(true)
+    for (const tab of ['file:a.ts', 'diff:', 'diff:a.ts', 'shared:s1', 'image:1', 'text:1']) {
+      expect(showsNewChat(true, false, [terminal], tab)).toBe(true)
+      expect(tabInFront(tab)).toBe(true)
+      expect(newChatOnScreen(true, false, [terminal], tab)).toBe(false)
+    }
+    expect(newChatOnScreen(true, false, [terminal], 't1')).toBe(false)
+    expect(newChatOnScreen(false, false, [{ id: 'c1' }], 'c1')).toBe(false)
+  })
+})
+
+describe('focusComposerIn', () => {
+  it('leaves a request waiting for its workspace to bring the box up, until the box takes it', async () => {
+    vi.resetModules()
+    const bus = await import('../src/renderer/src/screens/workspace/composer/bus')
+    expect(bus.composerFocusWantedIn('ws-lead')).toBe(false)
+    bus.focusComposerIn('ws-lead')
+    expect(bus.composerFocusWantedIn('ws-lead')).toBe(true)
+    expect(bus.composerFocusWantedIn('ws-other')).toBe(false)
+    expect(bus.takeComposerFocus({ id: '', workspaceId: 'ws-lead' })).toBe(true)
+    expect(bus.composerFocusWantedIn('ws-lead')).toBe(false)
+    bus.focusComposerWhenOpen('chat-1')
+    expect(bus.composerFocusWantedIn('ws-lead')).toBe(false)
   })
 })

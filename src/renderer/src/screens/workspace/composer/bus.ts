@@ -40,6 +40,12 @@ export function takeComposerFocus(chat: { id: string; workspaceId: string }) {
   return Date.now() - p.at < FOCUS_TTL
 }
 
+/** Is a request for this workspace's composer waiting, not yet taken? A workspace whose composer isn't on screen uses it to bring the composer up. */
+export function composerFocusWantedIn(workspaceId: string) {
+  const p = pendingFocus
+  return !!p && 'workspaceId' in p && p.workspaceId === workspaceId && Date.now() - p.at < FOCUS_TTL
+}
+
 /** Told on every request, so a composer already showing the chat takes the caret: its chat won't change to make it look. */
 export function onComposerFocusAsked(listener: () => void) {
   focusAsks.add(listener)
