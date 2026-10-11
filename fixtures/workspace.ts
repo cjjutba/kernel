@@ -891,7 +891,6 @@ export const workspaceFixtures: Record<string, Fixture> = {
     })
   }),
   // Chat rows say what waits on you and what is running: the login chat has a question open in its second tab, the table chat is working.
-  // Hovering the login row shows its card, which names that tab and the question (KERNEL-339), four minutes into the wait.
   GroupedRowStatus: scene((f) => {
     const g = grouped(f)
     const ask: Approval = { ...pending('question', 'rowan', { workspaceId: ids.lead, chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
