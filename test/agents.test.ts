@@ -47,7 +47,10 @@ describe('agents', () => {
     expect(parseFrontmatter('---\nname: x\nmodel: sonnet # cheap\ndescription: "Fixes #12"\nrole: QA #tests\n---\n').meta).toMatchObject({ model: 'sonnet', description: 'Fixes #12', role: 'QA' })
     expect(parseFrontmatter('\uFEFF---\r\nname: win\r\ndescription: >\r\n  From Windows.\r\ntools: [Read, Edit]\r\n---\r\nBody\r\n').meta).toMatchObject({ name: 'win', description: 'From Windows.', tools: '[Read, Edit]' })
     const a = agentFromFile('/r/code-reviewer.md', '---\nname: code-reviewer\ndescription: >-\n  Reviews pull requests.\n---\nBody')
-    expect(a).toMatchObject({ description: 'Reviews pull requests.', role: 'Reviews Pull' })
+    // A description that opens with a sentence names no role, so the file's name does.
+    expect(a).toMatchObject({ description: 'Reviews pull requests.', role: 'Code Reviewer' })
+    expect(agentFromFile('/r/b.md', '---\nname: api\ndescription: Backend engineer. Builds the API.\n---\n').role).toBe('Backend')
+    expect(agentFromFile('/r/c.md', '---\nname: architect\ndescription: Designs the system.\n---\n').role).toBe('Architect')
     expect(agentFromFile('/r/w.md', '---\nname: w\ndescription: x\ntools: [Read, Edit, Bash]\n---\n').tools).toEqual(['Read', 'Edit', 'Bash'])
   })
   it('round-trips, loads lead first, and retires out of the loaded folder', async () => {

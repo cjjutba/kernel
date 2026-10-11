@@ -77,7 +77,7 @@ export function agentFromFile(file: string, src: string): AgentDef {
   const { meta, body } = parseFrontmatter(src)
   const id = meta.name || basename(file, '.md')
   const description = meta.description || ''
-  const role = meta.role || roleFrom(description) || 'Agent'
+  const role = meta.role || roleFrom(description, id) || 'Agent'
   // Only the file says who leads: `lead: true`, or a `role:` that says Lead. A description that does is a warning on Team (KERNEL-397).
   const lead = meta.lead ? /^true$/i.test(meta.lead) : !!meta.role && /\blead\b/i.test(meta.role)
   return {
@@ -91,12 +91,16 @@ export function agentFromFile(file: string, src: string): AgentDef {
   }
 }
 
-/** "Frontend engineer. Builds UI..." becomes "Frontend". */
-function roleFrom(description: string): string | undefined {
+/**
+ * "Frontend engineer. Builds UI..." becomes "Frontend". A description that opens with a sentence, as most outside Kernel do
+ * ("Reviews pull requests for..."), names no role in one word, so the file's name does: code-reviewer is "Code Reviewer"
+ * (KERNEL-397).
+ */
+function roleFrom(description: string, id: string): string | undefined {
   const first = description.split(/[.,:]/)[0]?.trim()
   if (!first) return undefined
-  const word = first.replace(/\b(engineer|developer|agent)\b/i, '').trim()
-  return word ? titleCase(word.split(/\s+/).slice(0, 2).join(' ')) : undefined
+  const words = first.replace(/\b(engineer|developer|agent)\b/i, '').trim().split(/\s+/).filter(Boolean)
+  return words.length === 1 ? titleCase(words[0]) : titleCase(id)
 }
 
 export async function loadAgents(repoPath: string, o: { retired?: boolean } = {}): Promise<AgentDef[]> {
