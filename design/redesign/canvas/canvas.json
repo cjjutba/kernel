@@ -36,7 +36,13 @@
     "PrClosed.dc.html": { "x": 6080, "y": 6420, "w": 1440, "h": 900, "title": "PR: Closed" },
     "TeamUpdateMerge.dc.html": { "x": 7600, "y": 1020, "w": 1440, "h": 900, "title": "Team update with Merge" },
     "LeadPrs.dc.html": { "x": 1520, "y": 7440, "w": 1440, "h": 900, "title": "Lead: PRs tab" },
-    "LeadPrsEmpty.dc.html": { "x": 3040, "y": 7440, "w": 1440, "h": 900, "title": "Lead: No open PRs" }
+    "LeadPrsEmpty.dc.html": { "x": 3040, "y": 7440, "w": 1440, "h": 900, "title": "Lead: No open PRs" },
+    "PrReadyHidden.dc.html": { "x": 1520, "y": 8460, "w": 1440, "h": 900, "title": "PR: Ready to merge, panel hidden" },
+    "PrCiFailHidden.dc.html": { "x": 3040, "y": 8460, "w": 1440, "h": 900, "title": "PR: Checks failed, panel hidden" },
+    "PrMergedOpen.dc.html": { "x": 4560, "y": 8460, "w": 1440, "h": 900, "title": "PR: Merged, toggle in the panel head" },
+    "PrMergedHidden.dc.html": { "x": 6080, "y": 8460, "w": 1440, "h": 900, "title": "PR: Merged, panel hidden" },
+    "PrMergedHiddenLong.dc.html": { "x": 7600, "y": 8460, "w": 1440, "h": 900, "title": "PR: Merged, panel hidden, long title" },
+    "HeaderBranchTooltip.dc.html": { "x": 9120, "y": 8460, "w": 1440, "h": 900, "title": "Header: branch tooltip on the title" }
   },
   "order": [
     "Main.dc.html", "Proposed.dc.html", "ProposedSetup.dc.html", "ProposedTerminal.dc.html",
@@ -45,7 +51,7 @@
     "PrNoChanges.dc.html", "PrNoPr.dc.html", "PrCreating.dc.html", "PrDraft.dc.html", "PrOpen.dc.html",
     "PrChecks.dc.html", "PrCiFail.dc.html", "PrChanges.dc.html", "PrConflict.dc.html", "PrResolving.dc.html",
     "PrReady.dc.html", "PrMerging.dc.html", "PrMerged.dc.html", "PrClosed.dc.html",
-    "TeamUpdateMerge.dc.html", "LeadPrs.dc.html", "LeadPrsEmpty.dc.html"
+    "TeamUpdateMerge.dc.html", "LeadPrs.dc.html", "LeadPrsEmpty.dc.html", "PrReadyHidden.dc.html", "PrCiFailHidden.dc.html", "PrMergedOpen.dc.html", "PrMergedHidden.dc.html", "PrMergedHiddenLong.dc.html", "HeaderBranchTooltip.dc.html"
   ],
   "notes": {
     "prstates": { "x": 1520, "y": 4080, "text": "PR states", "kind": "title1", "maxW": 7520 }
