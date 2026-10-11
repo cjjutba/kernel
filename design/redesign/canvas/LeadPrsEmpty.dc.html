@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
 <style>
 body{margin:0}
-.k{--canvas:#08090a;--panel:#0f1011;--side-panel:#0c0d0e;--card:#121315;--surface:#141516;--surface-2:#18191b;--surface-3:#1c1d21;--hover:#232428;--line:#1a1b1e;--line-2:#23252a;--line-3:#2a2b30;--panel-line:#1d1e22;--ink:#f7f8f8;--ink-2:#d0d6e0;--ink-3:#b7bcc4;--muted:#8a8f98;--faint:#62666d;--add:#4cb782;--del:#eb5757;--merged:#b9a3f5;--tint-add:#173327;--tint-del:#2f191b;--tint-merged:#2c2545;--on-ink:#08090a;--input-bg:#0b0c0d;--code-bg:#18191b;--pr-ready-soft:#1d3b2c;--pr-ready-edge:#33704f;--pr-ready-fg:#a3e8c3;--pr-ready-label:#62d69d;--needs:var(--signal);--count:var(--signal)}
+.k{--canvas:#08090a;--panel:#0f1011;--side-panel:#0c0d0e;--card:#121315;--surface:#141516;--surface-2:#18191b;--surface-3:#1c1d21;--hover:#232428;--line:#1a1b1e;--line-2:#23252a;--line-3:#2a2b30;--panel-line:#1d1e22;--ink:#f7f8f8;--ink-2:#d0d6e0;--ink-3:#b7bcc4;--muted:#8a8f98;--faint:#62666d;--add:#4cb782;--del:#eb5757;--merged:#b9a3f5;--tint-add:#173327;--tint-del:#2f191b;--tint-merged:#2c2545;--on-ink:#08090a;--input-bg:#0b0c0d;--code-bg:#18191b;--pr-ready-soft:#1d3b2c;--pr-ready-edge:#33704f;--pr-ready-fg:#a3e8c3;--needs:var(--signal);--count:var(--signal)}
 .k{font-family:'Inter',-apple-system,system-ui,sans-serif;font-feature-settings:'cv01','ss03';-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45;color:var(--ink);background:var(--canvas)}
 .k *{box-sizing:border-box}
 .k button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left}
@@ -207,7 +207,8 @@ body{margin:0}
 <button class="runbtn" style="margin-left: auto"><svg viewBox="0 0 16 16" aria-hidden="true" style="width: 10px; height: 10px"><path d="M4 2.5v11l9-5.5z" fill="currentColor"></path></svg>Run</button>
 </div>
 <div class="empty">
-<button class="runbtn big">Start run script</button>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 40px; height: 40px; color: var(--ink-3)"><path d="M5 3.2c0-.6.7-1 1.2-.6l6.2 4.4c.4.3.4 1 0 1.3l-6.2 4.4c-.5.4-1.2 0-1.2-.6z" fill="currentColor"></path></svg>
+<button class="runbtn big" style="margin-top: 10px">Start run script</button>
 <div style="font-size: 12px; color: var(--muted)">Runs on port 4300. Output shows here.</div>
 </div>
 </div>
