@@ -191,7 +191,9 @@ WS=[
     ('WorkspaceSharedCommentArchived','sharedcommentarchived'),
     ('WorkspaceSharedCommentOlder','sharedcommentolder'),
 ]
-for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks')
+for n,sc in WS:
+    if n=='WorkspaceLead': continue  # KERNEL-356 draws it with the Grouped set, below
+    emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel','sharedcommentarchived') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
@@ -354,7 +356,7 @@ G_NEW=[U('Add CSV export next to the PDF one. Spec first.'),
     {'kind':'thinking','text':'PDF export already lives in the row actions. CSV can sit in the same menu.'},
     {'kind':'tool','text':'Read the invoices module','cmd':'cat src/app/invoices/page.tsx'}]
 # The workspace is the room's one Lead workspace (D-139), so every Lead screen draws the same header and the same panel.
-G_NO_CHANGES="v.hasChanges = false; v.noChanges = true; v.rtabs[1].count = '';"
+G_NO_CHANGES="v.hasChanges = false; v.noChanges = true; v.rtabs[2].count = '0';"
 G_ICONS={'plan':'<rect x="3" y="2.5" width="10" height="11" rx="2"></rect><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"></path>',
     'team':'<circle cx="6" cy="6" r="2.2"></circle><path d="M2.5 13c.4-2 1.8-3 3.5-3s3.1 1 3.5 3"></path><path d="M10.5 4.2a2 2 0 0 1 0 3.6M11.5 10.2c1 .4 1.7 1.3 2 2.8"></path>',
     'pr':'<circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path>'}
@@ -373,6 +375,48 @@ G_UPDATE='''<sc-if value="{{ m.isUpdate }}" hint-placeholder-val="{{ false }}"><
 def g_patch(t, js):
     end=t.rindex('</script>')
     return t[:end]+js+t[end:]
+# KERNEL-356: the Lead's workspace after KERNEL-354 and KERNEL-355. Rowan works in its own worktree, so the header reads lead with
+# "latest main", the Create PR button is gone, and the right panel opens on a PRs tab under the ready band from LeadPrs.
+LEAD_BADGE='latest main'
+L_OPEN='<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h6v6M12 4l-7 7"></path></svg>'
+L_PRS=[('Kai','T-15b','#43','Download PDF in the row actions',96,12),('Kai','T-09','#41','Org invites',212,34)]
+def lead_pr(name,key,n,title,add,dele):
+    return ('<li style="padding: 5px 14px 7px; border-top: 1px solid #1a1b1e">'
+      '<div style="display: flex; align-items: center; gap: 8px; height: 24px"><span style="font-size: 13px; font-weight: 500; color: #f7f8f8">%s</span>'
+      '<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px; color: #62666d">%s</span>'
+      '<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px; color: #62666d">%s</span>'
+      '<span style="margin-left: auto; display: flex; align-items: center; gap: 12px">'
+      '<button type="button" aria-label="Merge PR %s" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid #33704f; background: #1d3b2c; color: #a3e8c3; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Merge</button>'
+      '<button type="button" aria-label="Open %s\'s workspace for %s" style="display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: #8a8f98; font-family: inherit; font-size: 12px; cursor: pointer">Open%s</button></span></div>'
+      '<div style="font-size: 13px; line-height: 18px; color: #d0d6e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">%s</div>'
+      '<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 16px; color: #8a8f98"><span style="color: #4cb782">Theo approved</span>'
+      '<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11px; font-variant-numeric: tabular-nums"><span style="color: #4cb782">+%d</span> <span style="color: #eb5757">-%d</span></span></div></li>')%(name,key,n,n,name,key,L_OPEN,title,add,dele)
+def lead_list(rows):
+    return ('<sc-if value="{{ rt.prs }}" hint-placeholder-val="{{ true }}">\n<div aria-label="Pull requests" style="flex: 1; min-height: 0; overflow: hidden">\n'
+      '<div style="display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: #62666d"><h3 style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Ready to merge</h3><span style="font-family: \'Geist Mono\', ui-monospace, monospace">%d</span></div>\n'
+      '<ul style="list-style: none; margin: 0; padding: 0">'%len(rows)+''.join(lead_pr(*r) for r in rows)+'</ul>\n</div>\n</sc-if>\n')
+def lead_band(n):
+    return ('<button type="button" aria-label="%d ready to merge, open the PRs tab" style="width: 100%%; height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 12px; border: 0; border-bottom: 1px solid #22432f; background: #15281f; color: #62d69d; font-family: inherit; text-align: left; cursor: pointer">'
+  '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg>'
+  '<span style="font-size: 12.5px; font-weight: 500">%d ready to merge</span>'
+  '<span style="margin-left: auto; display: inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"></path></svg></span></button>\n')%(n,n)
+L_HIDE='<button type="button" aria-label="Hide panel" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: none; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="2"></rect><path d="M10 3v10"></path></svg></button>\n'
+def lead_workspace(t, rows=L_PRS):
+    # The header spans the chat column only, as in LeadPrs; the right panel runs the full height and starts with the band.
+    h0=t.index('<header '); h1=t.index('</header>',h0)+len('</header>')
+    h=t[h0:h1]
+    p0=h.index('<span style="flex: 1"></span>')
+    h=h[:p0]+'<span style="flex: 1"></span>\n'+L_HIDE+'</header>'
+    t=t[:h0]+t[h1:]
+    sec='<section aria-label="Agent" style="position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column">'
+    t=gsub(t,sec,sec+'\n'+h)
+    t=gsub(t,'<aside aria-label="Workspace panels" style="width: 400px;','<aside aria-label="Workspace panels" style="width: 360px;')
+    a0='<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">\n<div role="tablist" style="height: 44px;'
+    t=gsub(t,a0,lead_band(len(rows))+a0)
+    t=gsub(t,'<sc-if value="{{ rt.files }}"',lead_list(rows)+'<sc-if value="{{ rt.files }}"')
+    t=gsub(t,"var rtabs = [['files', 'All files', ''],","var rtabs = [['prs', 'PRs', '%d'], ['files', 'All files', ''],"%len(rows))
+    t=gsub(t,"rt: { files: s.right === 'files',","rt: { prs: s.right === 'prs', files: s.right === 'files',")
+    return t
 def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
     t=gsub(ws.replace('%%SCENARIO%%','lead'), 'width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;', 'position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;')
     # The canvas row never shrinks its tabs, but the app does (workspace.css: .ws-tab has min-width 0 and an ellipsis).
@@ -400,8 +444,9 @@ def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
         t=gsub(t,"isUser: m.kind === 'user',","isUpdate: m.kind === 'update', isUser: m.kind === 'user',")
         t=gsub(t,'<sc-if value="{{ m.isMeta }}"',G_UPDATE+'<sc-if value="{{ m.isMeta }}"')
     if extra: t=gsub(t,'</div>\n</x-dc>',extra+'</div>\n</x-dc>')
-    S=dict(agent='rowan', model='opus', effort='high', plan=False, wsName='lead', badge='current branch · main', filesKey='rowan', tabs=tabs, tab=tab, chats=chats, right='changes')
+    S=dict(agent='rowan', model='opus', effort='high', plan=False, wsName='lead', badge=LEAD_BADGE, filesKey='rowan', tabs=tabs, tab=tab, chats=chats, right='prs')
     S.update(state or {})
+    t=lead_workspace(t)
     return g_patch(t, '''
 var __S = %s;
 var __seed = Component.prototype.seed;
@@ -462,12 +507,22 @@ GP=[('Suggested',[p_it('+','New chat in Client A',['⌘','N']),p_it('+','New tab
    ('Rooms',[p_it('A','Client A'),p_it('B','Client B')])]
 pg=[{'title':n,'items':[dict(i,bg='#1f2024' if (n=='Suggested' and k==0) else 'transparent') for k,i in enumerate(its)]} for n,its in GP]
 t=rd('CommandPalette.dc.html').replace('%%SHARED%%','off')
-t=gsub(t,'<h1 style="margin: 0; font-size: 13px; font-weight: 500">invoice-table</h1>','<h1 style="margin: 0; font-size: 13px; font-weight: 500">lead</h1>')
+t=gsub(t,'<h1 style="margin: 0; font-size: 13px; font-weight: 500">invoice-table</h1>','<h1 style="margin: 0; font-size: 13px; font-weight: 500">lead</h1><span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 12px; color: #8a8f98">%s</span>'%LEAD_BADGE)
+# KERNEL-356: behind the scrim the page is the Lead's workspace, so its right panel opens on the PRs tab under the ready band.
+t=gsub(t,'<div aria-hidden="true" style="flex: 1"></div>','<div aria-hidden="true" style="flex: 1; min-height: 0; display: flex"><div style="flex: 1"></div><div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #1a1b1e">'+lead_band(len(L_PRS))+'<div style="height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px; font-size: 13px; font-weight: 500; color: #8a8f98"><span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; background: #1c1d21; color: #f7f8f8">PRs<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px">'+str(len(L_PRS))+'</span></span><span style="padding: 0 10px">All files</span><span style="padding: 0 10px">Changes</span><span style="padding: 0 10px">Checks</span></div></div></div>')
 t=g_patch(t,'''
 var __rv = Component.prototype.renderVals;
 Component.prototype.renderVals = function () { var v = __rv.call(this); v.groups = %s; v.empty = false; return v; };
 '''%json.dumps(pg))
 emit('GroupedPalette', t, 'search', rows_html=a_rows[0])
+# KERNEL-356: WorkspaceLead is the Lead's workspace like the Grouped set, with its plan file under Changes.
+# Its plan still waits for approval and Kai has no workspace yet, so only org-invites (#41) is ready.
+t=lead_workspace(ws.replace('%%SCENARIO%%','lead'), L_PRS[1:])
+t=g_patch(t,'''
+var __seed = Component.prototype.seed;
+Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
+'''%json.dumps({'wsName':'lead','badge':LEAD_BADGE,'right':'prs'}))
+emit('WorkspaceLead', t, 'lead')
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
 p=P+'InboxEmpty.dc.html'; t=open(p).read()
