@@ -10,7 +10,8 @@ import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
 import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
-import { SESSION_GONE_NOTE, Sessions } from '../src/main/services/sessions'
+import { SESSION_GONE_NOTE, Sessions, type SessionDeps } from '../src/main/services/sessions'
+import { ALWAYS_ASK, NETWORK_OFF, neverAllowed, pushOwnBranch } from '../src/main/services/permissions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
 import { callTool, toolSpecs } from '../src/main/services/providers/codex/tools'
@@ -30,11 +31,11 @@ async function until<T>(check: () => T | Promise<T>, ms = 5000): Promise<NonNull
 const noor: AgentDef = { id: 'noor', file: '.claude/agents/noor.md', name: 'Noor', role: 'Engine', description: 'Engine engineer', lead: false, prompt: 'You are Noor.' } as AgentDef
 const rowan: AgentDef = { ...noor, id: 'rowan', name: 'Rowan', role: 'Lead', lead: true, prompt: 'You are Rowan.' }
 
-async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[] } = {}) {
+async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: boolean; agent?: AgentDef; chat?: Partial<Chat>; neverAllow?: string[]; ws?: Partial<Workspace>; availability?: SessionDeps['availability'] } = {}) {
   const fake = await fakeCodex()
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-codex-')), 'kernel.db'))
   const repo = await tempRepo()
-  const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: repo, mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...(o.agent?.lead ? { lead: true } : {}) }
+  const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: repo, mode: 'worktree', agentId: (o.agent ?? noor).id, port: 4300, status: 'ready', prState: 'none', createdAt: 1, ...(o.agent?.lead ? { lead: true } : {}), ...o.ws }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', provider: 'codex', model: 'gpt-6-astra', effort: 'medium', plan: false, createdAt: 1, ...o.chat }
   store.saveWorkspace(ws)
   store.saveChat(chat)
@@ -46,7 +47,7 @@ async function setup(o: { mode?: AppSettings['permissions']['mode']; network?: b
   const tools = [tool('ping', 'Ping Kernel.', { text: z.string() }, async ({ text }) => { pings.push(text); return { content: [{ type: 'text' as const, text: `pong ${text}` }] } })]
   const sessions = new Sessions({
     store, approvals, settings: () => settings, agentFor: () => o.agent ?? noor, mcpFor: () => undefined, envFor: () => fake.env,
-    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onReached: () => { reached.count++ },
+    roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onReached: () => { reached.count++ }, availability: o.availability,
     codexFor: () => ({ bin: fake.bin, personality: 'pragmatic', tools, instructions: o.agent?.lead ? 'Lead tools.' : undefined })
   })
   const items = () => store.items(chat.id)
@@ -124,7 +125,8 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('note').map((n) => n.text)).toEqual(['Kernel blocks "git push origin main" in every room.'])
   })
 
-  it.each(['acceptEdits', 'bypassPermissions'] as const)('asks in %s before any command Codex asks about, which it would run outside its sandbox, the retry after a sandbox failure included', async (mode) => {
+  // Auto runs as Accept edits on Codex (KERNEL-447).
+  it.each(['acceptEdits', 'auto'] as const)('asks in %s before any command Codex asks about, which it would run outside its sandbox, the retry after a sandbox failure included', async (mode) => {
     const t = track(await setup({ mode }))
     const ask = (id: string, command: string, reason?: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command, ...(reason ? { reason } : {}) } })
     await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', "/bin/zsh -lc 'touch ../outside.txt'"), ask('c1', "/bin/zsh -lc 'pnpm build'", 'command failed; retry without sandbox?')) }])
@@ -239,6 +241,106 @@ describe('a chat on Codex (KERNEL-406)', () => {
     await t.idle()
     await t.sessions.compact('chat')
     expect((await t.sent('thread/compact/start'))[0].params).toEqual({ threadId: 'thread-1' })
+  })
+})
+
+describe('permission modes on Codex (KERNEL-447)', () => {
+  const command = (id: string, cmd: string, extra: Record<string, unknown> = {}) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command: cmd, ...extra } })
+  const autoWorks: SessionDeps['availability'] = () => ({ auto: true, bypass: true })
+
+  it.each(['default', 'acceptEdits', 'auto', 'bypassPermissions'] as const)('keeps the thread on untrusted, workspace-write and the user as the reviewer in %s', async (mode) => {
+    const t = track(await setup({ mode, availability: autoWorks }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    const [start] = await t.sent('thread/start')
+    expect(start.params).toMatchObject({ approvalPolicy: 'untrusted', sandbox: 'workspace-write' })
+    expect(start.params).not.toHaveProperty('approvalsReviewer')
+    const [turn] = await t.sent('turn/start')
+    expect(turn.params).toMatchObject({ approvalPolicy: 'untrusted', sandboxPolicy: { type: 'workspaceWrite' } })
+    expect(turn.params).not.toHaveProperty('approvalsReviewer')
+  })
+
+  it('in Bypass permissions accepts every command the denials let through, outside the sandbox and Always ask included, without a card', async () => {
+    const t = track(await setup({ mode: 'bypassPermissions' }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(
+      command('c1', "/bin/zsh -lc 'touch ../outside.txt'"),
+      command('c2', 'pnpm drizzle-kit push'),
+      command('c3', "/bin/zsh -lc 'pnpm build'", { reason: 'command failed; retry without sandbox?' }),
+      command('c4', 'git push -u origin feat/invoice-schema')
+    ) }])
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'accept' }, { decision: 'accept' }, { decision: 'accept' }])
+    expect(t.store.approvals({})).toEqual([])
+  })
+
+  it('in Bypass permissions declines Never allow, a push that might reach a protected branch and network use with Network off, and says why in the chat', async () => {
+    const t = track(await setup({ mode: 'bypassPermissions', neverAllow: ['rm -rf /'] }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(command('c1', "/bin/zsh -lc 'rm -rf /'"), command('c2', 'git push'), command('c3', 'git push -u origin HEAD')) }])
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'decline' }, { decision: 'decline' }])
+    const own = pushOwnBranch(['main'], 'feat/invoice-schema')
+    expect(t.of('note').map((n) => n.text)).toEqual([neverAllowed('rm -rf /'), own, own])
+    expect(t.store.approvals({})).toEqual([])
+
+    const off = track(await setup({ mode: 'bypassPermissions', network: false }))
+    await off.sessions.send('chat', [{ type: 'text', text: script(
+      command('c1', '/bin/zsh -lc "curl https://example.com"'),
+      command('c2', 'npm view zod', { networkApprovalContext: { host: 'registry.npmjs.org', protocol: 'https' } }),
+      { request: 'item/permissions/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'p1', permissions: { network: { enabled: true } } } }
+    ) }])
+    await off.idle()
+    expect(await off.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'decline' }])
+    expect(await off.answers('item/permissions/requestApproval')).toEqual([{ permissions: {}, scope: 'turn' }])
+    expect(off.of('note').map((n) => n.text)).toEqual([NETWORK_OFF, NETWORK_OFF])
+  })
+
+  it('in Bypass permissions accepts file changes outside the workspace and grants more permissions, and still asks its questions', async () => {
+    const t = track(await setup({ mode: 'bypassPermissions' }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(
+      { notify: 'item/started', params: { item: { type: 'fileChange', id: 'f1', changes: [{ path: '../notes.md', kind: { type: 'add' }, diff: '+hi' }], status: 'inProgress' } } },
+      { request: 'item/fileChange/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'f1', startedAtMs: 1, grantRoot: '/tmp' } },
+      { request: 'item/permissions/requestApproval', params: { threadId: '$thread', turnId: '$turn', itemId: 'p1', permissions: { network: { enabled: true } } } },
+      { request: 'item/tool/requestUserInput', params: { threadId: '$thread', turnId: '$turn', itemId: 'q1', questions: [{ id: 'q', header: 'Store', question: 'Which store?', isOther: false, isSecret: false, options: [{ label: 'S3', description: '' }] }] } }
+    ) }])
+    const card = await t.pending()
+    expect(card).toMatchObject({ kind: 'question', title: 'Which store?' })
+    t.approvals.decide(card.id, { behavior: 'answer', text: 'S3' })
+    await t.idle()
+    expect(await t.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
+    expect(await t.answers('item/permissions/requestApproval')).toEqual([{ permissions: { network: { enabled: true } }, scope: 'turn' }])
+    expect(t.store.approvals({})).toHaveLength(1)
+  })
+
+  it('runs a current-branch workspace in Bypass permissions as Accept edits while Only in worktrees is on, so leaving the sandbox asks', async () => {
+    const t = track(await setup({ mode: 'bypassPermissions', ws: { mode: 'current' } }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(command('c1', "/bin/zsh -lc 'pnpm build'")) }])
+    const card = await t.pending()
+    expect(card).toMatchObject({ title: 'Run pnpm build', reason: 'Codex runs it outside its sandbox.' })
+    t.approvals.decide(card.id, { behavior: 'deny' })
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }])
+  })
+
+  it('asks about an Always ask command in Auto, which runs as Accept edits on Codex, with the reason on the card', async () => {
+    const t = track(await setup({ mode: 'auto', availability: autoWorks }))
+    await t.sessions.send('chat', [{ type: 'text', text: script(command('c1', 'pnpm drizzle-kit push'), command('c2', 'y', { kind: 'writeStdin' })) }])
+    const card = await t.pending()
+    expect(card).toMatchObject({ title: 'Run pnpm drizzle-kit push', reason: ALWAYS_ASK })
+    t.approvals.decide(card.id, { behavior: 'allow' })
+    await t.idle()
+    // Typing into a running terminal follows Accept edits.
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }, { decision: 'accept' }])
+  })
+
+  it('takes a new mode at its next approval, with no thread setting to change', async () => {
+    const t = track(await setup({ mode: 'acceptEdits' }))
+    await t.sessions.send('chat', [{ type: 'text', text: 'hello' }])
+    await t.idle()
+    await t.sessions.configure('chat', { mode: 'bypassPermissions' })
+    await t.sessions.send('chat', [{ type: 'text', text: script(command('c1', "/bin/zsh -lc 'pnpm build'")) }])
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'accept' }])
+    expect(await t.sent('thread/start')).toHaveLength(1)
   })
 })
 

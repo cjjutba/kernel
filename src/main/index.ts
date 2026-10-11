@@ -20,6 +20,7 @@ import { lastFolder } from './picker'
 import { QuitGuard } from './quit'
 import { probeNetwork } from './services/health'
 import { refreshPath } from './services/shellPath'
+import { muteShadowedWarning } from './services/providers/claude'
 import { isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
@@ -121,6 +122,8 @@ if (moved) log?.info(moved)
 // writes in transactions, and a stuck feature beats a window that quits under the user's agents.
 process.on('uncaughtException', (err) => { console.error('[kernel] uncaught exception', err); bus.track(errorEvent('exception', err)) })
 process.on('unhandledRejection', (reason) => { console.error('[kernel] unhandled rejection', reason); bus.track(errorEvent('rejection', reason)) })
+// Every session in Bypass permissions would print the SDK's warning that canUseTool doesn't see every call (KERNEL-447).
+muteShadowedWarning()
 app.on('child-process-gone', (_e, d) => { if (d.reason !== 'clean-exit') console.error(`[kernel] a ${d.type} process is gone (${d.reason}, exit code ${d.exitCode})`) })
 
 /** Brings the window forward, or opens one if it was closed. A headless run stays hidden. */

@@ -17,6 +17,7 @@ export function sessionDeps(k: Kernel): SessionDeps {
     disabledFor: (ws) => { const room = k.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
     rulesFor: (ws, agent) => k.tools.rulesFor(ws, agent),
     roomAllow: (roomId) => k.store.room(roomId)?.allow ?? [],
+    availability: (chat, ws, wants) => k.permissions.forChat(chat, ws, wants),
     envFor: (ws) => k.env.envFor(ws),
     allowInRoom: (roomId, rule) => {
       const room = k.store.room(roomId)

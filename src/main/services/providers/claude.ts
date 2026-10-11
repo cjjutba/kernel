@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type ModelInfo, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
@@ -10,7 +10,7 @@ import { toActivity } from '../hookServer'
 import { failureOf } from '../health'
 import { toolKind, toolPolicy, type ToolPolicy } from '../agentTools'
 import { IMAGE_DATA_URL } from '../plans'
-import { decide, guardVerdict, NETWORK_OFF, rulesOf, saveAlwaysAllow, type Verdict } from '../permissions'
+import { decide, guardVerdict, MODE_NAMES, NETWORK_OFF, rulesOf, saveAlwaysAllow, stricter, type RunMode, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
 import type { Ask, Proc, Runner, RunnerHost } from './types'
@@ -53,6 +53,13 @@ export interface ClaudeStart {
   env: Record<string, string>
   /** The room's checkout, which a Lead worktree takes its `.claude` settings from. */
   root?: string
+  /** The mode the session starts in (`effectiveMode`). */
+  mode: RunMode
+  /**
+   * The chat runs in Bypass permissions, plan mode aside, so the process may take it (`allowDangerouslySkipPermissions`).
+   * Only then: a subagent's own Bypass needs it too, and a repo's agent file could otherwise ask for it (KERNEL-447).
+   */
+  bypass: boolean
 }
 
 /** One chat's Claude Code process through the Agent SDK (KERNEL-406 moved it out of Sessions as it was). */
@@ -68,6 +75,10 @@ export class ClaudeRunner implements Runner {
   private readonly commands = new Map<string, string>()
   /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
   private resume?: string
+  /** The mode the CLI runs in: the start's, then each one `setPermissionMode` took (KERNEL-447). */
+  private applied: RunMode
+  /** Mode switches, one after another, so the last one asked for is the one that holds. */
+  private switching: Promise<void> = Promise.resolve()
 
   constructor(private readonly host: RunnerHost, o: ClaudeStart) {
     const chat = host.chat()
@@ -80,6 +91,7 @@ export class ClaudeRunner implements Runner {
     // The agent file's tools line holds, as it does when Claude Code runs the file as a subagent (KERNEL-397).
     const tools = toolPolicy(agent?.tools)
     const off = switchedOff(o.disabled, Object.keys(o.mcpServers ?? {}))
+    this.applied = o.mode
     const options: Options = {
       cwd: ws.path,
       // The Lead's worktree takes `.claude` settings, agents, hooks and `.mcp.json` from the room's checkout, as it did when
@@ -89,7 +101,8 @@ export class ClaudeRunner implements Runner {
       effort: claudeEffort(chat.effort),
       // Without display: 'summarized' the CLI sends thinking blocks with empty text.
       thinking: { type: 'adaptive', display: 'summarized' },
-      permissionMode: chat.plan ? 'plan' : this.baseMode(),
+      permissionMode: o.mode,
+      ...(o.bypass ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool: this.canUseTool(),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: o.prompt },
@@ -98,7 +111,8 @@ export class ClaudeRunner implements Runner {
       ...(tools?.hidden.length ? { disallowedTools: tools.hidden } : {}),
       hooks: kernelHooks({
         ctx, commands: this.commands, tools,
-        verdict: (command) => guardVerdict(command, rulesOf(host)),
+        verdict: (command) => guardVerdict(command, this.rules()),
+        askUser: (command, reason, signal) => this.askFromHook(command, reason, signal),
         held: () => host.held(),
         networkAllowed: () => host.settings().permissions.network !== false,
         handoff: agent?.lead ? { afterPlan: () => host.handoffAfterPlan(), atStop: () => host.handoffAtStop() } : undefined
@@ -123,7 +137,10 @@ export class ClaudeRunner implements Runner {
   async interrupt() { await this.query.interrupt().catch(() => undefined) }
   async setModel(model: string) { await this.query.setModel(model).catch(() => undefined) }
   async setEffort(effort: Effort) { await this.query.applyFlagSettings({ effortLevel: claudeEffort(effort) }).catch(() => undefined) }
-  async setPlan(on: boolean) { await this.query.setPermissionMode(on ? 'plan' : this.baseMode()).catch(() => undefined) }
+  setMode(mode: RunMode): Promise<void> {
+    this.switching = this.switching.then(() => this.switchTo(mode))
+    return this.switching
+  }
   async usage() { await readUsage(this.query, (p) => this.host.mergeLimits(p)) }
 
   close() {
@@ -155,7 +172,42 @@ export class ClaudeRunner implements Runner {
     } catch { /* the composer keeps the last number */ }
   }
 
-  private baseMode(): NonNullable<Options['permissionMode']> { return this.host.settings().permissions.mode === 'default' ? 'default' : 'acceptEdits' }
+  /** Claude Code's models with what each one supports, from the session's initialize answer, for Auto (KERNEL-447). */
+  async models(): Promise<ModelInfo[]> { return (await withTimeout(this.query.initializationResult(), 15_000)).models ?? [] }
+
+  private async switchTo(mode: RunMode) {
+    if (mode === this.applied || this.closed) return
+    try {
+      await this.query.setPermissionMode(mode)
+      this.applied = mode
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e)
+      this.host.item({ kind: 'note', id: randomUUID(), ts: Date.now(), text: `Claude Code didn't switch this chat to ${MODE_NAMES[mode]} (${why}), so it stays in ${MODE_NAMES[this.applied]}.` })
+    }
+  }
+
+  /**
+   * The rules Kernel's own checks use: the stricter of the mode the CLI runs in and the mode the chat should run in. While a
+   * switch is under way, or after one the CLI refused, Kernel never gives a step less than either mode would (KERNEL-447).
+   */
+  private rules() { return rulesOf(this.host, stricter(this.applied, this.host.mode())) }
+
+  /**
+   * Always ask, from the Bash guard: the user answers inside the hook, in every mode it applies in, so no classifier and no
+   * rule of Claude Code's answers first (KERNEL-433, KERNEL-447). Always allow on the card saves the room rule, as canUseTool's does.
+   */
+  private askFromHook(command: string, reason: string, signal: AbortSignal): Promise<SyncHookJSONOutput> {
+    const host = this.host
+    const d = describeTool('Bash', { command })
+    const asking = {
+      ask: async (a: Ask, o: { signal?: AbortSignal; timeoutMs?: number }) => {
+        const decision = await host.ask(a, o)
+        saveAlwaysAllow(host, { tool: 'Bash', command }, decision)
+        return decision
+      }
+    }
+    return awaitDecision(asking, { kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, detail: d.detail, reason, activity: d.title }, signal)
+  }
 
   private async consume() {
     let ended: string | null = null
@@ -192,6 +244,12 @@ export class ClaudeRunner implements Runner {
           // A connection error is the network's banner, not the overloaded one.
           if (failure === 'network' || failure === 'auth') host.failed(failure, { notify: true })
           else host.retrying({ attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms })
+        }
+        // Auto mode's classifier refused a step without asking anyone, so the chat says what and why (KERNEL-447).
+        if (msg.subtype === 'permission_denied' && msg.decision_reason_type === 'classifier') {
+          const row = this.toolItems.get(msg.tool_use_id)
+          const why = (msg.decision_reason ?? msg.message ?? '').trim()
+          host.item({ kind: 'note', id: `denied-${msg.tool_use_id}`, ts: now, text: `Auto mode refused ${row ? `"${row.label}"` : msg.tool_name}${why ? `: ${why}` : '.'}` })
         }
         if (msg.subtype === 'compact_boundary') void this.context()
         // Most commands answer with an assistant message; some print here instead.
@@ -273,15 +331,15 @@ export class ClaudeRunner implements Runner {
   }
 
   /**
-   * Called for whatever Claude Code would prompt for, including Bash the PreToolUse hook marked Always ask. Kernel's rules
-   * decide first (`decide`), and what they leave open goes to the user.
+   * Called for whatever Claude Code would prompt for. Kernel's rules decide first (`decide`), and what they leave open goes to
+   * the user. In Bypass permissions that is everything the CLI still sends, since it only sends what it insists on asking about.
    */
   private canUseTool(): CanUseTool {
     const host = this.host
-    return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID }): Promise<PermissionResult> => {
+    return async (toolName, input, { signal, suggestions, suppressAlwaysAllowRule, toolUseID, decisionReason, blockedPath, description }): Promise<PermissionResult> => {
       const command = toolName === 'Bash' ? this.commands.get(toolUseID) ?? String((input as any).command ?? '') : ''
       const step = { tool: toolName, command }
-      const verdict = decide(step, rulesOf(host))
+      const verdict = decide(step, this.rules())
       if (verdict?.behavior === 'deny') return { behavior: 'deny', message: verdict.message }
       if (verdict?.behavior === 'allow') return { behavior: 'allow', updatedInput: input }
 
@@ -290,9 +348,10 @@ export class ClaudeRunner implements Runner {
       const d = describeTool(toolName, shown)
       const questions = isQuestion ? askedQuestions(input) : undefined
       const options = questions?.[0]?.options.map((o) => o.label) ?? (isQuestion ? [] : undefined)
+      const reason = isQuestion ? undefined : askReason({ decisionReason, blockedPath, description })
       const result = toolName === 'ExitPlanMode'
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
-        : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title }, { signal })
+        : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title, ...(reason ? { reason } : {}) }, { signal })
       if (!result) return { behavior: 'deny', message: NO_DECISION }
       saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
@@ -343,6 +402,32 @@ export async function probeClaudeUsage(cwd: string, merge: (p: LimitPatch[]) => 
     input.close()
     abort.abort()
   }
+}
+
+/**
+ * Claude Code's models with what each supports, without a live session (KERNEL-447): Claude Code starts on the active
+ * account with no prompt, no settings and no transcript, answers its initialize and stops, which sends no message.
+ */
+export async function claudeModels(cwd: string, o: { env: Record<string, string>; bin?: string }): Promise<ModelInfo[]> {
+  const input = new InputQueue<SDKUserMessage>()
+  const abort = new AbortController()
+  try {
+    const q = query({ prompt: input, options: { cwd, settingSources: [], persistSession: false, abortController: abort, env: sessionEnv(process.env, o.env), pathToClaudeCodeExecutable: o.bin ?? packagedClaude() } })
+    return (await withTimeout(q.initializationResult(), 15_000)).models ?? []
+  } finally {
+    input.close()
+    abort.abort()
+  }
+}
+
+/**
+ * Why Claude Code asked, for the card's reason line (`Approval.reason`, KERNEL-447): its own reason, the path it stopped at
+ * and its description of the step, as far as it gives them.
+ */
+export function askReason(o: { decisionReason?: string; blockedPath?: string; description?: string }): string | undefined {
+  const path = o.blockedPath && !o.decisionReason?.includes(o.blockedPath) ? `Blocked path: ${o.blockedPath}` : undefined
+  const parts = [o.decisionReason, path, o.description].map((p) => p?.trim().replace(/\.+$/, '')).filter((p): p is string => !!p)
+  return parts.length ? `${parts.join('. ')}.` : undefined
 }
 
 /**
@@ -438,26 +523,30 @@ function kernelHooks(o: {
   ctx: { roomId: string; workspaceId: string; agentId?: string }
   commands: Map<string, string>
   verdict: (command: string) => Verdict
+  /** Asks the user about an Always ask command and waits, for the hook's answer (`awaitDecision`). */
+  askUser: (command: string, reason: string, signal: AbortSignal) => Promise<SyncHookJSONOutput>
   held: () => Promise<void> | undefined
   networkAllowed?: () => boolean
   handoff?: LeadHandoff
   /** The agent file's tools line, when it has one (KERNEL-397). */
   tools?: ToolPolicy
 }): Partial<Record<HookEvent, HookCallbackMatcher[]>> {
-  const { ctx, commands, verdict, held, networkAllowed = () => true, handoff, tools } = o
+  const { ctx, commands, verdict, askUser, held, networkAllowed = () => true, handoff, tools } = o
   const report: HookCallback = async (input) => {
     const a = toActivity(input as HookPayload, ctx)
     if (a) bus.activity(a)
     return {}
   }
-  const guard: HookCallback = async (input) => {
+  const guard: HookCallback = async (input, _id, { signal }) => {
     const { tool_use_id, tool_input } = input as PreToolUseHookInput
     const command = String((tool_input as any)?.command ?? '')
     commands.set(tool_use_id, command)
     // A room's Always allow rule gives no opinion here. canUseTool allows the command if Claude Code asks about it.
     const v = verdict(command)
     if (v?.behavior === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: v.message } }
-    if (v?.behavior === 'ask') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: v.reason } }
+    // Always ask waits for the user here, in every mode but Bypass permissions, where the guard has no opinion on it. A command
+    // the tools line refuses isn't asked about: the gate denies it (KERNEL-447).
+    if (v?.behavior === 'ask' && (!tools || tools.allows('Bash', tool_input))) return askUser(command, v.reason, signal)
     return {}
   }
   // A paused room's agents wait here, so they stop at the next tool call and not in the middle of one.
@@ -476,7 +565,7 @@ function kernelHooks(o: {
   const events: HookEvent[] = ['SessionStart', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'Stop', 'TaskCreated', 'TaskCompleted', 'TeammateIdle']
   const hooks: Partial<Record<HookEvent, HookCallbackMatcher[]>> = Object.fromEntries(events.map((e) => [e, [{ hooks: [report] }]]))
   const web: HookCallback = async () => (networkAllowed() ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: NETWORK_OFF } })
-  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard] }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
+  hooks.PreToolUse!.push({ hooks: [hold], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'Bash', hooks: [guard], timeout: HOLD_TIMEOUT_SEC }, { matcher: 'WebFetch|WebSearch', hooks: [web] })
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {
     const gate: HookCallback = async (input) => {
@@ -516,10 +605,11 @@ export const HOOK_ASK_MS = (HOLD_TIMEOUT_SEC - 60) * 1000
 const NO_DECISION = 'No decision was made in time.'
 
 /**
- * Asks the user from inside a PreToolUse hook and waits, for a call Claude Code would run without asking: Always ask in
- * Auto, the tools gate in Auto and Bypass (KERNEL-433, KERNEL-446). The card and the agent's needs status are the ones
- * canUseTool's asks get. Only the user's yes allows the call. An abort, the wait running out and no decision deny it,
- * because a hook that times out lets the call go. The hook's matcher needs `timeout: HOLD_TIMEOUT_SEC`.
+ * Asks the user from inside a PreToolUse hook and waits, for a call no mode or classifier of Claude Code's may answer: Always
+ * ask in every mode but Bypass permissions, and the tools gate in Auto and Bypass (KERNEL-433, KERNEL-446, KERNEL-447). The
+ * card and the agent's needs status are the ones canUseTool's asks get. Only the user's yes allows the call. An abort, the
+ * wait running out and no decision deny it, because a hook that times out lets the call go. The hook's matcher needs
+ * `timeout: HOLD_TIMEOUT_SEC`.
  */
 export async function awaitDecision(host: Pick<RunnerHost, 'ask'>, req: Ask, signal: AbortSignal, timeoutMs = HOOK_ASK_MS): Promise<SyncHookJSONOutput> {
   const deny = (reason: string): SyncHookJSONOutput => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
@@ -529,6 +619,20 @@ export async function awaitDecision(host: Pick<RunnerHost, 'ask'>, req: Ask, sig
   if (result?.behavior === 'allow') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
   if (!result) return deny(NO_DECISION)
   return deny(result.behavior === 'answer' ? `The user answered: ${result.text}` : result.message ?? 'Denied in Kernel.')
+}
+
+/** What the SDK warns with when a session starts in Bypass permissions with a canUseTool. */
+export const SHADOWED_WARNING = 'CLAUDE_SDK_CAN_USE_TOOL_SHADOWED'
+
+/**
+ * The SDK warns at every session started in Bypass permissions that canUseTool won't see every call. Kernel knows, and asks
+ * only about what Claude Code still sends it there (KERNEL-447), so the warning would only fill the log. Node prints warnings
+ * from its own `warning` listener, so the listeners there now are wrapped to skip this one and get every other.
+ */
+export function muteShadowedWarning(proc: Pick<NodeJS.Process, 'listeners' | 'removeAllListeners' | 'on'> = process) {
+  const before = proc.listeners('warning') as ((w: Error) => void)[]
+  proc.removeAllListeners('warning')
+  proc.on('warning', (w: Error & { code?: string }) => { if (w.code !== SHADOWED_WARNING) for (const l of before) l(w) })
 }
 
 /** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */

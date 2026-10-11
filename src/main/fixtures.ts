@@ -7,6 +7,7 @@ import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
 import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
+import { CODEX_AUTO } from './features/permissions'
 import { agentFromFile, draftAgent } from './services/agents'
 import { isPattern } from './services/filesToCopy'
 import { mustBeInside, OPEN_APPS } from './services/openApps'
@@ -259,6 +260,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
+    // Auto works on Claude and not on Codex, as on an account that runs it (KERNEL-447).
+    'permissions.availability': async () => ({ claude: { auto: true, bypass: true }, codex: { auto: false, bypass: true, reason: CODEX_AUTO } }),
     'settings.setRoom': async ({ roomId, patch, shared }) => {
       // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
       // the patch names is applied the same way, and the sources follow the file it was written to. `runScripts` is a list

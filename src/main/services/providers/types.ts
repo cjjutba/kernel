@@ -2,6 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import type { AgentDef, Approval, AskedQuestion, Chat, ChatItem, ChatPart, Decision, Effort, Workspace } from '@shared/types'
 import type { Retry } from '@shared/ipc'
 import type { AppSettings } from '../settings'
+import type { RunMode } from '../permissions'
 import type { LimitPatch } from './limits'
 
 // The seam between Sessions and the CLI a chat runs on (KERNEL-406). Sessions keeps the orchestration: queues, pauses,
@@ -17,8 +18,11 @@ export interface Runner {
   interrupt(): Promise<void>
   setModel(model: string): Promise<void>
   setEffort(effort: Effort): Promise<void>
-  /** Plan mode on or off. Off puts the session back on Settings, Permissions' mode, so a changed mode goes through here too. */
-  setPlan(on: boolean): Promise<void>
+  /**
+   * Run the next steps in `mode` (KERNEL-447): plan mode on or off, or the chat's permission mode changed. Claude switches the
+   * live session, and a switch it refuses leaves a note in the chat. Codex takes it from its next turn.
+   */
+  setMode(mode: RunMode): Promise<void>
   /** Ask the provider for the usage windows, which arrive through `RunnerHost.mergeLimits`. */
   usage(): Promise<void>
   /** Read the context window use again, which arrives through `RunnerHost.setContext`. */
@@ -45,6 +49,8 @@ export interface Ask {
   questions?: AskedQuestion[]
   /** Shown as the agent's activity while it waits. */
   activity: string
+  /** Why Kernel asked, for the card's reason line (`Approval.reason`). */
+  reason?: string
 }
 
 /** What Sessions does for one chat's runner. Each method acts on that chat and its current process. */
@@ -54,6 +60,8 @@ export interface RunnerHost {
   readonly workspace: Workspace
   readonly agent: AgentDef | undefined
   settings(): AppSettings
+  /** The mode the chat runs in now (`effectiveMode`), read at every step, so a change applies at once (KERNEL-447). */
+  mode(): RunMode
   /** Bash rules the user allowed for the room, and saving one ("Always allow in this room"). */
   roomAllow(): string[]
   allowInRoom(rule: string): void
