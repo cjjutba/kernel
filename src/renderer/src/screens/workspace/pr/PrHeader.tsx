@@ -18,7 +18,7 @@ export const request: Record<PrAction,(workspaceId: string) => Promise<unknown>>
 }
 
 async function copyBranch(branch: string) {
-  try { await navigator.clipboard.writeText(branch); actions.ui.toast({ title: 'Copied', sub: branch }) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' }) }
+  try { await navigator.clipboard.writeText(branch) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'The clipboard is not available.' }) }
 }
 
 /** The caret on Create PR (10px, as on the canvas). */

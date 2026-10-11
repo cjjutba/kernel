@@ -42,9 +42,11 @@ export function Hooks({ s }: { s: AppSettings }) {
   })
   const installed = !!status?.installed
   const seen = Math.max(0, ...(status?.events.map((e) => e.lastSeen ?? 0) ?? []))
+  // Copy says "Copied" for 1.5s, like a code block's. Only a failure toasts.
+  const [copied, setCopied] = useState(false)
   const copy = async () => {
     if (!status) return
-    try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); actions.ui.toast({ title: 'Copied the hooks snippet' }) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Select the snippet and copy it by hand.' }) }
+    try { await navigator.clipboard.writeText(hooksSnippet(status, timeout)); setCopied(true); setTimeout(() => setCopied(false), 1500) } catch { actions.ui.toast({ title: 'Could not copy', sub: 'Select the snippet and copy it by hand.' }) }
   }
   const openFile = () => track('open', async () => {
     try { await call('app.openTerminal', { cwd: (await call('app.info', undefined)).dataDir, command: 'open ~/.claude/settings.json' }) } catch (e) { actions.ui.toast({ title: 'Could not open the file', sub: cleanError(e) }) }
@@ -90,7 +92,7 @@ export function Hooks({ s }: { s: AppSettings }) {
           </Section>
           <Section title="Snippet">
             <Row label="settings.json" desc="What Kernel adds, if you would rather paste it yourself" full={<pre className="set-snippet" tabIndex={0} aria-label="Hooks snippet">{hooksSnippet(status, timeout)}</pre>}>
-              <Button onClick={() => void copy()}>Copy</Button>
+              <Button onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</Button>
             </Row>
           </Section>
         </>
