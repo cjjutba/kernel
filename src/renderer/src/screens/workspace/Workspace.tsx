@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
-import { Icon, IconButton } from '../../ui'
+import { Icon } from '../../ui'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
@@ -12,6 +12,7 @@ import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { bringBoxOnAsk, leadHasNoChat, newChatOnScreen, showsNewChat } from './leadNoChat'
 import { NewLeadChat } from './NewLeadChat'
+import { OpenIn } from './OpenIn'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
 import { Composer } from './composer/Composer'
@@ -229,8 +230,8 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
         {label ? <h1 className="ellipsis">{title}</h1> : <WorkspaceTitle branch={ws.branch} title={title} />}
         {label && <span className="mono muted ellipsis ws-label">{label}</span>}
         <IssueKey ws={ws} room={room} />
-        <IconButton icon="code" size={15} label="Open in editor" onClick={() => void call('system.openInEditor', { path: ws.path })} />
         <span className="grow" />
+        <OpenIn ws={ws} />
         {!panels && (ownPr ? <PrHeader ws={ws} capsule /> : <LeadPrSummary roomId={ws.roomId} capsule />)}
         <RightPanelToggle name="panels" />
       </header>
