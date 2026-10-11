@@ -1,4 +1,4 @@
-import type { Tracker, Workspace, WorkspaceSource } from '@shared/types'
+import type { Tracker, TrackerIssue, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs } from '../services/github'
@@ -32,15 +32,16 @@ export class Integrations extends Feature {
   /**
    * create_workspace's `issue`: the source to save, with the tracker it came from, the issue's labels, which pick the branch
    * type, and the issues that block it (KERNEL-263), or the task title and no labels when the tracker doesn't answer. A
-   * `#41` key is a GitHub issue in any room, and only a GitHub room's tracker reads it (KERNEL-462).
+   * `#41` key is a GitHub issue in any room, and only a GitHub room's tracker reads it (KERNEL-462). `issue` is the issue as
+   * the tracker read it, with the tracker's kind, for the brief (KERNEL-473).
    */
-  async issueSource(roomId: string, key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
+  async issueSource(roomId: string, key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[]; issue?: { read: TrackerIssue; kind: TrackerKind } }> {
     const tracker = await this.trackerFor(roomId)
     if (key.startsWith('#') && tracker.kind !== 'github') return { source: { kind: 'issue', id: key, title, tracker: 'github' }, labels: [] }
     try {
       const issue = await tracker.issue(key)
       const kind = tracker.kind === 'none' ? undefined : tracker.kind
-      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url, ...(kind ? { tracker: kind } : {}) }, labels: issue.labels, blockedBy: issue.blockedBy }
+      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url, ...(kind ? { tracker: kind } : {}) }, labels: issue.labels, blockedBy: issue.blockedBy, ...(kind ? { issue: { read: issue, kind } } : {}) }
     } catch {
       const gh = tracker.kind === 'github' ? githubKey(key) : undefined
       return { source: { kind: 'issue', id: gh ?? key, title, ...(gh ? { tracker: 'github' as const } : {}) }, labels: [] }

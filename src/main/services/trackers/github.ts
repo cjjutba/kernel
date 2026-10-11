@@ -41,6 +41,17 @@ export function parseIssueView(json: string): TrackerIssue {
   }
 }
 
+/** Reading an issue with gh signed out, which an agent's get_issue passes on (KERNEL-473). */
+export const GH_SIGNED_OUT = "The GitHub CLI isn't signed in. The user can run gh auth login in a terminal."
+
+/** Why `gh issue view` failed: signed out and no such issue in plain words, anything else as ghFailed says it. */
+function viewFailed(r: ExecResult, key: string): Error {
+  const said = `${r.stderr}\n${r.stdout}`
+  if (!r.timedOut && /gh auth login/.test(said)) return new Error(GH_SIGNED_OUT)
+  if (!r.timedOut && /could not resolve to an issue/i.test(said)) return new Error(`GitHub has no issue ${key} in this repo.`)
+  return ghFailed(r)
+}
+
 /**
  * The GitHub issues of the repo at `cwd`, as gh resolves it there. GitHub records no blockers Kernel reads, and an issue has
  * no started state, so `start` moves nothing (KERNEL-462).
@@ -58,7 +69,7 @@ export function githubTracker(cwd: string, cmd: typeof exec = exec): Tracker {
       const key = githubKey(id)
       if (!key) throw new Error(`${id} is not a GitHub issue. GitHub issues go by number, like #41.`)
       const r = await cmd('gh', ['issue', 'view', key.slice(1), '--json', 'number,title,url,body,labels,comments'], { cwd, timeoutMs: 20000 })
-      if (r.code !== 0 || r.timedOut) throw ghFailed(r)
+      if (r.code !== 0 || r.timedOut) throw viewFailed(r, key)
       return parseIssueView(r.stdout)
     },
     start: async () => undefined

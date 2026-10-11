@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { exec, ExecResult } from '../src/main/services/exec'
 import { trackerKind } from '../src/main/services/trackers'
-import { githubKey, githubTracker, parseIssueView } from '../src/main/services/trackers/github'
+import { GH_SIGNED_OUT, githubKey, githubTracker, parseIssueView } from '../src/main/services/trackers/github'
+import { LINEAR_SIGNED_OUT, linearTracker } from '../src/main/services/trackers/linear'
 import { NO_TRACKER, noneTracker } from '../src/main/services/trackers/none'
 
 /** A gh that answers every call with `answer`, and keeps each call's arguments and folder. */
@@ -74,17 +75,37 @@ describe('GitHub Issues as a tracker (KERNEL-462)', () => {
 
   it('says when gh is missing, signed out or too slow', async () => {
     const fails = (r: Partial<ExecResult>) => githubTracker('/repo', gh(() => r).cmd)
+    const signedOut = { code: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable.' }
     await expect(fails({ code: 127 }).search()).rejects.toThrow('Install the GitHub CLI (gh) to read GitHub issues.')
-    await expect(fails({ code: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable.' }).issue('#41'))
-      .rejects.toThrow('Could not read GitHub issues: To get started with GitHub CLI, please run:  gh auth login')
+    await expect(fails(signedOut).search()).rejects.toThrow('Could not read GitHub issues: To get started with GitHub CLI, please run:  gh auth login')
     await expect(fails({ code: 1, timedOut: true }).search()).rejects.toThrow('GitHub took too long to answer. Try again.')
     await expect(fails({ stdout: 'not json' }).issue('#41')).rejects.toThrow('Could not read the issue gh sent.')
+  })
+
+  it('reads an issue with plain words for signed out and no such issue, which get_issue passes on (KERNEL-473)', async () => {
+    const fails = (r: Partial<ExecResult>) => githubTracker('/repo', gh(() => r).cmd)
+    await expect(fails({ code: 4, stderr: 'To get started with GitHub CLI, please run:  gh auth login\n' }).issue('#41')).rejects.toThrow(GH_SIGNED_OUT)
+    await expect(fails({ code: 1, stderr: 'GraphQL: Could not resolve to an issue or pull request with the number of 999. (repository.issue)\n' }).issue('999'))
+      .rejects.toThrow('GitHub has no issue #999 in this repo.')
+    await expect(fails({ code: 127 }).issue('#41')).rejects.toThrow('Install the GitHub CLI (gh) to read GitHub issues.')
   })
 
   it('moves nothing when a workspace starts on an issue', async () => {
     const g = gh()
     expect(await githubTracker('/repo', g.cmd).start('#41')).toBeUndefined()
     expect(g.calls).toEqual([])
+  })
+})
+
+describe('Linear as a tracker reading one issue (KERNEL-473)', () => {
+  /** A Linear that answers every call with `status` and `body`. */
+  const linear = (status: number, body: unknown) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch
+
+  it('says plainly when Kernel is not connected or Linear has no such issue, and passes other errors on', async () => {
+    await expect(linearTracker(async () => undefined, linear(200, {})).issue('KERNEL-83')).rejects.toThrow(LINEAR_SIGNED_OUT)
+    await expect(linearTracker(async () => 'k', linear(400, { errors: [{ message: 'Entity not found: Issue' }] })).issue('KERNEL-999'))
+      .rejects.toThrow("Linear has no issue KERNEL-999, or this token can't see it.")
+    await expect(linearTracker(async () => 'k', linear(401, {})).issue('KERNEL-83')).rejects.toThrow('Linear rejected the token. Reconnect it in Settings > Integrations.')
   })
 })
 

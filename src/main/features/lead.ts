@@ -16,6 +16,7 @@ import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { DEFAULT_OPEN_CAP, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import { briefParts } from '../services/issueMcp'
 import type { From } from '../services/leadUpdates'
 import { fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, roomWorktreeRoot, slugify, worktreeFolder } from '../services/worktrees'
 import { runningRuns } from '../services/scripts'
@@ -476,11 +477,13 @@ export class Lead extends Feature {
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
         const linked = issue ? await this.k.integrations.issueSource(roomId, issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
+        // The brief carries the issue the tracker read, so the teammate needs no tracker MCP server for it (KERNEL-473).
+        const parts = linked?.issue ? briefParts(o.prompt, linked.issue.read, linked.issue.kind) : undefined
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf
-        const ws = await this.k.workspaces.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
+        const ws = await this.k.workspaces.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(parts ? { parts } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
         if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat)
-        // Rowan named no wait, but Linear says the issue is blocked by one a teammate is building (KERNEL-263).
+        // Rowan named no wait, but the tracker says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
           // The brief may still wait in the teammate's chat, for a slot, a pause or the connection (KERNEL-272).

@@ -11,6 +11,7 @@ import { HANDOFF_NOW } from './handoff'
 import { firstLine } from './text'
 import { archiveSkip, CLOSED_PR } from './archiveGuard'
 import { isMerged, joinLabels, waitLabel, waitRefusal, waitTargets } from './waits'
+import { trackerName } from './trackers'
 
 export interface KernelToolDeps {
   roomId: string
@@ -196,8 +197,9 @@ export function kernelTools(d: KernelToolDeps) {
   /** "PR #164 by Noor" for each target, joined. */
   const labels = (targets: Workspace[], team: AgentDef[]) => joinLabels(targets.map((t) => waitLabel(t, team.find((a) => a.id === t.agentId)?.name ?? t.agentId)))
   /**
-   * A hand-off Kernel made wait because Linear marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
-   * messages it when the blocking PRs merge. Rowan's own wait_for always holds the brief, so a wait that doesn't is Linear's.
+   * A hand-off Kernel made wait because the tracker marks its issue as blocked (KERNEL-263): the teammate started, and Kernel
+   * messages it when the blocking PRs merge. Rowan's own wait_for always holds the brief, so a wait that doesn't is the
+   * tracker's. Named as the issue's source has it (KERNEL-473).
    */
   const blocked = (ws: Workspace, team: AgentDef[], pick: AgentDef, queued: boolean) => {
     const key = (w: Workspace | undefined) => (w?.source?.kind === 'issue' ? w.source.id : undefined)
@@ -209,7 +211,8 @@ export function kernelTools(d: KernelToolDeps) {
     const name = (t: Workspace) => team.find((a) => a.id === t.agentId)?.name ?? t.agentId
     const builders = [...new Set(on.map(name))]
     const prs = on.map((t) => (t.prNumber ? `PR #${t.prNumber}` : `${name(t)}'s PR`))
-    return ` Linear marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
+    const tracker = ws.source?.kind === 'issue' ? ws.source.tracker : undefined
+    return ` ${tracker ? trackerName(tracker) : 'The issue tracker'} marks ${issue} as blocked by ${joinLabels(on.map((t) => key(t)!))}, which ${joinLabels(builders)} ${builders.length > 1 ? 'are' : 'is'} building. ${pick.name} starts ${queued ? 'once the brief goes out' : 'now'}, and Kernel messages ${pick.name} when ${joinLabels(prs)} ${prs.length > 1 ? 'merge' : 'merges'}. Pass wait_for to hold the brief instead.`
   }
   return [
     tool('list_agents', 'List the agents in this room with their roles.', {}, async () => {
@@ -258,9 +261,9 @@ export function kernelTools(d: KernelToolDeps) {
       mode: z.enum(['worktree', 'current']).optional(),
       base_ref: z.string().optional(),
       branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
-      issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
+      issue: z.string().optional().describe('The key of the issue this task builds, as the room\'s tracker shows it, for example "PROJ-83" or "#41". Kernel links the workspace to it, names the branch after it unless you pass branch, puts the issue in the brief, and moves it to In Progress where the tracker has that state'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
-      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
+      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or an issue key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
       user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached")
     }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
@@ -337,7 +340,7 @@ export function kernelTools(d: KernelToolDeps) {
     }),
     tool('wait_for_merge', "Make a teammate wait for other workspaces' PRs to merge, or stop waiting. Replaces any earlier wait. A teammate whose brief hasn't gone out gets it once they merge; one that already started is told to rebase onto them. An empty list ends the wait and sends a held brief now.", {
       workspace_id: z.string().describe('The workspace that waits, from list_workspaces'),
-      on: z.array(z.string()).describe('The ids of the workspaces whose PRs it waits for (a PR number like "#164" or a Linear key works too). Empty to stop waiting')
+      on: z.array(z.string()).describe('The ids of the workspaces whose PRs it waits for (a PR number like "#164" or an issue key works too). Empty to stop waiting')
     }, async ({ workspace_id, on }) => {
       const refuse = (why: string) => ({ ...text(`Not set: ${why}`), isError: true })
       if (!d.setWait) return refuse('waiting is not available here.')

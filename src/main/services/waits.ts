@@ -12,7 +12,7 @@ export { isMerged, joinLabels, waitLabel } from '@shared/waits'
 /** Open workspaces first, then the newest, so an old archived workspace with the same issue or PR loses. */
 const best = (list: Workspace[]) => [...list].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.createdAt - a.createdAt)[0]
 
-/** The workspace `ref` names: its id, its PR as "#164" or "164", or the Linear issue it builds ("KERNEL-197"). */
+/** The workspace `ref` names: its id, its PR as "#164" or "164", or the issue it builds ("KERNEL-197"). */
 export function resolveTarget(workspaces: Workspace[], ref: string): Workspace | undefined {
   const r = ref.trim()
   const byId = workspaces.find((w) => w.id === r)
@@ -67,7 +67,7 @@ export function waitRefusal(c: WaitCheck): string | undefined {
   }
   for (const ref of c.refs) {
     const t = resolveTarget(c.workspaces, ref)
-    if (!t) return `there is no workspace "${ref}" in this room to wait for. Pass ${c.teammate ? 'a PR number like #164, a Linear issue key or a workspace id' : 'a workspace id from list_workspaces, a PR number like #164, or a Linear issue key'}.`
+    if (!t) return `there is no workspace "${ref}" in this room to wait for. Pass ${c.teammate ? 'a PR number like #164, an issue key or a workspace id' : 'a workspace id from list_workspaces, a PR number like #164, or an issue key'}.`
     if (c.waiter && t.id === c.waiter.id) return `${t.name} can't wait for itself.`
     if (c.isLead(t)) return `${t.name} is ${c.teammate ? "the Lead's" : 'your own'} workspace, which never opens a pull request.`
     if (t.reviewOf) return `${t.name} is a review. Wait for the work it reviews instead (workspace ${t.reviewOf}).`
