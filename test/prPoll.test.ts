@@ -53,10 +53,14 @@ async function setup(n = 1) {
   return { k, ws, prs, reads }
 }
 
-/** Fake time for Date only, so git and gh stubs still run. `tick` moves on one poll and runs it. */
+/**
+ * Fake time for Date only, so git and gh stubs still run. `tick` moves on one poll and runs it. It starts at the real
+ * time, since `setup` and the reads before `clock` stamp PRs with it: a fixed date would put those in the future once
+ * the wall clock passed it (KERNEL-402).
+ */
 function clock(k: Kernel) {
+  let now = Date.now()
   vi.useFakeTimers({ toFake: ['Date'] })
-  let now = Date.parse('2026-10-11T09:00:00Z')
   vi.setSystemTime(now)
   return {
     at: () => now,
