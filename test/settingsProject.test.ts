@@ -13,7 +13,7 @@ import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
 import { bashVerdict } from '../src/main/services/bashGuard'
 import type { SessionDeps } from '../src/main/services/sessions'
-import { tempRepo } from './helpers'
+import { fakeGh, tempRepo } from './helpers'
 
 describe('repo settings files', () => {
   it('writes the shared file and the personal one separately, and reads them merged', async () => {
@@ -463,7 +463,7 @@ describe('Linear token', () => {
   })
 
   it('issues.list sends the stored token before the environment one', async () => {
-    const { k, dataDir, room } = await startKernel()
+    const { k, dataDir, room } = await startKernel({ 'README.md': '# demo\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n' })
     const seen: string[] = []
     vi.stubGlobal('fetch', async (_url: string, init: { headers: Record<string, string> }) => { seen.push(init.headers.authorization); return new Response(JSON.stringify({ data: { issues: { nodes: [] } } })) })
     vi.stubEnv('LINEAR_API_KEY', 'from-env')
@@ -473,6 +473,59 @@ describe('Linear token', () => {
     await h['issues.list']({ roomId: room.id, query: '' })
     expect(seen).toEqual(['from-env', 'from-file'])
     expect((await h['integrations.list'](undefined)).find((i) => i.id === 'linear')?.connected).toBe(true)
+    await k.stop()
+  })
+})
+
+describe("a room's issue tracker (KERNEL-462)", () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs() })
+
+  const LINEAR_TEAM = '[linear]\nteam = "KERNEL"\n'
+  const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41' }
+
+  /** Linear answers every search with KERNEL-83 and counts the calls, gh answers with #41, and LINEAR_API_KEY is set. */
+  async function trackers() {
+    const linear: string[] = []
+    vi.stubGlobal('fetch', async () => { linear.push('search'); return new Response(JSON.stringify({ data: { issues: { nodes: [{ identifier: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/x' }] } } })) })
+    vi.stubEnv('LINEAR_API_KEY', 'lin_key')
+    const gh = await fakeGh({ list: [crash] })
+    return { linear, gh }
+  }
+  const fromLinear = [{ id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/x', source: 'linear' }]
+  const fromGitHub = [{ id: '#41', title: 'Crash on save', url: crash.url, source: 'github' }]
+
+  it('issues.list reads each room from its own: Linear with a token and a team, else GitHub with a github.com remote, else none', async () => {
+    const { linear, gh } = await trackers()
+    const { k, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': LINEAR_TEAM })
+    // A remote added after the room was, so Kernel reads it from git.
+    const github = await k.rooms.addRoom(await tempRepo())
+    await git(github.path, 'remote', 'add', 'origin', 'https://github.com/acme/app.git')
+    const elsewhere = await k.rooms.addRoom(await tempRepo())
+    await git(elsewhere.path, 'remote', 'add', 'origin', 'https://gitlab.com/acme/app.git')
+    const list = (roomId: string) => k.integrations.handlers()['issues.list']({ roomId, query: '' })
+    expect(await list(room.id)).toEqual(fromLinear)
+    expect(await list(github.id)).toEqual(fromGitHub)
+    expect(await list(elsewhere.id)).toEqual([])
+    expect(linear).toHaveLength(1)
+    expect(await gh.calls()).toHaveLength(1)
+    await k.stop()
+  })
+
+  it('takes the room\'s [tracker] kind over the token, the team and the remote, and reads a change at once', async () => {
+    const { linear, gh } = await trackers()
+    const { k, repo, room } = await startKernel({ 'README.md': '# a\n', '.kernel/settings.toml': LINEAR_TEAM })
+    await git(repo, 'remote', 'add', 'origin', 'git@github.com:acme/app.git')
+    const list = () => k.integrations.handlers()['issues.list']({ roomId: room.id, query: '' })
+    expect(await list()).toEqual(fromLinear)
+    await saveRepoSettings(repo, { tracker: { kind: 'github' } })
+    expect(await list()).toEqual(fromGitHub)
+    await saveRepoSettings(repo, { tracker: { kind: 'none' } })
+    expect(await list()).toEqual([])
+    await saveRepoSettings(repo, { tracker: { kind: 'linear' } })
+    vi.stubEnv('LINEAR_API_KEY', '')
+    await expect(list()).rejects.toThrow('Connect Linear in Settings > Integrations to search issues.')
+    expect(linear).toHaveLength(1)
+    expect(await gh.calls()).toHaveLength(1)
     await k.stop()
   })
 })

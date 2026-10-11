@@ -1,12 +1,12 @@
-import { describe, expect, it, onTestFinished, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdtemp, utimes, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { tempRepo } from './helpers'
+import { fakeGh, tempRepo } from './helpers'
 import { exec, git } from '../src/main/services/exec'
 import { defaultBranch, fetchOrigin, listBranches, resolveBaseRef, taskBranch } from '../src/main/services/worktrees'
 import { parseIssueList, parsePrList } from '../src/main/services/github'
-import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/linear'
+import { NO_LINEAR_TOKEN, searchIssues } from '../src/main/services/trackers/linear'
 import { Kernel } from '../src/main/kernel'
 import { fetchedAt } from '../src/main/features/workspaces'
 import { kernelTools } from '../src/main/services/kernelMcp'
@@ -107,6 +107,52 @@ describe('createWorkspace from a source', () => {
     expect(ws.source).toEqual(source)
     expect(sent).toEqual([['text', 'file']])
     await k.stop()
+  })
+})
+
+describe('a workspace from a GitHub issue (KERNEL-462)', () => {
+  afterEach(() => { vi.unstubAllEnvs() })
+  const team = {
+    '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
+    '.claude/agents/noor.md': '---\nname: noor\ndescription: Engine.\n---\nYou are Noor.'
+  }
+  const crash = { number: 41, title: 'Crash on save', url: 'https://github.com/acme/app/issues/41', body: 'Steps', labels: [{ name: 'bug' }], comments: [] }
+
+  /** A kernel with one room, on GitHub when `repo` is set. Linear is offline and LINEAR_API_KEY is empty. */
+  async function kernel(repo?: string) {
+    vi.stubEnv('LINEAR_API_KEY', '')
+    const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
+    const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
+    await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
+    const k = new Kernel({ dataDir, home, fetch: async () => { throw new Error('offline') } })
+    await k.start()
+    onTestFinished(() => k.stop())
+    k.sessions.send = async () => ({ queued: false })
+    const added = await k.rooms.addRoom(await tempRepo(team))
+    return { k, room: repo ? k.store.saveRoom({ ...added, repo }) : added }
+  }
+
+  it("names the branch from the issue's number and labels when Rowan hands it off, and records GitHub as its tracker", async () => {
+    const gh = await fakeGh({ view: crash })
+    const { k, room } = await kernel('acme/app')
+    const lead = (await k.team.agents(room.id)).find((a) => a.lead) as AgentDef
+    const deps = k.lead.leadToolDeps(room.id, lead, await k.lead.leadChat(room.id))
+    await kernelTools(deps).find((t) => t.name === 'create_workspace')!.handler({ agent: 'noor', title: 'Fix saving', brief: 'Go', issue: '41' } as never, {})
+    const ws = k.store.workspaces(room.id).find((w) => w.agentId === 'noor')!
+    expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', url: crash.url, tracker: 'github' })
+    expect(ws.branch).toBe('fix/41-crash-on-save')
+    expect(await gh.calls()).toEqual(['issue view 41 --json number,title,url,body,labels,comments'])
+  })
+
+  it('records the tracker of an issue picked in New workspace, and none in a room without one', async () => {
+    await fakeGh({})
+    const github = await kernel('acme/app')
+    const picked = await github.k.workspaces.createWorkspace(github.room.id, { prompt: 'Fix it', source: { kind: 'issue', id: '#41', title: 'Crash on save' } })
+    expect(picked.source).toEqual({ kind: 'issue', id: '#41', title: 'Crash on save', tracker: 'github' })
+    const none = await kernel()
+    const own = await none.k.workspaces.createWorkspace(none.room.id, { prompt: 'Build it', source: { kind: 'issue', id: 'APP-7', title: 'Settings page' } })
+    expect(own.source).toEqual({ kind: 'issue', id: 'APP-7', title: 'Settings page' })
+    expect(own.branch).toBe('feat/app-7-settings-page')
   })
 })
 
