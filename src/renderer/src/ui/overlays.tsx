@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject, type WheelEvent } from 'react'
 import { isWebUrl } from '@shared/previewUrl'
 import { call } from '../api'
 import { Icon, type IconName } from '../icons'
@@ -168,29 +168,110 @@ export function ConfirmDialog({ title, body, children, extra, confirmLabel, canc
 
 /** How long a toast stays (DESIGN.md). */
 export const TOAST_MS = 2600
+/** A leaving toast slides out, then its gap closes. `toast-out` and `toast-close` in ui.css end by then. */
+const LEAVE_MS = 360
+/** Let go this far right of where a swipe started, or past `FLICK_PX` while moving right faster than `FLICK` px per ms, and the toast leaves. */
+const SWIPE_PX = 60
+const FLICK = 0.3
+const FLICK_PX = 16
+/** A trackpad swipe has ended once its wheel events, momentum included, stop for this long. */
+const WHEEL_END_MS = 120
 
 export interface ToastProps { title: string; sub?: string; action?: { label: string; href?: string; onClick?: () => void; /** A bordered button, for an action that opens something in the app, not a link. */ boxed?: boolean }; onDismiss?: () => void }
 
-/** One toast (WorkspaceToast.png). It calls `onDismiss` after 2.6s, and stays while hovered or focused. */
+/** A swipe in progress: `from` is where a pointer drag started (a trackpad swipe has none), `x` how far right the toast is, `v` its last speed. */
+type Swipe = { from?: number; x: number; v: number; at: number; end?: ReturnType<typeof setTimeout> }
+
+/**
+ * One toast (WorkspaceToast.png, on one line where it fits, toast-motion-and-swipe). It slides in from the right, and after 2.6s
+ * slides back out and calls `onDismiss` once its gap has closed. It stays while hovered or focused. Dragging it right, a two-finger
+ * swipe right on a trackpad, or pressing its action dismisses it sooner. A toast without `onDismiss` stays put.
+ */
 export function Toast({ title, sub, action, onDismiss }: ToastProps) {
   const [held, setHeld] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const box = useRef<HTMLDivElement>(null)
+  const swipe = useRef<Swipe | null>(null)
   // Callers pass inline closures and re-render often. Keep the latest one in a ref so a render doesn't restart the timer.
   const dismiss = useRef(onDismiss)
   dismiss.current = onDismiss
   const timed = !!onDismiss
   useEffect(() => {
-    if (held || !timed) return
-    const t = setTimeout(() => dismiss.current?.(), TOAST_MS)
+    if (held || !timed || leaving) return
+    const t = setTimeout(() => setLeaving(true), TOAST_MS)
     return () => clearTimeout(t)
-  }, [held, timed])
+  }, [held, timed, leaving])
+  useEffect(() => {
+    if (!leaving) return
+    const t = setTimeout(() => dismiss.current?.(), LEAVE_MS)
+    return () => clearTimeout(t)
+  }, [leaving])
+  useEffect(() => () => clearTimeout(swipe.current?.end), [])
+
+  const begin = (at: number, from?: number) => {
+    if (!box.current) return
+    swipe.current = { from, x: 0, v: 0, at }
+    box.current.dataset.swiping = ''
+  }
+  // The offset goes straight onto the element, so a drag doesn't render on every move. The toast never goes left of its place.
+  const follow = (x: number, at: number) => {
+    const s = swipe.current
+    if (!s || !box.current) return
+    const next = Math.max(0, x)
+    s.v = (next - s.x) / Math.max(1, at - s.at)
+    s.x = next
+    s.at = at
+    box.current.style.transform = next ? `translateX(${next}px)` : ''
+  }
+  // Far or fast enough and the toast slides on out from where it is. Otherwise it springs back.
+  const settle = (at: number) => {
+    const s = swipe.current
+    swipe.current = null
+    if (!s || !box.current) return
+    clearTimeout(s.end)
+    delete box.current.dataset.swiping
+    if (s.x >= SWIPE_PX || (s.x >= FLICK_PX && s.v >= FLICK && at - s.at < 100)) setLeaving(true)
+    else box.current.style.transform = ''
+  }
+  const down = (e: PointerEvent<HTMLDivElement>) => {
+    if (!timed || leaving || swipe.current || e.button !== 0 || (e.target as Element).closest('a, button')) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    begin(e.timeStamp, e.clientX)
+  }
+  const move = (e: PointerEvent<HTMLDivElement>) => {
+    const from = swipe.current?.from
+    if (from !== undefined) follow(e.clientX - from, e.timeStamp)
+  }
+  const up = (e: PointerEvent<HTMLDivElement>) => { if (swipe.current?.from !== undefined) settle(e.timeStamp) }
+  // With natural scrolling, the macOS default, fingers moving right report a negative deltaX. A mostly vertical scroll starts nothing.
+  const wheel = (e: WheelEvent<HTMLDivElement>) => {
+    if (!timed || leaving || swipe.current?.from !== undefined) return
+    if (!swipe.current) {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return
+      begin(e.timeStamp)
+    }
+    const s = swipe.current
+    if (!s) return
+    follow(s.x - e.deltaX, e.timeStamp)
+    clearTimeout(s.end)
+    s.end = setTimeout(() => settle(performance.now()), WHEEL_END_MS)
+  }
+  const act = () => {
+    action?.onClick?.()
+    if (timed) setLeaving(true)
+  }
   return (
-    <div className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
-      <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <span className="toast-sub">{sub}</span>}</span>
-      {action && (action.href
-        // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
-        ? <a className="toast-action" href={action.href} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); action.onClick?.() }}>{action.label}</a>
-        : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} onClick={action.onClick}>{action.label}</button>)}
-      <button type="button" className="toast-x" aria-label="Dismiss" onClick={onDismiss}><Icon name="close" size={10} stroke={2} /></button>
+    <div className="toast-slot" data-leaving={leaving || undefined}>
+      <div
+        ref={box} className="toast" onMouseEnter={() => setHeld(true)} onMouseLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel}
+      >
+        <span className="grow toast-text"><span className="toast-title">{title}</span>{sub && <> <span className="toast-sub">{sub}</span></>}</span>
+        {action && (action.href
+          // A plain click would navigate the app window away (KERNEL-294), so a web link opens in the browser.
+          ? <a className="toast-action" href={action.href} onClick={(e) => { e.preventDefault(); if (isWebUrl(action.href!)) void call('system.openExternal', { url: action.href! }); act() }}>{action.label}</a>
+          : <button type="button" className="toast-action" data-boxed={action.boxed || undefined} onClick={act}>{action.label}</button>)}
+      </div>
     </div>
   )
 }
