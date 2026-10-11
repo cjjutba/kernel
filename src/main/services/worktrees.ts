@@ -1,4 +1,6 @@
-import { mkdir, realpath, rename, stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { copyFile, mkdir, realpath, rename, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { exec, git, gitSlow } from './exec'
 import type { ChangedFile } from '@shared/types'
@@ -396,6 +398,58 @@ export async function mergeBase(path: string, baseRef: string): Promise<string> 
 
 export async function diffText(path: string, since: string, file?: string): Promise<string> {
   return git(path, 'diff', since, ...(file ? ['--', file] : []))
+}
+
+/** An author for the commit below, which git won't make in a repo whose user has no git identity. Nothing keeps that commit. */
+const SNAPSHOT_IDENTITY = { GIT_AUTHOR_NAME: 'Kernel', GIT_AUTHOR_EMAIL: 'kernel@localhost', GIT_COMMITTER_NAME: 'Kernel', GIT_COMMITTER_EMAIL: 'kernel@localhost' }
+
+/**
+ * A commit of the worktree's uncommitted tracked changes: HEAD's tree with each changed, staged or deleted file as it is on
+ * disk. It is made in a copy of the index, so the real one is never locked or written. `git stash create` does both, and a
+ * teammate's `git add` or `git commit` at that moment fails with "index.lock exists". The folder, the index and the stash list
+ * stay as they are, and nothing refers to the commit. `HEAD` when there are no changes, or when git can't make one (unmerged
+ * paths, a split index), so the caller reads the committed work either way (KERNEL-180).
+ */
+export async function snapshotCommit(path: string): Promise<string> {
+  const run = (args: string[], env: NodeJS.ProcessEnv = {}) => exec('git', ['-C', path, ...args], { env, timeoutMs: 30000 })
+  const index = await run(['rev-parse', '--path-format=absolute', '--git-path', 'index'])
+  if (index.code !== 0) return 'HEAD'
+  // Mid-merge or mid-rebase, `add -u` would take the conflict markers on disk for the resolved file.
+  const unmerged = await run(['ls-files', '--unmerged'])
+  if (unmerged.code !== 0 || unmerged.stdout.trim()) return 'HEAD'
+  const copy = join(tmpdir(), `kernel-index-${randomUUID()}`)
+  try {
+    await copyFile(index.stdout.trim(), copy)
+    const env = { ...SNAPSHOT_IDENTITY, GIT_INDEX_FILE: copy }
+    if ((await run(['add', '-u'], env)).code !== 0) return 'HEAD'
+    const [tree, head] = [await run(['write-tree'], env), await run(['rev-parse', 'HEAD^{tree}'])]
+    if (tree.code !== 0 || head.code !== 0 || tree.stdout.trim() === head.stdout.trim()) return 'HEAD'
+    const made = await run(['commit-tree', tree.stdout.trim(), '-p', 'HEAD', '-m', 'Kernel base check'], env)
+    return made.code === 0 && /^[0-9a-f]{40,64}$/.test(made.stdout.trim()) ? made.stdout.trim() : 'HEAD'
+  } catch { return 'HEAD' } finally { await rm(copy, { force: true }).catch(() => undefined) }
+}
+
+/** How many commits `ref` has that the worktree's HEAD hasn't. Undefined when git can't count them. */
+export async function behindCount(path: string, ref: string): Promise<number | undefined> {
+  const r = await exec('git', ['-C', path, 'rev-list', '--count', `HEAD..${ref}`], { timeoutMs: 30000 })
+  const n = r.code === 0 ? Number(r.stdout.trim()) : NaN
+  return Number.isInteger(n) ? n : undefined
+}
+
+/**
+ * The files that would conflict if `theirs` were merged into `ours`, found with `git merge-tree --write-tree`, which writes
+ * only objects and changes no ref or file. Empty when it merges cleanly. Undefined when git can't tell: it is older than 2.38
+ * and doesn't know the option (exit 129), or it failed another way, or it named no file (KERNEL-180).
+ */
+export async function mergeTreeConflicts(path: string, ours: string, theirs: string): Promise<string[] | undefined> {
+  const r = await exec('git', ['-C', path, 'merge-tree', '--write-tree', '--name-only', '--no-messages', ours, theirs], { timeoutMs: 30000 })
+  if (r.code === 0) return []
+  if (r.code !== 1) return undefined
+  // The tree's id comes first, then each conflicted file, then a blank line and the messages `--no-messages` leaves out.
+  const [, ...lines] = r.stdout.split('\n')
+  const end = lines.findIndex((l) => !l.trim())
+  const files = (end < 0 ? lines : lines.slice(0, end)).map((l) => l.trim())
+  return files.length ? files : undefined
 }
 
 /** True when two worktrees changed the same file since their bases. Feeds the overlap warning on the floor. */

@@ -1,7 +1,7 @@
 import { exec, run, SLOW_MS, type ExecResult } from './exec'
 import type { IssueSummary, PrBlocked, PrCheck, PrInfo, PrInstructions, PrState, PrSummary, ReviewComment, Workspace } from '@shared/types'
 import { gatingChecks } from '@shared/merge'
-import { stripRemote } from './worktrees'
+import { mergeTreeConflicts, stripRemote } from './worktrees'
 
 // Pull requests go through the GitHub CLI, which already holds the user's auth (D-006).
 
@@ -270,9 +270,7 @@ export async function ghRateLimit(cwd: string): Promise<RateLimit | undefined> {
 /** Files that conflict with the base, from a merge that touches neither the index nor the worktree (git 2.38+). */
 export async function conflictFiles(cwd: string, base: string, remote = 'origin'): Promise<string[]> {
   await exec('git', ['-C', cwd, 'fetch', '--quiet', remote, base], { timeoutMs: 20000 })
-  const r = await exec('git', ['-C', cwd, 'merge-tree', '--write-tree', '--name-only', '--no-messages', 'HEAD', `${remote}/${base}`])
-  if (r.code !== 1) return []
-  return r.stdout.split('\n').slice(1).map((l) => l.trim()).filter(Boolean)
+  return await mergeTreeConflicts(cwd, 'HEAD', `${remote}/${base}`) ?? []
 }
 
 const reviewDecision = (d: PrView['reviewDecision']): PrInfo['reviewDecision'] =>

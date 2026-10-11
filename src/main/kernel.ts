@@ -50,6 +50,7 @@ import { Prs } from './features/prs'
 import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
 import { Telemetry } from './features/telemetry'
+import { BaseWatch } from './features/baseWatch'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -121,6 +122,7 @@ export class Kernel {
   readonly autoArchive = new AutoArchive(this)
   readonly reviews = new Reviews(this)
   readonly telemetry = new Telemetry(this)
+  readonly baseWatch = new BaseWatch(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy

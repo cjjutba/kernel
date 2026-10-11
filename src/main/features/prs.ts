@@ -173,7 +173,12 @@ export class Prs extends Feature {
       bus.activity({ kind: 'pr.changed', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: `PR is ${next.prState}`, object: next.prNumber ? `#${next.prNumber}` : undefined })
       const text = prNote(next, info, this.mergedWith.get(id), remote)
       if (text) this.note(id, text, next.prState === 'merged' || next.prState === 'closed' || next.prState === 'cifail' ? next.prState : undefined)
-      if (next.prState === 'merged') { this.mergedWith.delete(id); void this.overlaps.check(ws.roomId).catch(() => undefined) }
+      if (next.prState === 'merged') {
+        this.mergedWith.delete(id)
+        void this.overlaps.check(ws.roomId).catch(() => undefined)
+        // Main moved. A teammate with no PR yet hears it if that would conflict with its work (KERNEL-180).
+        void this.k.baseWatch.check(ws.roomId, { fetch: true }).catch(() => undefined)
+      }
     }
     // A ready PR GitHub started or stopped blocking, its state the same, so nothing above told anyone (KERNEL-401). A PR that
     // becomes ready already blocked goes out with its 'pr' push, which the Lead and the Inbox read prBlocked on.
