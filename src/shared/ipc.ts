@@ -1,7 +1,7 @@
 import type {
   AccountAddStep, AccountProfile, ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, ClaudePlan, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, GitHubStatus, HookStatus, Hunk,
-  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
+  Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, NewRoomRequest, Notification, OpenApp, Overlap, PreflightCheck, MergeAllResult, MergeQueue, PrBlocked, PrInfo, PrState,
   PrSummary, Provider, ProviderModel, ProviderStatus, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, ChatArchivePreview, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   TeamPatch, Toast, Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
@@ -306,6 +306,16 @@ export interface KernelApi {
   'app.info': { req: void; res: { version: string; dataDir: string; telemetry: boolean } }
   /** A terminal window in a folder, optionally running a command (Open terminal, Sign in). */
   'app.openTerminal': { req: { cwd: string; command?: string }; res: Ok }
+  /**
+   * The apps on this Mac the Open in menu lists, in Kernel's order: Finder, editors, terminals (KERNEL-427). `defaultId` is the
+   * last one picked while it is still installed, else the first editor, else Finder.
+   */
+  'app.openApps': { req: void; res: { apps: OpenApp[]; defaultId?: string } }
+  /**
+   * Opens a path inside a room or workspace in one of `app.openApps`, which becomes the default. Without `app`, the default
+   * editor opens it, or Finder shows it when there is none. Terminals and Finder get the folder, never the file.
+   */
+  'app.openIn': { req: { path: string; app?: string }; res: Ok }
   /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */
   'app.checkOnline': { req: void; res: { online: boolean } }
 
