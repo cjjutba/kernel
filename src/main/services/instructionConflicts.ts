@@ -53,6 +53,7 @@ const CLAUSE_START = String.raw`(?<=(?:^|[.;:!?,(]\s*))`
 
 const NEGATION = /\b(?:never|not|no|nothing|nobody|no one|don['’]?t|do not|doesn['’]?t|does not|didn['’]?t|isn['’]?t|aren['’]?t|shouldn['’]?t|mustn['’]?t|can['’]?t|cannot|won['’]?t|avoid|avoiding|stop|forbidden|prohibited|disallowed|blocked|instead of)\b/i
 const CONDITION = /\b(?:if|when|whenever|before|after|once|until|unless|while|only)\b/i
+const PAST = /\b(?:used to|no longer|any ?more)\b/i
 
 function patterns(branches: string[]): { kind: InstructionConflictKind; re: RegExp }[] {
   const names = [...new Set(branches.map((b) => b.trim()).filter(Boolean))].map(esc)
@@ -60,7 +61,7 @@ function patterns(branches: string[]): { kind: InstructionConflictKind; re: RegE
   const BR = String.raw`(?:the\s+)?(?:${[...named, 'default branch', 'trunk', 'shared branch'].join('|')})`
   const list: [InstructionConflictKind, string][] = [
     ['commit-to-main', String.raw`${LEAD}\bcommit(?:\s+(?:and|&)\s+push)?${OBJ}${TO}${BR}${END}`],
-    ['commit-to-main', String.raw`${LEAD}\b(?:work|develop|stay)(?:\s+${ADV})?\s+(?:on|in)\s+${BR}${END}`],
+    ['commit-to-main', String.raw`${LEAD}\b(?:work|develop)(?:\s+${ADV})?\s+(?:on|in)\s+${BR}${END}`],
     ['commit-to-main', String.raw`\bcommitted\s+${ADV}\s+(?:to|on|onto|into)\s+${BR}${END}`],
     ['push-to-protected', String.raw`${LEAD}\bpush${OBJ}${TO}${BR}${END}`],
     ['push-to-protected', String.raw`\bpushed\s+${ADV}\s+(?:to|onto|into)\s+${BR}${END}`],
@@ -70,7 +71,8 @@ function patterns(branches: string[]): { kind: InstructionConflictKind; re: RegE
     ['no-pull-requests', String.raw`${LEAD}\b(?:merge|ship|land|commit|push)\b[^.;:!?]*?\bwithout\s+(?:opening\s+|creating\s+)?(?:a\s+|any\s+)?${PRS}${DONE}`],
     ['no-pull-requests', String.raw`${CLAUSE_START}${PRS}\s+(?:are|is)\s+(?:not\s+(?:needed|required|necessary|used)|unnecessary|optional)\b`],
     ['no-branches', String.raw`${LEAD}${DONT}(?:create|make|open|use|cut|start)\s+(?:a\s+|any\s+)?(?:(?:new|feature|separate|topic|git)\s+)*branch(?:es)?${DONE}`],
-    ['stacked-prs', String.raw`\bstack(?:ed|ing)?[\s-]+(?:(?:your|the|small)\s+)?(?:pull requests?|PRs?|branches|diffs)\b`],
+    // "Stack PRs", "We stack PRs", "Use stacked PRs". "Stacked PRs" as a subject is about them, as in "Stacked PRs: avoid them".
+    ['stacked-prs', String.raw`${LEAD}(?:\bstack\s+(?:(?:your|the|small)\s+)?|\b(?:use|prefer|open|create|make|send|submit|write)\s+(?:a\s+)?stacked[\s-]+)(?:pull requests?|PRs?|branches|diffs)\b`],
     ['stacked-prs', String.raw`\b(?:each|every)\s+(?:branch|PR|pull request)\s+(?:builds|is based|sits|stacks|starts|branches off)\s+(?:on top of|on|from|off)\s+(?:the\s+)?(?:one\s+before|previous|last|prior|earlier)\b`],
     ['stacked-prs', String.raw`${LEAD}\bbranch\s+(?:off|from)\s+(?:of\s+)?(?:the\s+|your\s+)?(?:previous|prior|last|earlier)\s+(?:PR|pull request|branch|task)\b`]
   ]
@@ -88,14 +90,17 @@ function sentence(line: string, from: number, to: number) {
 
 /**
  * No negation in the sentence before the match or in the rest of its clause, and no condition in the clause before it.
- * "Only" after it makes the rule an exception ("work in main only if the user asks"), which Kernel has room for.
+ * The rest of the clause runs past a colon, which gives the verdict ("Commit to main: never"), and a question takes its
+ * answer with it ("Commit to main? Never."). "Only" after it makes the rule an exception ("work in main only if the user
+ * asks"), which Kernel has room for, and a habit the repo dropped ("we used to stack PRs, but no longer") is no rule.
  */
 function stands(line: string, from: number, to: number): boolean {
   const { start, end } = sentence(line, from, to)
+  const answered = line[end - 1] === '?' ? sentence(line, end, end).end : end
   const before = line.slice(start, from)
   const clauseBefore = before.slice(Math.max(before.lastIndexOf(','), before.lastIndexOf(':')) + 1)
-  const after = line.slice(to, end).split(/[,:]|\bbut\b/)[0]
-  return !NEGATION.test(before) && !NEGATION.test(after) && !CONDITION.test(clauseBefore) && !/\bonly\b/i.test(after)
+  const after = line.slice(to, answered).split(/,|\bbut\b/)[0]
+  return !NEGATION.test(before) && !NEGATION.test(after) && !CONDITION.test(clauseBefore) && !/\bonly\b/i.test(after) && !PAST.test(line.slice(start, answered))
 }
 
 /** The line as a person reads it: no quote, heading or list marker, no bold or italics. */

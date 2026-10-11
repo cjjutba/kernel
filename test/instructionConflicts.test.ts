@@ -57,7 +57,9 @@ describe('repo instructions that fight Kernel', () => {
     ['Merge typo fixes without a PR.', 'no-pull-requests'],
     ['PRs are optional.', 'no-pull-requests'],
     ["Don't create branches.", 'no-branches'],
+    ['Commit to main? Yes.', 'commit-to-main'],
     ['Stack PRs: each branch builds on the one before it.', 'stacked-prs'],
+    ['We stack PRs.', 'stacked-prs'],
     ['Use stacked pull requests for big features.', 'stacked-prs'],
     ['Branch off the previous PR.', 'stacked-prs']
   ])('flags %s', (line, kind) => {
@@ -87,6 +89,16 @@ describe('repo instructions that fight Kernel', () => {
     'Skip the PR template for small changes.',
     'Avoid stacked PRs.',
     'Stacked PRs are not supported.',
+    // The verdict after a colon, and a question's answer, count as the rest of the rule.
+    'Stacked PRs: avoid them.',
+    'Commit to main? Never.',
+    'Push to main: not allowed.',
+    // Stacked PRs as a subject, a habit the repo dropped, and staying on main for something else.
+    'Stacking PRs is discouraged.',
+    'Prefer small PRs over stacked PRs.',
+    'Stacked PRs make review hard.',
+    'We used to stack PRs, but no longer.',
+    'Stay on main when reviewing.',
     'Never merge without a PR.',
     "Don't create a branch for every typo.",
     'The main process lives in src/main.',
