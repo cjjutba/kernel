@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, Workspace } from '@shared/types'
+import type { AgentDef, Chat, ClaudePlan, Workspace } from '@shared/types'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, pushesTo, usesNetwork, Sessions } from '../src/main/services/sessions'
-import { applySettingsPatch, DEFAULT_SETTINGS, loadAppSettings, saveAppSettings } from '../src/main/services/settings'
+import { bashVerdict, pushesTo, usesNetwork } from '../src/main/services/bashGuard'
+import { Sessions } from '../src/main/services/sessions'
+import { Kernel } from '../src/main/kernel'
+import { applySettingsPatch, deepMerge, DEFAULT_SETTINGS, loadAppSettings, PLAN_KEYS, planDefaults, planOf, saveAppSettings } from '../src/main/services/settings'
+import { tempRepo } from './helpers'
 
 // Each query() is a scripted session that never answers on its own. A turn ends when the test feeds a result.
 const sdk = vi.hoisted(() => ({ calls: [] as { feed: (m: unknown) => void }[] }))
@@ -53,33 +56,33 @@ describe('loadAppSettings', () => {
   it('moves the old default branch pattern to the new one, and keeps a custom pattern (KERNEL-275)', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ workspace: { branchPattern: 'feat/{slug}' } }))
-    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('{type}/{task}-{slug}')
+    expect((await loadAppSettings(file, '/home/cj')).resolved.workspace.branchPattern).toBe('{type}/{task}-{slug}')
     await writeFile(file, JSON.stringify({ workspace: { branchPattern: 'cj/{task}-{slug}' } }))
-    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('cj/{task}-{slug}')
+    expect((await loadAppSettings(file, '/home/cj')).resolved.workspace.branchPattern).toBe('cj/{task}-{slug}')
     await writeFile(file, JSON.stringify({}))
-    expect((await loadAppSettings(file, '/home/cj')).workspace.branchPattern).toBe('{type}/{task}-{slug}')
+    expect((await loadAppSettings(file, '/home/cj')).resolved.workspace.branchPattern).toBe('{type}/{task}-{slug}')
   })
   it('drops unknown models and efforts from a saved effort memory', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ models: { effortByModel: { 'claude-opus-5-5': 'xhigh', 'claude-nope': 'low', 'claude-sonnet-5-5': 'max' } } }))
-    expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({ 'claude-opus-5-5': 'xhigh' })
+    expect((await loadAppSettings(file, '/home/cj')).resolved.models.effortByModel).toEqual({ 'claude-opus-5-5': 'xhigh' })
     await writeFile(file, JSON.stringify({ models: { effortByModel: ['xhigh'] } }))
-    expect((await loadAppSettings(file, '/home/cj')).models.effortByModel).toEqual({})
+    expect((await loadAppSettings(file, '/home/cj')).resolved.models.effortByModel).toEqual({})
   })
   it('keeps the Lead from merging until it is turned on, and remembers the switch after a restart (KERNEL-352)', async () => {
     const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
     await writeFile(file, JSON.stringify({ pr: { mergeMethod: 'rebase' } }))
-    const before = await loadAppSettings(file, '/home/cj')
+    const { saved, resolved: before } = await loadAppSettings(file, '/home/cj')
     expect(before.pr.leadMerge).toBe(false)
-    await saveAppSettings(file, applySettingsPatch(before, { pr: { leadMerge: true } }))
-    expect((await loadAppSettings(file, '/home/cj')).pr).toMatchObject({ leadMerge: true, mergeMethod: 'rebase' })
+    await saveAppSettings(file, deepMerge(saved, { pr: { leadMerge: true } }))
+    expect((await loadAppSettings(file, '/home/cj')).resolved.pr).toMatchObject({ leadMerge: true, mergeMethod: 'rebase' })
   })
 
   describe('open to (replaces the default home view)', () => {
     const load = async (general?: Record<string, unknown>) => {
       const file = join(await mkdtemp(join(tmpdir(), 'kernel-settings-')), 'settings.json')
       if (general) await writeFile(file, JSON.stringify({ general }))
-      return (await loadAppSettings(file, '/home/cj')).general as Record<string, unknown>
+      return (await loadAppSettings(file, '/home/cj')).resolved.general as Record<string, unknown>
     }
     it('opens where you left off for a saved home or last room, which every launch wrote without a choice', async () => {
       for (const homeView of ['home', 'lastRoom']) {
@@ -185,5 +188,200 @@ describe('agents working at once', () => {
     expect((await sessions.send('a', text('one'))).queued).toBe(false)
     expect((await sessions.send('lead2', text('plan more'))).queued).toBe(false)
     expect((await sessions.send('b', text('two'))).queued).toBe(true)
+  })
+})
+
+describe('defaults that fit the plan (KERNEL-225)', () => {
+  const dir = () => mkdtemp(join(tmpdir(), 'kernel-settings-'))
+  const fileOf = async (saved?: object) => { const file = join(await dir(), 'settings.json'); if (saved) await writeFile(file, JSON.stringify(saved)); return file }
+  const MAX_LIKE = { lead: 'claude-opus-5-5', reviewer: 'claude-sonnet-5-5', effort: 'high', agentLimit: 0 }
+
+  it('reads the plan from the type `claude auth status` gives', () => {
+    expect(['pro', 'Pro', 'max', 'Max', 'max_5x', 'team', 'enterprise', 'free', '', undefined, null, 7].map(planOf))
+      .toEqual(['pro', 'pro', 'max', 'max', 'max', 'team', 'enterprise', 'unknown', 'unknown', 'unknown', 'unknown', 'unknown'])
+  })
+
+  it('gives a fresh Pro install Sonnet for Rowan and the reviewer, medium effort, two teammates and no auto review', async () => {
+    const { saved, resolved } = await loadAppSettings(await fileOf(), '/home/cj', 'pro')
+    expect(saved).toEqual({})
+    expect(resolved.models).toMatchObject({ lead: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'medium', agentLimit: 2, engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5' })
+    expect(resolved.pr.autoReview).toBe(false)
+    expect(resolved.plan).toBe('pro')
+    expect(resolved.planDefaulted).toEqual([...PLAN_KEYS])
+  })
+
+  it.each<ClaudePlan>(['max', 'team', 'enterprise', 'unknown'])('keeps everything as it was on %s, but for a Sonnet reviewer', async (plan) => {
+    const { resolved } = await loadAppSettings(await fileOf(), '/home/cj', plan)
+    expect(resolved.models).toMatchObject(MAX_LIKE)
+    expect(resolved.pr.autoReview).toBe(true)
+    expect(resolved.plan).toBe(plan)
+    expect(planDefaults(plan)).toEqual({ models: { reviewer: 'claude-sonnet-5-5' } })
+  })
+
+  it('starts the base defaults with a Sonnet reviewer and agent teams off, which nothing needs (D-104)', () => {
+    expect(DEFAULT_SETTINGS('/home/cj').models).toMatchObject({ reviewer: 'claude-sonnet-5-5', agentTeams: false })
+  })
+
+  it('reads a file from before as unset: every launch saved the old defaults, so they pick up the plan', async () => {
+    const file = await fileOf({ ...DEFAULT_SETTINGS('/home/cj'), models: { ...DEFAULT_SETTINGS('/home/cj').models, reviewer: 'claude-opus-5-5', agentTeams: true }, hookPort: 7421, permissions: { ...DEFAULT_SETTINGS('/home/cj').permissions, alwaysAsk: ['rm -rf', 'make deploy'] } })
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
+    // Only what differs from the defaults survives: the port, the extra rule, and agent teams, which was saved on and nobody can tell from a choice.
+    expect(saved).toEqual({ hookPort: 7421, permissions: { alwaysAsk: ['rm -rf', 'make deploy'] }, models: { agentTeams: true } })
+    expect(resolved.models).toMatchObject({ lead: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'medium', agentLimit: 2, agentTeams: true })
+    expect(resolved.pr.autoReview).toBe(false)
+    expect(resolved.hookPort).toBe(7421)
+    expect(resolved.permissions.alwaysAsk).toEqual(['rm -rf', 'make deploy'])
+    expect(resolved.planDefaulted).toEqual([...PLAN_KEYS])
+  })
+
+  it("reads the Address review text every launch saved as unset, so the new line reaches existing installs (KERNEL-222)", async () => {
+    const old = '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
+    const full = DEFAULT_SETTINGS('/home/cj')
+    const { saved, resolved } = await loadAppSettings(await fileOf({ ...full, pr: { ...full.pr, addressReviewInstructions: old } }), '/home/cj', 'max')
+    expect(saved).toEqual({})
+    expect(resolved.pr.addressReviewInstructions).toBe(full.pr.addressReviewInstructions)
+    expect(resolved.pr.addressReviewInstructions).toContain('Act only on the comments listed here.')
+    // Text someone wrote stays.
+    const mine = await loadAppSettings(await fileOf({ pr: { addressReviewInstructions: '# Mine' } }), '/home/cj', 'max')
+    expect(mine.saved).toEqual({ pr: { addressReviewInstructions: '# Mine' } })
+  })
+
+  it('keeps only the terminal keys a file has, so one saved key does not pin the rest (KERNEL-248)', async () => {
+    const { saved, resolved } = await loadAppSettings(await fileOf({ version: 2, terminal: { preset: 'shell' } }), '/home/cj', 'max')
+    expect(saved).toEqual({ terminal: { preset: 'shell' } })
+    expect(resolved.terminal).toEqual({ ...DEFAULT_SETTINGS('/home/cj').terminal, preset: 'shell' })
+    // A value Kernel can't use is still corrected, in what is saved too.
+    const bad = await loadAppSettings(await fileOf({ version: 2, terminal: { preset: 7, custom: [{ id: 'codex', name: 'x', command: 'x' }] } }), '/home/cj', 'max')
+    expect(bad.saved).toEqual({ terminal: { preset: 'claude', custom: [] } })
+  })
+
+  it('keeps a value from before that differs from the old default', async () => {
+    const full = DEFAULT_SETTINGS('/home/cj')
+    const file = await fileOf({ ...full, models: { ...full.models, lead: 'claude-sonnet-5-5', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', agentLimit: 4 }, pr: { ...full.pr, autoReview: false } })
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'max')
+    expect(saved).toEqual({ models: { lead: 'claude-sonnet-5-5', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', agentLimit: 4 }, pr: { autoReview: false } })
+    expect(resolved.models).toMatchObject({ lead: 'claude-sonnet-5-5', reviewer: 'claude-haiku-4-5-20251001', effort: 'low', agentLimit: 4 })
+    expect(resolved.pr.autoReview).toBe(false)
+    expect(resolved.planDefaulted).toEqual([])
+  })
+
+  it("keeps a choice made after the change, even one equal to what the setting used to default to", async () => {
+    const file = await fileOf({ version: 2, models: { reviewer: 'claude-opus-5-5', effort: 'high' } })
+    const { saved, resolved } = await loadAppSettings(file, '/home/cj', 'pro')
+    expect(saved).toEqual({ models: { reviewer: 'claude-opus-5-5', effort: 'high' } })
+    expect(resolved.models).toMatchObject({ reviewer: 'claude-opus-5-5', effort: 'high', lead: 'claude-sonnet-5-5', agentLimit: 2 })
+    expect(resolved.planDefaulted).toEqual(['models.lead', 'models.agentLimit', 'pr.autoReview'])
+  })
+
+  it('writes only what is saved, with its version, and reads it back the same', async () => {
+    const file = await fileOf()
+    await saveAppSettings(file, { appearance: { theme: 'light' }, models: { effort: 'high' } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { effort: 'high' } })
+    const again = await loadAppSettings(file, '/home/cj', 'pro')
+    expect(again.saved).toEqual({ appearance: { theme: 'light' }, models: { effort: 'high' } })
+    expect(again.resolved.models.effort).toBe('high')
+    expect(again.resolved.appearance.theme).toBe('light')
+    // The two fields Kernel fills in are never read back from the file.
+    await writeFile(file, JSON.stringify({ version: 2, plan: 'max', planDefaulted: [], models: { lead: 'claude-opus-5-5' } }))
+    expect((await loadAppSettings(file, '/home/cj', 'pro')).resolved).toMatchObject({ plan: 'pro', models: { lead: 'claude-opus-5-5' } })
+  })
+
+  /** A Kernel on a data folder, with the account answering `plan`. */
+  async function kernel(o: { settings?: object; plan?: string; dataDir?: string } = {}) {
+    const dataDir = o.dataDir ?? await dir()
+    const home = await dir()
+    if (o.settings) await writeFile(join(dataDir, 'settings.json'), JSON.stringify(o.settings))
+    const k = new Kernel({ dataDir, home })
+    await k.start()
+    const account = { type: o.plan as string | undefined, signedIn: true }
+    k.accountReader = async () => (account.signedIn ? { signedIn: true, name: 'Sam', ...(account.type ? { subscriptionType: account.type } : {}) } : { signedIn: false })
+    return { k, dataDir, home, h: k.handlers(), account, file: join(dataDir, 'settings.json') }
+  }
+
+  it("doesn't save anything at launch, and saves only the keys a change names", async () => {
+    const { k, h, file, dataDir } = await kernel()
+    await expect(stat(file)).rejects.toThrow()
+    expect(k.settings.planDefaulted).toEqual([...PLAN_KEYS])
+    await h['settings.set']({ patch: { appearance: { theme: 'light' } } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' } })
+    // A limit pulled back into range is saved as the engine kept it. A choice equal to the default is still a choice.
+    await h['settings.set']({ patch: { models: { agentLimit: 99, effort: 'high' } } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { agentLimit: 12, effort: 'high' } })
+    expect(k.settings.planDefaulted).toEqual(['models.lead', 'models.reviewer', 'pr.autoReview'])
+    // Kernel's own fields can't be set from Settings.
+    await h['settings.set']({ patch: { plan: 'pro', planDefaulted: [], models: { effortByModel: { 'claude-opus-5-5': 'xhigh' } } } as never })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, appearance: { theme: 'light' }, models: { agentLimit: 12, effort: 'high', effortByModel: { 'claude-opus-5-5': 'xhigh' } } })
+    expect(k.settings.plan).toBe('unknown')
+    await k.stop()
+    // The next launch reads the same settings, and still writes nothing.
+    const before = await readFile(file, 'utf8')
+    const next = await kernel({ dataDir })
+    expect(next.k.settings.models).toMatchObject({ agentLimit: 12, effort: 'high' })
+    expect(await readFile(file, 'utf8')).toBe(before)
+    await next.k.stop()
+  })
+
+  it("moves what a user never set when the account's plan changes, and leaves what they chose", async () => {
+    const { k, h, file, dataDir, account } = await kernel({ plan: 'pro' })
+    expect(k.settings.models.lead).toBe('claude-opus-5-5')
+    // The first read of the account tells the plan.
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true, name: 'Sam' })
+    expect(await h['account.get'](undefined)).not.toHaveProperty('subscriptionType')
+    expect(k.settings).toMatchObject({ plan: 'pro', models: { lead: 'claude-sonnet-5-5', effort: 'medium', agentLimit: 2 }, pr: { autoReview: false } })
+    expect((await h['settings.get'](undefined)).planDefaulted).toEqual([...PLAN_KEYS])
+    // Nothing was written: a plan isn't a choice.
+    await expect(stat(file)).rejects.toThrow()
+    await h['settings.set']({ patch: { models: { effort: 'high' } } })
+    account.type = 'max'
+    await h['account.get'](undefined)
+    expect(k.settings).toMatchObject({ plan: 'max', models: { lead: 'claude-opus-5-5', effort: 'high', agentLimit: 0 }, pr: { autoReview: true } })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, models: { effort: 'high' } })
+    // A sign-out says nothing about the plan, so it keeps the last one.
+    account.signedIn = false
+    await h['account.get'](undefined)
+    expect(k.settings.plan).toBe('max')
+    await k.stop()
+    // The next launch has the plan before it reads the account.
+    const next = await kernel({ dataDir })
+    expect(next.k.settings.plan).toBe('max')
+    await next.k.stop()
+  })
+
+  it('runs Rowan and the reviewer on the plan-resolved models, and an agent file with a model still wins', async () => {
+    const repo = await tempRepo({
+      'README.md': '# x\n',
+      '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nrole: Lead\nlead: true\n---\nYou are Rowan.',
+      '.claude/agents/theo.md': '---\nname: theo\ndescription: Reviewer.\nrole: Reviewer\n---\nYou are Theo.',
+      '.claude/agents/kai.md': '---\nname: kai\ndescription: Frontend.\nrole: Frontend\n---\nYou are Kai.',
+      '.claude/agents/noor.md': '---\nname: noor\ndescription: Backend.\nrole: Backend\nmodel: opus\n---\nYou are Noor.'
+    })
+    const { k, h } = await kernel({ plan: 'pro' })
+    const room = await k.addRoom(repo)
+    await h['account.get'](undefined)
+    const models = async () => Object.fromEntries((await k.team.agents(room.id)).map((a) => [a.id, k.team.modelFor(a)]))
+    expect(await models()).toMatchObject({ rowan: 'claude-sonnet-5-5', theo: 'claude-sonnet-5-5', kai: 'claude-sonnet-5-5', noor: 'claude-opus-5-5' })
+    await h['settings.set']({ patch: { models: { lead: 'claude-opus-5-5' } } })
+    expect((await models()).rowan).toBe('claude-opus-5-5')
+    await k.stop()
+    const max = await kernel({ plan: 'max' })
+    const room2 = await max.k.addRoom(repo)
+    await max.h['account.get'](undefined)
+    expect(max.k.team.modelFor((await max.k.team.agents(room2.id)).find((a) => a.lead)!)).toBe('claude-opus-5-5')
+    await max.k.stop()
+  })
+
+  it("moves the hook port as a choice, saved with the rest", async () => {
+    const { k, h, file } = await kernel()
+    const port = k.settings.hookPort + 1
+    await h['hooks.restart']({ port })
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ version: 2, hookPort: port })
+    await k.stop()
+  })
+
+  it("leaves the model out of the starter agent files, so Kernel's role models decide", async () => {
+    for (const id of ['rowan', 'theo', 'kai', 'noor', 'ivy']) {
+      const text = await readFile(join(__dirname, '..', 'docs', 'starter-agents', `${id}.md`), 'utf8')
+      expect(text.split('\n---\n')[0], id).not.toMatch(/^model:/m)
+    }
   })
 })

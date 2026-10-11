@@ -75,7 +75,7 @@ export const MIN_GIT = '2.38'
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
  * `run` and `claude` are for tests: a stubbed command runner and the session binary's path.
  */
-export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; agentTeams: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number> }): Promise<PreflightCheck[]> {
+export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number> }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
   const bin = o.claude === undefined ? sessionClaude() : o.claude
@@ -102,10 +102,6 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
       ? { id: 'auth', ok: true, blocking: true, title: 'Signed in', detail: planName(status.subscriptionType) ?? 'Claude account' }
       : { id: 'auth', ok: false, blocking: true, title: 'Not signed in to Claude', detail: 'Agents run on your own Claude plan. Sign in, then check again.', fix: { command: 'claude auth login' } })
   }
-
-  checks.push(o.agentTeams
-    ? { id: 'teams', ok: true, blocking: false, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
-    : { id: 'teams', ok: false, blocking: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })
 
   checks.push(await gitCheck(run))
   checks.push(await ghCheck(run))

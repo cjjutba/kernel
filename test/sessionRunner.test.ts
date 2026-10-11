@@ -67,7 +67,7 @@ async function nextSent(call: Call): Promise<string> {
   return value.message.content[0].text
 }
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; agentFor?: (ws: Workspace) => AgentDef | undefined; models?: Partial<AppSettings['models']>; usage?: AppSettings['usage']; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -75,9 +75,9 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   store.saveChat(chat)
   const allow: string[] = []
   const approvals = new Approvals(store)
-  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}) } as unknown as AppSettings
+  const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}), ...(hooks.usage ? { usage: hooks.usage } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
+    store, approvals, settings: () => settings, agentFor: (ws) => (hooks.agentFor ? hooks.agentFor(ws) : hooks.agent), mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -86,7 +86,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const guard = options.hooks!.PreToolUse!.find((m) => m.matcher === 'Bash')!.hooks[0] as HookCallback
   const runGuard = (id: string, command: string) => guard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, tool_use_id: id, session_id: 's', transcript_path: '', cwd: ws.path } as never, id, { signal: new AbortController().signal } as never)
   const kinds = () => store.items(chat.id).map((i: ChatItem) => i.kind)
-  return { store, sessions, call, options, runGuard, allow, approvals, kinds, chat }
+  return { store, sessions, call, options, runGuard, allow, approvals, kinds, chat, settings }
 }
 
 describe('questions to the user', () => {
@@ -902,6 +902,236 @@ describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
     const multi = row(store, 'm1')!.input as { edits: { old_string: string; new_string: string }[] }
     expect(multi.edits[0].old_string).toHaveLength(20_000)
     expect(multi.edits[0].new_string).toBe('r')
+  })
+})
+
+describe('holding teammates near a usage limit (KERNEL-220)', () => {
+  const rowan: AgentDef = { id: 'rowan', file: '.claude/agents/rowan.md', name: 'Rowan', role: 'Lead', description: 'Plans', lead: true, prompt: 'You are Rowan.' }
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+  const result = (id: string) => ({ type: 'result', subtype: 'success', is_error: false, uuid: id, duration_ms: 1, result: '', session_id: 's' })
+  const secs = (ms: number) => Math.round(ms / 1000)
+  /** A `rate_limit_event`, as Claude Code sends it. */
+  const event = (type: 'five_hour' | 'seven_day', utilization: number | undefined, o: { status?: string; resetsAt?: number } = {}) => ({
+    type: 'rate_limit_event', uuid: `l-${type}-${utilization}-${Math.random()}`, session_id: 's',
+    rate_limit_info: { status: o.status ?? 'allowed', rateLimitType: type, ...(utilization === undefined ? {} : { utilization }), resetsAt: o.resetsAt ?? secs(Date.now() + 3600_000) }
+  })
+
+  /** A teammate chat that finished a turn, and the Lead's chat in another workspace. Near-limit holds are on. */
+  async function room(usage: AppSettings['usage'] = { pauseNearLimit: true, warnBeforeWeekly: true }) {
+    const s = await setup('acceptEdits', { usage, agentFor: (ws) => (ws.id === 'wsLead' ? rowan : undefined) })
+    s.store.saveWorkspace({ id: 'wsLead', roomId: 'room', name: 'lead', branch: 'HEAD', baseRef: 'main', path: '/tmp/wsLead', mode: 'worktree', agentId: 'rowan', lead: true, port: 4302, status: 'ready', prState: 'none', createdAt: 3 })
+    s.store.saveChat({ ...s.chat, id: 'leadChat', workspaceId: 'wsLead', title: 'Lead' })
+    s.call.feed(result('r1'))
+    await flush()
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    const lines: { chatId: string; why?: string }[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') lines.push({ chatId: e.chatId, why: e.why }) }
+    bus.on('push', onPush)
+    onTestFinished(() => { bus.off('push', onPush) })
+    return { ...s, lines }
+  }
+
+  it('holds a teammate\'s new turn at 91% of the 5-hour window with reason limit, and lets the Lead\'s run', async () => {
+    const s = await room()
+    s.call.feed(event('five_hour', 0.91))
+    await flush()
+    const before = sdk.calls.length
+    expect(await s.sessions.send('chat', text('Next task'))).toEqual({ queued: true, why: 'limit' })
+    expect(s.sessions.queueReason('chat')).toBe('limit')
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    // The Lead's chats are never held, so Rowan can still answer the user.
+    expect(await s.sessions.send('leadChat', text('Plan it'))).toEqual({ queued: false })
+    expect(s.sessions.isRunning('leadChat')).toBe(true)
+    expect(sdk.calls).toHaveLength(before + 1)
+    await flush()
+    expect(s.lines.filter((l) => l.chatId === 'chat').at(-1)).toEqual({ chatId: 'chat', why: 'limit' })
+  })
+
+  it('goes out when usage drops, and when the window resets', async () => {
+    const s = await room()
+    s.call.feed(event('five_hour', 0.91))
+    await flush()
+    await s.sessions.send('chat', text('Next task'))
+    expect(s.sessions.queued('chat')).toHaveLength(1)
+    // A reading back under 90% sends what waited.
+    s.call.feed(event('five_hour', 0.5))
+    await flush()
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    expect(s.sessions.queued('chat')).toEqual([])
+    expect(s.lines.filter((l) => l.chatId === 'chat').at(-1)).toEqual({ chatId: 'chat', why: undefined })
+    s.call.feed(result('r2'))
+    await flush()
+    // The window fills again and then resets: the reset sends it.
+    s.call.feed(event('five_hour', 0.95))
+    await flush()
+    await s.sessions.send('chat', text('Third task'))
+    expect(s.sessions.queueReason('chat')).toBe('limit')
+    s.sessions.resetLimit('five_hour')
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    expect(s.sessions.queued('chat')).toEqual([])
+  })
+
+  it('lets a running turn finish, and holds what comes after it', async () => {
+    const s = await room()
+    await s.sessions.send('chat', text('Working'))
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    s.call.feed(event('five_hour', 0.92))
+    await flush()
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    expect(await s.sessions.send('chat', text('Then this'))).toEqual({ queued: true, why: 'running' })
+    s.call.feed(result('r2'))
+    await flush()
+    // The turn ended, and the held message waits for the limit instead of going out.
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    expect(s.sessions.queueReason('chat')).toBe('limit')
+  })
+
+  it('holds at 95% of the weekly window, and at neither 89% of the 5-hour window nor 94% of the weekly one', async () => {
+    const s = await room()
+    for (const [type, used] of [['five_hour', 0.89], ['seven_day', 0.94]] as const) {
+      s.call.feed(event(type, used))
+      await flush()
+      expect(s.sessions.waitsFor('chat'), `${type} ${used}`).toBeUndefined()
+    }
+    s.call.feed(event('seven_day', 0.95))
+    await flush()
+    expect(s.sessions.waitsFor('chat')).toBe('limit')
+    s.call.feed(event('seven_day', 0.2))
+    await flush()
+    expect(s.sessions.waitsFor('chat')).toBeUndefined()
+  })
+
+  it('reads a warning with no number as close to the limit, and a number as the number', async () => {
+    const s = await room()
+    s.call.feed(event('five_hour', undefined, { status: 'allowed_warning' }))
+    await flush()
+    expect(s.sessions.waitsFor('chat')).toBe('limit')
+    // Claude Code warns early. A warning at 50% of the weekly window holds nothing.
+    s.call.feed(event('five_hour', 0.5))
+    s.call.feed(event('seven_day', 0.5, { status: 'allowed_warning' }))
+    await flush()
+    expect(s.sessions.waitsFor('chat')).toBeUndefined()
+  })
+
+  it('holds nothing when the switch in Settings, Account is off, or when the window has already reset', async () => {
+    const off = await room({ pauseNearLimit: false, warnBeforeWeekly: true })
+    off.call.feed(event('five_hour', 0.99))
+    await flush()
+    expect(off.sessions.waitsFor('chat')).toBeUndefined()
+    const past = await room()
+    past.call.feed(event('five_hour', 0.99, { resetsAt: secs(Date.now() - 60_000) }))
+    await flush()
+    expect(past.sessions.waitsFor('chat')).toBeUndefined()
+  })
+
+  it('releases what waited when the switch is turned off', async () => {
+    const s = await room()
+    s.call.feed(event('five_hour', 0.93))
+    await flush()
+    await s.sessions.send('chat', text('Next task'))
+    expect(s.sessions.queueReason('chat')).toBe('limit')
+    const before = structuredClone(s.settings)
+    s.settings.usage.pauseNearLimit = false
+    s.sessions.applySettings(before)
+    expect(s.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it("holds Kernel's own posts and a carried-on chat too, and Send now goes past it", async () => {
+    const s = await room()
+    s.call.feed(event('five_hour', 0.93))
+    await flush()
+    expect(s.sessions.post('chat', text('Team update from Kernel'))).toBe(false)
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    // A chat a limit cut off waits here too, and carries on when usage drops.
+    s.sessions.restore([], { chat: 'limit' })
+    expect(s.sessions.isRunning('chat')).toBe(false)
+    s.call.feed(event('five_hour', 0.4))
+    await flush()
+    expect(s.sessions.isRunning('chat')).toBe(true)
+    s.call.feed(result('r2'))
+    await flush()
+    // The user pressing Send now chooses to go past the hold.
+    s.call.feed(event('five_hour', 0.97))
+    await flush()
+    await s.sessions.send('chat', text('Urgent'))
+    expect(s.sessions.queueReason('chat')).toBe('limit')
+    await s.sessions.sendNow('chat', s.sessions.queued('chat')[0].id)
+    expect(s.sessions.isRunning('chat')).toBe(true)
+  })
+
+  /** `count` teammate chats, c1 to cN, each in its own workspace, none running. */
+  function cutOffChats(s: Awaited<ReturnType<typeof room>>, count: number) {
+    const ids = Array.from({ length: count }, (_, i) => `c${i + 1}`)
+    ids.forEach((id, i) => {
+      s.store.saveWorkspace({ id: `w-${id}`, roomId: 'room', name: id, branch: `feat/${id}`, baseRef: 'main', path: `/tmp/${id}`, mode: 'worktree', agentId: 'noor', port: 4400 + i, status: 'ready', prState: 'none', createdAt: 10 + i })
+      s.store.saveChat({ ...s.chat, id, workspaceId: `w-${id}`, title: id })
+    })
+    const runningNow = () => ids.filter((id) => s.sessions.isRunning(id))
+    // The newest session in that folder, since an earlier test used the same ones.
+    const callOf = (id: string) => [...sdk.calls].reverse().find((c) => c.options.cwd === `/tmp/${id}`)!
+    const finish = async (id: string) => { callOf(id).feed(result(`done-${id}`)); await flush() }
+    return { ids, runningNow, finish, callOf }
+  }
+
+  it('resumes 5 chats a limit cut off two at a time, the next as one ends its turn', async () => {
+    const s = await room()
+    const { ids, runningNow, finish } = cutOffChats(s, 5)
+    s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
+    expect(runningNow()).toEqual(['c1', 'c2'])
+    await finish('c1')
+    expect(runningNow()).toEqual(['c2', 'c3'])
+    await finish('c2')
+    expect(runningNow()).toEqual(['c3', 'c4'])
+    await finish('c3')
+    await finish('c4')
+    expect(runningNow()).toEqual(['c5'])
+    await finish('c5')
+    expect(runningNow()).toEqual([])
+    // Each one was told the limit lifted, once.
+    for (const id of ids) expect(s.store.items(id).filter((i) => i.kind === 'user').map((i) => (i as { parts: { text: string }[] }).parts[0].text)).toEqual([LIMIT_LIFTED])
+  })
+
+  it('resumes chats with a message queued two at a time too, whichever way their queues are released', async () => {
+    const s = await room()
+    const { ids, runningNow, finish } = cutOffChats(s, 4)
+    s.sessions.pause('room')
+    for (const id of ids) expect(await s.sessions.send(id, text(`Queued for ${id}`))).toEqual({ queued: true, why: 'paused' })
+    s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
+    expect(runningNow()).toEqual([])
+    s.sessions.resume('room')
+    expect(runningNow()).toEqual(['c1', 'c2'])
+    await finish('c1')
+    expect(runningNow()).toEqual(['c2', 'c3'])
+    await finish('c2')
+    await finish('c3')
+    expect(runningNow()).toEqual(['c4'])
+    // What each had queued went out, in place of the nudge.
+    for (const id of ids) expect(s.store.items(id).filter((i) => i.kind === 'user').map((i) => (i as { parts: { text: string }[] }).parts[0].text)).toEqual([`Queued for ${id}`])
+  })
+
+  it('does not stagger the chats a quit cut off', async () => {
+    const s = await room()
+    const { ids, runningNow } = cutOffChats(s, 5)
+    s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'quit' as const])))
+    expect(runningNow()).toEqual(ids)
+  })
+
+  it('keeps the two slots when a resumed chat ends without a turn, so the rest still start', async () => {
+    const s = await room()
+    const { ids, runningNow, callOf } = cutOffChats(s, 3)
+    s.sessions.restore([], Object.fromEntries(ids.map((id) => [id, 'limit' as const])))
+    expect(runningNow()).toEqual(['c1', 'c2'])
+    // c1's process dies mid-turn instead of finishing it.
+    callOf('c1').end()
+    await flush()
+    s.sessions.drainWaiting()
+    expect(runningNow()).toContain('c3')
+  })
+
+  it('tells the Lead why a hand-off waits (the tools word it for Rowan)', async () => {
+    const { queuedNote } = await import('../src/main/services/kernelMcp')
+    expect(queuedNote('limit', { name: 'Kai', brief: true })).toBe("Usage is close to the limit, so Kai hasn't started. The brief goes out when it resets or usage drops.")
+    expect(queuedNote('limit', { name: 'Kai' })).toBe('Usage is close to the limit, so the message goes out when it resets or usage drops.')
   })
 })
 

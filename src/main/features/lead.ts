@@ -14,7 +14,7 @@ import { cleanupSwitch, loadRepoSettings } from '../services/settings'
 import { gitStatus } from '../services/archive'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
-import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import { DEFAULT_OPEN_CAP, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import type { From } from '../services/leadUpdates'
 import { branchName, fastForward, fetchOrigin, folderGone, freeBranch, leadBase, renameBranch, shortSlug, slugify } from '../services/worktrees'
 import { exec, git } from '../services/exec'
@@ -409,6 +409,8 @@ export class Lead extends Feature {
         const code = this.k.setup.setupFailures.get(ws.id)
         return { ...ws, setupFailed: code === null ? 'it was stopped' : code === 'timeout' ? "it didn't finish in time" : code === undefined ? 'it did not pass' : `exit code ${code}` }
       },
+      // Settings, Models' agent limit, or three when it is 0 (KERNEL-220).
+      agentCap: () => this.settings.models.agentLimit || DEFAULT_OPEN_CAP,
       messageWorkspace: (workspaceId, text) => this.messageWorkspace(roomId, workspaceId, text, chat.id),
       askUser: async (o) => {
         // The card goes in the chat Rowan is blocked in, wherever that is, and shows in the Inbox too.

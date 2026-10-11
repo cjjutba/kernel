@@ -1,7 +1,6 @@
 ---
 name: theo
 description: Reviewer. Reviews diffs for correctness, security and maintainability before merge. Read-only.
-model: opus
 role: Reviewer
 tools: Read, Grep, Glob, Bash
 ---

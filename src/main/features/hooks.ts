@@ -7,7 +7,6 @@ import { startHookServer } from '../services/hookServer'
 import { hookToken } from '../services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from '../services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
-import { saveAppSettings } from '../services/settings'
 import { Feature } from './feature'
 
 /** How a hook from an outside session moves its agent on the floor. */
@@ -72,10 +71,8 @@ export class Hooks extends Feature {
     await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
     this.hookServer = undefined
     if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
-    if (port !== this.settings.hookPort) {
-      this.k.settings = { ...this.settings, hookPort: port }
-      await saveAppSettings(this.k.config.settingsFile, this.settings)
-    }
+    // Saved as a choice, like any other change in Settings (KERNEL-225).
+    if (port !== this.settings.hookPort) await this.k.config.setSettings({ hookPort: port })
     if (wasInstalled) await this.writeHooks(port)
     return this.pushHooks()
   }
@@ -114,7 +111,7 @@ export class Hooks extends Feature {
 
   private async preflight() {
     await this.o.refreshPath?.()
-    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening, agentTeams: this.settings.models.agentTeams })
+    return runPreflight({ hookPort: this.settings.hookPort, hookServerUp: !!this.hookServer?.listening })
   }
 
   private get hookToken() { return hookToken(this.o.dataDir) }
@@ -124,9 +121,7 @@ export class Hooks extends Feature {
     return {
       'preflight.run': async () => this.preflight(),
       'preflight.fix': async ({ id }) => {
-        // Through setSettings, so it is saved and applied like the Models page toggle.
-        if (id === 'teams') await this.k.config.setSettings({ models: { agentTeams: true } })
-        else if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
+        if (id === 'hooks') await this.restartHooks(await nextFreePort(this.settings.hookPort + 1))
         return this.preflight()
       },
       'hooks.status': async () => this.hooksStatus(),

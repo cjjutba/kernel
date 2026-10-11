@@ -322,7 +322,7 @@ describe('archive and discard', () => {
   })
 })
 
-async function kernel(files: Record<string, string> = {}) {
+async function kernel(files: Record<string, string> = {}, o: { settings?: object; options?: Partial<ConstructorParameters<typeof Kernel>[0]> } = {}) {
   const repo = await tempRepo({
     'README.md': '# client\n',
     '.claude/agents/rowan.md': '---\nname: rowan\ndescription: Lead.\nlead: true\n---\nYou are Rowan.',
@@ -331,8 +331,8 @@ async function kernel(files: Record<string, string> = {}) {
   })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
-  const k = new Kernel({ dataDir, home })
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, ...o.settings }))
+  const k = new Kernel({ dataDir, home, ...o.options })
   await k.start()
   const room = await k.addRoom(repo)
   await trustRoom(k, room.id)
@@ -762,6 +762,96 @@ describe('kernel recovery paths', () => {
   it('only promises a reset notification for a limit it has a reset time for', async () => {
     const { k } = await kernel()
     await expect(k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).rejects.toThrow('does not know when')
+    await k.stop()
+  })
+})
+
+describe('the usage guards in a Kernel (KERNEL-220)', () => {
+  const near = (type: 'five_hour' | 'seven_day', utilization: number, resetsAt: number, status = 'allowed') => ({ type: 'rate_limit_event', rate_limit_info: { status, rateLimitType: type, resetsAt, utilization }, uuid: `l-${type}-${utilization}-${resetsAt}`, session_id: 's' })
+  const weekly = (k: Kernel) => k.store.notifications().filter((n) => n.id.startsWith('n-weekly-'))
+  const NEXT_WEEK = S(Date.now() + 5 * 86_400_000)
+
+  it('warns once per weekly window when it crosses 80%, in the Inbox and as a macOS banner', async () => {
+    const shown: { title: string; sub: string }[] = []
+    const { k, room } = await kernel({}, { options: { inBackground: () => true, showNotification: (n) => { shown.push({ title: n.title, sub: n.sub }) } } })
+    const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed(near('seven_day', 0.79, NEXT_WEEK))
+    await flush()
+    expect(weekly(k)).toEqual([])
+    call.feed(near('seven_day', 0.8, NEXT_WEEK))
+    await flush()
+    expect(weekly(k)).toHaveLength(1)
+    expect(weekly(k)[0]).toMatchObject({ id: `n-weekly-${NEXT_WEEK}`, kind: 'system', title: "You've used 80% of this week's limit", needsYou: false, read: false })
+    expect(weekly(k)[0].sub).toMatch(/^Resets \w+day at /)
+    // More events in the same window, a second off as the usage call reads them, and a restart's reading: still one.
+    call.feed(near('seven_day', 0.86, NEXT_WEEK))
+    call.feed(near('seven_day', 0.9, NEXT_WEEK + 1))
+    await flush()
+    k.sessions.drainWaiting()
+    expect(weekly(k)).toHaveLength(1)
+    expect(shown).toHaveLength(1)
+    expect(shown[0].title).toBe("You've used 80% of this week's limit")
+    // The next window warns again.
+    call.feed(near('seven_day', 0.95, NEXT_WEEK + 7 * 86_400))
+    await flush()
+    expect(weekly(k)).toHaveLength(2)
+    expect(weekly(k).find((n) => n.id === `n-weekly-${NEXT_WEEK + 7 * 86_400}`)?.title).toBe("You've used 95% of this week's limit")
+    await k.stop()
+  })
+
+  it('warns about nothing when the switch in Settings, Account is off', async () => {
+    const { k, room } = await kernel({}, { settings: { usage: { warnBeforeWeekly: false, pauseNearLimit: true } } })
+    const chat = await k.leadChat(room.id)
+    await setUp(k, chat.id)
+    await k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    sdk.calls[sdk.calls.length - 1].feed(near('seven_day', 0.9, NEXT_WEEK))
+    await flush()
+    expect(weekly(k)).toEqual([])
+    await k.stop()
+  })
+
+  it('sends what a held teammate waited for when the window resets, by its own timer', async () => {
+    const { k, room } = await kernel()
+    const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'Table' })
+    const chat = k.store.chats(ws.id)[0]
+    const call = sdk.calls[sdk.calls.length - 1]
+    call.feed(result())
+    await flush()
+    expect(k.sessions.isRunning(chat.id)).toBe(false)
+    const resetsAt = S(Date.now() + 2000)
+    call.feed(near('five_hour', 0.93, resetsAt))
+    await flush()
+    // The window holds teammates and keeps a timer, which "Notify me" does not take as a rejected limit.
+    expect(await k.sessions.send(chat.id, [{ type: 'text', text: 'Next task' }])).toEqual({ queued: true, why: 'limit' })
+    expect(k.store.room(room.id)?.paused).toBe(false)
+    expect((k.account as unknown as { limitCheck?: unknown }).limitCheck).toBeDefined()
+    await expect(k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).rejects.toThrow('does not know when')
+    await vi.waitFor(() => expect(k.sessions.isRunning(chat.id)).toBe(true), { timeout: 8000 })
+    expect(k.sessions.queued(chat.id)).toEqual([])
+    // Nothing holds any more, so nothing keeps asking for fresh numbers.
+    expect((k.account as unknown as { limitCheck?: unknown }).limitCheck).toBeUndefined()
+    await k.stop()
+  }, 20000)
+
+  it("doesn't poll for usage when nothing is held, or when the switch is off", async () => {
+    const off = await kernel({}, { settings: { usage: { warnBeforeWeekly: true, pauseNearLimit: false } } })
+    const chat = await off.k.leadChat(off.room.id)
+    await setUp(off.k, chat.id)
+    await off.k.sessions.send(chat.id, [{ type: 'text', text: 'Plan it' }])
+    sdk.calls[sdk.calls.length - 1].feed(near('five_hour', 0.97, S(Date.now() + 3600_000)))
+    await flush()
+    expect((off.k.account as unknown as { limitCheck?: unknown }).limitCheck).toBeUndefined()
+    expect(off.k.sessions.waitsFor(chat.id)).toBe('running')
+    await off.k.stop()
+  })
+
+  it('still lets the user ask to hear about a rejected limit', async () => {
+    const { k, room } = await limited()
+    expect(await k.handlers()['usage.notifyOnReset']({ type: 'five_hour' })).toEqual({ ok: true })
+    expect(k.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     await k.stop()
   })
 })

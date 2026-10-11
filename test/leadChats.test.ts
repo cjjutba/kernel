@@ -748,6 +748,8 @@ describe('Lead chats with several tabs (KERNEL-337)', () => {
 
   it('names other Lead chats in an overlap by their titles, and not other tabs of its own', async () => {
     const { k, room, first, call, byTitle, tab, sent } = await setup()
+    // Four workspaces are open at once, more than the three a room may have with no agent limit (KERNEL-220).
+    k.settings = { ...k.settings, models: { ...k.settings.models, agentLimit: 8 } }
     const sibling = await tab(first.threadId)
     k.store.saveChat({ ...k.store.chat(sibling.id)!, title: 'Side question' })
     const elsewhere = await tab()

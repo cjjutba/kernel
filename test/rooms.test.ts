@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { describe, expect, it, vi } from 'vitest'
+import { existsSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { PushEvent } from '../src/shared/ipc'
@@ -8,16 +9,16 @@ import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { ago, agoShort, roomState } from '../src/renderer/src/screens/rooms/roomInfo'
-import { assertFreeFolder, ensureRepoSettings, expandHome, inspectFolder, recentFolders, seatStarterTeam } from '../src/main/services/rooms'
+import { assertFreeFolder, ensureRepoSettings, expandHome, inspectFolder, installScripts, recentFolders, runsPackageInstall, seatStarterTeam } from '../src/main/services/rooms'
 import { loadRepoSettings } from '../src/main/services/settings'
 import { tempRepo } from './helpers'
 
 const starter = join(__dirname, '..', 'docs', 'starter-agents')
 
-async function kernel() {
+async function kernel(settings: Record<string, unknown> = {}) {
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
-  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt') }))
+  await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), ...settings }))
   const k = new Kernel({ dataDir, home, starterDir: starter, claudeSettingsFile: join(home, 'claude-settings.json') })
   await k.start()
   return { k, home }
@@ -158,6 +159,110 @@ describe('Kernel rooms', () => {
     expect(await stat(repo)).toBeTruthy()
     await k.stop()
   })
+})
+
+describe("a repo's install scripts wait for trust (KERNEL-260)", () => {
+  const pkg = (postinstall: string, more: Record<string, string> = {}) => JSON.stringify({ name: 'demo', version: '1.0.0', scripts: { postinstall, ...more } })
+
+  /**
+   * Runs `fn` with an `npm` first on the PATH that runs the root package.json's postinstall, as the real one does, so a test
+   * can tell whether an install ran without a network or a registry.
+   */
+  async function withFakeNpm<T>(fn: () => Promise<T>): Promise<T> {
+    const bin = await mkdtemp(join(tmpdir(), 'kernel-bin-'))
+    await writeFile(join(bin, 'npm'), '#!/bin/sh\ncmd=$(sed -n \'s/.*"postinstall":"\\([^"]*\\)".*/\\1/p\' package.json)\n[ -n "$cmd" ] && sh -c "$cmd"\nexit 0\n', { mode: 0o755 })
+    const path = process.env.PATH
+    process.env.PATH = `${bin}:${path}`
+    try { return await fn() } finally { process.env.PATH = path }
+  }
+
+  const start = async (files: Record<string, string>) => {
+    const { k } = await kernel({ workspace: { baseRef: 'main' } })
+    k.sessions.send = async () => ({ queued: false })
+    k.sessions.release = () => undefined
+    const repo = await tempRepo({ 'README.md': '# x\n', ...files })
+    const room = await k.createRoom({ source: 'folder', name: 'Cloned app', from: repo, team: ['kai'], autostart: false })
+    const steps = await setupDone(room.id)
+    return { k, repo, room, steps, h: k.handlers() }
+  }
+
+  it('reads the install scripts of the root package.json, when a package install applies', async () => {
+    const some = await tempRepo({ 'package.json': pkg('node setup.js', { prepare: 'husky', build: 'tsc', install: '', preinstall: 7 as unknown as string }) })
+    expect(await installScripts(some)).toEqual([{ name: 'postinstall', command: 'node setup.js' }, { name: 'prepare', command: 'husky' }])
+    expect(await installScripts(await tempRepo({ 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) }))).toEqual([])
+    expect(await installScripts(await tempRepo({ 'package.json': 'not json' }))).toEqual([])
+    // No package.json, so no package manager to run them.
+    expect(await installScripts(await tempRepo())).toEqual([])
+  })
+
+  it('reads a setup script that installs packages, whatever the package manager or wrapper', () => {
+    for (const s of ['pnpm install', 'npm ci', 'npm i --silent', 'yarn', 'yarn --frozen-lockfile', 'bun install', 'pnpm --filter app install', 'corepack pnpm install', 'cd app && npm install', 'FOO=1 sudo npm ci', 'bash -c "pnpm i"', 'make deps && yarn add left-pad']) expect(runsPackageInstall(s), s).toBe(true)
+    for (const s of ['make setup', 'pnpm dev', 'npm run build', 'npm test', 'yarn build', 'yarn workspace app test', 'echo done', 'cp .env.example .env']) expect(runsPackageInstall(s), s).toBe(false)
+    expect(runsPackageInstall('./bin/bootstrap', './bin/bootstrap')).toBe(true)
+  })
+
+  it('skips the install until the user trusts, holds the first workspace, then runs the install', async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ 'package.json': pkg('touch ran.txt') })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok', detail: "Skipped until you trust this repo's install scripts" })
+      // The settings.toml Kernel wrote is not trusted on its own any more, since its setup script runs those install scripts.
+      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "npm install"')
+      const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+      expect(trust).toMatchObject({ scripts: { setup: 'npm install' }, installScripts: [{ name: 'postinstall', command: 'touch ran.txt' }] })
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+
+      // The first workspace waits in `trust`, and its setup runs nothing.
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
+      expect(ws.status).toBe('trust')
+      expect(existsSync(join(ws.path, 'ran.txt'))).toBe(false)
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+
+      // Trusting releases the workspace and runs the install room setup skipped, in the background.
+      await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      await vi.waitFor(() => expect(existsSync(join(ws.path, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      // It runs once: a second release of the same room installs nothing more.
+      await rm(join(repo, 'ran.txt'))
+      await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+      await new Promise((r) => setTimeout(r, 300))
+      expect(existsSync(join(repo, 'ran.txt'))).toBe(false)
+
+      // A changed script asks again, and the new text is what the user reads.
+      await writeFile(join(repo, 'package.json'), pkg('touch ran-2.txt'))
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toMatchObject({ installScripts: [{ name: 'postinstall', command: 'touch ran-2.txt' }] })
+      await k.stop()
+    })
+  }, 90000)
+
+  it("doesn't ask again once the install has run, when the setup script isn't an install", async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ 'package.json': pkg('touch ran.txt'), '.kernel/settings.toml': '[scripts]\nsetup = "make setup"\n' })
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ detail: "Skipped until you trust this repo's install scripts" })
+      const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+      expect(trust).toMatchObject({ scripts: { setup: 'make setup' }, installScripts: [{ name: 'postinstall' }] })
+      await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+      await vi.waitFor(() => expect(existsSync(join(repo, 'ran.txt'))).toBe(true), { timeout: 15000 })
+      // node_modules now exists, so the room has no install left to run, and the same text counts as trusted.
+      await mkdir(join(repo, 'node_modules'))
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      await k.stop()
+    })
+  }, 90000)
+
+  it('keeps today\'s flow and hash for a repo with no install scripts', async () => {
+    await withFakeNpm(async () => {
+      const { k, repo, room, steps, h } = await start({ 'package.json': JSON.stringify({ name: 'demo', scripts: { build: 'tsc' } }) })
+      // Nothing to hold: the install step ran the install, and Kernel's own settings.toml is trusted as before.
+      expect(steps.find((s) => s.id === 'install')).toMatchObject({ state: 'ok' })
+      expect(steps.find((s) => s.id === 'install')?.detail).not.toContain('Skipped')
+      expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+      const ws = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'kai', title: 'First' })
+      expect(ws.status).not.toBe('trust')
+      expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toContain('setup = "npm install"')
+      await k.stop()
+    })
+  }, 90000)
 })
 
 describe('Rooms page helpers', () => {

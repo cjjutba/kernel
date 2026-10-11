@@ -12,7 +12,7 @@ import { defaultBranch, remoteRepo, slugify } from '../services/worktrees'
 import { exec } from '../services/exec'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { AVATAR_FAILED, githubOwner, readImage } from '../services/roomIcons'
-import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, tildify } from '../services/rooms'
+import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, installScripts, listRepos, recentFolders, seatStarterTeam, tildify } from '../services/rooms'
 import { Feature } from './feature'
 
 /** Adding, creating, pausing, changing and removing rooms (KERNEL-326). */
@@ -101,11 +101,14 @@ export class Rooms extends Feature {
       await mkdir(worktrees, { recursive: true })
       // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
       // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path)) await this.k.trust.trustCurrent(room)
+      // The install command runs the repo's own install scripts, though, and those still wait for the user (KERNEL-260, D-078).
+      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path) && !(await installScripts(room.path)).length) await this.k.trust.trustCurrent(room)
     })
     await step('install', async () => {
       const { command, reason } = await installCommand(room.path)
       if (!command) return { detail: reason ?? 'Nothing to install' }
+      // The install would run the repo's install scripts. Trusting them runs it (KERNEL-260).
+      if (await this.k.trust.holdInstall(room)) return { detail: "Skipped until you trust this repo's install scripts" }
       update('install', { detail: command })
       const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
       if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)

@@ -31,6 +31,11 @@ export interface KernelToolDeps {
    */
   createWorkspace: (o: { prompt: string; agentId: string; mode?: WorkspaceMode; baseRef?: string; title?: string; branch?: string; reviewOf?: string; linkReviewOf?: string; issue?: string; waitFor?: string[] }) => Promise<Workspace & { setupFailed?: string; queued?: QueueReason }>
   /**
+   * How many teammate workspaces may be open in the room at once: Settings, Models' agent limit, or `DEFAULT_OPEN_CAP` when it
+   * is 0 for no limit. Read on each call. Left out, create_workspace has no cap (KERNEL-220).
+   */
+  agentCap?: () => number
+  /**
    * Sends the Lead's message into a teammate's workspace. `ok` is false when it was refused; `sent` is true when it went out
    * now rather than waiting in a queue; `note` says what happened.
    */
@@ -67,11 +72,21 @@ export interface KernelToolDeps {
 
 const text = (t: string) => ({ content: [{ type: 'text' as const, text: t }] })
 
+/** How many teammate workspaces create_workspace allows open in a room when Settings, Models sets no agent limit (KERNEL-220). */
+export const DEFAULT_OPEN_CAP = 3
+
+/** create_workspace's refusal at the cap. `user_asked` is the way past it, for a user who asked for more. */
+export function capRefusal(open: number, cap: number): string {
+  const count = `${open} teammate ${open === 1 ? 'workspace is' : 'workspaces are'} open in this room`
+  return `${count}${open === cap ? ', the limit' : `, over the limit of ${cap}`}. Archive one, or the user can raise the limit in Settings, Models.`
+}
+
 /** Why a brief or message waits, and when it goes out, for the reasons that hold a whole chat rather than one turn. */
 const WAITS: Partial<Record<QueueReason, { because: string; until: string }>> = {
   capacity: { because: 'Every agent slot in Settings, Models is in use', until: 'when a slot frees up' },
   paused: { because: 'The room is paused', until: 'when the user resumes it' },
-  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' }
+  offline: { because: 'Kernel is offline or signed out', until: 'once it is back' },
+  limit: { because: 'Usage is close to the limit', until: 'when it resets or usage drops' }
 }
 
 /**
@@ -243,8 +258,9 @@ export function kernelTools(d: KernelToolDeps) {
       branch: z.string().optional().describe('Only when the user asked for a particular branch name. Left out, Kernel names it from the issue key and title, for example fix/kernel-267-review-cant-start-reviewed-branch'),
       issue: z.string().optional().describe('The key of the Linear issue this task builds, for example "KERNEL-83". Kernel links the workspace to it, names the branch after it unless you pass branch, and moves the issue to In Progress'),
       review_of: z.string().optional().describe("For a review: the id of the workspace whose work to review. The reviewer's worktree starts from that workspace's branch, and the reviewer reports back with submit_review"),
-      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged')
-    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for }) => {
+      wait_for: z.array(z.string()).optional().describe('For a task that needs other tasks merged first: the ids of their workspaces (a PR number like "#164" or a Linear key works too). Kernel creates the worktree and runs setup now, holds the brief, and sends it from the new base once every one of them has merged'),
+      user_asked: z.boolean().optional().describe("Set to true only when the user explicitly asked for more teammate workspaces than the room's limit allows. Left out, create_workspace refuses once the limit is reached")
+    }, async ({ agent, title, brief, mode, base_ref, branch, issue, review_of: askedReview, wait_for, user_asked }) => {
       // An agent the team doesn't have used to fall back to the Lead, whose work never reports back (KERNEL-119).
       const team = await d.agents()
       const pick = pickAgent(team, agent)
@@ -273,6 +289,13 @@ export function kernelTools(d: KernelToolDeps) {
           if (open.status === 'failed') return refuse(`${what} to ${name} (workspace ${open.id}), and its setup failed. Tell the user to fix it and click Run again there.`)
           return refuse(`${what} to ${name} (workspace ${open.id}). Follow up with message_agent.`)
         }
+      }
+      // A room keeps a limited number of teammate workspaces open at once, so a Lead can't fan out without end. A review is no
+      // build workspace and doesn't count, and a user who asked for more goes past it (KERNEL-220).
+      const cap = d.agentCap?.()
+      if (!review_of && !user_asked && cap) {
+        const open = d.workspaces().filter((w) => w.status !== 'archived' && !w.reviewOf && !isLeadWorkspace(w, d.lead?.id) && w.prState !== 'merged' && w.prState !== 'closed').length
+        if (open >= cap) return refuse(capRefusal(open, cap))
       }
       // A review starts from the work it reviews, and only one per reviewer is open at a time (KERNEL-130).
       if (review_of) {

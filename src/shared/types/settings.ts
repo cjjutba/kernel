@@ -11,8 +11,15 @@ export type SettingsPage =
   /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
+/** The Claude plan the account is on, from `subscriptionType`. `unknown` covers a sign-out and a type Kernel doesn't know (KERNEL-225). */
+export type ClaudePlan = 'pro' | 'max' | 'team' | 'enterprise' | 'unknown'
+
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
 export interface AppSettings {
+  /** Read-only, filled by main when it resolves the settings (KERNEL-225). A patch never writes it. */
+  plan?: ClaudePlan
+  /** Read-only, filled by main: the dotted keys (`models.reviewer`) whose value is the plan's default and not the user's choice. */
+  planDefaulted?: string[]
   hookPort: number
   worktreeRoot: string
   general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }

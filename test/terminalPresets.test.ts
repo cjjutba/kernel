@@ -175,17 +175,17 @@ describe('terminal settings', () => {
   }
 
   it('moves the two experimental switches of an existing settings file into terminal', async () => {
-    const s = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
+    const { resolved: s } = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
     expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, custom: [] })
     // sharing was never in a saved file, so it takes the default (KERNEL-308).
     expect(s.experimental).toEqual({ walking: false, floor3d: true, voice: true, sharing: true })
   })
 
   it('keeps a terminal value already saved over the old switch, and defaults a file without either', async () => {
-    const both = await loadAppSettings(await file({ terminal: { enabled: true }, experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false } }), '/home')
+    const { resolved: both } = await loadAppSettings(await file({ terminal: { enabled: true }, experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false } }), '/home')
     expect(both.terminal).toMatchObject({ enabled: true, onlyInWorktrees: false })
     expect(both.experimental).not.toHaveProperty('bigTerminal')
-    expect((await loadAppSettings(await file({}), '/home')).terminal).toEqual(DEFAULT_SETTINGS('/home').terminal)
+    expect((await loadAppSettings(await file({}), '/home')).resolved.terminal).toEqual(DEFAULT_SETTINGS('/home').terminal)
   })
 
   it('leaves out a custom command with no id, name or command, and a repeated id', async () => {
@@ -193,14 +193,14 @@ describe('terminal settings', () => {
       { id: 'a', name: 'A', command: 'echo a' }, { id: 'a', name: 'Again', command: 'echo again' }, { id: '', name: 'No id', command: 'x' },
       { id: 'b', name: 'Blank', command: '  ' }, { id: 'c', command: 'echo c' }, 'nonsense'
     ]
-    const s = await loadAppSettings(await file({ terminal: { custom, preset: 7 } }), '/home')
+    const { resolved: s } = await loadAppSettings(await file({ terminal: { custom, preset: 7 } }), '/home')
     expect(s.terminal.custom).toEqual([{ id: 'a', name: 'A', command: 'echo a' }])
     expect(s.terminal.preset).toBe('claude')
   })
 
   it('leaves out a custom command whose id a built-in or a known CLI uses', async () => {
     const custom = ['claude', 'claude-skip', 'shell', 'codex', 'opencode', 'amp', 'copilot', 'gemini', 'mine'].map((id) => ({ id, name: id, command: `echo ${id}` }))
-    const s = await loadAppSettings(await file({ terminal: { custom } }), '/home')
+    const { resolved: s } = await loadAppSettings(await file({ terminal: { custom } }), '/home')
     expect(s.terminal.custom).toEqual([{ id: 'mine', name: 'mine', command: 'echo mine' }])
     const { k, h } = await kernel()
     expect((await h['settings.set']({ patch: { terminal: { custom: [{ id: 'codex', name: 'My codex', command: 'codex --yolo' }] } } })).terminal.custom).toEqual([])
@@ -211,9 +211,11 @@ describe('terminal settings', () => {
     const { k, h, dataDir } = await kernel({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: true } })
     await h['settings.set']({ patch: { terminal: { preset: 'shell' } } })
     const saved = JSON.parse(await readFile(join(dataDir, 'settings.json'), 'utf8'))
-    expect(saved.terminal).toEqual({ enabled: false, preset: 'shell', onlyInWorktrees: true, custom: [] })
-    expect(saved.experimental).not.toHaveProperty('bigTerminal')
-    expect(saved.experimental).not.toHaveProperty('bigTerminalWorktreeOnly')
+    // Only what differs from the defaults is saved: the old switch that was off, and the preset just picked (KERNEL-225).
+    expect(saved.terminal).toEqual({ enabled: false, preset: 'shell' })
+    // The two old switches are gone, and nothing else in Experimental was chosen.
+    expect(saved.experimental).toBeUndefined()
+    expect(JSON.stringify(saved)).not.toContain('bigTerminal')
     await k.stop()
   })
 })

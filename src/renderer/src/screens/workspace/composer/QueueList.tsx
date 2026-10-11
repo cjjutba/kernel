@@ -11,7 +11,8 @@ const WAITING: Partial<Record<QueueReason, string>> = {
   capacity: 'Queued. Sends when an agent slot frees up. Change the limit in Settings, Models.',
   paused: 'Queued. Sends when you resume the room.',
   setup: 'Queued. Sends when setup passes.',
-  merge: 'Queued. Sends when the work it waits for merges.'
+  merge: 'Queued. Sends when the work it waits for merges.',
+  limit: 'Close to your usage limit. Sends when it resets or usage drops.'
 }
 
 /** Send now can't help while the Mac is offline or setup hasn't passed. It does start a brief held for a merge (KERNEL-259). */

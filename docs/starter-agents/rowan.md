@@ -1,7 +1,6 @@
 ---
 name: rowan
 description: Lead. Plans features, gets your approval, and hands each task to the right teammate in its own workspace.
-model: opus
 role: Lead
 lead: true
 ---

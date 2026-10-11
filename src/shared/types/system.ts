@@ -1,5 +1,5 @@
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'teams' | 'git' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'git' | 'gh' | 'hooks'
   ok: boolean
   /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
   blocking: boolean
@@ -7,7 +7,7 @@ export interface PreflightCheck {
   detail: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
   meta?: string
-  fix?: { command?: string; action?: 'use-next-port' | 'enable-teams' | 'show-process' }
+  fix?: { command?: string; action?: 'use-next-port' | 'show-process' }
 }
 
 /** Hook server and installed hooks (CheckHooks.png, Settings > Hooks, the footer). */

@@ -26,6 +26,8 @@ const noCanvas = [
   'WorkspaceContextPopover',
   'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
+  'WorkspaceNearLimit', // 91% of the 5-hour window: teammates' new work waits, the queued message says why (KERNEL-224)
+  'WorkspaceContextHigh', // 160k tokens in a 1M window: the long-chat banner (KERNEL-224)
   'WorkspaceQueuedMerge', // a brief held until another PR merges, with Send now (KERNEL-361)
   'WorkspaceWaitedOn', // a PR another workspace's brief waits for, naming that workspace above the box
   'InboxOverlap',

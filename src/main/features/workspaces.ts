@@ -76,6 +76,8 @@ export class Workspaces extends Feature {
     // without that remote has nothing to fetch, so it says nothing.
     const fetched = !reviewed && !o.noFetch && mode === 'worktree' && want.startsWith(`${remote}/`) && (await exec('git', ['-C', room.path, 'remote', 'get-url', remote])).code === 0
       ? await fetchOrigin(room.path, remote) : undefined
+    // The fetch may have moved the base under the room's other workspaces (KERNEL-180).
+    if (fetched?.ok) void this.k.baseWatch.check(roomId, { fetch: false }).catch(() => undefined)
     const baseRef = reviewed ? await this.k.reviews.reviewBase(room.path, reviewed.branch, remote)
       : mode === 'current' && o.lead ? room.defaultBranch
       : await resolveBaseRef(room.path, want, { strict: o.source?.kind === 'pr' || picked, remote })

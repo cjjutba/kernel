@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import type { Chat, Checkpoint, ClaudeAccount, Effort, ModelId, QueuedMessage, RateLimit, Workspace } from '@shared/types'
+import type { Chat, Checkpoint, ClaudeAccount, ClaudePlan, Effort, ModelId, QueuedMessage, RateLimit, Workspace } from '@shared/types'
 import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store } from './db'
 import { bus } from './bus'
@@ -14,7 +14,7 @@ import { Sessions, type CutOffReason } from './services/sessions'
 import { askTitle } from './services/titles'
 import { Ptys } from './services/pty'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
-import { loadAppSettings, saveAppSettings, type AppSettings } from './services/settings'
+import { loadAppSettings, type AppSettings } from './services/settings'
 import { claudeSignedIn, readAccount } from './services/account'
 import { stopAllScripts } from './services/scripts'
 import { EnvStore } from './services/env'
@@ -50,6 +50,7 @@ import { Prs } from './features/prs'
 import { AutoArchive } from './features/autoArchive'
 import { Reviews } from './features/reviews'
 import { Telemetry } from './features/telemetry'
+import { BaseWatch } from './features/baseWatch'
 
 export { fetchedAt } from './features/workspaces'
 
@@ -121,6 +122,7 @@ export class Kernel {
   readonly autoArchive = new AutoArchive(this)
   readonly reviews = new Reviews(this)
   readonly telemetry = new Telemetry(this)
+  readonly baseWatch = new BaseWatch(this)
 
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
@@ -139,7 +141,7 @@ export class Kernel {
   /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
   titleFor: typeof askTitle = askTitle
   /** Reads `claude auth status`. Tests swap it for a stub. */
-  accountReader: () => Promise<ClaudeAccount> = readAccount
+  accountReader: () => Promise<ClaudeAccount & { subscriptionType?: string }> = readAccount
   /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
   signedInReader: () => Promise<boolean> = claudeSignedIn
   /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
@@ -171,8 +173,11 @@ export class Kernel {
     // `stop()` saves cleanExit as its last write, so without it the last run crashed, was force quit or lost power (KERNEL-215).
     const clean = this.store.meta<boolean>('cleanExit') === true
     this.store.saveMeta('cleanExit', false)
-    this.settings = await loadAppSettings(this.config.settingsFile, this.home)
-    await saveAppSettings(this.config.settingsFile, this.settings)
+    // Settings are what the user chose over the defaults of the plan Kernel last read. Nothing is saved here: only a change is (KERNEL-225).
+    this.config.plan = this.store.meta<ClaudePlan>('plan') ?? 'unknown'
+    const { saved, resolved } = await loadAppSettings(this.config.settingsFile, this.home, this.config.plan)
+    this.config.saved = saved
+    this.settings = resolved
     this.o.onSettings?.(this.settings)
     this.telemetry.start()
     await this.hooks.start()

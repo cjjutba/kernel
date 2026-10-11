@@ -1,12 +1,17 @@
 import { join } from 'node:path'
 import type { QueuedMessage, Room, RoomSettingsPatch, ScriptTrust, Workspace } from '@shared/types'
 import { bus } from '../bus'
+import { exec } from '../services/exec'
+import { installCommand, installScripts, lockfileInstall, runsPackageInstall } from '../services/rooms'
 import { loadRepoSettings, localSettingsOwn, type RepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type TrustSubject } from '../services/settings'
 import type { Handlers } from '../kernel'
 import type { SetupHold } from './setup'
 import { Feature } from './feature'
 
-/** Whether the user trusts the room's scripts, files.copy list and env files (KERNEL-209, KERNEL-327). */
+/** Store meta: the rooms whose Install step waited for trust, so trusting runs it (KERNEL-260). */
+const HELD_INSTALLS = 'heldInstalls'
+
+/** Whether the user trusts the room's scripts, files.copy list, env files and install scripts (KERNEL-209, KERNEL-260, KERNEL-327). */
 export class Trust extends Feature {
   /** The script text the user trusted, per room (KERNEL-209). Made the first time it is read (R1). */
   private get trusted(): ScriptTrustStore { return this.trustStore ??= new ScriptTrustStore(join(this.o.dataDir, 'trust.json')) }
@@ -44,10 +49,17 @@ export class Trust extends Feature {
 
   /**
    * The repo's text the room would run and copy, from `settings.toml` and from a personal file only when a commit brought
-   * it (KERNEL-209, KERNEL-190). The user's own personal file needs no trusting.
+   * it (KERNEL-209, KERNEL-190). The user's own personal file needs no trusting. The install scripts in package.json are
+   * the repo's text whoever wrote the setup script, and they join it when the room runs a package install: its setup script
+   * does, or its Install step still has to (KERNEL-260).
    */
   private async subjectOf(room: Room, repo?: RepoSettings): Promise<TrustSubject | undefined> {
-    return scriptsToTrust(repo ?? await loadRepoSettings(room.path), { localIsOwn: await localSettingsOwn(room.path) })
+    const settings = repo ?? await loadRepoSettings(room.path)
+    const subject = scriptsToTrust(settings, { localIsOwn: await localSettingsOwn(room.path) })
+    const installs = await installScripts(room.path)
+    if (!installs.length) return subject
+    const installing = (!!settings.scripts.setup && runsPackageInstall(settings.scripts.setup, await lockfileInstall(room.path))) || !!(await installCommand(room.path)).command
+    return installing ? { ...(subject ?? { scripts: {}, copy: [] }), installScripts: installs } : subject
   }
 
   /** The repo's text as it is now, and whether the user trusts it. Nothing to trust counts as trusted. */
@@ -90,7 +102,9 @@ export class Trust extends Feature {
     // A named run script the save changed in the repo's text waits for the dialog (KERNEL-244).
     const runsOk = JSON.stringify(after.runScripts ?? []) === JSON.stringify(before.subject?.runScripts ?? [])
     const envOk = JSON.stringify(after.envFiles ?? []) === JSON.stringify(before.subject?.envFiles ?? []) || wrote('env', 'files')
-    if (!scriptsOk || !copyOk || !runsOk || !envOk) return
+    // No page writes package.json, so install scripts that are new, or changed, wait for the dialog (KERNEL-260).
+    const installsOk = JSON.stringify(after.installScripts ?? []) === JSON.stringify(before.subject?.installScripts ?? [])
+    if (!scriptsOk || !copyOk || !runsOk || !envOk || !installsOk) return
     await this.trustCurrent(room, next)
     await this.releaseHeld(room.id)
   }
@@ -105,10 +119,41 @@ export class Trust extends Feature {
     return held
   }
 
-  /** The room's text is trusted now: clear the prompt and release every workspace waiting on it. */
+  /** The room's text is trusted now: clear the prompt, release every workspace waiting on it and run the Install step that waited. */
   private async releaseHeld(roomId: string) {
     bus.push({ type: 'room.trust', roomId, trust: null })
     for (const ws of this.store.workspaces(roomId)) if (ws.status === 'trust') void this.k.setup.releaseTrust(ws.id).catch(() => undefined)
+    void this.runHeldInstall(roomId).catch(() => undefined)
+  }
+
+  private heldInstalls(): string[] { return this.store.meta<string[]>(HELD_INSTALLS) ?? [] }
+
+  /**
+   * Whether the room's Install step has to wait: the repo has install scripts and the user hasn't trusted them. A room that
+   * waits is remembered, so trusting it runs the install later (KERNEL-260).
+   */
+  async holdInstall(room: Room): Promise<boolean> {
+    if (!(await installScripts(room.path)).length || !(await this.untrusted(room))) return false
+    this.store.saveMeta(HELD_INSTALLS, [...new Set([...this.heldInstalls(), room.id])])
+    return true
+  }
+
+  /**
+   * The install room setup skipped, run in the background now that the room is trusted. `installCommand` runs nothing when
+   * node_modules exists, so an install that happened meanwhile isn't run twice. The room's log says how it went.
+   */
+  private async runHeldInstall(roomId: string) {
+    if (!this.heldInstalls().includes(roomId)) return
+    const room = this.store.room(roomId)
+    if (room && await this.untrusted(room)) return
+    this.store.saveMeta(HELD_INSTALLS, this.heldInstalls().filter((id) => id !== roomId))
+    if (!room) return
+    const { command } = await installCommand(room.path)
+    if (!command) return
+    const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
+    if (this.stopped) return
+    if (r.code === 0) bus.activity({ kind: 'note', roomId, actor: 'kernel', text: 'installed dependencies after you trusted the install scripts in', object: room.name })
+    else bus.activity({ kind: 'note', roomId, actor: 'kernel', text: `could not install dependencies in ${room.name}:`, object: (r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join(' ') || `${command} failed`, warn: true })
   }
 
   /**
@@ -123,7 +168,12 @@ export class Trust extends Feature {
       await this.askTrust(roomId)
       throw new Error("This room's scripts changed since you read them. Read them again before trusting them.")
     }
-    if (subject) await this.trusted.add(roomId, hash)
+    if (subject) {
+      await this.trusted.add(roomId, hash)
+      // The install scripts count only while the room still has an install to run, which the install itself ends. The same
+      // text without them is a part of what the user just read, so it doesn't ask again afterwards (KERNEL-260).
+      if (subject.installScripts) await this.trusted.add(roomId, trustHash({ ...subject, installScripts: undefined }))
+    }
     await this.untrusted(room)
     await this.releaseHeld(roomId)
   }

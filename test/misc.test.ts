@@ -10,7 +10,8 @@ import { CLAUDE_INSTALL, compareVersions, nextFreePort, parseClaudeVersion, pars
 import type { ExecResult } from '../src/main/services/exec'
 import type { PreflightCheck } from '@shared/types'
 import { deepMerge, DEFAULT_SETTINGS } from '../src/main/services/settings'
-import { matchesRule, describeTool, Approvals } from '../src/main/services/approvals'
+import { describeTool, Approvals } from '../src/main/services/approvals'
+import { matchesRule } from '../src/main/services/bashGuard'
 import { InputQueue, toUserMessage } from '../src/main/services/sessions'
 import { Store } from '../src/main/db'
 
@@ -274,7 +275,7 @@ describe('preflight checks', () => {
   const preflight = (answers: Record<string, ExecResult> = {}, o: { hookServerUp?: boolean; claude?: string | null } = {}) => {
     const table = { ...healthy, ...answers }
     const run = async (cmd: string, args: string[]) => table[[cmd, ...args].join(' ')] ?? missing
-    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, agentTeams: true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p })
+    return runPreflight({ hookPort: 7420, hookServerUp: o.hookServerUp ?? true, run, claude: o.claude === undefined ? BIN : o.claude, nextPort: async (p) => p })
   }
   const blockers = (checks: PreflightCheck[]) => checks.filter((c) => !c.ok && c.blocking).map((c) => c.id)
   const warnings = (checks: PreflightCheck[]) => checks.filter((c) => !c.ok && !c.blocking).map((c) => c.id)
@@ -282,7 +283,7 @@ describe('preflight checks', () => {
 
   it('passes everything on a healthy Mac', async () => {
     const checks = await preflight()
-    expect(checks.map((c) => c.id)).toEqual(['claude', 'auth', 'teams', 'git', 'gh', 'hooks'])
+    expect(checks.map((c) => c.id)).toEqual(['claude', 'auth', 'git', 'gh', 'hooks'])
     expect(checks.every((c) => c.ok)).toBe(true)
     expect(byId(checks, 'claude').meta).toBe('v2.1.292')
     expect(byId(checks, 'gh')).toMatchObject({ detail: 'Signed in as samrivera', meta: 'gh 2.62.0' })
@@ -325,11 +326,10 @@ describe('preflight checks', () => {
     expect(parseGhAuth('not json')).toBeNull()
     expect(await ghUser(async () => gh({ state: 'timeout', login: 'sam' }))).toBeNull()
   })
-  it('only warns when agent teams are off', async () => {
-    const run = async (cmd: string, args: string[]) => healthy[[cmd, ...args].join(' ')] ?? missing
-    const checks = await runPreflight({ hookPort: 7420, hookServerUp: true, agentTeams: false, run, claude: BIN })
-    expect(blockers(checks)).toEqual([])
-    expect(warnings(checks)).toEqual(['teams'])
+  it('has no agent teams check, since nothing needs agent teams (KERNEL-225)', async () => {
+    const checks = await preflight()
+    expect(checks.map((c) => c.id)).not.toContain('teams')
+    expect(JSON.stringify(checks)).not.toContain('enable-teams')
   })
   it('blocks when signed out of Claude', async () => {
     const checks = await preflight({ [`${BIN} auth status`]: ok(JSON.stringify({ loggedIn: false })) })

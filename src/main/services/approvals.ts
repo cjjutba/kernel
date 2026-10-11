@@ -127,12 +127,3 @@ export function describeTool(toolName: string, input: unknown): { title: string;
     default: return { title: toolName.startsWith('mcp__') ? toolName.split('__').slice(1).join(' · ') : toolName }
   }
 }
-
-/** Match a Bash command against Settings > Permissions lists (simple substring and * wildcard). */
-export function matchesRule(command: string, rules: string[]): string | undefined {
-  const c = command.trim()
-  return rules.find((r) => {
-    if (r.includes('*')) return new RegExp('^' + r.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$').test(c)
-    return c === r || c.startsWith(r + ' ') || c.includes(r)
-  })
-}

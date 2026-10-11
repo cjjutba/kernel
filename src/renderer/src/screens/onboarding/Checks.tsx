@@ -27,7 +27,6 @@ function Fix({ check, busy, onFix, onRecheck }: { check: PreflightCheck; busy: s
   return (
     <>
       <div className="ob-acts">
-        {fix.action === 'enable-teams' && <Button variant="primary" busy={busy === `fix:${check.id}`} busyLabel="Turning on" disabled={busy !== null} onClick={onFix}>Turn on for Kernel</Button>}
         {fix.action === 'use-next-port' && <Button variant="primary" busy={busy === `fix:${check.id}`} busyLabel="Switching" disabled={busy !== null} onClick={onFix}>{port ? `Use ${port}` : 'Use the next port'}</Button>}
         {fix.action === 'use-next-port' && <Button aria-expanded={showProcess} onClick={() => setShowProcess(!showProcess)}>Show process</Button>}
       </div>

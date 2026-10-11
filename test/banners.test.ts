@@ -50,6 +50,83 @@ describe('workspace banners', () => {
     expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', actions: [{ id: 'newChat' }, { id: 'compact', primary: true }] })
   })
 
+  it('offers a new chat past 150k tokens, whatever the window, and compacting from 90% as before (KERNEL-224)', () => {
+    const used = (tokens: number, max = 1_000_000, context = Math.round((tokens / max) * 100)) => ({ ...chat, context, contextUsage: { used: tokens, max, rows: [] } })
+    expect(bannerFor(input({ chat: used(149_999) }))).toBeNull()
+    // 160k on a 1M window is 16%, far under 90%, and the chat is long all the same.
+    const long = bannerFor(input({ chat: used(160_000) }))
+    expect(long).toMatchObject({ id: 'long', kind: 'context', title: 'This chat is long', sub: 'Starting a new chat keeps the next turns cheaper.', blocks: false })
+    expect(long?.actions).toEqual([{ id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }])
+    expect(bannerFor(input({ chat: used(150_000) }))?.id).toBe('long')
+    // A small window gets there by percent first, and says it is almost full: the stronger line wins.
+    expect(bannerFor(input({ chat: used(184_000, 200_000) }))).toMatchObject({ id: 'context', title: 'Context is almost full' })
+    expect(bannerFor(input({ chat: used(120_000, 200_000) }))).toBeNull()
+    expect(bannerFor(input({ chat: { ...chat, context: 92 } }))).toMatchObject({ id: 'context', title: 'Context is almost full' })
+    expect(bannerFor(input({ chat: used(180_000, 200_000, 90) }))?.id).toBe('context')
+    // A chat that never read its context has nothing to go on.
+    expect(bannerFor(input({ chat: { ...chat, contextUsage: undefined } }))).toBeNull()
+  })
+
+  describe('close to a usage limit (KERNEL-224)', () => {
+    const near = (type: 'five_hour' | 'seven_day', utilization: number | undefined, resetsAt: number, status: 'allowed' | 'allowed_warning' = 'allowed') => ({ type, status, ...(utilization === undefined ? {} : { utilization }), resetsAt: S(resetsAt) })
+    const at340 = new Date(2026, 9, 7, 15, 40).getTime()
+    const monday = new Date(2026, 9, 12, 9, 0).getTime()
+
+    it('says new work waits at 90% of the 5-hour window, with when it resumes, and blocks nothing', () => {
+      const b = bannerFor(input({ usage: [near('five_hour', 0.91, at340)] }))
+      expect(b).toMatchObject({ id: 'nearLimit', kind: 'limit', title: 'Close to your 5-hour limit', sub: 'New work from teammates waits until 3:40 PM. Rowan can still answer you.', blocks: false })
+      expect(b?.actions).toEqual([{ id: 'usage', label: 'Open /usage' }])
+      expect(bannerFor(input({ usage: [near('five_hour', 0.9, at340)] }))?.id).toBe('nearLimit')
+      expect(bannerFor(input({ usage: [near('five_hour', 0.89, at340)] }))).toBeNull()
+    })
+
+    it('says so for the weekly window at 95%, with the day it resumes, and names the room\'s own Lead', () => {
+      expect(bannerFor(input({ usage: [near('seven_day', 0.96, monday)], leadName: 'Ana' }))).toMatchObject({ id: 'nearLimit', title: 'Close to your weekly limit', sub: 'New work from teammates waits until Monday at 9:00 AM. Ana can still answer you.' })
+    })
+
+    it("shows nothing in the Lead's workspace, and nothing with the switch off, since nothing is held there", () => {
+      expect(bannerFor(input({ isLead: true, usage: [near('five_hour', 0.99, at340)] }))).toBeNull()
+      expect(bannerFor(input({ usageSettings: { pauseNearLimit: false }, usage: [near('five_hour', 0.99, at340)] }))).toBeNull()
+      expect(bannerFor(input({ usageSettings: { pauseNearLimit: true }, usage: [near('five_hour', 0.99, at340)] }))?.id).toBe('nearLimit')
+    })
+
+    it('reads a warning with no number as close, a number as the number, and a window past its reset as nothing', () => {
+      expect(bannerFor(input({ usage: [near('five_hour', undefined, at340, 'allowed_warning')] }))?.id).toBe('nearLimit')
+      expect(bannerFor(input({ usage: [near('five_hour', 0.5, at340, 'allowed_warning')] }))).toBeNull()
+      expect(bannerFor(input({ usage: [near('five_hour', 0.99, now - 1000)] }))).toBeNull()
+    })
+
+    it('warns that 80% of the week is used, in any workspace, and not below it', () => {
+      const b = bannerFor(input({ usage: [near('seven_day', 0.8, monday)] }))
+      expect(b).toMatchObject({ id: 'weeklyWarn', kind: 'limit', title: "You've used 80% of this week's limit", sub: 'It resets Monday at 9:00 AM.', blocks: false })
+      expect(bannerFor(input({ usage: [near('seven_day', 0.79, monday)] }))).toBeNull()
+      expect(bannerFor(input({ usage: [near('seven_day', 0.9, monday)] }))?.title).toBe("You've used 90% of this week's limit")
+      // The Lead isn't held, but it can still read how much of the week is gone.
+      expect(bannerFor(input({ isLead: true, usage: [near('seven_day', 0.85, monday)] }))?.id).toBe('weeklyWarn')
+      expect(bannerFor(input({ usageSettings: { warnBeforeWeekly: false }, usage: [near('seven_day', 0.85, monday)] }))).toBeNull()
+    })
+
+    it('shows the hold rather than the weekly warning once the week is close enough to hold teammates', () => {
+      expect(bannerFor(input({ usage: [near('seven_day', 0.97, monday)] }))?.id).toBe('nearLimit')
+      // The 5-hour window decides first when both are close.
+      expect(bannerFor(input({ usage: [near('seven_day', 0.85, monday), near('five_hour', 0.92, at340)] }))?.id).toBe('nearLimit')
+    })
+
+    it('comes after the blocking banners, and before overloaded, context and hooks', () => {
+      const usage = [near('five_hour', 0.95, at340)]
+      expect(bannerFor(input({ usage, account: { signedIn: false } }))?.id).toBe('signedOut')
+      expect(bannerFor(input({ usage, online: false }))?.id).toBe('offline')
+      expect(bannerFor(input({ usage, ws: { ...ws, status: 'trust' } }))?.id).toBe('trust')
+      expect(bannerFor(input({ usage, ws: { ...ws, status: 'failed' } }))?.id).toBe('setup')
+      // A limit that already rejected is the stronger line, whichever window it is.
+      expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340), { type: 'seven_day', status: 'rejected', resetsAt: S(monday) }] }))?.id).toBe('weekly')
+      expect(bannerFor(input({ usage: [{ type: 'five_hour', status: 'rejected', resetsAt: S(at340) }] }))?.id).toBe('session')
+      expect(bannerFor(input({ usage: [near('five_hour', 0.95, at340), { type: 'seven_day_opus', status: 'rejected', model: 'claude-sonnet-5-5', resetsAt: S(monday) }] }))?.id).toBe('model')
+      expect(bannerFor(input({ usage, retry: { attempt: 1, of: 5, nextAt: now + 5000 }, chat: { ...chat, context: 95 }, hooks: { port: 7420, listening: false, installed: true, events: [] } }))?.id).toBe('nearLimit')
+      expect(bannerFor(input({ retry: { attempt: 1, of: 5, nextAt: now + 5000 }, usage: [near('seven_day', 0.85, monday)] }))?.id).toBe('weeklyWarn')
+    })
+  })
+
   it('puts sign-out first, then offline, then a failed setup', () => {
     const all = { account: { signedIn: false }, online: false, ws: { ...ws, status: 'failed' as const } }
     expect(bannerFor(input(all))).toMatchObject({ id: 'signedOut', blocks: true })
