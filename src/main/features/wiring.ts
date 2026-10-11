@@ -69,6 +69,8 @@ export function listen(k: Kernel): () => void {
     keepScript(e)
     if (e.type === 'chat.running') k.chats.onRunning(e)
     if (e.type === 'agent.status') k.team.onStatus(e)
+    // A held brief waits for setup or for a merge by its workspace's state, so its queue's reason follows the workspace (KERNEL-361).
+    if (e.type === 'workspace') k.sessions.pushReasons()
     // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
     if (e.type === 'pr' && e.state === 'merged') k.nudges.reset(e.workspaceId, ...k.autoArchive.reviewsOf(e.workspaceId))
     // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
