@@ -1,5 +1,6 @@
-import type { WaitsFor, Workspace, WorkspaceMode } from '@shared/types'
+import type { TrackerKind, WaitsFor, Workspace, WorkspaceMode } from '@shared/types'
 import { isMerged } from '@shared/waits'
+import { issueTracker } from './trackers'
 
 // Moved to shared so the window names waits as the engine does. Imported from here as before.
 export { isMerged, joinLabels, waitLabel } from '@shared/waits'
@@ -12,15 +13,21 @@ export { isMerged, joinLabels, waitLabel } from '@shared/waits'
 /** Open workspaces first, then the newest, so an old archived workspace with the same issue or PR loses. */
 const best = (list: Workspace[]) => [...list].sort((a, b) => Number(a.status === 'archived') - Number(b.status === 'archived') || b.createdAt - a.createdAt)[0]
 
-/** The workspace `ref` names: its id, its PR as "#164" or "164", or the Linear issue it builds ("KERNEL-197"). */
+/** `w` builds the issue `key`, in any case, from `tracker` when one is given. */
+export const buildsIssue = (w: Workspace, key: string, tracker?: TrackerKind) =>
+  w.source?.kind === 'issue' && w.source.id.toLowerCase() === key.toLowerCase() && (!tracker || issueTracker(w.source) === tracker)
+
+/**
+ * The workspace `ref` names: its id, its PR as "#164" or "164", or the issue it builds ("KERNEL-197"). GitHub numbers
+ * issues and PRs together, so "#41" is also the GitHub issue a workspace builds, by its tracker (KERNEL-470).
+ */
 export function resolveTarget(workspaces: Workspace[], ref: string): Workspace | undefined {
   const r = ref.trim()
   const byId = workspaces.find((w) => w.id === r)
   if (byId) return byId
-  const pr = /^#?(\d+)$/.exec(r)
-  if (pr) return best(workspaces.filter((w) => w.prNumber === Number(pr[1])))
-  const key = r.toLowerCase()
-  return best(workspaces.filter((w) => w.source?.kind === 'issue' && w.source.id.toLowerCase() === key))
+  const n = /^#?(\d+)$/.exec(r)?.[1]
+  if (n) return best(workspaces.filter((w) => w.prNumber === Number(n) || buildsIssue(w, `#${n}`, 'github')))
+  return best(workspaces.filter((w) => buildsIssue(w, r)))
 }
 
 /** The workspaces `refs` name, once each. Refs that name nothing are left out; `waitRefusal` reports them. */

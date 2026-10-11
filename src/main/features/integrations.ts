@@ -1,15 +1,18 @@
-import type { Tracker, Workspace, WorkspaceSource } from '@shared/types'
+import type { Tracker, TrackerKind, Workspace, WorkspaceSource } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
 import { loadRepoSettings } from '../services/settings'
-import { trackerKind } from '../services/trackers'
+import { issueTracker, trackerKind } from '../services/trackers'
 import { githubKey, githubTracker } from '../services/trackers/github'
 import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
 import { noneTracker } from '../services/trackers/none'
 import { remoteRepo } from '../services/worktrees'
 import { Feature } from './feature'
+
+/** An issue a workspace builds: its key and the tracker it came from. */
+type IssueRef = { id: string; tracker?: TrackerKind }
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
 export class Integrations extends Feature {
@@ -19,13 +22,15 @@ export class Integrations extends Feature {
 
   /**
    * A workspace started on an issue: move it to In Progress in the room's tracker (D-140). Nobody waits for it, and a
-   * failure is one note in the log, never a failed workspace. Linear without a token, GitHub and no tracker move nothing.
+   * failure is one note in the log, never a failed workspace. Linear without a token, GitHub and no tracker move nothing,
+   * and neither does an issue from another tracker than the room's (KERNEL-470).
    */
-  async startIssue(ws: Workspace, key: string) {
+  async startIssue(ws: Workspace, issue: IssueRef) {
     try {
-      await (await this.trackerFor(ws.roomId)).start(key)
+      const tracker = await this.trackerFor(ws.roomId)
+      if (tracker.kind === issueTracker(issue)) await tracker.start(issue.id)
     } catch (e) {
-      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
+      bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${issue.id} to In Progress in Linear:`, object: (e as Error).message, warn: true })
     }
   }
 
@@ -60,12 +65,13 @@ export class Integrations extends Feature {
 
   /**
    * An issue's labels, for a workspace started from it in the New workspace modal. The tracker gets 5 seconds, and no
-   * answer means no labels, so the branch starts with feat and the tracker never holds a workspace up (KERNEL-275).
+   * answer means no labels, so the branch starts with feat and the tracker never holds a workspace up (KERNEL-275). Only
+   * the room's tracker is asked, about its own issues (KERNEL-470).
    */
-  async issueLabels(roomId: string, key: string): Promise<string[]> {
+  async issueLabels(roomId: string, issue: IssueRef): Promise<string[]> {
     let timer: ReturnType<typeof setTimeout> | undefined
     const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
-    const read = this.trackerFor(roomId).then((t) => t.issue(key)).then((i) => i.labels, () => [])
+    const read = this.trackerFor(roomId).then(async (t) => (t.kind === issueTracker(issue) ? (await t.issue(issue.id)).labels : [])).catch(() => [])
     try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
   }
 
