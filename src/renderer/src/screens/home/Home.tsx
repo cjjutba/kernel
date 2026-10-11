@@ -50,6 +50,9 @@ function NeedsRow({ item }: { item: InboxItem }) {
         <Button variant="primary" busy={busy === 'approve'} busyLabel="Approving" disabled={busy !== null} onClick={() => void run('approve', () => decide(a, { behavior: 'allow' }))} aria-label={busy === 'approve' ? `Approving: ${a.title}` : `Approve: ${a.title}`}>Approve</Button>
       </>
     )
+  } else if (n.kind === 'trust' && n.roomId) {
+    text = <><span>{n.title}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
+    actionsEl = <Button onClick={() => actions.ui.openModal({ name: 'confirm', kind: 'trust', roomId: n.roomId! })}>Review scripts</Button>
   } else if (plan) {
     text = <><span>{planReadyLine(a)}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
     actionsEl = <Button onClick={toItem}>Review plan</Button>
@@ -143,7 +146,7 @@ export function Home() {
   const status = useStore((s) => s.status)
   const workspaces = useStore((s) => s.workspaces)
   const account = useStore((s) => s.account)
-  const needs = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou), [notifications, approvals, allRooms, overlaps])
+  const needs = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps), workspaces).filter(needsYou), [notifications, approvals, allRooms, overlaps, workspaces])
   const shipped = useMemo(() => workspaces.filter((w) => w.prState === 'merged').sort((a, b) => (b.mergedAt ?? b.createdAt) - (a.mergedAt ?? a.createdAt)).slice(0, 8), [workspaces])
   if (!rooms.length) return <Welcome />
   const working = rooms.reduce((n, r) => n + Object.values(status[r.id] ?? {}).filter((x) => x === 'working' || x === 'planning' || x === 'walking').length, 0)
@@ -178,7 +181,7 @@ export function Home() {
               <div className="col hm-rooms" style={{ gap: 10, marginTop: 10 }}>
                 {rooms.map((r) => {
                   const team = agents[r.id] ?? []
-                  const state = roomState(r, approvals, status[r.id])
+                  const state = roomState(r, approvals, status[r.id], workspaces)
                   return (
                     <button key={r.id} type="button" className="hm-room" onClick={() => void openRoom(r.id)}>
                       <span className="hm-room-top"><RoomIcon room={r} className="hm-av" /><b>{r.name}</b><span className="grow" /><span className="hm-state" data-state={state}>{r.paused ? 'Paused' : stateLabel[state]}</span></span>

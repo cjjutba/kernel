@@ -16,8 +16,9 @@ function RoomRow({ room }: { room: Room }) {
   const agents = useStore((s) => s.agents[room.id] ?? [])
   const status = useStore((s) => s.status[room.id])
   const approvals = useStore((s) => s.approvals)
+  const workspaces = useStore((s) => s.workspaces)
   const lastActive = useStore((s) => s.activity.find((e) => e.roomId === room.id)?.ts)
-  const state = roomState(room, approvals, status)
+  const state = roomState(room, approvals, status, workspaces)
   const open = () => void openRoom(room.id)
   const show = () => void call('rooms.update', { roomId: room.id, patch: { hidden: false } }).then((r) => actions.rooms.upsert(r))
   return (
