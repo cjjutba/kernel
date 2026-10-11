@@ -113,15 +113,29 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('text').map((i) => i.text)).toEqual(['Added the column.'])
   })
 
-  it('declines Never allow without asking, accepts a room rule, and runs other commands in the sandbox in Accept edits', async () => {
+  it('declines Never allow without asking, accepts a room rule, and accepts typing into a running terminal in Accept edits', async () => {
     const t = track(await setup())
     t.allow.push('pnpm test')
-    const ask = (id: string, command: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
-    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "git push origin main"'), ask('c2', 'pnpm test'), ask('c3', '/bin/zsh -lc "ls -la"')) }])
+    const ask = (id: string, command: string, kind = 'command') => ({ request: 'item/commandExecution/requestApproval', params: { kind, threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', '/bin/zsh -lc "git push origin main"'), ask('c2', 'pnpm test'), ask('c3', 'y', 'writeStdin')) }])
     await t.idle()
     expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }, { decision: 'accept' }])
     expect(t.store.approvals({})).toEqual([])
     expect(t.of('note').map((n) => n.text)).toEqual(['Kernel blocks "git push origin main" in every room.'])
+  })
+
+  it.each(['acceptEdits', 'bypassInWorktrees'] as const)('asks in %s before any command Codex asks about, which it would run outside its sandbox, the retry after a sandbox failure included', async (mode) => {
+    const t = track(await setup({ mode }))
+    const ask = (id: string, command: string, reason?: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command, ...(reason ? { reason } : {}) } })
+    await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', "/bin/zsh -lc 'touch ../outside.txt'"), ask('c1', "/bin/zsh -lc 'pnpm build'", 'command failed; retry without sandbox?')) }])
+    const first = await t.pending()
+    expect(first).toMatchObject({ kind: 'tool', toolName: 'Bash', title: 'Run touch ../outside.txt', detail: 'Codex runs it outside its sandbox' })
+    t.approvals.decide(first.id, { behavior: 'deny' })
+    const retry = await until(() => t.store.approvals({ pendingOnly: true }).find((a) => a.id !== first.id))
+    expect(retry).toMatchObject({ title: 'Run pnpm build', detail: 'command failed; retry without sandbox?. Codex runs it outside its sandbox' })
+    t.approvals.decide(retry.id, { behavior: 'allow' })
+    await t.idle()
+    expect(await t.answers('item/commandExecution/requestApproval')).toEqual([{ decision: 'decline' }, { decision: 'accept' }])
   })
 
   it('asks the user for Always ask commands and for every command in Ask, and saves "Always allow in this room"', async () => {

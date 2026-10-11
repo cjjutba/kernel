@@ -386,14 +386,14 @@ export class CodexRunner implements Runner {
 
   /**
    * A command Codex wants to run. Kernel's order (docs/decisions/KERNEL-406.md): Never allow and Network off decline, a room
-   * rule accepts, Always ask asks, a request to leave the sandbox asks, then Ask mode asks and the other modes accept, inside
-   * the sandbox.
+   * rule accepts, then anything that leaves the sandbox asks in every mode (`leavesSandbox`), which on Codex is every
+   * command it asks about. Only typing into a running terminal follows the mode: Ask asks, the others accept.
    */
   private async approveCommand(p: CommandExecutionRequestApprovalParams): Promise<CommandExecutionRequestApprovalResponse> {
     await this.held()
     const perms = this.host.settings().permissions
     const command = unwrapShell(p.command ?? '')
-    const leaves = !!(p.additionalPermissions || p.networkApprovalContext)
+    const leaves = leavesSandbox(p)
     // Codex's answer carries no reason, so a refusal shows in the chat, where the user sees why the step failed.
     if (perms.network === false && (usesNetwork(command) || p.networkApprovalContext)) return this.declined(NETWORK_OFF)
     const verdict = command ? bashVerdict(command, perms, this.host.roomAllow()) : undefined
@@ -401,7 +401,8 @@ export class CodexRunner implements Runner {
     if (verdict === 'allow') return { decision: 'accept' }
     if (verdict !== 'ask' && !leaves && perms.mode !== 'ask') return { decision: 'accept' }
     const d = describeTool('Bash', { command })
-    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, detail: p.reason ?? undefined, activity: d.title }, {})
+    const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
+    const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), activity: d.title }, {})
     if (result?.behavior === 'allow') {
       if (result.always && command) this.host.allowInRoom(command.trim())
       return { decision: 'accept' }
@@ -453,6 +454,26 @@ export class CodexRunner implements Runner {
     }
     return { answers }
   }
+}
+
+/** What a command card says when accepting runs the command outside Codex's sandbox. */
+export const OUTSIDE_SANDBOX = 'Codex runs it outside its sandbox'
+
+/** Codex 0.153.4's reason when a command failed in the sandbox and it asks to run it again with none. No field says so. */
+const RETRY_UNSANDBOXED = /retry without sandbox/i
+
+/**
+ * Whether accepting a command request runs it outside the sandbox Kernel set for the turn, so it always asks (KERNEL-406).
+ * Under the `untrusted` approval policy Kernel runs Codex with, an accepted command runs with no sandbox at all: a live run
+ * of 0.153.4 wrote outside the workspace after one plain request was accepted, where `never` and `on-request` were denied
+ * the same write. So every `command` request leaves it, the retry Codex asks for after a command failed in the sandbox
+ * included, and so do the requests that name it in their fields: extra permissions, network access and a network policy
+ * change. Only `writeStdin`, typing into a terminal already running, starts nothing new.
+ */
+export function leavesSandbox(p: CommandExecutionRequestApprovalParams): boolean {
+  if (p.additionalPermissions || p.networkApprovalContext || p.proposedNetworkPolicyAmendments?.length) return true
+  if (RETRY_UNSANDBOXED.test(p.reason ?? '')) return true
+  return (p.kind ?? 'command') !== 'writeStdin'
 }
 
 /** The thread this chat resumed is gone, so Sessions starts a fresh one. */
