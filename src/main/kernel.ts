@@ -1,14 +1,13 @@
 import { basename, dirname, join } from 'node:path'
-import { mkdir, rm, stat } from 'node:fs/promises'
+import { rm, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, WaitsFor, Checkpoint, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
-import { MODELS } from '@shared/types'
+import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, WaitsFor, Checkpoint, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, NewRoomRequest, RateLimit, Room, RoomSettingsPatch, ScriptTrust, Workspace, WorkspaceMode, ModelId, Effort } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
 import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
-import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
+import { saveAgent } from './services/agents'
 import { Approvals, parsePlanSteps } from './services/approvals'
 import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
@@ -22,21 +21,18 @@ import { reviewRule } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
-import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
+import { isNudge, Sessions, sessionEnv, type CutOffReason } from './services/sessions'
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
 import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
-import { KERNEL_HOOK_EVENTS } from './services/hooksInstaller'
 import { loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
-import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listWorktrees, mergeBase, onRemote, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames } from './services/env'
-import { resolveFilesToCopy } from './services/filesToCopy'
-import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
-import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
+import { githubAvatar, RoomIcons } from './services/roomIcons'
 import { exec, git } from './services/exec'
 import { listTree, readWorkspaceFile, searchFiles } from './services/files'
 import { commitHunks, listHunks } from './services/hunks'
@@ -56,6 +52,8 @@ import { Config } from './features/config'
 import { Hooks } from './features/hooks'
 import { Account } from './features/account'
 import { Integrations } from './features/integrations'
+import { Team } from './features/team'
+import { Rooms } from './features/rooms'
 import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
 import { sessionDeps } from './features/sessionDeps'
 
@@ -94,7 +92,7 @@ type Unbuilt = keyof typeof UNBUILT
 
 /** The channels of the features that have moved out of this file, so `coreHandlers` holds the rest and a channel in both fails typecheck. */
 type ChannelsOf<F> = F extends { handlers(): infer H } ? keyof H : never
-type Moved = ChannelsOf<App | Inbox | Checkpoints | Config | Hooks | Account | Integrations>
+type Moved = ChannelsOf<App | Inbox | Checkpoints | Config | Hooks | Account | Integrations | Team | Rooms>
 
 /** Handlers for every unbuilt channel, each rejecting with the issue that builds it. */
 function unbuilt(): Pick<Handlers, Unbuilt> {
@@ -170,6 +168,8 @@ export class Kernel {
   readonly hooks = new Hooks(this)
   readonly account = new Account(this)
   readonly integrations = new Integrations(this)
+  readonly team = new Team(this)
+  readonly rooms = new Rooms(this)
   // ---------- test seams
   // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
   // (KERNEL-324).
@@ -194,9 +194,6 @@ export class Kernel {
   github: GitHub = gh
 
   settings!: AppSettings
-  private agentCache = new Map<string, AgentDef[]>()
-  private agentWatchers = new Map<string, () => void>()
-  private statuses = new Map<string, Record<string, AgentStatus>>()
   private prTimer?: NodeJS.Timeout
   private unlisten: () => void = () => undefined
   /** Waits being released, so a merge seen twice (push and poll) sends the brief once (KERNEL-259). */
@@ -354,8 +351,7 @@ export class Kernel {
     this.tasks.detach()
     clearInterval(this.prTimer)
     this.account.stop()
-    for (const close of this.agentWatchers.values()) close()
-    this.agentWatchers.clear()
+    this.team.stop()
     await this.sessions.shutdown(o.budgetMs)
     this.ptys.killAll()
     stopAllScripts()
@@ -373,335 +369,14 @@ export class Kernel {
 
   // ---------- rooms and agents
 
-  async addRoom(path: string, name?: string): Promise<Room> {
-    const existing = this.store.rooms().find((r) => r.path === path)
-    if (existing) return existing
-    const remote = await this.config.remoteFor(path)
-    const room: Room = { id: newId(), name: name ?? basename(path), path, repo: await remoteRepo(path, remote), defaultBranch: await defaultBranch(path, remote).catch(() => 'main'), paused: false, createdAt: Date.now() }
-    this.store.saveRoom(room)
-    await this.agents(room.id)
-    await this.untrusted(room).catch(() => null)
-    return room
-  }
-
-  // ---------- new rooms
-
-  /**
-   * Creates the room's record and returns it at once. The slow part (clone, install, seating agents) runs behind it
-   * and reports through `room.setup` push events, which RoomSetup.png draws.
-   */
-  async createRoom(req: NewRoomRequest): Promise<Room> {
-    const name = req.name.trim()
-    if (!name) throw new Error('Give the room a name.')
-    let path: string
-    if (req.source === 'folder') {
-      path = expandHome(req.from, this.home)
-      const info = await inspectFolder(path, this.home)
-      if (!info.git && !req.initGit) throw new Error(`${tildify(path, this.home)} is not a git repository. Initialize git to use it.`)
-    } else {
-      path = expandHome(req.cloneTo ?? join(this.home, 'Projects', slugify(req.source === 'repo' ? basename(req.from) : name)), this.home)
-      await assertFreeFolder(path, this.home)
-    }
-    const taken = this.store.rooms().find((r) => r.path === path)
-    if (taken) throw new Error(`${tildify(path, this.home)} is already the room ${taken.name}.`)
-    const room: Room = {
-      id: newId(), name, desc: req.desc?.trim() || undefined, kind: req.source, path,
-      repo: req.source === 'repo' ? req.from : undefined, defaultBranch: req.baseBranch || 'main', paused: false, createdAt: Date.now()
-    }
-    this.store.saveRoom(room)
-    bus.push({ type: 'room', room })
-    void this.setupRoom(room, req).catch(() => undefined)
-    return room
-  }
-
-  /** The six steps of RoomSetup.png. A failed step records its error and the next ones still run, except when there is no checkout. */
-  private async setupRoom(room: Room, req: NewRoomRequest) {
-    const worktrees = join(this.settings.worktreeRoot, slugify(room.name))
-    const steps: RoomSetupStep[] = [
-      { id: 'clone', title: req.source === 'repo' ? `Clone ${req.from}` : req.source === 'scratch' ? `Copy ${req.from}` : 'Use your folder', detail: tildify(room.path, this.home), state: 'wait' },
-      { id: 'worktrees', title: 'Create the worktree folder', detail: tildify(worktrees, this.home), state: 'wait' },
-      { id: 'install', title: 'Install dependencies', detail: 'Checking the lockfile', state: 'wait' },
-      { id: 'copy', title: 'Copy local files', detail: '', state: 'wait' },
-      { id: 'hooks', title: 'Install hooks', detail: `${KERNEL_HOOK_EVENTS.length} events to localhost:${this.settings.hookPort}`, state: 'wait' },
-      { id: 'agents', title: 'Seat agents', detail: '', state: 'wait' }
-    ]
-    const publish = () => bus.push({ type: 'room.setup', roomId: room.id, steps: steps.map((s) => ({ ...s })) })
-    const update = (id: RoomSetupStep['id'], patch: Partial<RoomSetupStep>) => { Object.assign(steps.find((s) => s.id === id)!, patch); publish() }
-    const step = async (id: RoomSetupStep['id'], fn: () => Promise<Partial<RoomSetupStep> | void>) => {
-      const started = Date.now()
-      update(id, { state: 'run', meta: 'running', error: undefined })
-      try {
-        const done = (await fn()) ?? {}
-        update(id, { state: 'ok', meta: Date.now() - started >= 1500 ? `${Math.round((Date.now() - started) / 1000)}s` : undefined, ...done })
-        return true
-      } catch (e) {
-        update(id, { state: 'fail', meta: undefined, error: (e as Error).message })
-        return false
-      }
-    }
-    publish()
-
-    const checkedOut = await step('clone', async () => {
-      if (req.source === 'repo') await cloneRepo(req.from, room.path)
-      else if (req.source === 'scratch') await copyTemplate(req.from, room.path)
-      else if (req.initGit && !(await inspectFolder(room.path, this.home)).git) await initGit(room.path)
-      const remote = await this.config.remoteFor(room.path)
-      const next: Room = { ...room, repo: room.repo ?? (await remoteRepo(room.path, remote)), defaultBranch: req.baseBranch || (await defaultBranch(room.path, remote).catch(() => 'main')) }
-      this.store.saveRoom(next)
-      bus.push({ type: 'room', room: next })
-    })
-    if (!checkedOut) return
-
-    await step('worktrees', async () => {
-      await mkdir(worktrees, { recursive: true })
-      // A settings.toml Kernel wrote holds Kernel's own install command, so it needs no trusting. One the repo brought does (KERNEL-209).
-      // A settings.local.toml the repo committed is the repo's, not Kernel's, so then nothing is trusted.
-      if (await ensureRepoSettings(room.path) && await localSettingsOwn(room.path)) await this.trustCurrent(room)
-    })
-    await step('install', async () => {
-      const { command, reason } = await installCommand(room.path)
-      if (!command) return { detail: reason ?? 'Nothing to install' }
-      update('install', { detail: command })
-      const r = await exec('sh', ['-c', command], { cwd: room.path, timeoutMs: 600_000 })
-      if (r.code !== 0) throw new Error((r.stderr.trim() || r.stdout.trim()).split('\n').slice(-3).join('\n') || `${command} failed`)
-    })
-    await step('copy', async () => {
-      const present = (await resolveFilesToCopy(room.path, (await loadRepoSettings(room.path)).files.copy)).map((f) => f.path)
-      if (!present.length) return { detail: 'No local files to copy' }
-      return { detail: present.length > 5 ? `${present.slice(0, 5).join(', ')} and ${present.length - 5} more` : present.join(', ') }
-    })
-    await step('hooks', async () => {
-      const status = await this.hooks.hooksStatus()
-      if (!status.installed) throw new Error('Kernel hooks are not in your Claude settings yet. Open Check hooks in the sidebar to install them.')
-    })
-    await step('agents', async () => {
-      let files = await agentFiles(room.path)
-      if (!files.length) {
-        if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-        await seatStarterTeam(this.o.starterDir, room.path, req.team)
-        files = await agentFiles(room.path)
-      }
-      const list = await this.agents(room.id)
-      bus.push({ type: 'agents', roomId: room.id, agents: list })
-      for (const a of list) bus.push({ type: 'agent.status', roomId: room.id, agentId: a.id, status: 'idle' })
-      return { detail: list.length ? `${list.map((a) => a.name).join(', ')} from .claude/agents` : 'No agents in .claude/agents' }
-    })
-  }
-
-  /**
-   * Pause a room: every agent finishes the step it is on, then waits, and sends are held until Resume.
-   * `by` is who asked. A limit pause (`limit`) is lifted by whoever detects the reset, with `resumeRoom`.
-   */
-  pauseRoom(roomId: string, by: 'you' | 'limit'): Room {
-    const room = this.store.saveRoom({ ...this.mustRoom(roomId), paused: true, pausedBy: by })
-    this.sessions.pause(roomId)
-    // Someone who needs the user, is blocked or is offline keeps saying so.
-    const now = this.statusOf(roomId)
-    for (const a of this.agentsSync(roomId)) if (!PAUSE_KEEPS.has(now[a.id])) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: 'paused' })
-    bus.push({ type: 'room', room })
-    bus.activity({ kind: 'room.paused', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'paused' : 'paused the room for', object: by === 'you' ? room.name : 'a usage limit' })
-    return room
-  }
-
-  resumeRoom(roomId: string, by: 'you' | 'limit' = 'you'): Room {
-    const { pausedBy: _by, ...rest } = this.mustRoom(roomId)
-    const room = this.store.saveRoom({ ...rest, paused: false })
-    const before = this.statusOf(roomId)
-    this.sessions.resume(roomId)
-    // A running chat in plan mode is planning, as it was before the pause.
-    const running = (agentId: string) => this.store.workspaces(roomId).filter((w) => w.agentId === agentId).flatMap((w) => this.store.chats(w.id)).filter((c) => this.sessions.isRunning(c.id))
-    const resumed = (agentId: string): AgentStatus => { const r = running(agentId); return !r.length ? 'idle' : r.some((c) => !c.plan) ? 'working' : 'planning' }
-    for (const a of this.agentsSync(roomId)) if (before[a.id] === 'paused') bus.push({ type: 'agent.status', roomId, agentId: a.id, status: resumed(a.id) })
-    bus.push({ type: 'room', room })
-    bus.activity({ kind: 'room.resumed', roomId, actor: by === 'you' ? 'you' : 'kernel', text: by === 'you' ? 'resumed' : 'resumed after the usage limit reset', object: by === 'you' ? room.name : undefined })
-    return room
-  }
-
-  /** Empty room: write a team into .claude/agents and seat it. Refuses a room that already has agents. */
-  async seedAgents(roomId: string, template: TeamTemplate): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    if ((await agentFiles(room.path)).length) throw new Error('This room already has agents.')
-    if (template.kind === 'copy') {
-      const from = this.mustRoom(template.fromRoomId)
-      if (from.id === room.id) throw new Error('Pick a different room to copy from.')
-      if (!(await copyAgentFiles(from.path, room.path))) throw new Error(`${from.name} has no agents to copy.`)
-    } else {
-      if (!this.o.starterDir) throw new Error('No starter team found. Add agent files to .claude/agents.')
-      await seatStarterTeam(this.o.starterDir, room.path, template.kind === 'pair' ? ['kai'] : ['kai', 'noor', 'ivy', 'theo'])
-    }
-    const list = await this.agents(roomId)
-    bus.push({ type: 'agents', roomId, agents: list })
-    for (const a of list) bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
-    return list
-  }
-
-  async updateRoom(roomId: string, patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>>): Promise<Room> {
-    const before = this.mustRoom(roomId)
-    // Archiving a room (Settings > Room) stops every agent and archives its open workspaces. The record and the folder stay.
-    if (patch.archived && !before.archived) {
-      // A workspace that fails to archive keeps the room open, and the error names it, so nothing is half archived without the user knowing.
-      const failed: string[] = []
-      for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
-        try { await this.archiveWorkspace(ws.id) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
-      }
-      if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${before.name} stays open. ${failed.join(' ')}`)
-    }
-    const room = this.store.saveRoom({ ...before, ...patch })
-    bus.push({ type: 'room', room })
-    return room
-  }
-
-  /**
-   * Sets the room icon (KERNEL-241). The new file is saved before the room points at it and the old file goes after,
-   * so a failed avatar fetch or a rejected image leaves the room as it was.
-   */
-  async setRoomIcon(roomId: string, icon: KernelApi['rooms.setIcon']['req']['icon']): Promise<Room> {
-    const before = this.mustRoom(roomId)
-    let next: Room['icon']
-    if (icon.kind === 'github') {
-      const owner = githubOwner(before.repo)
-      if (!owner) throw new Error(AVATAR_FAILED)
-      next = await this.roomIcons.save(roomId, 'github', await this.avatar(owner), before.icon)
-    } else if (icon.kind === 'image') {
-      next = await this.roomIcons.save(roomId, 'image', await readImage(icon.path), before.icon)
-    }
-    // Read again after the download: the room may have gone, or another change may have landed meanwhile.
-    const now = this.store.room(roomId)
-    if (!now) { await this.roomIcons.remove(next); throw new Error(`Unknown room ${roomId}`) }
-    const { icon: old, ...rest } = now
-    const room = this.store.saveRoom(next ? { ...rest, icon: next } : rest)
-    if (old?.file !== next?.file) await this.roomIcons.remove(old)
-    bus.push({ type: 'room', room })
-    return room
-  }
-
-  /**
-   * Forgets a room: stops its agents and scripts, archives its workspaces and deletes Kernel's record of them.
-   * The folder, its git history and .claude/agents are never touched. Worktrees are removed only when asked.
-   */
-  /**
-   * Removes a room (ConfirmRemoveRoom.png): every open workspace is archived for real, with its archive script, its setup
-   * stopped and its branch kept when it has unpushed commits, then Kernel forgets the room (D-028). Worktree folders go
-   * only when "Also delete the worktrees" is ticked. If a workspace fails to archive, the error names it and the room stays.
-   */
-  async removeRoom(roomId: string, deleteWorktrees: boolean) {
-    const room = this.mustRoom(roomId)
-    const failed: string[] = []
-    for (const ws of this.store.workspaces(roomId).filter((w) => w.status !== 'archived')) {
-      try { await this.archiveWorkspace(ws.id, undefined, { keepWorktree: !deleteWorktrees }) } catch (e) { this.sessions.stopWorkspace(ws.id); failed.push(`${ws.name}: ${(e as Error).message}`) }
-    }
-    if (failed.length) throw new Error(`Could not archive ${failed.length === 1 ? 'a workspace' : `${failed.length} workspaces`}, so ${room.name} stays. ${failed.join(' ')}`)
-    this.overlaps.forget(roomId)
-    const shared = this.store.sharedFiles({ roomId }).map((f) => f.id)
-    this.store.deleteRoom(roomId)
-    this.envStore.dropRoom(roomId)
-    this.envFilesOk.delete(roomId)
-    await this.roomIcons.remove(room.icon)
-    await this.shared.remove(shared)
-    await this.trusted.forget(roomId)
-    this.agentWatchers.get(roomId)?.()
-    this.agentWatchers.delete(roomId)
-    this.agentCache.delete(roomId)
-    this.statuses.delete(roomId)
-  }
-
-  async agents(roomId: string): Promise<AgentDef[]> {
-    const room = this.mustRoom(roomId)
-    const list = await loadAgents(room.path)
-    this.agentCache.set(roomId, list)
-    this.watchTeam(roomId)
-    return list
-  }
-
-  /** Files in .claude/agents changed from outside Kernel (or from here). Reload, and tell the renderer when the team differs. */
-  private watchTeam(roomId: string) {
-    if (this.agentWatchers.has(roomId)) return
-    const room = this.store.room(roomId)
-    if (!room) return
-    this.agentWatchers.set(roomId, watchAgents(room.path, () => {
-      void (async () => {
-        if (!this.store.room(roomId)) return
-        const was = this.agentCache.get(roomId)
-        const before = JSON.stringify(was)
-        const list = await this.agents(roomId)
-        if (JSON.stringify(list) !== before) this.announceTeam(roomId, list, was)
-      })().catch(() => undefined)
-    }))
-  }
-
-  /** `was` is the team before the change: whoever is new walks in. Leave it out to announce no one. */
-  private announceTeam(roomId: string, list: AgentDef[], was?: AgentDef[]) {
-    const had = new Set((was ?? list).map((a) => a.id))
-    const room = this.mustRoom(roomId)
-    const known = this.statuses.get(roomId) ?? {}
-    bus.push({ type: 'agents', roomId, agents: list })
-    for (const a of list) {
-      if (known[a.id]) continue
-      bus.push({ type: 'agent.status', roomId, agentId: a.id, status: room.paused ? 'paused' : 'idle' })
-      // A new agent file, from hire_agent, New agent or a file added outside Kernel, walks in from the door (FloorHired.png).
-      if (!a.retired && !had.has(a.id)) bus.activity({ kind: 'agent.joined', roomId, agentId: a.id, text: 'joined from', object: a.file })
-    }
-  }
-
-  /** AgentProfile > Save changes. Rewrites the file and reloads the room's team, so the next turn uses the new model, effort and tools. */
-  async saveAgentEdit(roomId: string, agentId: string, patch: AgentEdit): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    const saved = await updateAgent(room.path, agentId, patch)
-    this.announceTeam(roomId, await this.agents(roomId))
-    return saved
-  }
-
-  /** New agent > Create agent. The file joins .claude/agents and the agent takes a desk (the next free one, or the end of `room.desks`). */
-  async hireFromDraft(roomId: string, draft: AgentDraft): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
-    const def = await createAgent(room.path, draft)
-    if (room.desks && !room.desks.includes(def.id)) await this.updateRoom(roomId, { desks: [...room.desks, def.id] })
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list, was)
-    return list.find((a) => a.id === def.id) ?? def
-  }
-
-  /**
-   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo` or the Lead, and the desk frees up.
-   * A turn already running keeps its own copy of the agent and finishes. The Lead cannot be retired, because nobody would plan.
-   */
-  async retire(roomId: string, agentId: string, handoffTo?: string): Promise<void> {
-    const room = this.mustRoom(roomId)
-    const team = await this.agents(roomId)
-    const agent = team.find((a) => a.id === agentId)
-    if (!agent) throw new Error(`${agentId} is not on this team.`)
-    if (agent.lead) throw new Error(`${agent.name} leads this room. Mark another agent with "lead: true" first.`)
-    const heir = team.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId) ?? team.find((a) => a.lead)
-    await retireAgent(room.path, agentId)
-    for (const ws of this.store.workspaces(roomId)) {
-      if (ws.agentId === agentId && ws.status !== 'archived' && heir) this.saveWs({ ...ws, agentId: heir.id })
-    }
-    if (room.desks?.includes(agentId)) await this.updateRoom(roomId, { desks: room.desks.filter((d) => d !== agentId) })
-    const statuses = this.statuses.get(roomId)
-    if (statuses) delete statuses[agentId]
-    const list = await this.agents(roomId)
-    bus.push({ type: 'agents', roomId, agents: list })
-    bus.activity({ kind: 'agent.retired', roomId, agentId, actor: 'you', text: 'retired', object: agent.name })
-  }
-
-  async restore(roomId: string, agentId: string): Promise<AgentDef> {
-    const room = this.mustRoom(roomId)
-    await restoreAgent(room.path, agentId)
-    const list = await this.agents(roomId)
-    this.announceTeam(roomId, list)
-    const def = list.find((a) => a.id === agentId)
-    if (!def) throw new Error(`${agentId} could not be restored.`)
-    return def
-  }
-
-  private agentsSync(roomId: string) { return this.agentCache.get(roomId) ?? [] }
-
-  statusOf(roomId: string): Record<string, AgentStatus> {
-    const s = { ...(this.statuses.get(roomId) ?? {}) }
-    for (const a of this.agentsSync(roomId)) s[a.id] ??= this.mustRoom(roomId).paused ? 'paused' : 'idle'
-    return s
-  }
+  addRoom(path: string, name?: string): Promise<Room> { return this.rooms.addRoom(path, name) }
+  createRoom(req: NewRoomRequest): Promise<Room> { return this.rooms.createRoom(req) }
+  pauseRoom(roomId: string, by: 'you' | 'limit'): Room { return this.rooms.pauseRoom(roomId, by) }
+  resumeRoom(roomId: string, by: 'you' | 'limit' = 'you'): Room { return this.rooms.resumeRoom(roomId, by) }
+  updateRoom(roomId: string, patch: Parameters<Rooms['updateRoom']>[1]): Promise<Room> { return this.rooms.updateRoom(roomId, patch) }
+  removeRoom(roomId: string, deleteWorktrees: boolean): Promise<void> { return this.rooms.removeRoom(roomId, deleteWorktrees) }
+  agents(roomId: string): Promise<AgentDef[]> { return this.team.agents(roomId) }
+  statusOf(roomId: string): Record<string, AgentStatus> { return this.team.statusOf(roomId) }
 
   // ---------- workspaces
 
@@ -772,7 +447,7 @@ export class Kernel {
     const taskId = o.taskFor?.(ws)
     if (taskId) { ws.taskId = taskId; this.saveWs(ws) }
 
-    const chat = this.newChat(ws.id, title, { model: o.model ?? this.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
+    const chat = this.newChat(ws.id, title, { model: o.model ?? this.team.modelFor(agent), effort: o.effort ?? agent.effort ?? s.models.effort, plan: o.plan ?? (agent.lead && s.models.leadPlanMode) })
     if (stale) this.note(ws.id, `Couldn't fetch ${remote} (${stale.error}), so this workspace started from ${baseRef} as of ${stale.when ?? 'its last fetch'}. It may be missing recent merges.`)
     const parts = messageOf(o.prompt, o.parts)
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
@@ -1615,17 +1290,6 @@ export class Kernel {
     return resolvePreset(await terminalPresets(t), t, ws.mode, preset)
   }
 
-  private modelFor(agent: AgentDef): ModelId {
-    const m = this.settings.models
-    if (agent.model?.startsWith('claude-')) return agent.model as ModelId
-    const alias = MODELS.find((x) => x.id.split('-')[1] === agent.model?.toLowerCase())
-    if (alias) return alias.id
-    if (agent.lead) return m.lead
-    if (/qa/i.test(agent.role)) return m.qa
-    if (/review/i.test(agent.role)) return m.reviewer
-    return m.engineers
-  }
-
   /** The Lead lives in a room-level workspace on the main checkout, made the first time it is needed. */
   private async leadWorkspace(roomId: string): Promise<{ ws: Workspace; lead: AgentDef }> {
     const agents = await this.agents(roomId)
@@ -1643,7 +1307,7 @@ export class Kernel {
   /** The Lead's first open chat. Floor briefs go there. */
   async leadChat(roomId: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, LEAD_CHAT, { model: this.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, LEAD_CHAT, { model: this.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
   /**
@@ -1652,7 +1316,7 @@ export class Kernel {
    */
   async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    const pick = { model: o.model ?? this.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
+    const pick = { model: o.model ?? this.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
     const chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
@@ -1717,9 +1381,9 @@ export class Kernel {
       planApproved: () => this.sessions.handoffs.approved(chat.id),
       handedOff: () => this.sessions.handoffs.done(chat.id),
       hireAgent: async (a) => {
-        const was = this.agentCache.get(roomId) ?? await this.agents(roomId)
+        const was = this.team['agentCache'].get(roomId) ?? await this.agents(roomId)
         const file = await saveAgent(this.mustRoom(roomId).path, a)
-        this.announceTeam(roomId, await this.agents(roomId), was)
+        this.team['announceTeam'](roomId, await this.agents(roomId), was)
         return file
       }
     }
@@ -1752,7 +1416,7 @@ export class Kernel {
     if (held) { held.later.push(parts); this.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
-    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
+    if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
     const waiting = this.store.workspace(ws.id)
@@ -2573,7 +2237,8 @@ export class Kernel {
 
   private mustRoom(id: string) { return records.mustRoom(this.store, id) }
   private mustWs(id: string) { return records.mustWs(this.store, id) }
-  private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
+  private agentsSync(roomId: string) { return this.team.agentsSync(roomId) }
+  private isLeadWorkspace(ws: Workspace) { return this.team.isLeadWorkspace(ws) }
 
   /**
    * Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. Each feature brings
@@ -2581,24 +2246,13 @@ export class Kernel {
    */
   handlers(): Handlers {
     return channels(unbuilt(), this.app.handlers(), this.inbox.handlers(), this.checkpoints.handlers(), this.config.handlers(),
-      this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.coreHandlers())
+      this.hooks.handlers(), this.account.handlers(), this.integrations.handlers(), this.team.handlers(), this.rooms.handlers(),
+      this.coreHandlers())
   }
 
   /** The channels of features still in this file. They move into their feature's `handlers()` (KERNEL-325 to KERNEL-330). */
   private coreHandlers(): Omit<Handlers, Unbuilt | Moved> {
     return {
-      'rooms.list': async () => this.store.rooms(),
-      'rooms.add': async ({ path, name }) => this.addRoom(path, name),
-      'rooms.create': async (req) => this.createRoom(req),
-      'rooms.update': async ({ roomId, patch }) => this.updateRoom(roomId, patch),
-      'rooms.setIcon': async ({ roomId, icon }) => this.setRoomIcon(roomId, icon),
-      'rooms.icon': async ({ roomId }) => this.roomIcons.dataUrl(this.mustRoom(roomId).icon),
-      'rooms.remove': async ({ roomId, deleteWorktrees }) => { await this.removeRoom(roomId, deleteWorktrees); return { ok: true } },
-      'rooms.inspectFolder': async ({ path }) => inspectFolder(path, this.home),
-      'rooms.recentFolders': async () => recentFolders(this.store.rooms().map((r) => r.path), this.home),
-      'github.repos': async ({ query }) => listRepos(query),
-      'rooms.setPaused': async ({ roomId, paused }) => (paused ? this.pauseRoom(roomId, 'you') : this.resumeRoom(roomId)),
-      'agents.seed': async ({ roomId, template }) => this.seedAgents(roomId, template),
       'chats.restart': async ({ chatId }) => { await this.sessions.restart(chatId); return { ok: true } },
       'rooms.overlaps': async ({ roomId }) => this.overlaps.check(roomId),
       'rooms.resolveOverlap': async ({ overlapId }) => { await this.sortOverlap(overlapId); return { ok: true } },
@@ -2621,13 +2275,6 @@ export class Kernel {
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
-      'agents.list': async ({ roomId, retired }) => (retired ? loadAgents(this.mustRoom(roomId).path, { retired: true }) : this.agents(roomId)),
-      'agents.save': async ({ roomId, agentId, patch }) => this.saveAgentEdit(roomId, agentId, patch),
-      'agents.draft': async ({ description, name, model }) => draftAgent({ description, name, model }),
-      'agents.create': async ({ roomId, draft }) => this.hireFromDraft(roomId, draft),
-      'agents.retire': async ({ roomId, agentId, handoffTo }) => { await this.retire(roomId, agentId, handoffTo); return { ok: true } },
-      'agents.restore': async ({ roomId, agentId }) => this.restore(roomId, agentId),
-      'agents.status': async ({ roomId }) => this.statusOf(roomId),
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
@@ -2659,7 +2306,7 @@ export class Kernel {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
-        if (!this.agentCache.has(ws.roomId)) await this.agents(ws.roomId)
+        if (!this.team['agentCache'].has(ws.roomId)) await this.agents(ws.roomId)
         const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
         return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind, terminal: term?.terminal })
       },

@@ -180,7 +180,7 @@ describe('Archive on merge (KERNEL-114)', () => {
     const { k, lead } = await setup()
     k.store.saveWorkspace({ ...k.store.workspace(lead.workspaceId)!, prState: 'merged' })
     // A cold cache: nothing says which agent is the Lead.
-    k['agentCache'].clear()
+    k.team['agentCache'].clear()
     await k['archiveMerged'](lead.workspaceId)
     k.store.saveMeta('mergedSwept', false)
     await k['sweepMerged']()
