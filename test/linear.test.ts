@@ -336,6 +336,9 @@ describe('Linear in the kernel', () => {
     expect(out.chatId).not.toBe(before.id)
     expect(out.workspaceId).toBe(before.workspaceId)
     expect(chat.plan).toBe(true)
+    // In a Lead chat of its own (KERNEL-337).
+    expect(chat.threadId).toBeTruthy()
+    expect(chat.threadId).not.toBe(before.threadId)
     expect(sent).toHaveLength(1)
     expect(sent[0].chatId).toBe(out.chatId)
     const [chip, words] = sent[0].parts

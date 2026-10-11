@@ -1,4 +1,4 @@
-import type { AgentDef, Chat, ChatPart, Effort, ModelId, Workspace } from '@shared/types'
+import type { AgentDef, Approval, Chat, ChatPart, Effort, ModelId, Thread, Workspace } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
 import { saveAgent } from '../services/agents'
@@ -7,20 +7,21 @@ import { NUDGE_LIMIT } from '../services/nudges'
 import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
+import type { From } from '../services/leadUpdates'
 import { currentBranch, folderGone } from '../services/worktrees'
-import { LEAD_CHAT, messageOf, NEW_CHAT } from './shared'
+import { LEAD_CHAT, messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
 /** The room's Lead: its workspace and chats, its tools, and where teammates' updates go (KERNEL-329). */
 export class Lead extends Feature {
   /**
-   * A quick question to the room's Lead. It always gets a new Lead chat tab, so it never queues behind whatever the first tab
-   * is doing or lands in a tab with a brief being typed (KERNEL-145, D-133). The answer arrives there like any turn; the popover
-   * reads it from there.
+   * A quick question to the room's Lead. It always gets a new Lead tab, so it never queues behind whatever another tab is
+   * doing or lands in a tab with a brief being typed (KERNEL-145, D-133). The tab joins the Lead chat `threadId`, or starts
+   * one (KERNEL-337). The answer arrives there like any turn; the popover reads it from there.
    */
-  async askLead(roomId: string, text: string): Promise<{ chatId: string }> {
-    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false })
+  async askLead(roomId: string, text: string, threadId?: string): Promise<{ chatId: string }> {
+    const chat = await this.startLeadChat(roomId, { prompt: text, plan: false }, threadId)
     return { chatId: chat.id }
   }
 
@@ -33,10 +34,12 @@ export class Lead extends Feature {
     if (!o) throw new Error('That overlap is gone already.')
     const agents = await this.k.team.agents(o.roomId)
     const parts = o.parties.map((p) => `${agents.find((a) => a.id === p.agentId)?.name ?? p.agentId} in ${this.store.workspace(p.workspaceId)?.name ?? p.workspaceId} (${p.lines})`)
-    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other chats are involved.
+    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other Lead chats are
+    // involved, by their titles. Other tabs of its own Lead chat aren't another chat (KERNEL-337).
     const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
     const chat = (owners.length ? this.leadUpdateTarget(o.roomId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.roomId)
-    const others = [...new Set(owners.map((w) => w.leadChatId).filter((id): id is string => !!id && id !== chat.id))].map((id) => this.store.chat(id)?.title).filter(Boolean)
+    const threadOf = (w: Workspace) => w.threadId ?? (w.leadChatId ? this.store.chat(w.leadChatId)?.threadId : undefined)
+    const others = [...new Set(owners.map(threadOf).filter((id): id is string => !!id && id !== chat.threadId))].map((id) => this.store.thread(id)?.title).filter(Boolean)
     const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
     const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.${elsewhere}`
     await this.sessions.send(chat.id, [{ type: 'text', text }])
@@ -60,23 +63,72 @@ export class Lead extends Feature {
     return { ws, lead }
   }
 
-  /** The Lead's first open chat. Floor briefs go there. */
+  /** The Lead's first open chat. Floor briefs go there. With no open tab, a new Lead chat (KERNEL-337). */
   async leadChat(roomId: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
-    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.newChat(ws.id, LEAD_CHAT, { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
+    return this.chatTabs(ws.id).find((c) => c.kind !== 'terminal') ?? this.leadTab(ws, LEAD_CHAT, { model: this.k.team.modelFor(lead), effort: lead.effort ?? this.settings.models.effort, plan: this.settings.models.leadPlanMode })
   }
 
   /**
-   * A message to the Lead in a chat of its own (KERNEL-148). It always adds a tab, like the tab row's +: an unused tab may
-   * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). The first message names the chat.
+   * A message to the Lead in a tab of its own (KERNEL-148). It always adds a tab, like the tab row's +: an unused tab may
+   * hold a draft the engine can't see, since the composer keeps it (D-133, KERNEL-242). The tab starts a new Lead chat
+   * unless `threadId` names one (KERNEL-337). The first message names the tab.
    */
-  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }): Promise<Chat> {
+  async startLeadChat(roomId: string, o: { prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }, threadId?: string): Promise<Chat> {
     const { ws, lead } = await this.leadWorkspace(roomId)
     const pick = { model: o.model ?? this.k.team.modelFor(lead), effort: o.effort ?? lead.effort ?? this.settings.models.effort, plan: o.plan ?? this.settings.models.leadPlanMode }
-    const chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, pick))
+    const chat = this.saveChat(this.leadTab(ws, NEW_TAB, pick, threadId))
     this.userSpoke(chat.id)
     await this.sessions.send(chat.id, messageOf(o.prompt, o.parts))
     return chat
+  }
+
+  /**
+   * A new tab in the Lead's workspace (KERNEL-337): in the Lead chat `threadId`, which opens again if it was closed, else in
+   * a new Lead chat titled like the tab. Saved, not pushed, like `newChat`.
+   */
+  leadTab(ws: Workspace, title: string, o: { model: ModelId; effort: Effort; plan: boolean }, threadId?: string): Chat {
+    let thread = threadId ? this.store.thread(threadId) : undefined
+    if (threadId && thread?.roomId !== ws.roomId) throw new Error('That chat no longer exists.')
+    if (thread?.closedAt) thread = this.pushThread({ ...thread, closedAt: undefined })
+    return this.newChat(ws.id, title, { ...o, threadId: (thread ?? this.pushThread({ id: newId(), roomId: ws.roomId, title, createdAt: Date.now() })).id })
+  }
+
+  private pushThread(t: Thread): Thread {
+    this.store.saveThread(t)
+    bus.push({ type: 'thread', thread: t })
+    return t
+  }
+
+  /** Kernel named a Lead tab. The first tab of a Lead chat names the chat too, until the user names the chat (KERNEL-337). */
+  tabNamed(chat: Chat) {
+    const t = chat.threadId ? this.store.thread(chat.threadId) : undefined
+    if (!t || t.renamed || t.title === chat.title || this.store.threadTabs(chat.id)[0]?.id !== chat.id) return
+    this.pushThread({ ...t, title: chat.title })
+  }
+
+  /** A tab closed. Closing the last open tab of a Lead chat closes the chat, which keeps its title (KERNEL-337). */
+  tabClosed(chat: Chat) {
+    const t = chat.threadId ? this.store.thread(chat.threadId) : undefined
+    if (!t || t.closedAt || this.store.threadTabs(chat.id).some((c) => !c.closed)) return
+    this.pushThread({ ...t, closedAt: Date.now() })
+  }
+
+  private renameThread(threadId: string, title: string): Thread {
+    const t = this.store.thread(threadId)
+    if (!t) throw new Error('That chat no longer exists.')
+    const name = title.trim()
+    if (!name) throw new Error('Give the chat a name.')
+    return this.pushThread({ ...t, title: name, renamed: true })
+  }
+
+  /** The Lead chat a tab is in, for the "From" line: its thread's title, or the tab's when it has none. */
+  private chatTitleOf(chat: Chat) { return (chat.threadId && this.store.thread(chat.threadId)?.title) || chat.title }
+
+  /** Plans approved in any tab of `chat`'s Lead chat, newest first (KERNEL-337). */
+  private threadPlans(roomId: string, chat: Chat): Approval[] {
+    const tabs = this.threadTabIds(chat)
+    return this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && !!a.chatId && tabs.has(a.chatId)).sort((a, b) => b.createdAt - a.createdAt)
   }
 
   leadTools(roomId: string, lead: AgentDef, chat: Chat) {
@@ -90,19 +142,24 @@ export class Lead extends Feature {
       agents: () => this.k.team.agents(roomId),
       workspaces: () => this.store.workspaces(roomId),
       chatId: chat.id,
-      chatTitle: (id) => this.store.chat(id)?.title,
+      // The Lead chat a tab is in names the work it handed off, and every tab of this one's counts as this tab's (KERNEL-337).
+      chatTitle: (id) => { const c = this.store.chat(id); return c && this.chatTitleOf(c) },
+      ownTab: (id) => this.threadTabIds(chat).has(id),
+      plans: () => this.threadPlans(roomId, chat).map((a) => ({ tab: this.store.chat(a.chatId!)?.title ?? '', at: a.createdAt, plan: a.detail ?? '' })),
       // The saved chat, not `chat`: the toggle can change after the session starts (KERNEL-176).
       planMode: () => !!this.store.chat(chat.id)?.plan,
       createWorkspace: async ({ issue, ...o }) => {
-        // Only plans approved in this chat. Another Lead chat's plan with a step for the same agent is a different hand-off.
-        const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.chatId === chat.id).map((a) => a.id))
+        // Only plans approved in this Lead chat, in any of its tabs (KERNEL-337). Another chat's plan with a step for the same
+        // agent is a different hand-off.
+        const tabs = this.threadTabIds(chat)
+        const approvalIds = new Set(this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && !!a.chatId && tabs.has(a.chatId)).map((a) => a.id))
         // The issue the task builds (D-140). Kernel names the branch from it unless the Lead named one (KERNEL-275).
         const linked = issue ? await this.k.integrations.issueSource(issue, o.title ?? firstLine(o.prompt)) : undefined
         const branch = o.branch
         // A review is not a task of the plan, so it takes no plan step or Board task (KERNEL-130).
         const review = o.reviewOf ?? o.linkReviewOf
         const ws = await this.k.workspaces.createWorkspace(roomId, { ...o, ...(linked ? { source: linked.source, labels: linked.labels } : {}), ...(branch ? { branch } : {}), mode: o.mode, leadChatId: chat.id, taskFor: review ? undefined : (w) => this.tasks.link(roomId, o.agentId, w.id, { approvalIds })?.id })
-        if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat.id)
+        if (!review) this.linkPlanStep(roomId, o.agentId, ws.id, chat)
         // Rowan named no wait, but Linear says the issue is blocked by one a teammate is building (KERNEL-263).
         const blocked = !o.waitFor && linked?.blockedBy?.length ? await this.k.waits.waitOnBlockers(ws, linked.blockedBy).catch(() => undefined) : undefined
         if (ws.status !== 'failed') {
@@ -186,11 +243,11 @@ export class Lead extends Feature {
   }
 
   /**
-   * Point the first unlinked step for this agent in the latest plan approved in `chatId` at the new workspace (the card's
-   * Open workspace link). Plans from the room's other Lead chats are left alone (KERNEL-105).
+   * Point the first unlinked step for this agent in the latest plan approved in `chat`'s Lead chat, in any of its tabs, at the
+   * new workspace (the card's Open workspace link). Plans from the room's other Lead chats are left alone (KERNEL-105, KERNEL-337).
    */
-  private linkPlanStep(roomId: string, agentId: string, workspaceId: string, chatId: string) {
-    const plan = this.store.approvals({ roomId }).filter((a) => a.kind === 'plan' && a.status === 'allowed' && a.chatId === chatId && a.steps?.some((s) => s.agentId === agentId && !s.workspaceId)).sort((a, b) => b.createdAt - a.createdAt)[0]
+  private linkPlanStep(roomId: string, agentId: string, workspaceId: string, chat: Chat) {
+    const plan = this.threadPlans(roomId, chat).find((a) => a.steps?.some((s) => s.agentId === agentId && !s.workspaceId))
     if (!plan?.steps) return
     const at = plan.steps.findIndex((s) => s.agentId === agentId && !s.workspaceId)
     this.approvals.update(plan.id, { steps: plan.steps.map((s, i) => (i === at ? { ...s, workspaceId } : s)) })
@@ -221,18 +278,25 @@ export class Lead extends Feature {
   }
 
   /**
-   * Where teammate updates about work handed off in `owner` go (KERNEL-105): that chat while it's open, else its newest
-   * open fork, else the room's first open Lead chat, with `closed` set so the update can say where the work came from.
-   * Work no Lead chat handed off goes to the first open Lead chat. Never creates a chat.
+   * Where teammate updates about work handed off in the tab `owner` go (KERNEL-105, KERNEL-337): that tab while it's open,
+   * else the newest open tab of its Lead chat (forks included, since a fork stays in the chat), else its newest open fork
+   * from before Lead chats had tabs, else the room's first open Lead tab. `from` names where the work came from when it
+   * moves: the tab inside its own chat, the Lead chat otherwise. Work no Lead tab handed off goes to the first open Lead
+   * tab. Never creates a tab.
    */
-  leadUpdateTarget(roomId: string, owner?: string): { chat: Chat; closed?: Chat } | undefined {
+  leadUpdateTarget(roomId: string, owner?: string): { chat: Chat; from?: From } | undefined {
     const was = owner ? this.store.chat(owner) : undefined
     if (was && this.isOpenChat(was)) return { chat: was }
+    const sibling = was && this.store.threadTabs(was.id).filter((c) => c.id !== was.id && this.isOpenChat(c)).at(-1)
+    if (sibling) return { chat: sibling, from: { title: was.title, tab: true } }
     const fork = was && this.store.chats(was.workspaceId).filter((c) => c.forkOf?.chatId === was.id && this.isOpenChat(c)).sort((a, b) => b.createdAt - a.createdAt)[0]
     if (fork) return { chat: fork }
     const first = this.existingLeadChat(roomId)
-    return first && { chat: first, closed: was }
+    return first && { chat: first, ...(was ? { from: { title: this.chatTitleOf(was) } } : {}) }
   }
+
+  /** The ids of every tab in `chat`'s Lead chat, closed ones too, and its own. */
+  private threadTabIds(chat: Chat) { return new Set(this.store.threadTabs(chat.id).map((c) => c.id).concat(chat.id)) }
 
   /**
    * Workspaces the Lead created before Kernel saved `leadChatId` (KERNEL-105). Only a Lead chat has the kernel tools, so
@@ -247,7 +311,7 @@ export class Lead extends Feature {
           if (item.kind !== 'tool' || item.name !== 'mcp__kernel__create_workspace' || item.status !== 'done') continue
           const id = /^Created (\S+) on /.exec(item.output ?? '')?.[1]
           const ws = id ? this.store.workspace(id) : undefined
-          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id })
+          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id, ...(chat.threadId ? { threadId: chat.threadId } : {}) })
         }
       }
     }
@@ -277,9 +341,11 @@ export class Lead extends Feature {
         bus.activity({ kind: 'brief', roomId, workspaceId: chat.workspaceId, agentId: to, actor: 'you', text: agentId ? `messaged ${name}` : `briefed ${name}`, quote })
         return { chatId: chat.id, workspaceId: chat.workspaceId }
       },
-      'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
+      'lead.ask': async ({ roomId, text, threadId }) => this.askLead(roomId, text, threadId),
       'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
-      'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o)
+      'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),
+      'threads.list': async ({ roomId }) => this.store.threads(roomId),
+      'threads.rename': async ({ threadId, title }) => this.renameThread(threadId, title)
     } satisfies Partial<Handlers>
   }
 }

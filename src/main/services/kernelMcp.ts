@@ -12,9 +12,14 @@ import { isMerged, joinLabels, waitLabel, waitRefusal, waitTargets } from './wai
 export interface KernelToolDeps {
   roomId: string
   lead: AgentDef | undefined
-  /** The Lead chat these tools belong to. Workspaces it hands off report back to it (KERNEL-105). */
+  /** The Lead tab these tools belong to. Workspaces it hands off report back to it (KERNEL-105). */
   chatId?: string
+  /** The name of the Lead chat a tab is in, for work another chat handed off. */
   chatTitle?: (chatId: string) => string | undefined
+  /** Whether a tab is in the same Lead chat as this one, whose work is this tab's too (KERNEL-337). Left out, only this tab is. */
+  ownTab?: (chatId: string) => boolean
+  /** Plans approved in every tab of this tab's Lead chat, newest first: the tab's title, when it was asked for, and the plan (KERNEL-337). */
+  plans?: () => { tab: string; at: number; plan: string }[]
   agents: () => Promise<AgentDef[]>
   workspaces: () => Workspace[]
   /**
@@ -114,10 +119,12 @@ export function kernelMcpServer(d: KernelToolDeps) {
 
 /** The Lead's tools, apart from the server so tests can call them. */
 export function kernelTools(d: KernelToolDeps) {
+  /** Work a tab of this Lead chat handed off, this tab or another (KERNEL-337). */
+  const mine = (w: Workspace) => !!w.leadChatId && !!d.chatId && (w.leadChatId === d.chatId || !!d.ownTab?.(w.leadChatId))
   /** Which Lead chat a workspace reports to, as list_workspaces shows it. Nothing for work no Lead chat handed off. */
   const owner = (w: Workspace) => {
     if (!w.leadChatId || !d.chatId) return ''
-    if (w.leadChatId === d.chatId) return ' · yours'
+    if (mine(w)) return ' · yours'
     const title = d.chatTitle?.(w.leadChatId)
     return title ? ` · from Lead chat "${title}"` : ' · from another Lead chat'
   }
@@ -209,7 +216,7 @@ export function kernelTools(d: KernelToolDeps) {
         const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
         const open = d.workspaces().find((w) => w.status !== 'archived' && !w.reviewOf && w.prState !== 'merged' && w.prState !== 'closed' && (issue
           ? w.source?.kind === 'issue' && same(w.source.id, issue)
-          : !!d.chatId && w.leadChatId === d.chatId && w.agentId === pick.id && !!w.title && same(w.title, title)))
+          : mine(w) && w.agentId === pick.id && !!w.title && same(w.title, title)))
         if (open) {
           const name = team.find((a) => a.id === open.agentId)?.name ?? open.agentId
           const what = issue ? `${issue.trim()} is already handed off` : 'this task is already handed off'
@@ -287,7 +294,7 @@ export function kernelTools(d: KernelToolDeps) {
       // The log shows who the Lead messaged and its first line (KERNEL-24), once the message has gone out.
       if (ws && d.lead && r.sent !== false) bus.activity({ kind: 'agent.talk', roomId: d.roomId, workspaceId: ws.id, agentId: d.lead.id, text: 'messaged', object: ws.name, quote: t.slice(0, 280), data: { from: d.lead.id, to: ws.agentId, workspaceId: ws.id, line: firstLine(t) } })
       // Its updates still go to the chat that handed it off, so say so rather than leave this chat waiting (KERNEL-105).
-      const from = ws?.leadChatId && d.chatId && ws.leadChatId !== d.chatId ? d.chatTitle?.(ws.leadChatId) : undefined
+      const from = ws?.leadChatId && d.chatId && !mine(ws) ? d.chatTitle?.(ws.leadChatId) : undefined
       return text(from ? `${r.note} This workspace was handed off in the Lead chat "${from}", so its updates go there, not here.` : r.note)
     }),
     tool('archive_workspace', 'Archive workspaces whose work is done. Skips the Lead\'s own workspace, any with an agent still working, an open PR or uncommitted changes. The user can restore them from History.', {
@@ -313,6 +320,11 @@ export function kernelTools(d: KernelToolDeps) {
         }
       }
       return text(lines.join('\n'))
+    }),
+    tool('read_plans', 'Read the plans approved in every tab of this chat, newest first: the tab, when it was approved and the plan.', {}, async () => {
+      const plans = d.plans?.() ?? []
+      if (!plans.length) return text('No plan has been approved in this chat yet.')
+      return text(plans.map((p) => `Approved in the tab "${p.tab}" at ${new Date(p.at).toISOString()}:\n${p.plan}`).join('\n\n'))
     }),
     tool('say', 'Post one short status line. It shows on your card in the sidebar.', { text: z.string().max(140) }, async ({ text: t }) => {
       if (d.lead) bus.push({ type: 'agent.status', roomId: d.roomId, agentId: d.lead.id, status: 'working', activity: t })

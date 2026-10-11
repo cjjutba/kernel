@@ -40,7 +40,23 @@ export interface Chat {
   terminal?: { preset: string; command: string | null }
   /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
   autoTitle?: { turns: number }
+  /** The Lead chat this tab belongs to. Set on every Lead tab, absent elsewhere (KERNEL-337). */
+  threadId?: string
   createdAt: number
+}
+
+/**
+ * A chat with the Lead, which holds one or more of its tabs (KERNEL-337). Called a thread in code so it doesn't clash with
+ * `Chat`, which is one tab. The title follows the first tab's auto name until the user renames it (`renamed`). `closedAt` is
+ * set when its last open tab closes.
+ */
+export interface Thread {
+  id: string
+  roomId: string
+  title: string
+  createdAt: number
+  closedAt?: number
+  renamed?: boolean
 }
 
 /** One rendered row in a chat transcript. Mirrors the kinds drawn on the canvas. */
@@ -137,7 +153,10 @@ export interface TeamUpdateEvent {
   actionable: boolean
 }
 
-/** One teammate workspace in a Team update. `fromChat` is the closed Lead chat the work came from, when it isn't this chat's. */
+/**
+ * One teammate workspace in a Team update. `fromChat` is the closed Lead chat the work came from, when it isn't this chat's.
+ * With `fromTab` it is a closed tab of this chat instead, and `fromChat` is that tab's title (KERNEL-337).
+ */
 export interface TeamUpdateRow {
   workspaceId: string
   agentId: string
@@ -148,6 +167,7 @@ export interface TeamUpdateRow {
   /** The teammate's last reply, or a reviewer's summary, as the Lead got it. */
   reply?: string
   fromChat?: string
+  fromTab?: boolean
   /** Files the teammate shared since the last update, newest version of each. The card draws them, not `events` (KERNEL-302). */
   shared?: { sharedId: string; version: number; title: string; kind: SharedKind }[]
 }

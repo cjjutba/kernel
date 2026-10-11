@@ -1,7 +1,7 @@
 import type { Chat, ChatItem, Effort, ModelId, Workspace } from '@shared/types'
 import { newId, type Store } from '../db'
 import { bus } from '../bus'
-import { LEAD_CHAT, NEW_CHAT } from './shared'
+import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 
 // Kernel's reads and writes of rooms, workspaces and chats, as plain functions of the Store and the bus (KERNEL-325).
 // Kernel keeps a one-line method for each, and `Feature` a protected one, so a feature calls them without importing Kernel.
@@ -36,11 +36,14 @@ export function saveChat(store: Store, chat: Chat): Chat {
   return chat
 }
 
-/** A chat opened with a placeholder name ("New chat", the Lead's "Lead") is auto-named. A workspace's title or a fork's is not (KERNEL-202). */
-export function newChat(store: Store, workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal'] }): Chat {
+/**
+ * A chat opened with a placeholder name ("New chat", "New tab", the Lead's "Lead") is auto-named. A workspace's title or a
+ * fork's is not (KERNEL-202). `threadId` puts a Lead tab in its Lead chat (KERNEL-337).
+ */
+export function newChat(store: Store, workspaceId: string, title: string, o: { model: ModelId; effort: Effort; plan: boolean; kind?: 'chat' | 'terminal'; terminal?: Chat['terminal']; threadId?: string }): Chat {
   const kind = o.kind ?? 'chat'
-  const auto = kind === 'chat' && (title === NEW_CHAT || title === LEAD_CHAT)
-  return store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), createdAt: Date.now() })
+  const auto = kind === 'chat' && (title === NEW_CHAT || title === NEW_TAB || title === LEAD_CHAT)
+  return store.saveChat({ id: newId(), workspaceId, title, kind, model: o.model, effort: o.effort, plan: o.plan, ...(o.terminal ? { terminal: o.terminal } : {}), ...(auto ? { autoTitle: { turns: 0 } } : {}), ...(o.threadId ? { threadId: o.threadId } : {}), createdAt: Date.now() })
 }
 
 /** PR instructions and notes go to the workspace's first chat. */

@@ -31,7 +31,7 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
         <header className="tucard-head"><h3 className="tucard-title">Team update</h3><span className="muted">from Kernel</span></header>
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
-            {s.fromChat && <div className="tucard-from">From "{s.fromChat}", a Lead chat that is now closed</div>}
+            {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}
             {s.rows.map((row) => <Row key={row.workspaceId} row={row} workspaceOf={workspaceOf} />)}
           </div>
         ))}

@@ -106,4 +106,12 @@ describe('fixture handlers', () => {
   it('refuse to create a workspace', async () => {
     await expect(h['workspaces.create']({ roomId: 'room-a', prompt: 'x' })).rejects.toThrow(/Fixture mode/)
   })
+
+  it("list a fixture's Lead chats, by room when asked (KERNEL-337)", async () => {
+    const threads = [{ id: 't1', roomId: 'room-a', title: 'Release plan', createdAt: 1 }, { id: 't2', roomId: 'room-b', title: 'Icons', createdAt: 2 }]
+    const withThreads = fixtureHandlers({ ...f, threads })
+    expect(await withThreads['threads.list']({})).toEqual(threads)
+    expect(await withThreads['threads.list']({ roomId: 'room-b' })).toEqual([threads[1]])
+    expect(await h['threads.list']({})).toEqual([])
+  })
 })

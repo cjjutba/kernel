@@ -75,10 +75,12 @@ export class Workspaces extends Feature {
         if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
       }
 
-      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105). A review
-      // the Lead started with base_ref keeps the Lead's base and branch, and is only linked (KERNEL-299).
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105), with the Lead
+      // chat that tab belongs to, which outlasts the tab (KERNEL-337). A review the Lead started with base_ref keeps the Lead's
+      // base and branch, and is only linked (KERNEL-299).
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
-      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      const threadId = o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })

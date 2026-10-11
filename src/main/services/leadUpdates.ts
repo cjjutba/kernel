@@ -25,11 +25,12 @@ export interface LeadUpdateDeps {
   store: Store
   enabled: () => boolean
   /**
-   * The open Lead chat that hears about workspaces handed off in `owner`, or about workspaces no Lead chat handed off
-   * when `owner` is unset. `closed` is the owner when it is closed and its updates go to another chat. Undefined when
-   * the room has no open Lead chat. Never creates one.
+   * The open Lead tab that hears about workspaces handed off in the tab `owner`, or about workspaces no Lead tab handed off
+   * when `owner` is unset. `from` names where the work came from when the owner is closed and its updates go elsewhere:
+   * the closed tab, with `tab`, when another tab of its chat takes them, else the closed Lead chat (KERNEL-337). Undefined
+   * when the room has no open Lead tab. Never creates one.
    */
-  target: (roomId: string, owner?: string) => { chat: Chat; closed?: Chat } | undefined
+  target: (roomId: string, owner?: string) => { chat: Chat; from?: From } | undefined
   /** Whether the workspace is the Lead's own. Its events are never reported back to it. */
   isLead: (ws: Workspace) => boolean
   agentName: (roomId: string, agentId: string) => string | undefined
@@ -233,10 +234,13 @@ export function collapse(events: TeamEvent[], ws: Workspace | undefined): TeamEv
  * One workspace in an update. `from` is the closed Lead chat it came from, when it isn't the target's own; `owner` handed it
  * off. `shares` are its shared files, which the card draws apart from `events`.
  */
-interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: Chat; owner?: string; wake: Set<TeamEvent>; todo: string[] }
+interface Block { ws: Workspace; name: string; events: TeamEvent[]; shares: TeamEvent[]; reply?: string; summary?: boolean; status?: string; latest: number; from?: From; owner?: string; wake: Set<TeamEvent>; todo: string[] }
 
 /** Events from one source chat: the target's own, or a closed chat's that now go to the target. `owner` handed them off. */
-interface Source { events: TeamEvent[]; from?: Chat; owner?: string }
+interface Source { events: TeamEvent[]; from?: From; owner?: string }
+
+/** Where routed work came from: a closed tab of the target's own chat (`tab`), or another Lead chat that is closed (KERNEL-337). */
+export interface From { title: string; tab?: boolean }
 
 /** Reviews of a workspace's PR as Kernel knows them (KERNEL-130). */
 export interface ReviewState {
@@ -490,7 +494,7 @@ export class LeadUpdates {
       const t = this.d.target(roomId, p.owner)
       if (!t) { if (!this.timers.has(key)) drop(key); continue }
       const group = byChat.get(t.chat.id) ?? { chat: t.chat, sources: [], keys: [], quiet: true }
-      group.sources.push({ events: p.events, from: t.closed, owner: p.owner })
+      group.sources.push({ events: p.events, from: t.from, owner: p.owner })
       group.keys.push(key)
       group.quiet &&= !this.timers.has(key) && !p.events.some((e) => this.reading.has(e.workspaceId) || this.waitTurns.has(e.workspaceId))
       byChat.set(t.chat.id, group)
@@ -540,7 +544,8 @@ export class LeadUpdates {
           latest: Math.max(...events.map((e) => e.n)), from: source.from, owner: source.owner, wake: new Set(), todo: []
         }
         if (source.owner) {
-          const decided = decide({ ws, name, events: block.events, fromChat: source.from?.title }, {
+          // Work from a closed tab of this chat is this chat's own, so its last merge reads like any other.
+          const decided = decide({ ws, name, events: block.events, fromChat: source.from?.tab ? undefined : source.from?.title }, {
             review, reviewer, allMerged: () => this.allMerged(ws.roomId, source.owner!), workspace: (id) => this.d.store.workspace(id)
           })
           block.wake = decided.wake
@@ -558,13 +563,14 @@ export class LeadUpdates {
     const max = Math.min(REPLY_MAX, Math.floor(REPLY_BUDGET / Math.max(1, replies)))
     const shown = kept.map((b) => ({ ...b, reply: b.reply ? capText(b.reply, max) : undefined }))
 
-    // The target's own work first, then each closed chat's under its name. The card's rows follow the same order.
+    // The target's own work first, then each closed tab's or closed chat's under its name. The card's rows follow the same order.
     const lines: string[] = [UPDATE_HEADER]
     const order: Block[] = []
+    const fromKey = (f: From) => `${f.tab ? 'tab' : 'chat'}:${f.title}`
     for (const b of shown.filter((x) => !x.from)) { lines.push('', ...blockLines(b)); order.push(b) }
-    for (const from of [...new Set(shown.map((b) => b.from).filter((c): c is Chat => !!c))]) {
-      lines.push('', `From "${from.title}", a Lead chat that is now closed. This work is yours now.`)
-      for (const b of shown.filter((x) => x.from === from)) { lines.push('', ...blockLines(b)); order.push(b) }
+    for (const from of new Map(shown.flatMap((b) => (b.from ? [[fromKey(b.from), b.from] as const] : []))).values()) {
+      lines.push('', `${fromLine(from)} This work is yours now.`)
+      for (const b of shown.filter((x) => x.from && fromKey(x.from) === fromKey(from))) { lines.push('', ...blockLines(b)); order.push(b) }
     }
     if (omitted) lines.push('', `Kernel left out updates on ${omitted} more ${omitted === 1 ? 'workspace' : 'workspaces'}. Call list_workspaces to see where they stand.`)
     const todo = [...new Set(order.flatMap((b) => b.todo))]
@@ -577,7 +583,7 @@ export class LeadUpdates {
         ...(prNumber ? { prNumber } : {}),
         events: b.events.map((e) => ({ kind: e.kind, text: cardText(e, b.status), actionable: b.wake.has(e) })),
         ...(b.reply ? { reply: b.reply } : {}),
-        ...(b.from ? { fromChat: b.from.title } : {}),
+        ...(b.from ? { fromChat: b.from.title, ...(b.from.tab ? { fromTab: true } : {}) } : {}),
         ...(b.shares.length ? { shared: b.shares.flatMap((e) => (e.shared ? [{ sharedId: e.shared.sharedId, version: e.shared.version, title: e.shared.title, kind: e.shared.kind }] : [])) } : {})
       }
     })
@@ -586,17 +592,21 @@ export class LeadUpdates {
   }
 
   /**
-   * Every workspace the Lead chat `owner` handed off has merged. Left out: review workspaces, the Lead's own, work archived
+   * Every workspace handed off in the Lead chat of the tab `owner`, by any of its tabs, has merged (KERNEL-337). Left out: review workspaces, the Lead's own, work archived
    * without merging, and the reviewer's own workspaces that never opened a PR, which before the review link (KERNEL-130)
    * are reviews nothing marks as such.
    */
   private allMerged(roomId: string, owner: string): boolean {
     const reviewer = this.d.reviewer?.(roomId)?.id
-    const handed = this.d.store.workspaces(roomId).filter((w) => w.leadChatId === owner && !w.reviewOf && !this.d.isLead(w)
+    const tabs = new Set(this.d.store.threadTabs(owner).map((c) => c.id).concat(owner))
+    const handed = this.d.store.workspaces(roomId).filter((w) => !!w.leadChatId && tabs.has(w.leadChatId) && !w.reviewOf && !this.d.isLead(w)
       && (w.status !== 'archived' || !!w.mergedAt) && !(w.agentId === reviewer && !w.prNumber))
     return handed.length > 0 && handed.every((w) => w.prState === 'merged' || !!w.mergedAt)
   }
 }
+
+/** The line over routed work, the same words the card draws (KERNEL-337). */
+export const fromLine = (f: From) => (f.tab ? `From "${f.title}", a tab you closed.` : `From "${f.title}", a Lead chat that is now closed.`)
 
 /** What `decide` needs to know beyond the events: reviews of the PR, the team's reviewer, and whether this merge was the last. */
 export interface WakeContext { review?: ReviewState; reviewer?: AgentDef; allMerged: () => boolean; workspace?: (id: string) => Workspace | undefined }
