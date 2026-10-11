@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedComment, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedAnchor, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -89,6 +89,8 @@ export interface Fixture {
   sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string; still?: string }>>
   /** Comments on shared files, every version (KERNEL-310). `shared.comments` filters them by shared id. */
   sharedComments?: SharedComment[]
+  /** What `system.preview.hit` answers in a fixture run, which has no live page: the innermost anchor whose element box holds the point (KERNEL-311). */
+  sharedHits?: SharedAnchor[]
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run

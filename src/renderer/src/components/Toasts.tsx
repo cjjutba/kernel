@@ -18,8 +18,13 @@ export function Toasts() {
         {toasts.map((t) => (
           <Toast
             key={t.id} title={t.title} sub={t.sub} onDismiss={() => actions.ui.dismissToast(t.id)}
-            // A plain link would navigate the app window away, so the action opens its link in the browser.
-            action={t.action && { label: t.action.label, onClick: () => { const href = t.action?.href; if (href) void call('system.openExternal', { url: href }); actions.ui.dismissToast(t.id) } }}
+            // A plain link would navigate the app window away, so the action opens its link in the browser, or its tab in the app.
+            action={t.action && { label: t.action.label, onClick: () => {
+              const { href, tab } = t.action ?? {}
+              if (href) void call('system.openExternal', { url: href })
+              if (tab) actions.ui.openTab(tab.workspaceId, tab.id)
+              actions.ui.dismissToast(t.id)
+            } }}
           />
         ))}
         <UpdateCard />

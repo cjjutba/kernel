@@ -73,7 +73,8 @@ export interface Toast {
   id: string
   title: string
   sub?: string
-  action?: { label: string; href?: string }
+  /** `href` opens in the browser. `tab` opens that tab of the workspace in the app (KERNEL-311: Open chat after a comment is sent). */
+  action?: { label: string; href?: string; tab?: { workspaceId: string; id: string } }
 }
 
 /** The workspace screen's panes, so fixtures can open any of them. */
