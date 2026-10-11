@@ -14,7 +14,10 @@ export const countRange = (n: number): (typeof COUNT)[number] => (n <= 0 ? '0' :
 /** Built-in tools an agent file can leave out. Any other name goes out as `mcp` or `other`. */
 export const TOOL_KINDS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent', 'mcp', 'other'] as const
 
-const WARNING_KINDS = ['no-description', 'cant-open-pr', 'second-lead', 'setting-missing', 'reserved-id', 'duplicate-id', 'looks-like-lead'] as const satisfies readonly AgentWarningKind[]
+const WARNING_KINDS = [
+  'no-description', 'cant-open-pr', 'second-lead', 'setting-missing', 'reserved-id', 'duplicate-id', 'looks-like-lead',
+  'unreadable-file', 'mcp-missing', 'mcp-failed', 'mcp-needs-auth', 'mcp-off'
+] as const satisfies readonly AgentWarningKind[]
 // A warning kind added to AgentWarningKind and not here fails to compile.
 export const EVERY_WARNING: [Exclude<AgentWarningKind, (typeof WARNING_KINDS)[number]>] extends [never] ? true : never = true
 

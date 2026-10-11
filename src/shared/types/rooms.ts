@@ -1,4 +1,5 @@
 import type { AgentDraft } from './agents'
+import type { PermissionMode } from './settings'
 
 export type RoomKind = 'repo' | 'folder' | 'scratch'
 
@@ -24,6 +25,15 @@ export interface Room {
   archived?: boolean
   /** Bash rules the user chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
+  /**
+   * The same for tools other than Bash, as Claude Code writes a rule: `mcp__linear__get_issue`, `WebFetch(domain:example.com)`
+   * (KERNEL-432).
+   */
+  allowTools?: string[]
+  /** The room's permission mode, over the app's. A chat's own mode wins over it (KERNEL-432). */
+  permissionMode?: PermissionMode
+  /** Where the room's pull requests merge: on GitHub through gh, or locally with git (KERNEL-432). */
+  host?: 'github' | 'local'
   /**
    * The room's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's room-icons.
    * No icon means the letter. The image itself comes from `rooms.icon`, so room pushes stay small (KERNEL-241).

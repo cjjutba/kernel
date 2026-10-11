@@ -40,6 +40,13 @@ export interface Approval {
   planFile?: string
   /** Agent approvals: the file the Lead wants to write (WorkspaceHire.png). */
   agentFile?: { path: string; text: string }
+  /**
+   * Tool approvals for a tool the agent's file doesn't list, which Kernel asks about instead of blocking (KERNEL-432).
+   * `server` is set for an MCP server's tool.
+   */
+  gate?: { tool: string; server?: string; agentId: string }
+  /** Why Kernel asked, for the card's reason line: the classifier's reason, the blocked path, or that Codex runs it outside its sandbox (KERNEL-432). */
+  reason?: string
   status: 'pending' | 'allowed' | 'denied' | 'answered' | 'expired'
   answer?: string
   createdAt: number

@@ -5,8 +5,11 @@ import type { Provider } from './chats'
 import type { AppUpdate } from './system'
 import type { WorkspaceSource } from './workspaces'
 
-/** `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. */
-export type OnboardingStep = 'welcome' | 'checks' | 'room' | 'loading'
+/**
+ * `loading` is LoadingApp.png: the app shell while the main process boots or reconnects. `permissions` comes after `checks`
+ * and picks the permission mode. Nothing opens it until its screen is built (KERNEL-432).
+ */
+export type OnboardingStep = 'welcome' | 'checks' | 'permissions' | 'room' | 'loading'
 
 /** Where the renderer is. Lives here so fixtures can open any screen. One entry per screen family. */
 export type DevUiPage = 'components' | 'display' | 'overlays' | 'dialogs'

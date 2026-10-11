@@ -5,7 +5,7 @@ import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { bus } from '../bus'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type Role, type RoleModel, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
+import { EFFORT_LABELS, EFFORTS, isRunName, MODELS, PERMISSION_MODES, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type Effort, type MergeMethod, type PermissionMode, type Role, type RoleModel, type PrInstructions, type RoomSettingSource, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch, type TrackerKind, type UnlistedTools } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 
@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   },
   providers: { claude: { path: '', useSystem: false }, codex: { path: '', useSystem: false, personality: 'pragmatic' } },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
-  permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
+  permissions: { mode: 'acceptEdits', bypassOnlyInWorktrees: true, network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
     mergeMethod: 'squash', draft: false, requireGreen: true, requireReviewer: true, autoReview: true, leadMerge: false,
     createInstructions: '# Create a pull request\n1. Rebase on the base branch and run the test suite.\n2. Title it as a Conventional Commit.\n3. Fill in summary, scope and risk.\n4. Open it with `gh pr create` and print the URL.',
@@ -188,7 +188,24 @@ export async function loadAppSettings(file: string, home: string, plan: ClaudePl
   }
   const saved: DeepPartial<AppSettings> = (version === SAVED_VERSION ? s : sparse(s, defaults)) ?? {}
   migrateRoles(saved)
+  migratePermissions(saved)
   return { saved, resolved: resolveSettings(defaults, saved, plan) }
+}
+
+/**
+ * The permission modes took Claude Code's names (KERNEL-432): `ask` is `default`, and `bypassInWorktrees` is
+ * `bypassPermissions` with Only in worktrees on. A file with no mode, or one Kernel doesn't know, is pinned to Accept edits,
+ * the default it ran on until now. settings.json keeps only what the user chose, and the default changes once
+ * onboarding asks for a mode, so an unpinned file would move to it unasked. This runs on every load, not once, so a file
+ * written later without a mode is pinned too. Only a file that exists gets here: a new install reads the default.
+ */
+function migratePermissions(saved: DeepPartial<AppSettings>) {
+  const own = saved.permissions as Record<string, unknown> | undefined
+  const p = own && typeof own === 'object' && !Array.isArray(own) ? own : {}
+  if (p.mode === 'ask') p.mode = 'default'
+  if (p.mode === 'bypassInWorktrees') Object.assign(p, { mode: 'bypassPermissions', bypassOnlyInWorktrees: true })
+  if (!PERMISSION_MODES.includes(p.mode as PermissionMode)) p.mode = 'acceptEdits'
+  saved.permissions = p as DeepPartial<AppSettings['permissions']>
 }
 
 /** Writes what the user chose, and nothing else, so a default that changes later still reaches everyone who never set it (KERNEL-225). */
@@ -328,8 +345,35 @@ const DEFAULT_COPY = ['.env', '.env.local']
 const PR_KEYS = ['createInstructions', 'resolveInstructions', 'fixChecksInstructions', 'addressReviewInstructions'] as const
 
 /** The tables a room's settings files may hold. Anything else in a patch or a file is left alone. */
-const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env'] as const
+const GROUPS = ['scripts', 'files', 'workspace', 'disabled', 'linear', 'pr', 'preview', 'env', 'tracker', 'mcp', 'agents'] as const
 type Group = (typeof GROUPS)[number]
+
+/** The keys that hold a table of names: both files merge it name by name, and a patch changes only the names it lists (KERNEL-432). */
+const NAMED: Partial<Record<Group, string>> = { mcp: 'aliases', agents: 'allow' }
+
+const TRACKER_KINDS: readonly (TrackerKind | 'none')[] = ['linear', 'github', 'jira', 'none']
+const MERGE_METHODS: readonly MergeMethod[] = ['squash', 'merge', 'rebase']
+const UNLISTED_TOOLS: readonly UnlistedTools[] = ['ask', 'hide']
+
+const isTable = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)
+
+/** `[mcp.aliases]`, each name to the server it stands for. A value that isn't text, or is blank, is left out. */
+function aliasesOf(table: unknown): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (isTable(table)) for (const [name, server] of Object.entries(table)) if (typeof server === 'string' && server.trim()) out[name] = server.trim()
+  return out
+}
+
+/** Each `[agents.<id>]` table's `allow` list, by agent id. An empty list, or an entry that isn't a table, is left out. */
+function allowOf(table: unknown): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  if (!isTable(table)) return out
+  for (const [id, own] of Object.entries(table)) {
+    const servers = isTable(own) ? strings(own.allow).map((s) => s.trim()).filter(Boolean) : []
+    if (servers.length) out[id] = servers
+  }
+  return out
+}
 
 /** The keys `table` sets, picked from the file's snake-case names. A key the file doesn't set stays out. */
 function picked(table: Record<string, any> | undefined, keys: readonly string[], ok: (v: unknown) => boolean = () => true): Record<string, unknown> {
@@ -362,6 +406,8 @@ function stored(g: Group, v: unknown): unknown {
 /** One settings file's values by app-side name, with the same whitelist for both files. */
 function roomValues(doc: Record<string, any>): Record<Group, Record<string, unknown>> {
   const isString = (v: unknown) => typeof v === 'string'
+  const aliases = aliasesOf(isTable(doc.mcp) ? doc.mcp.aliases : undefined)
+  const allow = allowOf(doc.agents)
   return {
     // Text for a script and a list of text for files.copy, or nothing: what Kernel hashes for trust is exactly what it
     // runs and copies, and a value of another type can't hide the other file's (KERNEL-209).
@@ -370,10 +416,17 @@ function roomValues(doc: Record<string, any>): Record<Group, Record<string, unkn
     workspace: workspaceKeys(doc.workspace) as Record<string, unknown>,
     disabled: Object.fromEntries(Object.entries(picked(doc.disabled, ['skills', 'mcp'])).map(([k, v]) => [k, strings(v)])),
     linear: picked(doc.linear, ['team'], isString),
-    // `[pr] optional_checks`: checks this room never counts in a repo that requires none (KERNEL-388).
-    pr: { ...picked(doc.pr, PR_KEYS, isString), ...Object.fromEntries(Object.entries(picked(doc.pr, ['optionalChecks'], Array.isArray)).map(([k, v]) => [k, strings(v)])) },
+    // `[pr] optional_checks`: checks this room never counts in a repo that requires none (KERNEL-388). `merge_method` (KERNEL-432).
+    pr: {
+      ...picked(doc.pr, PR_KEYS, isString),
+      ...Object.fromEntries(Object.entries(picked(doc.pr, ['optionalChecks'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
+      ...picked(doc.pr, ['mergeMethod'], (v) => MERGE_METHODS.includes(v as MergeMethod))
+    },
     preview: Object.fromEntries(Object.entries(picked(doc.preview, ['urls'], Array.isArray)).map(([k, v]) => [k, previewUrlsOf(v)])),
-    env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)]))
+    env: Object.fromEntries(Object.entries(picked(doc.env, ['files'], Array.isArray)).map(([k, v]) => [k, strings(v)])),
+    tracker: picked(doc.tracker, ['kind'], (v) => TRACKER_KINDS.includes(v as TrackerKind)),
+    mcp: Object.keys(aliases).length ? { aliases } : {},
+    agents: { ...picked(doc.agents, ['unlistedTools'], (v) => UNLISTED_TOOLS.includes(v as UnlistedTools)), ...(Object.keys(allow).length ? { allow } : {}) }
   }
 }
 
@@ -404,9 +457,16 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const local = roomValues(localDoc)
   const merged = {} as Record<Group, Record<string, any>>
   const sources: RoomSettings['sources'] = {}
+  const from = (a: object, b: object, k: string): RoomSettingSource => (k in a && k in b ? 'override' : k in b ? 'local' : 'shared')
   for (const g of GROUPS) {
     merged[g] = { ...shared[g], ...local[g] }
-    for (const k of Object.keys(merged[g])) sources[`${g}.${k}`] = k in shared[g] && k in local[g] ? 'override' : k in local[g] ? 'local' : 'shared'
+    for (const k of Object.keys(merged[g])) {
+      if (NAMED[g] !== k) { sources[`${g}.${k}`] = from(shared[g], local[g], k); continue }
+      const a = (shared[g][k] ?? {}) as Record<string, unknown>
+      const b = (local[g][k] ?? {}) as Record<string, unknown>
+      merged[g][k] = { ...a, ...b }
+      for (const name of Object.keys(merged[g][k])) sources[`${g}.${k}.${name}`] = from(a, b, name)
+    }
   }
   // Named run scripts: the shared file's order, then names only the personal file has. `run` reads as `[scripts] run`.
   const sharedRuns = runScriptsOf(sharedDoc.run_scripts)
@@ -414,7 +474,7 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
   const runs = new Map([...sharedRuns, ...localRuns])
   for (const name of runs.keys()) sources[`runScripts.${name}`] = sharedRuns.has(name) && localRuns.has(name) ? 'override' : localRuns.has(name) ? 'local' : 'shared'
   if (sources['scripts.run']) sources['runScripts.run'] = sources['scripts.run']
-  const { scripts, files, workspace, disabled, linear, pr, preview, env } = merged
+  const { scripts, files, workspace, disabled, linear, pr, preview, env, tracker, mcp, agents } = merged
   // `[team]` (KERNEL-397), read like the other tables but written only by `saveTeamSettings`.
   const sharedTeam = teamValues(sharedDoc.team)
   const localTeam = teamValues(localDoc.team)
@@ -431,6 +491,9 @@ function repoSettingsOf(sharedDoc: Record<string, any>, localDoc: Record<string,
     preview: { urls: preview.urls ?? [] },
     env: { files: env.files ?? [] },
     ...(Object.keys(team).length ? { team } : {}),
+    ...(tracker.kind ? { tracker: { kind: tracker.kind } } : {}),
+    ...(mcp.aliases ? { mcp: { aliases: mcp.aliases } } : {}),
+    ...(Object.keys(agents).length ? { agents } : {}),
     sources
   }
 }
@@ -440,7 +503,7 @@ function teamValues(table: unknown): TeamConfig {
   const t = (table && typeof table === 'object' ? table : {}) as Record<string, unknown>
   const id = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
   const ids = (v: unknown) => { const l = strings(v).map((x) => x.trim()).filter(Boolean); return l.length ? l : undefined }
-  const out: TeamConfig = { lead: id(t.lead), reviewer: id(t.reviewer), members: ids(t.members), helpers: ids(t.helpers) }
+  const out: TeamConfig = { lead: id(t.lead), reviewer: id(t.reviewer), members: ids(t.members), helpers: ids(t.helpers), roster: ids(t.roster) }
   return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined))
 }
 
@@ -679,7 +742,22 @@ export async function saveRepoSettings(repo: string, patch: RoomSettingsPatch, s
     else t[key] = value
     if (!Object.keys(t).length) delete doc[table]
   }
-  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) set(g, snake(k), stored(g, v))
+  for (const g of GROUPS) for (const [k, v] of Object.entries(patch[g] ?? {})) if (NAMED[g] !== k) set(g, snake(k), stored(g, v))
+  // The tables of names change name by name, and a table left empty goes. An alias is `[mcp.aliases] <name>`, and an
+  // agent's servers are `[agents.<id>] allow`, the agent's own table (KERNEL-432).
+  const named = (path: string[], name: string, value: unknown) => {
+    const tables = [doc]
+    for (const k of path) tables.push((tables[tables.length - 1][k] ??= {}) as Record<string, any>)
+    const own = tables[tables.length - 1]
+    if (value === undefined) delete own[name]
+    else own[name] = value
+    for (let i = path.length; i > 0; i--) if (!Object.keys(tables[i]).length) delete tables[i - 1][path[i - 1]]
+  }
+  for (const [name, server] of Object.entries(patch.mcp?.aliases ?? {})) named(['mcp', 'aliases'], name, server?.trim() || undefined)
+  for (const [id, servers] of Object.entries(patch.agents?.allow ?? {})) {
+    const kept = (servers ?? []).map((s) => s.trim()).filter(Boolean)
+    named(['agents', id], 'allow', kept.length ? kept : undefined)
+  }
   for (const [name, command] of Object.entries(patch.runScripts ?? {})) {
     if (!RUN_SCRIPT_NAME.test(name)) throw new Error(`${name} is not a valid run script name. Use letters, digits, - and _, up to 32 characters.`)
     // A script's name is its key as written, so it isn't `snake()`d (like the names in `[disabled]`).
