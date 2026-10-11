@@ -27,6 +27,8 @@ const noCanvas = [
   'SidebarLeadChats',
   'WhatsNewCurrent', // What's new with no update ready, showing the running version's notes (KERNEL-154)
   'UpdateReadyLight', // the update card in the light theme (KERNEL-164)
+  'HistoryConfirmDelete', // the Delete confirm in History for every archived row, with two branches that hold unpushed commits (KERNEL-333)
+  'HistoryConfirmDeleteOne', // the same confirm from one row (KERNEL-333)
   // The PR states the PR header canvas didn't draw (KERNEL-274, drawn in design/redesign/).
   ...['NoChanges', 'None', 'Creating', 'Open', 'Checks', 'Conflict', 'Resolving', 'Ready', 'Merging'].map((s) => `WorkspacePR${s}`),
 ]

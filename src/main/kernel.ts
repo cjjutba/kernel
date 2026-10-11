@@ -2,7 +2,7 @@ import { basename, dirname, join } from 'node:path'
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { DeletePreview, DeleteResult, DeleteSkip, SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
@@ -28,7 +28,7 @@ import { isNudge, PAUSE_KEEPS, Sessions, sessionEnv, type CutOffReason } from '.
 import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
-import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
+import type { deleteSession as DeleteSession, forkSession as ForkSession, getSessionInfo as GetSessionInfo, listSessions as ListSessions } from '@anthropic-ai/claude-agent-sdk'
 import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
@@ -36,7 +36,7 @@ import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refre
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
 import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
+import { branchState, branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, listWorktrees, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
 import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames } from './services/env'
@@ -49,7 +49,7 @@ import { commitHunks, listHunks } from './services/hunks'
 import { allGreen, gh, ghUser as ghUserName, openIssues, openPrs, prNote, resolveFile, type GitHub } from './services/github'
 import { getIssue, getScope, linearToken, listIssues, moveToStarted, planParts, searchIssues } from './services/linear'
 import { Overlaps } from './services/overlap'
-import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
+import { checkpointTitle, clock, dropCheckpoints, listCheckpoints, revertTo, snapshot } from './services/checkpoints'
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from './services/waits'
@@ -69,6 +69,19 @@ const NEW_CHAT = 'New chat'
 const LEAD_CHAT = 'Lead'
 /** The finished-turn counts at which Kernel names an auto-named chat again from the whole conversation (KERNEL-202). */
 const RENAME_AT = [1, 3, 10, 30]
+
+/** What Delete in History does for one workspace (KERNEL-333). See `Kernel.deleteFacts`. */
+interface DeleteFacts { ws: Workspace; room: Room; branch: 'none' | 'keep' | 'unpushed' | 'delete'; sessions: Map<string, number> }
+
+/** `fn` over `items`, `limit` at a time. The results keep the order of `items`. */
+async function inPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]) }
+  }))
+  return out
+}
 
 /** A workspace's brief waiting for setup, and the Lead's messages that go after it (KERNEL-118, KERNEL-128). */
 interface SetupHold { chatId?: string; brief?: ChatPart[]; from?: 'lead'; later: ChatPart[][] }
@@ -133,6 +146,8 @@ export class Kernel {
   private reviewsToArchive = new Set<string>()
   /** Archives under way, so a second call for the same workspace waits for the first. */
   private archiving = new Map<string, Promise<void>>()
+  /** The delete from History under way, if any. A second one starts when it ends (KERNEL-333). */
+  private deleting?: Promise<unknown>
   /**
    * Worktree folders archive moved aside and hasn't deleted yet (KERNEL-284). Saved under the meta key `trash`, so a
    * delete cut short by a quit, or one that failed, runs again at the next start. `emptying` is the queue, one at a time.
@@ -172,6 +187,10 @@ export class Kernel {
   forkSession: typeof ForkSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).forkSession(id, o)
   /** The SDK call that reads a session's title from its transcript. Tests swap it for a stub. */
   sessionInfo: typeof GetSessionInfo = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).getSessionInfo(id, o)
+  /** The SDK call that lists the sessions Claude Code saved for a folder (KERNEL-333). Tests swap it for a stub. */
+  listSessions: typeof ListSessions = async (o) => (await import('@anthropic-ai/claude-agent-sdk')).listSessions(o)
+  /** The SDK call that deletes a session's transcript (KERNEL-333). Tests swap it for a stub. */
+  deleteSession: typeof DeleteSession = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).deleteSession(id, o)
   /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
   titleFor: typeof askTitle = askTitle
   /** Reads `claude auth status`. Tests swap it for a stub. */
@@ -1421,6 +1440,134 @@ export class Kernel {
     this.unmarkReviews(id)
     bus.activity({ kind: 'workspace.restored', roomId: ws.roomId, workspaceId: id, agentId: ws.agentId, text: 'restored', object: ws.name })
     return back
+  }
+
+  // ---------- delete from History (KERNEL-333)
+
+  /** What Delete in History would do for `ids`, counted without deleting anything. */
+  async deletePreview(ids: string[]): Promise<DeletePreview> {
+    const { byRoom, skipped } = this.planDelete(ids)
+    const facts = await this.deleteFacts(byRoom)
+    return {
+      workspaces: facts.length,
+      skipped,
+      unpushedBranches: facts.filter((f) => f.branch === 'unpushed').length,
+      transcriptBytes: facts.reduce((n, f) => n + [...f.sessions.values()].reduce((a, b) => a + b, 0), 0)
+    }
+  }
+
+  /** One delete at a time: a second call waits for the first, then plans against what is left. */
+  deleteWorkspaces(ids: string[], o: { deleteUnpushed: boolean }): Promise<DeleteResult> {
+    const next = (this.deleting ?? Promise.resolve()).catch(() => undefined).then(() => this.deleteNow(ids, o))
+    this.deleting = next
+    void next.finally(() => { if (this.deleting === next) this.deleting = undefined }).catch(() => undefined)
+    return next
+  }
+
+  /** The archived workspaces in `ids` that can go, by room, and why the others stay. */
+  private planDelete(ids: string[]) {
+    const skipped: DeleteSkip[] = []
+    const byRoom = new Map<string, Workspace[]>()
+    for (const id of new Set(ids)) {
+      const ws = this.store.workspace(id)
+      const skip = (reason: string) => { skipped.push({ id, name: ws?.name ?? id, reason }) }
+      if (!ws) { skip('Kernel no longer has it.'); continue }
+      if (ws.status !== 'archived') { skip('It is not archived.'); continue }
+      if (ws.name === 'lead' || this.isLeadWorkspace(ws)) { skip("It is the Lead's workspace."); continue }
+      if (!this.store.room(ws.roomId)) { skip('Its room is gone.'); continue }
+      const waiting = this.waitersOn(id)
+      if (waiting.length) { skip(waiting.length === 1 ? `${this.nameOf(waiting[0])}'s workspace still waits on it.` : `${waiting.length} workspaces still wait on it.`); continue }
+      byRoom.set(ws.roomId, [...(byRoom.get(ws.roomId) ?? []), ws])
+    }
+    return { byRoom, skipped }
+  }
+
+  /**
+   * What Delete would do for each workspace, from reads only: the fate of its branch, and the Claude Code sessions it
+   * leaves, by id with their size in bytes. Preview and delete both read it, so the numbers agree.
+   *
+   * A branch is kept when another record that stays uses it (review workspaces can share one, KERNEL-265), when a
+   * worktree has it checked out, or when it is the room's current branch. Otherwise it goes when its PR merged, since
+   * a squash merge makes `unpushedCommits` count merged work as unpushed, or when it holds nothing pushed nowhere.
+   * A branch that does hold such commits, or whose commits can't be counted, is `unpushed`: kept unless asked.
+   *
+   * A worktree workspace that nobody else shares a folder with owns that folder's sessions, so the list finds the ones
+   * Kernel forgot after /clear or a fresh session (KERNEL-286). Any other workspace, every current-branch one included,
+   * shares its folder with the user's own Claude Code sessions and the Lead's, so only its chats' recorded ids go.
+   */
+  private async deleteFacts(byRoom: Map<string, Workspace[]>): Promise<DeleteFacts[]> {
+    const going = new Set([...byRoom.values()].flat().map((w) => w.id))
+    const staying = this.store.workspaces().filter((w) => !going.has(w.id))
+    // Check and add in one step with no await between, so workspaces read at the same time can't claim a branch or session twice.
+    const branches = new Set<string>()
+    const claimed = new Set<string>()
+    const facts: DeleteFacts[] = []
+    for (const [roomId, list] of byRoom) {
+      const room = this.mustRoom(roomId)
+      const remote = await this.remoteFor(room.path)
+      const trees = await listWorktrees(room.path).then((l) => l, () => undefined)
+      const current = await currentBranch(room.path).catch(() => undefined)
+      facts.push(...await inPool(list, 8, async (ws): Promise<DeleteFacts> => {
+        const branchKey = `${roomId}\0${ws.branch}`
+        const first = ws.mode === 'worktree' && !branches.has(branchKey)
+        if (first) branches.add(branchKey)
+        const state = first ? await branchState(room.path, ws.branch) : 'missing'
+        let branch: DeleteFacts['branch'] = 'none'
+        if (state === 'unknown') branch = 'keep'
+        else if (state === 'exists') {
+          const checkedOut = !trees || ws.branch === current || trees.some((t) => t.branch === ws.branch)
+          if (checkedOut || staying.some((w) => w.roomId === roomId && w.branch === ws.branch)) branch = 'keep'
+          else if (ws.prState === 'merged') branch = 'delete'
+          else branch = (await unpushedCommits(room.path, ws.branch, ws.baseRef, remote)) === 0 ? 'delete' : 'unpushed'
+        }
+        const found = new Map<string, number>()
+        if (ws.mode === 'worktree' && !staying.some((w) => w.path === ws.path)) {
+          for (const info of await this.listSessions({ dir: ws.path, includeWorktrees: false }).catch(() => [])) found.set(info.sessionId, info.fileSize ?? 0)
+        }
+        for (const chat of this.store.chats(ws.id)) {
+          if (chat.sessionId && !found.has(chat.sessionId)) found.set(chat.sessionId, (await this.sessionInfo(chat.sessionId, { dir: ws.path }).catch(() => undefined))?.fileSize ?? 0)
+        }
+        const sessions = new Map([...found].filter(([id]) => !claimed.has(id)))
+        for (const id of sessions.keys()) claimed.add(id)
+        return { ws, room, branch, sessions }
+      }))
+    }
+    return facts
+  }
+
+  private async deleteNow(ids: string[], o: { deleteUnpushed: boolean }): Promise<DeleteResult> {
+    const { byRoom, skipped } = this.planDelete(ids)
+    const deleted: string[] = []
+    let keptBranches = 0
+    let freedBytes = 0
+    for (const f of await this.deleteFacts(byRoom)) {
+      const { ws, room } = f
+      // Disk first and records last, so a failure halfway leaves the row in History and Delete can run again.
+      try {
+        // Restored since the plan was made: it is open work again, so its branch and transcripts stay.
+        if (this.store.workspace(ws.id)?.status !== 'archived') throw new Error('It is not archived.')
+        const drop = f.branch === 'delete' || (f.branch === 'unpushed' && o.deleteUnpushed)
+        if (drop) {
+          const r = await exec('git', ['-C', room.path, 'branch', '-D', ws.branch])
+          if (r.code !== 0) throw new Error(`Could not delete the branch ${ws.branch}: ${r.stderr.trim() || r.stdout.trim()}`)
+        }
+        await dropCheckpoints(room.path, ws.id).catch((e) => console.warn(`[delete] could not drop the checkpoints of ${ws.name}`, e))
+        let bytes = 0
+        for (const [id, size] of f.sessions) {
+          try { await this.deleteSession(id, { dir: ws.path }); bytes += size } catch (e) { if (!/not found|invalid sessionId/i.test((e as Error).message)) throw e }
+        }
+        deleted.push(ws.id)
+        freedBytes += bytes
+        if (f.branch === 'unpushed' && !drop) keptBranches++
+      } catch (e) {
+        skipped.push({ id: ws.id, name: ws.name, reason: (e as Error).message })
+      }
+    }
+    // The same order as removeRoom: the rows, then the files they point at.
+    const sharedIds = deleted.flatMap((id) => this.store.sharedFiles({ workspaceId: id }).map((file) => file.id))
+    this.store.deleteWorkspaces(deleted)
+    await this.shared.remove(sharedIds)
+    return { deleted, skipped, keptBranches, freedBytes }
   }
 
   /**
@@ -2892,6 +3039,8 @@ export class Kernel {
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
       'workspaces.restore': async ({ workspaceId }) => this.restoreWorkspace(workspaceId),
+      'workspaces.deletePreview': async ({ workspaceIds }) => this.deletePreview(workspaceIds),
+      'workspaces.delete': async ({ workspaceIds, deleteUnpushed }) => this.deleteWorkspaces(workspaceIds, { deleteUnpushed }),
       'lead.ask': async ({ roomId, text }) => this.askLead(roomId, text),
       'lead.open': async ({ roomId }) => this.mustWs((await this.leadChat(roomId)).workspaceId),
       'lead.start': async ({ roomId, ...o }) => this.startLeadChat(roomId, o),

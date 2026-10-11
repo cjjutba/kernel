@@ -263,6 +263,29 @@ export interface WorkspaceGitStatus {
   dirty: DiffStat
 }
 
+/** A workspace Delete leaves alone, with the reason in plain words (KERNEL-333). */
+export interface DeleteSkip { id: string; name: string; reason: string }
+
+/** What Delete in History would do, before it does it (KERNEL-333). */
+export interface DeletePreview {
+  /** How many workspaces would go. */
+  workspaces: number
+  skipped: DeleteSkip[]
+  /** Branches that hold commits pushed nowhere. They stay unless the box is ticked. */
+  unpushedBranches: number
+  /** Claude Code transcripts that would be deleted, in bytes. */
+  transcriptBytes: number
+}
+
+/** What Delete in History did (KERNEL-333). */
+export interface DeleteResult {
+  deleted: string[]
+  skipped: DeleteSkip[]
+  /** Branches kept because their commits are pushed nowhere. A branch kept because another workspace uses it isn't counted. */
+  keptBranches: number
+  freedBytes: number
+}
+
 export interface ChangedFile {
   path: string
   status: 'A' | 'M' | 'D' | 'R' | '?'
@@ -1025,6 +1048,8 @@ export type Modal =
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
+  /** History > Delete: archived workspaces, with their branches, checkpoints and transcripts (KERNEL-333). */
+  | { name: 'confirm'; kind: 'deleteHistory'; workspaceIds: string[] }
   | { name: 'confirm'; kind: 'retire'; roomId: string; agentId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }

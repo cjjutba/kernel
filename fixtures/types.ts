@@ -1,5 +1,5 @@
 import type {
-  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount,
+  ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
   FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
 } from '@shared/types'
@@ -29,6 +29,8 @@ export interface Fixture {
   tasks?: Record<string, Task[]>
   /** By workspace id. */
   checkpoints?: Record<string, Checkpoint[]>
+  /** What the Delete confirm in History counts (KERNEL-333). A missing field reads as fixed numbers. */
+  deletePreview?: DeletePreview
   notifications?: Notification[]
   /** By workspace id. */
   prs?: Record<string, PrInfo>

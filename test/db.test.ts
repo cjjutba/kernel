@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval, SharedFile } from '@shared/types'
+import type { Approval, SharedFile, Workspace } from '@shared/types'
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
@@ -296,5 +296,92 @@ describe('store reads', () => {
     expect(store.sharedFiles({ roomId: 'r1' }).map((f) => [f.id, f.title])).toEqual([['a', 'Again'], ['b', 'b']])
     store.deleteRoom('r1')
     expect(store.sharedFiles().map((f) => f.id)).toEqual(['c'])
+  })
+})
+
+describe('deleting workspaces (KERNEL-333)', () => {
+  it('removes the named workspaces\' rows in every table and leaves the others and the room alone', () => {
+    const store = new Store(':memory:')
+    const put = (sql: string, ...args: unknown[]) => store.db.prepare(sql).run(...args)
+    const count = (table: string) => (store.db.prepare(`select count(*) as n from ${table}`).get() as { n: number }).n
+    store.saveRoom({ id: 'r1', name: 'Invoices', createdAt: 1 } as never)
+    for (const id of ['w1', 'w2', 'w3']) {
+      store.saveWorkspace({ id, roomId: 'r1', name: id, status: 'archived', createdAt: 1 } as Workspace)
+      store.saveChat({ id: `c-${id}`, workspaceId: id, title: id, createdAt: 1 } as never)
+      store.saveItem(`c-${id}`, { kind: 'text', id: `i-${id}`, ts: 1, text: 'hi' })
+      store.saveSharedFile({ id: `s-${id}`, roomId: 'r1', workspaceId: id, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html', versions: [], createdAt: 1, updatedAt: 1 })
+      store.saveApproval(approval({ id: `a-${id}`, status: 'allowed', workspaceId: id } as never))
+      store.saveActivity({ id: `e-${id}`, ts: 1, roomId: 'r1', workspaceId: id, kind: 'turn.done', text: 'done' } as never)
+      store.saveNotification({ id: `n-${id}`, kind: 'finished', roomId: 'r1', workspaceId: id, title: id, sub: '', createdAt: 1 } as never)
+    }
+    put('insert into tasks values (?, ?, ?, ?)', 'r1', 'T-1', JSON.stringify({ id: 'T-1', roomId: 'r1', workspaceId: 'w1' }), 1)
+
+    store.deleteWorkspaces([])
+    expect(count('workspaces')).toBe(3)
+    store.deleteWorkspaces(['w1', 'w3', 'nope'])
+
+    expect(store.workspaces().map((w) => w.id)).toEqual(['w2'])
+    expect(store.chats('w1')).toEqual([])
+    expect(store.items('c-w1')).toEqual([])
+    expect(store.items('c-w3')).toEqual([])
+    expect(store.chats('w2').map((c) => c.id)).toEqual(['c-w2'])
+    expect(store.items('c-w2')).toHaveLength(1)
+    expect(store.sharedFiles().map((f) => f.id)).toEqual(['s-w2'])
+    expect(store.approvals().map((a) => a.id)).toEqual(['a-w2'])
+    expect(store.activity().map((e) => e.id)).toEqual(['e-w2'])
+    expect(store.notifications().map((n) => n.id)).toEqual(['n-w2'])
+    expect(store.room('r1')).toBeDefined()
+    expect(count('tasks')).toBe(1)
+  })
+})
+
+describe('compacting at start (KERNEL-333)', () => {
+  /** A file with a lot of rows, most of them then deleted, so its free pages outweigh what is left. */
+  function holey(file: string) {
+    const store = new Store(file)
+    const blob = 'x'.repeat(4000)
+    for (let i = 0; i < 400; i++) store.saveItem('c1', { kind: 'text', id: `i${i}`, ts: i, text: blob })
+    store.saveItem('c2', { kind: 'text', id: 'keep', ts: 1, text: 'stays' })
+    store.clearItems('c1')
+    return store
+  }
+
+  it('shrinks the file when the free pages pass both thresholds, and keeps what was left', () => {
+    const file = join(dir(), 'kernel.db')
+    const store = holey(file)
+    store.db.pragma('wal_checkpoint(truncate)')
+    const before = statSync(file).size
+    expect(Number(store.db.pragma('freelist_count', { simple: true }))).toBeGreaterThan(300)
+    store.db.close()
+
+    // Defaults need 32 MB free: this file is nowhere near, so it stays as it is.
+    const same = new Store(file)
+    expect(Number(same.db.pragma('freelist_count', { simple: true }))).toBeGreaterThan(300)
+    expect(same.compact()).toBe(false)
+    expect(same.compact(1024 * 1024, 0.99)).toBe(false)
+    expect(same.compact(1024 * 1024, 0.2)).toBe(true)
+    same.db.close()
+
+    const after = new Store(file)
+    expect(statSync(file).size).toBeLessThan(before / 4)
+    expect(Number(after.db.pragma('freelist_count', { simple: true }))).toBe(0)
+    expect(after.items('c2').map((i) => i.id)).toEqual(['keep'])
+    after.db.close()
+  })
+
+  it('runs once as the store opens, after pruning, with the default thresholds', () => {
+    const order: string[] = []
+    const prune = vi.spyOn(Store.prototype, 'prune').mockImplementation(() => { order.push('prune'); return { activity: 0, approvals: 0 } })
+    const compact = vi.spyOn(Store.prototype, 'compact').mockImplementation((...args) => { order.push(`compact ${args.length}`); return false })
+    new Store(':memory:')
+    expect(order).toEqual(['prune', 'compact 0'])
+    prune.mockRestore()
+    compact.mockRestore()
+  })
+
+  it('leaves a file with few free pages alone', () => {
+    const store = new Store(':memory:')
+    store.saveItem('c1', { kind: 'text', id: 'a', ts: 1, text: 'hi' })
+    expect(store.compact(0, 0)).toBe(false)
   })
 })

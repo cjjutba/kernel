@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import type { Workspace } from '@shared/types'
 import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
-import { Button, EmptyState, Icon, Pill, useBusy } from '../../ui'
-import { archivedList, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
+import { Button, EmptyState, Icon, IconButton, Pill, useBusy } from '../../ui'
+import { archivedList, deleteAllLabel, endedAt, groupOf, inTab, matches, prLabel, whenLabel, type HistoryGroup, type HistoryTab } from './model'
 import { restoredFromHistory } from '../workspace/byHand'
 import './history.css'
 import { SidebarToggle } from '../../components/PanelToggles'
@@ -11,7 +11,10 @@ import { SidebarToggle } from '../../components/PanelToggles'
 const tabs: [HistoryTab, string][] = [['all', 'All'], ['merged', 'Merged'], ['notMerged', 'Not merged']]
 const groups: HistoryGroup[] = ['Today', 'This week', 'Earlier']
 
-/** History.png: every archived workspace, and a way back. Restore recreates the worktree from its branch and reopens its chats. */
+/**
+ * History.png: every archived workspace, and a way back. Restore recreates the worktree from its branch and reopens its chats.
+ * Delete is the way out (KERNEL-333): one row, or every row in view.
+ */
 export function History() {
   const workspaces = useStore((s) => s.workspaces)
   const rooms = useStore((s) => s.rooms)
@@ -39,6 +42,8 @@ export function History() {
     }
   })
 
+  const confirmDelete = (workspaceIds: string[]) => actions.ui.openModal({ name: 'confirm', kind: 'deleteHistory', workspaceIds })
+
   return (
     <div className="panel">
       <header className="header" style={{ paddingRight: 12 }}>
@@ -50,6 +55,7 @@ export function History() {
       </header>
       <div className="hs-tabs" role="group" aria-label="Filter history">
         {tabs.map(([id, label]) => <Pill key={id} pressed={tab === id} onClick={() => setTab(id)}>{label}<span className="hs-n">{count(id)}</span></Pill>)}
+        {rows.length > 0 && <Button variant="ghost" className="hs-bulk" disabled={busy !== null} onClick={() => confirmDelete(rows.map((w) => w.id))}>{deleteAllLabel(tab, q.trim() !== '', rows.length)}</Button>}
       </div>
       <div className="hs-body">
         {groups.map((g) => {
@@ -66,7 +72,10 @@ export function History() {
                     <span className="ellipsis hs-room">{roomName(w)}</span>
                     <span className="hs-pr" data-merged={w.prState === 'merged' ? 'true' : undefined}>{prLabel(w)}</span>
                     <span className="hs-when">{whenLabel(endedAt(w))}</span>
-                    <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${w.name}` : `Restore ${w.name}`} onClick={() => void restore(w)}>Restore</Button>
+                    <span className="hs-actions">
+                      <Button busy={busy === w.id} busyLabel="Restoring" disabled={busy !== null} aria-label={busy === w.id ? `Restoring ${w.name}` : `Restore ${w.name}`} onClick={() => void restore(w)}>Restore</Button>
+                      <IconButton icon="trash" label={`Delete ${w.name}`} disabled={busy !== null} onClick={() => confirmDelete([w.id])} />
+                    </span>
                   </li>
                 ))}
               </ul>
