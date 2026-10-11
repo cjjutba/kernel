@@ -161,7 +161,7 @@ export class Setup extends Feature {
 
   /** A files.copy entry that leaves the repo is refused, and the setup output says which (KERNEL-209). */
   async copyFiles(ws: Workspace, room: Room, repo: RepoSettings) {
-    const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy)
+    const { refused } = await copyLocalFiles(room.path, ws.path, repo.files.copy, repo.files.exclude)
     for (const f of refused) bus.push({ type: 'script.output', workspaceId: ws.id, kind: 'setup', lines: [{ line: `Did not copy ${f}: files.copy can only copy files inside the repo.`, stream: 'stderr' }] })
   }
 

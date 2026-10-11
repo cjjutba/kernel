@@ -1,6 +1,7 @@
-import { lstat, realpath, stat } from 'node:fs/promises'
+import { lstat, readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, matchesGlob, posix, relative, sep } from 'node:path'
-import type { FileToCopy } from '@shared/types'
+import type { FileToCopy, ProductionHint } from '@shared/types'
+import { MAX_ENV_FILE, productionHints } from './env'
 import { exec } from './exec'
 
 /** The most files one worktree gets from the main checkout. */
@@ -30,21 +31,29 @@ const literalPrefix = (pattern: string) => {
  * ignored files, listed by git, so a tracked file never matches and a wholly ignored folder is only walked when a
  * pattern names it. The room setup step, workspace create and restore, and `files.preview` all read this.
  */
-export async function resolveFilesToCopy(repo: string, entries: string[], refused?: string[]): Promise<FileToCopy[]> {
-  return (await resolveCopySources(repo, entries, refused)).map(({ path, size }) => ({ path, size }))
+export async function resolveFilesToCopy(repo: string, entries: string[], refused?: string[], exclude?: string[]): Promise<FileToCopy[]> {
+  return (await resolveCopySources(repo, entries, refused, exclude)).map(({ path, size }) => ({ path, size }))
+}
+
+/** Does a `[files] exclude` entry, an exact path or a pattern, name `path` (KERNEL-449)? */
+const excludes = (entry: string, path: string) => {
+  const e = posix.normalize(entry.trim()).replace(/^\.?\//, '')
+  return isPattern(e) ? matchesGlob(path, e) : e === path
 }
 
 /**
  * The same, with the real file each path copies from. Nothing leaves the repo (KERNEL-209): an exact path that climbs
  * out with `..`, a pattern that is absolute or has a `..` segment, and a file whose real path is outside the repo once
- * symlinks are followed, through the file or a folder on its way, are refused and named in `refused`.
+ * symlinks are followed, through the file or a folder on its way, are refused and named in `refused`. A file `exclude`
+ * names is left out, whatever entry matched it (KERNEL-449).
  */
-export async function resolveCopySources(repo: string, entries: string[], refused: string[] = []): Promise<(FileToCopy & { from: string })[]> {
+export async function resolveCopySources(repo: string, entries: string[], refused: string[] = [], exclude: string[] = []): Promise<(FileToCopy & { from: string })[]> {
   const wanted = entries.filter((e): e is string => typeof e === 'string').map((e) => e.trim()).filter(Boolean)
   const found = new Map<string, { size: number; from: string }>()
   const root = await realpath(repo).catch(() => undefined)
   if (!root) return []
   const refuse = (what: string) => { if (!refused.includes(what)) refused.push(what) }
+  const excluded = (path: string) => exclude.some((e) => typeof e === 'string' && !!e.trim() && excludes(e, path))
   /** The real file behind `path`, when it is one and stays in the repo. */
   const source = async (path: string, entry: string) => {
     const from = await realpath(join(repo, path)).catch(() => undefined)
@@ -58,7 +67,7 @@ export async function resolveCopySources(repo: string, entries: string[], refuse
     // join() reads a leading slash as relative, which is how these entries always worked. Leaving the folder is not allowed.
     const path = relative(repo, join(repo, entry)).split(sep).join('/')
     if (path && escapes(path)) { refuse(entry); continue }
-    if (!path || path.split('/').includes('.git') || found.has(path)) continue
+    if (!path || path.split('/').includes('.git') || found.has(path) || excluded(path)) continue
     const file = await source(path, entry)
     if (file) found.set(path, file)
   }
@@ -71,7 +80,7 @@ export async function resolveCopySources(repo: string, entries: string[], refuse
   if (patterns.length) {
     for (const path of await candidates(repo, patterns)) {
       if (found.size >= MAX_FILES_TO_COPY) break
-      if (found.has(path) || !patterns.some((p) => matchesGlob(path, p))) continue
+      if (found.has(path) || !patterns.some((p) => matchesGlob(path, p)) || excluded(path)) continue
       // A pattern match that is itself a symlink is skipped (KERNEL-245); one under a linked folder is refused.
       const s = await lstat(join(repo, path)).catch(() => undefined)
       if (!s?.isFile()) continue
@@ -81,6 +90,23 @@ export async function resolveCopySources(repo: string, entries: string[], refuse
   }
 
   return [...found].map(([path, f]) => ({ path, ...f })).sort((a, b) => byPath(a.path, b.path)).slice(0, MAX_FILES_TO_COPY)
+}
+
+/** An env file by its name: `.env`, `.env.production`, `prod.env`. Only these are read for the production check. */
+const envLike = (path: string) => { const name = posix.basename(path); return name.startsWith('.env') || name.endsWith('.env') }
+
+/**
+ * Every variable in the env files to copy that looks like production, by file, the strongest reason first in each file
+ * (KERNEL-449). It reads the main checkout's files, the same ones a new worktree gets, and returns names, never values.
+ */
+export async function productionInCopy(repo: string, entries: string[], exclude: string[] = []): Promise<ProductionHint[]> {
+  const out: ProductionHint[] = []
+  for (const f of await resolveCopySources(repo, entries, [], exclude)) {
+    if (!envLike(f.path) || f.size > MAX_ENV_FILE) continue
+    const text = await readFile(f.from, 'utf8').catch(() => null)
+    if (text !== null) out.push(...productionHints(f.path, text))
+  }
+  return out
 }
 
 /**
