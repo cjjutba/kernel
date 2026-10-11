@@ -32,10 +32,10 @@ const NO_RULES: Rules = { requireGreen: false, requireReviewer: false }
 
 /**
  * Merge for one workspace's PR, wherever a PR is listed: the row of a Team update, the Lead's PRs tab. Give it the workspace
- * whose PR merges (a reviewer's row passes the reviewed one). It reads the rules, the PR and the reviewer's name itself, so a
+ * whose PR merges (a reviewer's row passes the reviewed one). `short` drops the number from the label, for a row that already shows it. It reads the rules, the PR and the reviewer's name itself, so a
  * caller knows nothing about when a PR may merge.
  */
-export function MergeButton({ ws }: { ws: Workspace }) {
+export function MergeButton({ ws, short }: { ws: Workspace; short?: boolean }) {
   const rules = useStore((s) => s.settings?.pr) ?? NO_RULES
   const pr = useStore((s) => s.prs[ws.id])
   const reviewer = useStore((s) => s.agents[ws.roomId])
@@ -53,7 +53,7 @@ export function MergeButton({ ws }: { ws: Workspace }) {
   if (needsPr && !read) return null
 
   const view = mergeView(ws, pr, rules, (id) => reviewer?.find((a) => a.id === id)?.name ?? id)
-  return <MergeSlot ws={ws} view={view} busy={busy} onMerge={() => void run(busyLabel.merge, () => mergeAndToast(ws.id))} />
+  return <MergeSlot ws={ws} view={view} busy={busy} short={short} onMerge={() => void run(busyLabel.merge, () => mergeAndToast(ws.id))} />
 }
 
 /** Merges and toasts "Could not merge" with the reason when it fails, so the caller's busy state ends either way. */
@@ -62,7 +62,7 @@ export async function mergeAndToast(workspaceId: string) {
 }
 
 /** What `MergeButton` draws for a view. `busy` is the label while the button's own merge runs, such as "Merging". */
-export function MergeSlot({ ws, view, busy, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; onMerge: () => void }) {
+export function MergeSlot({ ws, view, busy, short, onMerge }: { ws: Workspace; view: MergeView; busy?: string | null; short?: boolean; onMerge: () => void }) {
   switch (view.kind) {
     case 'none': return null
     case 'merged': return <span className="tucard-merged">Merged</span>
@@ -71,7 +71,7 @@ export function MergeSlot({ ws, view, busy, onMerge }: { ws: Workspace; view: Me
     case 'merging': return <span className="pr-tone" data-tone="ready"><Button className="pr-soft tucard-merge" busy>Merging</Button></span>
     case 'ready': return (
       <span className="pr-tone" data-tone="ready">
-        <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
+        <Button className="pr-soft tucard-merge" busy={!!busy} busyLabel={busy ?? undefined} aria-label={ws.prNumber ? `Merge PR #${ws.prNumber}` : 'Merge PR'} onClick={onMerge}>{ws.prNumber && !short ? `Merge #${ws.prNumber}` : 'Merge'}</Button>
       </span>
     )
   }
