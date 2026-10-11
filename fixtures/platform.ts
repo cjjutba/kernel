@@ -1,9 +1,9 @@
-import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, SettingsPage, Skill } from '@shared/types'
+import type { AgentDef, DevUiPage, HookStatus, Integration, McpServer, PreflightCheck, RateLimit, RoomSettings, RoomSettingsSection, SettingsPage, Skill, TerminalPreset } from '@shared/types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import type { Fixture } from './types'
 import { teamFixtures } from './team'
 import { workspaceFixtures } from './workspace'
-import { at, base, ids, scene, tableItems, withWorkspace } from './base'
+import { at, base, ids, invaderIcon, scene, tableItems, withWorkspace } from './base'
 
 // Platform lane: setup checks (KERNEL-27), limits and setup failures (KERNEL-28).
 // Check copy matches src/main/services/preflight.ts.
@@ -12,12 +12,12 @@ const onboarding = { route: { name: 'onboarding', step: 'checks' } } as const
 const open = { route: { name: 'workspace', workspaceId: ids.table } } as const
 const empty = { rooms: [], agents: {}, status: {}, workspaces: [], chats: [], items: {}, approvals: [], activity: [], changes: {}, diffs: {}, push: [] }
 
-// The five checks, in canvas order. Copy matches src/main/services/preflight.ts.
-const claudeOk: PreflightCheck = { id: 'claude', ok: true, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
-const authOk: PreflightCheck = { id: 'auth', ok: true, title: 'Signed in', detail: 'Claude Max' }
-const teamsOk: PreflightCheck = { id: 'teams', ok: true, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
-const ghOk: PreflightCheck = { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as samrivera', meta: 'gh 2.62' }
-const hooksOk: PreflightCheck = { id: 'hooks', ok: true, title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
+// The checks, in canvas order. Copy matches src/main/services/preflight.ts.
+const claudeOk: PreflightCheck = { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'Found on your PATH', meta: 'v2.1.284' }
+const authOk: PreflightCheck = { id: 'auth', ok: true, blocking: true, title: 'Signed in', detail: 'Claude Max' }
+const teamsOk: PreflightCheck = { id: 'teams', ok: true, blocking: false, title: 'Agent teams', detail: 'Enabled for Kernel sessions' }
+const ghOk: PreflightCheck = { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera', meta: 'gh 2.62' }
+const hooksOk: PreflightCheck = { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: 'localhost:7420' }
 const allOk = [claudeOk, authOk, teamsOk, ghOk, hooksOk]
 /** Every check passing except the one at `id`, which is replaced by `failing`. */
 const failing = (failed: PreflightCheck) => allOk.map((c) => (c.id === failed.id ? failed : c))
@@ -48,21 +48,54 @@ const gallery = (page: DevUiPage) => scene(() => ({ ...empty, ui: { route: { nam
 
 // KERNEL-25: the app-wide settings pages. The seed's rooms fill the nav; Account adds the three usage windows the canvas shows.
 const settingsPage = (page: SettingsPage, extra: Partial<Fixture> = {}) => scene(() => ({ ...extra, ui: { route: { name: 'settings', page } } }))
+/** One of Client A's room pages (KERNEL-191). */
+const roomPage = (section: RoomSettingsSection, extra: Partial<Fixture> = {}, menu?: 'settingsFiles') => scene(() => ({ ...extra, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section }, ...(menu ? { menu } : {}) } }))
 const accountUsage: RateLimit[] = [
   { type: 'five_hour', status: 'allowed', utilization: 0.62, resetsAt: secs(next(15, 40)) },
   { type: 'seven_day', status: 'allowed', utilization: 0.38, resetsAt: secs(nextMonday()) },
   { type: 'seven_day_opus', status: 'allowed_warning', utilization: 0.9, resetsAt: secs(nextMonday()), model: 'claude-fable-5-1' }
 ]
 
-// KERNEL-26: the repo pages read the first room's .kernel files, so the fixture gives Client A the values the canvas shows.
+// KERNEL-26, KERNEL-191: the room pages read their own room's .kernel files, so the fixture gives Client A the values the canvas shows.
+// `sources` says which file set what: both files are there, so the settings files button offers both.
 const kernelFiles: RoomSettings = {
   scripts: { setup: 'pnpm install\ncp ../../.env.local .env.local', run: 'pnpm dev --port $KERNEL_PORT', archive: 'docker compose down', runMode: 'concurrent' },
+  runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
   files: { copy: ['.env.local', '.env.test', 'certs/*.pem'], symlinkNodeModules: false },
-  workspace: {},
-  disabled: { skills: [], mcp: ['Figma'] }
+  workspace: { baseRef: 'origin/dev' },
+  disabled: { skills: [], mcp: ['Figma'] },
+  pr: { createInstructions: '# Create a pull request\n1. Rebase on origin/dev and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk\n4. Link the Linear issue in the description' },
+  preview: { urls: [] },
+  env: { files: [] },
+  sources: { 'scripts.setup': 'shared', 'scripts.run': 'override', 'files.copy': 'shared', 'workspace.baseRef': 'override', 'pr.createInstructions': 'override' }
 }
 const clientA = (extra: Partial<RoomSettings> = {}) => ({ roomSettings: { [ids.roomA]: { ...kernelFiles, ...extra } } })
-const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck' } }
+/** Client A's Environment page: two variables and two env files from its personal file, `src/backend/.env` missing. */
+const envFiles = ['.env', 'src/backend/.env']
+const envRoomA: Partial<Fixture> = {
+  ...clientA({ env: { files: envFiles }, sources: { ...kernelFiles.sources, 'env.files': 'local' } }),
+  env: { rooms: { [ids.roomA]: { names: ['DATABASE_URL', 'STRIPE_SECRET_KEY'], files: envFiles.map((path) => ({ path, missing: path.startsWith('src/') })) } } }
+}
+const prSettings = { ...DEFAULT_SETTINGS('/Users/you'), pr: { ...DEFAULT_SETTINGS('/Users/you').pr, createInstructions: '# Create a pull request\n1. Rebase on origin/main and run pnpm test\n2. Title it as a Conventional Commit\n3. Fill in summary, scope and risk', resolveInstructions: '# Resolve conflicts\n1. Rebase on origin/main\n2. Re-run pnpm test and pnpm typecheck', fixChecksInstructions: '# Fix failing checks\n1. Read the failing job log\n2. Fix the cause, not the test\n3. Push and wait for the checks', addressReviewInstructions: '# Address review comments\n1. Read every open thread\n2. Change the code or reply with a reason\n3. Push and resolve the threads' } }
+/** What approvals saved with Always allow in this room. Two are long enough to clamp to two lines. */
+const roomRules = [
+  'pnpm test', 'pnpm typecheck',
+  'gh pr view --json number,title,state,statusCheckRollup,reviewDecision,mergeable,headRefName,baseRefName,url,isDraft,mergeStateStatus,author,labels',
+  'node design/canvas/source/render.mjs Settings SettingsAppearance SettingsNotifications SettingsAccount SettingsShortcuts SettingsModels SettingsPermissions SettingsGit SettingsScripts SettingsPRs',
+  'for f in design/screens/Settings*.png; do sips -g pixelWidth -g pixelHeight "$f"; done | grep -v "pixelWidth: 1440" | grep -v "pixelHeight: 900"',
+  'git log --oneline origin/main..HEAD'
+]
+/** Client A's General page (SettingsRoom.png), which SettingsRoomIcon builds on. */
+const settingsRoom = (f: Fixture): Partial<Fixture> => ({
+  ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
+  rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a', repo: 'cjjutba/client-a' } : r)),
+  agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
+  // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
+  integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
+  linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
+  ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
+})
+
 const skill = (name: string): Skill => ({ name, description: '', source: 'project', enabled: true })
 const mcpServers: McpServer[] = ['GitHub', 'Linear', 'Vercel', 'Figma'].map((name) => ({ name, source: 'user', enabled: true }))
 const agentFile = (id: string, name: string, role: string, description: string): AgentDef => ({ id, name, role, description, lead: id === 'rowan', prompt: '', file: `.claude/agents/${id}.md`, model: id === 'rowan' || id === 'theo' ? 'opus' : 'sonnet' })
@@ -109,6 +142,13 @@ const whatsNewCurrent: Fixture = {
   ui: { ...teamFixtures.UpdateReady.ui, modal: { name: 'whatsNew' } }
 }
 
+/** KERNEL-251: Codex is on the PATH and one custom command is saved, as SettingsBigTerminal.png and WorkspaceTerminalPresets.png draw them. */
+const codex: TerminalPreset = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+const bigTerminal: Partial<Fixture> = {
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), terminal: { ...DEFAULT_SETTINGS('/Users/you').terminal, custom: [{ id: 'custom-dev-server-logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } },
+  terminalClis: [codex]
+}
+
 export const platformFixtures: Record<string, Fixture> = {
   WhatsNew: whatsNew,
   WhatsNewCurrent: whatsNewCurrent,
@@ -117,7 +157,7 @@ export const platformFixtures: Record<string, Fixture> = {
   HomeLight: light(teamFixtures.Home),
   WorkspaceLight: light(workspaceFixtures.Workspace),
   // Open at login is off by default since KERNEL-57; the canvas draws it on.
-  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openAtLogin: true } } }),
+  Settings: settingsPage('general', { settings: { ...DEFAULT_SETTINGS('/Users/you'), general: { ...DEFAULT_SETTINGS('/Users/you').general, openTo: 'home', openAtLogin: true } } }),
   SettingsAppearance: settingsPage('appearance'),
   SettingsNotifications: settingsPage('notifications'),
   SettingsAccount: settingsPage('account', { usage: accountUsage }),
@@ -125,24 +165,55 @@ export const platformFixtures: Record<string, Fixture> = {
   SettingsModels: settingsPage('models'),
   SettingsPermissions: settingsPage('permissions', { settings: { ...DEFAULT_SETTINGS('/Users/you'), permissions: { ...DEFAULT_SETTINGS('/Users/you').permissions, neverAllow: ['git push origin main', 'curl * | sh'] } } }),
   SettingsExperimental: settingsPage('experimental'),
+  SettingsBigTerminal: settingsPage('bigterm', bigTerminal),
   SettingsAbout: settingsPage('about', { preflight: [] }),
   SettingsGit: settingsPage('git', { branches: ['origin/main', 'origin/dev', 'main'] }),
-  SettingsPRs: settingsPage('prs', { settings: prSettings }),
-  SettingsScripts: settingsPage('scripts', clientA()),
-  SettingsFiles: settingsPage('files', clientA()),
-  SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
-  SettingsTeam: scene((f) => ({ agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'agents' } } })),
-  SettingsSkills: settingsPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
-  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
-  SettingsRoom: scene((f) => ({
-    ...clientA({ scripts: { setup: 'pnpm install' }, linear: { team: 'KERNEL' } }),
-    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
-    agents: { ...f.agents, [ids.roomA]: sixAgents.slice(0, 5) },
-    // KERNEL-161: Linear is connected and the room has a team, so the row shows its select.
-    integrations: integrationRows.map((r) => (r.id === 'linear' ? { ...r, connected: true } : r)),
-    linear: { scope: { teams: [{ id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }, { id: 'team-web', key: 'WEB', name: 'Web' }], projects: [], cycles: [] } },
-    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA } }
+  SettingsRoomGit: roomPage('git', { ...clientA(), branches: ['origin/main', 'origin/dev', 'main'] }, 'settingsFiles'),
+  // KERNEL-249: run is overridden here, and frontend and backend are personal scripts, as the canvas draws them.
+  // KERNEL-250: the two preview URLs come from settings.toml. The list is one value, so its source shows on the first row.
+  SettingsRoomScripts: roomPage('scripts', clientA({
+    runScripts: [
+      { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+      { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+      { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+    ],
+    preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] },
+    sources: { ...kernelFiles.sources, 'runScripts.run': 'override', 'runScripts.frontend': 'local', 'runScripts.backend': 'local', 'preview.urls': 'shared' }
   })),
+  // KERNEL-254: names only, since a value only ever comes from env.reveal. Client A's list is its personal file, and one of the two files isn't there.
+  SettingsEnvironment: settingsPage('env', { env: { app: ['GH_TOKEN', 'NPM_TOKEN', 'NODE_OPTIONS'] } }),
+  SettingsRoomEnvironment: roomPage('environment', envRoomA),
+  SettingsEnvironmentAdd: scene(() => ({ ...envRoomA, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'environment' }, modal: { name: 'envVar', roomId: ids.roomA } } })),
+  SettingsRoomInstructions: roomPage('instructions', clientA()),
+  SettingsRoomPermissions: scene((f) => ({
+    ...clientA(),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, allow: roomRules } : r)),
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'permissions' } }
+  })),
+  SettingsPRs: settingsPage('prs', { settings: prSettings }),
+  SettingsScripts: settingsPage('scripts'),
+  // KERNEL-252: the list and the ignored files in Client A's checkout, so the preview shows the 11 the canvas lists.
+  SettingsFiles: scene((f) => ({
+    ...clientA({ files: { copy: ['.env*', 'certs/*.pem', '.npmrc'], symlinkNodeModules: false } }),
+    rooms: f.rooms.map((r) => (r.id === ids.roomA ? { ...r, path: '/Users/you/Projects/client-a' } : r)),
+    localFiles: { [ids.roomA]: [...['.env', '.env.development', '.env.local', '.env.production', '.env.test', '.npmrc', 'certs/ca.pem', 'certs/dev.pem', 'certs/localhost.pem', 'certs/staging.pem', 'certs/wildcard.pem', '.DS_Store', 'certs/README.txt', 'dist/index.js'].map((path, i) => ({ path, size: 96 + i * 31 }))] },
+    ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'files' } }
+  })),
+  SettingsHooks: settingsPage('hooks', { hooks: { port: 7420, listening: true, installed: true, events: hookEvents.filter((e) => e.name !== 'SessionStart') } }),
+  SettingsTeam: scene((f) => ({ ...clientA(), agents: { ...f.agents, [ids.roomA]: sixAgents }, ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA, section: 'agents' } } })),
+  SettingsSkills: roomPage('skills', { ...clientA(), skills: ['setup', 'plan', 'feature', 'verify', 'image'].map(skill), mcp: mcpServers }),
+  SettingsIntegrations: settingsPage('integrations', { integrations: integrationRows }),
+  SettingsRoom: scene(settingsRoom),
+  // KERNEL-253: the room has its GitHub avatar and the Icon row's menu is open. The sidebar row for Client A shows it too.
+  SettingsRoomIcon: scene((f) => {
+    const room = settingsRoom(f)
+    return {
+      ...room,
+      rooms: room.rooms!.map((r) => (r.id === ids.roomA ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomA}-1.png`, at: at(9, 0) } } : r)),
+      roomIcons: { [ids.roomA]: invaderIcon },
+      ui: { route: { name: 'settings', page: 'room', roomId: ids.roomA }, menu: 'roomIcon' }
+    }
+  }),
   DevUi: gallery('components'),
   DevUiDisplay: gallery('display'),
   DevUiOverlays: gallery('overlays'),
@@ -154,11 +225,11 @@ export const platformFixtures: Record<string, Fixture> = {
     hooks: { port: 7420, listening: true, installed: true, events: hookEvents },
     ui: { route: { name: 'home' }, modal: { name: 'checkHooks' } }
   })),
-  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, title: 'Claude Code not found', detail: 'Kernel runs your agents with Claude Code. Install it, then check again.', fix: { command: 'npm install -g @anthropic-ai/claude-code' } })),
-  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later.', meta: 'v2.0.14', fix: { command: 'claude update' } })),
-  SetupTeamsOff: setup(failing({ id: 'teams', ok: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
-  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests.', fix: { command: 'gh auth login' } })),
-  SetupPortBusy: setup(failing({ id: 'hooks', ok: false, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
+  SetupClaudeMissing: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code not found', detail: 'Kernel runs agents with its own copy. Install Claude Code to sign in from Terminal.', meta: 'v2.1.284', fix: { command: 'curl -fsSL https://claude.ai/install.sh | bash' } })),
+  SetupClaudeOld: setup(failing({ id: 'claude', ok: false, blocking: false, title: 'Claude Code is too old', detail: 'Found v2.0.14. Agent teams need v2.1.32 and Channels need v2.1.80 or later. Update Kernel to get a newer one.', meta: 'v2.0.14' })),
+  SetupTeamsOff: setup(failing({ id: 'teams', ok: false, blocking: false, title: 'Agent teams are off', detail: 'Kernel turns on CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS for its own sessions only.', fix: { action: 'enable-teams' } })),
+  SetupGhSignedOut: setup(failing({ id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } })),
+  SetupPortBusy: setup(failing({ id: 'hooks', ok: false, blocking: true, title: 'Port 7420 is taken', detail: 'Another process (node, pid 4821) is using it. Kernel can listen on 7421 and update your hooks.', fix: { action: 'use-next-port' } })),
   // KERNEL-28: failure banners. Each one is the state main would push: usage, account, network, retry, setup, hooks.
   WorkspaceSessionLimit: scene(() => ({ usage: [{ type: 'five_hour', status: 'rejected', utilization: 1, resetsAt: secs(next(15, 40)) }], ui: open })),
   WorkspaceWeeklyLimit: scene(() => ({ usage: [{ type: 'seven_day', status: 'rejected', utilization: 1, resetsAt: secs(nextMonday()) }], ui: open })),
@@ -175,11 +246,15 @@ export const platformFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'retry', chatId: ids.tableChat, retry: { attempt: 2, of: 5, nextAt: Date.now() + 14_000 } }],
     ui: open
   })),
-  WorkspaceOffline: scene((f) => ({
-    queue: { [ids.tableChat]: [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text', text: 'Also add a loading skeleton.' }], ts: at(10, 40) }] },
-    push: [...f.push, { type: 'online', online: false }],
-    ui: open
-  })),
+  WorkspaceOffline: scene((f) => {
+    const queue = [{ id: 'q-offline', chatId: ids.tableChat, parts: [{ type: 'text' as const, text: 'Also add a loading skeleton.' }], ts: at(10, 40) }]
+    // The queue's note comes from the reason the engine pushes with it (KERNEL-273).
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'online', online: false }, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'offline' }],
+      ui: open
+    }
+  }),
   // Main keeps the last name it read when a session reports the sign-out, so the account menu still says who.
   WorkspaceSignedOut: scene(() => ({ account: { signedIn: false, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }, ui: open })),
   WorkspaceSetupFailed: scene((f) => ({

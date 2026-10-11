@@ -1,8 +1,9 @@
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import type { AgentDef, AgentStatus, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, RateLimit, TeamUpdate, Workspace } from '@shared/types'
+import { query, type CanUseTool, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PermissionUpdate, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SpawnOptions } from '@anthropic-ai/claude-agent-sdk'
+import type { AgentDef, AgentStatus, AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, MessageFrom, QueuedMessage, QueueReason, RateLimit, TeamUpdate, Workspace } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
 import { linkText } from '@shared/links'
@@ -15,6 +16,7 @@ import { blockingLimit, failureOf, limitedModels, WINDOW_MODEL, type Failure } f
 import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import { IMAGE_DATA_URL, savePlan } from './plans'
 import type { AppSettings } from './settings'
+import { buildEnv, kernelVars } from './env'
 
 /**
  * The SDK's `claude` binary in a packaged app. The SDK finds it with require.resolve, which points inside app.asar,
@@ -47,13 +49,8 @@ export class InputQueue<T> implements AsyncIterable<T> {
 
 interface Live {
   query: Query; input: InputQueue<SDKUserMessage>; abort: AbortController; running: boolean; interrupted: boolean
-  /**
-   * The hook event that refused a step, while the agent has not moved on. A new message ends it. After PreToolUse, so does a
-   * later tool call that succeeds. After the hooks that refuse to let the agent finish (Stop and the task hooks), so does a turn
-   * that ends successfully. A turn that ends any other way keeps it, since the agent gave up.
-   * Known limit: with parallel tool calls, another call in the same message that succeeds ends a PreToolUse block at once.
-   */
-  blocked?: string
+  /** Background tasks (shells, subagents, monitors) the process is running, from its latest background_tasks_changed. */
+  tasks: Set<string>
   /** Set by sendNow: the interrupted turn is followed by the queue. A plain Stop is not. */
   sendNext?: boolean
   /** An api_retry is counting down. The next reply or result clears the banner. */
@@ -62,14 +59,45 @@ interface Live {
   limited?: boolean
   /** This turn was /clear. Its result row is left out, so the cleared chat starts empty. */
   cleared?: boolean
-  /** Who sent the message that started the running turn: Kernel, the Lead, or the user when unset (KERNEL-116). */
-  from?: MessageFrom
   toolItems: Map<string, ChatItem & { kind: 'tool' }>
   /** Agent rows whose label already names the subagent's model, by tool use id. The call's own `model` is final (KERNEL-158). */
   agentModels: Set<string>
   /** Bash commands by tool use id, as the model wrote them. Other hooks may rewrite the input canUseTool sees. */
   commands: Map<string, string>
+  /** The Claude Code process, once spawned, and the end of what it wrote to stderr. */
+  proc: Proc
+  /** Called once when the running turn ends. Set by `shutdown`, which waits for interrupted turns. */
+  whenIdle?: () => void
+  /** This turn carries on a chat a quit cut off (KERNEL-215): the nudge, or what was queued before it. */
+  carrying?: boolean
+  /** This turn hit a sign-out or a dropped connection. */
+  failed?: 'auth' | 'network'
 }
+
+interface Proc { child?: ChildProcess; stderr: string }
+
+/** A Claude Code process as started: the binary, and its first argument (a script path when the SDK runs node or bun). */
+interface Spawned { command: string; arg?: string }
+interface SavedPid extends Spawned { pid: number }
+
+/**
+ * What Kernel knows about a chat's turns that outlives its process, so an idle stop changes no answer (KERNEL-183). Only
+ * `stop()` forgets it.
+ */
+interface Turns {
+  /** Who sent the message that started the running turn, or the last one: Kernel, the Lead, or the user when unset (KERNEL-116). */
+  from?: MessageFrom
+  /**
+   * The hook event that refused a step, while the agent has not moved on. A new message ends it. After PreToolUse, so does a
+   * later tool call that succeeds. After the hooks that refuse to let the agent finish (Stop and the task hooks), so does a turn
+   * that ends successfully. A turn that ends any other way keeps it, since the agent gave up.
+   * Known limit: with parallel tool calls, another call in the same message that succeeds ends a PreToolUse block at once.
+   */
+  blocked?: string
+}
+
+/** How long a chat with nothing to do keeps its Claude Code process before Kernel stops it. The next message resumes it (KERNEL-183). */
+export const IDLE_STOP_MS = 10 * 60_000
 
 export interface SessionDeps {
   store: Store
@@ -78,27 +106,34 @@ export interface SessionDeps {
   agentFor: (ws: Workspace) => AgentDef | undefined
   /** In-process MCP servers this agent may use (Kernel's own tools for the lead). */
   mcpFor: (ws: Workspace, agent: AgentDef | undefined, chat: Chat) => Options['mcpServers']
+  /** The skills and MCP servers switched off for the workspace's room in Settings, Skills and MCP (KERNEL-226). */
+  disabledFor?: (ws: Workspace) => { skills: string[]; mcp: string[] } | undefined
   /** Kernel's own rule for this workspace, appended to the agent's prompt, such as a reviewer's (KERNEL-130). */
   rulesFor?: (ws: Workspace, agent: AgentDef | undefined) => string | undefined
   /** Bash rules the user allowed for the whole room. */
   roomAllow: (roomId: string) => string[]
+  /** The workspace's variables from `Kernel.envFor` (KERNEL-247). Without it a session gets the Mac's and Kernel's own. */
+  envFor?: (ws: Workspace) => Record<string, string>
   allowInRoom: (roomId: string, rule: string) => void
   /** The agent sent a message, its subagents' included. Kernel looks for the session's title then. */
   onReply?: (ws: Workspace, chat: Chat) => void
+  /** Claude Code started a fresh conversation in the chat. `trigger` is the SDK's: 'clear' for /clear, absent from older emitters (KERNEL-202). */
+  onReset?: (ws: Workspace, chat: Chat, trigger?: string) => void
   /** A turn ended. `ok` is false for an error; `interrupted` is true when the user stopped it; `by` sent the message that started it. */
   onTurnDone?: (ws: Workspace, chat: Chat, turn: { ok: boolean; interrupted: boolean; by: TurnBy }) => void
   /**
    * The session's process ended without being stopped. `midTurn` is true when a turn was running, so the agent's work
    * stopped halfway; an idle process that went away harms nothing, since the next message starts a new one. Stop,
-   * archive and quit don't call this.
+   * archive and quit don't call this. A chat a quit or a crash of Kernel cut off mid-turn is reported at the next launch,
+   * with `resumed` true, since it carries on by itself (KERNEL-215).
    */
   onExit?: (ws: Workspace, chat: Chat, reason: string, midTurn: boolean, resumed: boolean) => void
   /** A session hit something the banners show: a sign-out, a dropped connection. Kernel checks it and tells the renderer. */
   onFailure?: (failure: Failure, ws: Workspace) => void
   /** Usage windows changed. Kernel pauses rooms on an account-wide rejection and schedules the reset. */
   onLimits?: (limits: RateLimit[]) => void
-  /** The chats a limit stopped changed. Kernel saves them, so they still carry on after a restart. */
-  onCutOff?: (chatIds: string[]) => void
+  /** The chats a limit or a quit stopped changed. Kernel saves them, so they still carry on after a restart. */
+  onCutOff?: (cutOff: Record<string, CutOffReason>) => void
   /** What chats held for setup are holding changed. Kernel saves it, so a brief survives a restart (KERNEL-128). */
   onHeld?: (held: Record<string, QueuedMessage[]>) => void
 }
@@ -109,20 +144,28 @@ export interface Sender { from?: MessageFrom; update?: TeamUpdate }
 /** Who started a turn. */
 export type TurnBy = MessageFrom | 'user'
 
-/**
- * What a sent message waits for in the queue: the running turn, the workspace's setup, a paused room, every room held
- * (`offline` covers a lost connection and a sign-out alike), or the agent limit in Settings, Models.
- */
-export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+/** What stopped a chat mid-turn that carries on by itself: a usage limit, or Kernel quitting or closing (KERNEL-215). */
+export type CutOffReason = 'limit' | 'quit'
+
+/** Moved to the shared contract (KERNEL-271). Exported here too for what imports it from Sessions. */
+export type { QueueReason }
 
 /** The sender fields to store on a chat item or queue entry, leaving out the ones that aren't set. */
 const sender = (o: Sender): Sender => ({ ...(o.from ? { from: o.from } : {}), ...(o.update ? { update: o.update } : {}) })
 
 export class Sessions {
   private live = new Map<string, Live>()
+  /** Per chat, whether or not its process is running. */
+  private turns = new Map<string, Turns>()
+  /** Idle clocks of live chats between turns. One that runs out stops the process (KERNEL-183). */
+  private idle = new Map<string, ReturnType<typeof setTimeout>>()
   /** Lead chats with an approved plan and nothing handed off yet (KERNEL-67). The Lead tools end one when they create a workspace. */
   readonly handoffs = new Handoffs()
   private queues = new Map<string, QueuedMessage[]>()
+  /** What each held queue last told the renderer it waits for. Computed, never saved with a held brief (KERNEL-271). */
+  private reasons = new Map<string, QueueReason | undefined>()
+  /** Chats whose queue or reason changed in the current step, sent together by `flushQueues`. */
+  private unsent = new Set<string>()
   private managedIds = new Set<string>()
   private limits = new Map<string, RateLimit>()
   private billing = new Map<string, string>()
@@ -132,8 +175,16 @@ export class Sessions {
   private global?: { open: Promise<void>; release: () => void; reasons: Set<string> }
   /** Chats whose first prompt waits for the workspace's setup script to pass. */
   private waiting = new Set<string>()
-  /** Chats a usage limit stopped mid-turn. They carry on by themselves once the limit lifts (`carryOn`). */
-  private cutOff = new Set<string>()
+  /** Chats a usage limit or a quit stopped mid-turn. They carry on by themselves once nothing holds them (`carryOn`). */
+  private cutOff = new Map<string, CutOffReason>()
+  /** Chats with a running turn, saved under `working` at every turn start and end, so a crash leaves the right list (KERNEL-215). */
+  private working = new Set<string>()
+  /** Kernel is quitting: the journal is frozen and nothing new goes out (`shutdown`). */
+  private closing = false
+  /** Kernel's launch checks are running (`holdCarryOn`). Chats in `cutOff` wait for them. Nothing else does. */
+  private launching = false
+  /** Claude Code processes Kernel started that haven't exited, by pid, with what each was started as. Saved under `claudePids`. */
+  private pids = new Map<number, Spawned>()
   /** Chats whose session died mid-turn. `post` leaves them alone until the user sends or restarts (KERNEL-124). */
   private crashed = new Set<string>()
   /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
@@ -143,22 +194,71 @@ export class Sessions {
   /**
    * What Kernel saved before it last quit: the usage windows, the chats a limit stopped, and the queues of chats held for
    * setup (KERNEL-128). A rejection without a reset time is dropped, since nothing could tell when it ends, so it no longer
-   * holds anything. A held queue comes back only while its workspace's setup still has to pass.
+   * holds anything. A held queue comes back only while its workspace's setup still has to pass, or while a ready workspace's
+   * brief waits for a PR to merge (KERNEL-259). One still in setup is left to Kernel's `recoverSetups`, which holds it once.
+   * Before KERNEL-215 `cutOff` was a list of chats a limit stopped, which still loads.
+   *
+   * Then what Sessions saved itself (KERNEL-215): every other chat's queue, and the chats whose turn was running when
+   * Kernel quit or closed unexpectedly (`clean` says which). Each of those that is still open gets its stuck tool rows
+   * closed and a note, and carries on by itself through `carryOn`, after what was queued. Everything goes through the same
+   * gate as a limit: a pause, an offline or signed-out hold, a limit and the agent limit all make it wait.
    */
-  restore(limits: RateLimit[], cutOff: string[], held: Record<string, QueuedMessage[]> = {}) {
+  restore(limits: RateLimit[], cutOff: string[] | Record<string, CutOffReason>, held: Record<string, QueuedMessage[]> = {}, o: { clean?: boolean } = {}) {
     for (const l of limits) this.limits.set(l.type, l.status === 'rejected' && !l.resetsAt ? { ...l, status: 'allowed' } : l)
-    for (const id of cutOff) this.cutOff.add(id)
+    const saved: [string, CutOffReason][] = Array.isArray(cutOff) ? cutOff.map((id) => [id, 'limit']) : Object.entries(cutOff ?? {})
+    for (const [id, reason] of saved) if (reason === 'limit' || reason === 'quit') this.cutOff.set(id, reason)
     // Chats whose setup failed before Kernel quit still hold their brief, and what was sent after it, for Run again.
     for (const [id, queue] of Object.entries(held)) {
       const chat = this.d.store.chat(id)
       const ws = chat && this.d.store.workspace(chat.workspaceId)
-      if (ws?.status !== 'failed' || !Array.isArray(queue)) continue
+      const waiting = ws?.status === 'ready' && !!ws.waitsFor?.held
+      if ((ws?.status !== 'failed' && !waiting) || !Array.isArray(queue)) continue
       this.waiting.add(id)
       this.setQueue(id, queue)
     }
     // Entries left out above, as an archived workspace's, drop out of what Kernel saves.
     this.saveHeld()
+    for (const [id, queue] of Object.entries(this.d.store.meta<Record<string, QueuedMessage[]>>(QUEUES) ?? {})) {
+      if (this.waiting.has(id) || !this.open(id) || !Array.isArray(queue) || !queue.length) continue
+      this.queues.set(id, queue)
+      this.pushQueue(id)
+    }
+    for (const id of this.d.store.meta<string[]>(WORKING) ?? []) this.relaunched(id, o.clean === true)
+    this.saveWorking()
+    this.saveQueues()
+    this.d.onCutOff?.(Object.fromEntries(this.cutOff))
+    // Queues that waited for a slot or a hold go out now if nothing holds them any more, and the cut-off chats carry on.
+    for (const id of [...this.queues.keys()]) if (!this.cutOff.has(id)) this.drain(id)
     this.pushLimits()
+  }
+
+  /** The chat is open and its workspace isn't archived. */
+  private open(chatId: string): boolean {
+    const chat = this.d.store.chat(chatId)
+    const ws = chat && this.d.store.workspace(chat.workspaceId)
+    return !!chat && !chat.closed && !!ws && ws.status !== 'archived'
+  }
+
+  /**
+   * A chat whose turn was running when Kernel quit or closed: its tool rows still marked running fail, a note says what
+   * happened, and it waits in `cutOff` to carry on. A queue it had keeps its order, and the nudge follows it.
+   */
+  private relaunched(chatId: string, clean: boolean) {
+    if (this.waiting.has(chatId) || !this.open(chatId)) return
+    const chat = this.mustChat(chatId)
+    const ws = this.mustWorkspace(chat.workspaceId)
+    for (const it of this.d.store.items(chatId)) {
+      if (it.kind === 'tool' && it.status === 'running') this.item(chat, { ...it, status: 'failed', output: TOOL_STOPPED })
+    }
+    this.item(chat, { kind: 'note', id: randomUUID(), ts: Date.now(), text: clean ? QUIT_NOTE : CRASH_NOTE })
+    const queue = this.queued(chatId)
+    if (queue.length && !queue.some((q) => q.from === 'kernel' && isNudge(q.parts))) {
+      this.queues.set(chatId, [...queue, { id: randomUUID(), chatId, parts: [{ type: 'text', text: RELAUNCH_NUDGE }], ts: Date.now(), from: 'kernel' }])
+      this.pushQueue(chatId)
+    }
+    this.cutOff.set(chatId, 'quit')
+    // A teammate that carries on rides along in the Lead's next update instead of waking it (KERNEL-215).
+    this.d.onExit?.(ws, chat, clean ? QUIT_REASON : CRASH_REASON, true, true)
   }
 
   /** Hold every room, the way a pause holds one: agents finish their step and wait, sends queue. */
@@ -167,6 +267,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.global = { open, release, reasons: new Set([reason]) }
+    this.pushReasons()
   }
 
   /** Drop one reason for the hold. When none is left, agents go on and what queued meanwhile is sent. */
@@ -177,9 +278,23 @@ export class Sessions {
     g.release()
     for (const chatId of [...this.queues.keys()]) if (!this.live.get(chatId)?.running) this.drain(chatId)
     this.carryOn()
+    this.pushReasons()
   }
 
   heldFor(): string[] { return [...(this.global?.reasons ?? [])] }
+
+  /**
+   * Kernel checks the network and the sign-in at launch before agents carry on (KERNEL-215). Until `releaseCarryOn`, chats
+   * a quit or a limit cut off wait, queue included. Ordinary sends and every other queue go out as usual.
+   */
+  holdCarryOn() { this.launching = true }
+
+  /** The launch checks are done. What waited carries on, unless a hold they found (offline, signed out) still stands. */
+  releaseCarryOn() {
+    if (!this.launching) return
+    this.launching = false
+    this.drainWaiting()
+  }
 
   /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
   hold(chatId: string, parts: ChatPart[], o: Sender = {}) {
@@ -190,7 +305,9 @@ export class Sessions {
   release(chatId: string) {
     this.waiting.delete(chatId)
     this.saveHeld()
+    this.saveQueues()
     if (!this.live.get(chatId)?.running) this.drain(chatId)
+    this.pushReasons()
   }
 
   /** Hands Kernel what every chat held for setup is holding, to save. */
@@ -223,6 +340,7 @@ export class Sessions {
     let release!: () => void
     const open = new Promise<void>((resolve) => { release = resolve })
     this.paused.set(roomId, { open, release })
+    this.pushReasons()
   }
 
   /** Let the room's agents go on and send what was held while it was paused. */
@@ -233,6 +351,7 @@ export class Sessions {
     gate.release()
     for (const ws of this.d.store.workspaces(roomId)) for (const c of this.d.store.chats(ws.id)) if (!this.live.get(c.id)?.running) this.drain(c.id)
     this.carryOn()
+    this.pushReasons()
   }
 
   private pausedChat(chat: Chat) {
@@ -309,7 +428,12 @@ export class Sessions {
     const chat = this.mustChat(chatId)
     // The user is redirecting the Lead, even when the message waits in the queue, so no hand-off reminder follows.
     if (o.from !== 'kernel') this.handoffs.done(chatId)
-    const why = this.waitsFor(chat)
+    // Kernel is quitting, as when an interrupted Lead turn messages a teammate: the message is saved and goes at the next launch.
+    if (this.closing) {
+      this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+      return { queued: true }
+    }
+    const why = this.waitsFor(chat.id)
     if (why) {
       this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
       return { queued: true, why }
@@ -319,7 +443,9 @@ export class Sessions {
   }
 
   /** What a message sent now would wait for, or nothing when it can go at once. */
-  private waitsFor(chat: Chat): QueueReason | undefined {
+  waitsFor(chatId: string): QueueReason | undefined {
+    const chat = this.d.store.chat(chatId)
+    if (!chat) return undefined
     if (this.live.get(chat.id)?.running) return 'running'
     if (this.waiting.has(chat.id)) return 'setup'
     if (this.global) return 'offline'
@@ -335,7 +461,8 @@ export class Sessions {
    */
   post(chatId: string, parts: ChatPart[], o: { update?: TeamUpdate } = {}): boolean {
     const chat = this.mustChat(chatId)
-    if (this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
+    // A chat that carries on after a quit waits for the launch checks too, or an update would take its turn without them.
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || this.live.get(chatId)?.running || this.queued(chatId).length || this.pausedChat(chat) || this.atCapacity(chatId) || this.crashed.has(chatId)) return false
     this.dispatch(chat, parts, { from: 'kernel', update: o.update })
     return true
   }
@@ -344,20 +471,24 @@ export class Sessions {
    * Who started this chat's running turn, or its last one once it is idle: Kernel, the Lead, or the user (undefined). A
    * limit or restart nudge's turn counts as the turn it carries on.
    */
-  turnFrom(chatId: string): MessageFrom | undefined { return this.live.get(chatId)?.from }
+  turnFrom(chatId: string): MessageFrom | undefined { return this.turns.get(chatId)?.from }
 
   /** This chat's running turn, or its last one once it is idle, was started by Kernel. */
   kernelTurn(chatId: string): boolean { return this.turnFrom(chatId) === 'kernel' }
 
   queued(chatId: string): QueuedMessage[] { return this.queues.get(chatId) ?? [] }
 
+  /** What the chat's queue waits for, or nothing when it is empty or its next message is about to go (KERNEL-271). */
+  queueReason(chatId: string): QueueReason | undefined { return this.queued(chatId).length ? this.waitsFor(chatId) : undefined }
+
   unqueue(chatId: string, id: string): QueuedMessage[] {
     return this.setQueue(chatId, this.queued(chatId).filter((q) => q.id !== id))
   }
 
   /**
-   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends.
-   * `pastPause` sends it from an idle chat even though its room is paused, which Kernel asks for when a limit paused it.
+   * Move a queued message to the front and stop the running turn, so it goes out as soon as that turn ends. An idle chat
+   * held only by the agent limit sends it at once. `pastPause` sends it from an idle chat even though its room is paused,
+   * which Kernel asks for when a limit paused it.
    */
   async sendNow(chatId: string, id: string, o: { pastPause?: boolean } = {}): Promise<QueuedMessage[]> {
     const pick = this.queued(chatId).find((q) => q.id === id)
@@ -365,8 +496,11 @@ export class Sessions {
     const rest = this.queued(chatId).filter((q) => q.id !== id)
     this.setQueue(chatId, [pick, ...rest])
     const live = this.live.get(chatId)
+    const why = this.waitsFor(chatId)
+    if (this.closing) return this.queued(chatId)
     if (live?.running) { live.sendNext = true; await this.interrupt(chatId, true) }
-    else if (o.pastPause && !this.global && !this.waiting.has(chatId)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
+    // Pressing Send now is the user choosing to go over the agent limit (KERNEL-271).
+    else if (why === 'capacity' || (why === 'paused' && o.pastPause)) { this.setQueue(chatId, rest); this.dispatch(this.mustChat(chatId), pick.parts, pick) }
     else this.drain(chatId)
     return this.queued(chatId)
   }
@@ -395,15 +529,25 @@ export class Sessions {
     // A nudge picks up a turn a limit or a crash cut short, so the turn is still the one whoever started it started.
     // Read before the nudge is saved, which would be the last message.
     const by = o.from === 'kernel' && isNudge(parts) ? this.startedBy(chat.id) : o.from
+    const carrying = this.cutOff.get(chat.id) === 'quit'
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
     this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) })
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
-    live.from = by
+    live.carrying = carrying
+    live.failed = undefined
+    const turns = this.turnsOf(chat.id)
+    turns.from = by
     // A new message takes the agent past whatever a hook refused.
-    live.blocked = undefined
+    turns.blocked = undefined
     live.input.push(toUserMessage(parts))
     this.setRunning(chat, ws, live, true)
+  }
+
+  private turnsOf(chatId: string): Turns {
+    let turns = this.turns.get(chatId)
+    if (!turns) this.turns.set(chatId, (turns = {}))
+    return turns
   }
 
   /** Who sent the chat's last message that wasn't one of Kernel's nudges: the turn a nudge picks up. */
@@ -420,7 +564,7 @@ export class Sessions {
   private drain(chatId: string) {
     const [next, ...rest] = this.queued(chatId)
     const chat = this.d.store.chat(chatId)
-    if (!next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
+    if (this.closing || (this.launching && this.cutOff.has(chatId)) || !next || !chat || this.pausedChat(chat) || this.atCapacity(chatId)) return
     this.setQueue(chatId, rest)
     this.dispatch(chat, next.parts, next)
   }
@@ -458,20 +602,23 @@ export class Sessions {
   drainWaiting() {
     for (const id of [...this.queues.keys()]) if (!this.live.get(id)?.running) this.drain(id)
     this.carryOn()
+    // A lower limit in Settings, Models holds queues that waited for nothing a moment ago.
+    this.pushReasons()
   }
 
   /**
-   * Chats a usage limit stopped go on once nothing holds them: no limit on the account or on their model, no pause, and a
-   * free slot. What the user queued goes first; otherwise Kernel tells the agent to pick up where it left off.
+   * Chats a usage limit or a quit stopped go on once nothing holds them: no limit on the account or on their model, no
+   * pause, no offline or signed-out hold, and a free slot. What the user queued goes first; otherwise Kernel tells the
+   * agent to pick up where it left off. After a quit, `restore` already put that nudge at the end of a queue.
    */
   private carryOn() {
-    for (const id of [...this.cutOff]) {
+    if (this.closing || this.launching) return
+    for (const [id, reason] of [...this.cutOff]) {
       const chat = this.d.store.chat(id)
-      const ws = chat && this.d.store.workspace(chat.workspaceId)
-      if (!chat || chat.closed || !ws || ws.status === 'archived') { this.setCutOff(id, false); continue }
+      if (!chat || !this.open(id)) { this.setCutOff(id, false); continue }
       if (this.live.get(id)?.running || this.pausedChat(chat) || this.atCapacity(id) || this.limitHolds(chat)) continue
       if (this.queued(id).length) this.drain(id)
-      else this.dispatch(chat, [{ type: 'text', text: LIMIT_LIFTED }], { from: 'kernel' })
+      else this.dispatch(chat, [{ type: 'text', text: reason === 'quit' ? RELAUNCH_NUDGE : LIMIT_LIFTED }], { from: 'kernel' })
     }
   }
 
@@ -481,20 +628,61 @@ export class Sessions {
     return !!blockingLimit(limits) || limitedModels(limits).includes(chat.model)
   }
 
-  private setCutOff(chatId: string, on: boolean) {
-    if (this.cutOff.has(chatId) === on) return
-    if (on) this.cutOff.add(chatId)
+  /** A usage limit or a quit stopped this chat mid-turn and it waits to carry on. */
+  private isCutOff(chatId: string) { return this.cutOff.has(chatId) }
+
+  private setCutOff(chatId: string, reason: CutOffReason | false) {
+    if ((this.cutOff.get(chatId) ?? false) === reason) return
+    if (reason) this.cutOff.set(chatId, reason)
     else this.cutOff.delete(chatId)
-    this.d.onCutOff?.([...this.cutOff])
+    this.d.onCutOff?.(Object.fromEntries(this.cutOff))
   }
 
   private setQueue(chatId: string, queue: QueuedMessage[]): QueuedMessage[] {
     if (queue.length) this.queues.set(chatId, queue)
     else this.queues.delete(chatId)
-    bus.push({ type: 'chat.queue', chatId, queue })
-    // A held brief edited or removed in the composer is saved too.
+    // An idle chat's clock counts from its last change, so a message that waited and was removed buys it the full time.
+    if (this.idle.has(chatId)) this.startIdle(chatId)
+    this.pushQueue(chatId)
+    // A held brief edited or removed in the composer is saved too, and so is every other queue, for a quit (KERNEL-215).
     if (this.waiting.has(chatId)) this.saveHeld()
+    else this.saveQueues()
     return queue
+  }
+
+  /** Saves the queues of chats not held for setup (those go under `held`), so they survive a quit or a crash. */
+  private saveQueues() {
+    const queues: Record<string, QueuedMessage[]> = {}
+    for (const [id, queue] of this.queues) if (!this.waiting.has(id)) queues[id] = queue
+    this.d.store.saveMeta(QUEUES, queues)
+  }
+
+  private saveWorking() { this.d.store.saveMeta(WORKING, [...this.working]) }
+
+  /**
+   * Tell the renderer the chat's queue and what it waits for, once the current step is done. A held message going out
+   * changes both the queue and the reason, and the renderer gets one event with where they ended up (KERNEL-271).
+   */
+  private pushQueue(chatId: string) {
+    if (!this.unsent.size) queueMicrotask(() => this.flushQueues())
+    this.unsent.add(chatId)
+  }
+
+  private flushQueues() {
+    const ids = [...this.unsent]
+    this.unsent.clear()
+    for (const chatId of ids) {
+      const queue = this.queued(chatId)
+      const why = this.queueReason(chatId)
+      if (queue.length) this.reasons.set(chatId, why)
+      else this.reasons.delete(chatId)
+      bus.push({ type: 'chat.queue', chatId, queue, ...(why ? { why } : {}) })
+    }
+  }
+
+  /** A turn started or ended, or a hold began or lifted: held queues whose reason changed tell the renderer. */
+  private pushReasons() {
+    for (const chatId of this.queues.keys()) if (this.reasons.get(chatId) !== this.waitsFor(chatId)) this.pushQueue(chatId)
   }
 
   /** The turn's own result message ends it. Queued follow-ups still run afterwards, as in Claude Code. */
@@ -528,17 +716,59 @@ export class Sessions {
 
   stop(chatId: string) {
     const live = this.live.get(chatId)
-    if (!live) return
+    // A chat stopped while idle has no process but is stopped all the same.
+    if (!live && !this.turns.has(chatId)) return
     // Stopped by Kernel or the user: a hook's refusal no longer holds anyone up. A running turn's end says so on its own;
     // an idle chat that gave up blocked has no turn left to end, so the floor hears it here (Archive, Close chat).
-    const shown = live.blocked && !live.running
-    live.blocked = undefined
-    live.input.close()
-    live.abort.abort()
-    this.live.delete(chatId)
+    const shown = this.turns.get(chatId)?.blocked && !live?.running
+    this.turns.delete(chatId)
+    if (live) this.end(chatId, live)
     if (this.queued(chatId).length) this.setQueue(chatId, [])
     const ws = shown ? this.d.store.workspace(this.mustChat(chatId).workspaceId) : undefined
     if (ws) this.setStatus(ws, this.d.agentFor(ws), 'idle')
+  }
+
+  /** Close the process's input and abort it. `consume` sees the abort and reports nothing: no offline, no crash. */
+  private end(chatId: string, live: Live) {
+    this.stopIdle(chatId)
+    live.input.close()
+    live.abort.abort()
+    this.live.delete(chatId)
+  }
+
+  /**
+   * Start the chat's idle clock over, between turns. When it runs out, the process stops unless something still needs it,
+   * and the next message resumes the conversation from `chat.sessionId` (KERNEL-183). It changes no status and keeps
+   * `turns`, so the chat looks and answers the same as before.
+   */
+  private startIdle(chatId: string) {
+    this.stopIdle(chatId)
+    const live = this.live.get(chatId)
+    if (!live || live.running) return
+    const clock = setTimeout(() => {
+      this.idle.delete(chatId)
+      if (this.live.get(chatId) !== live || live.running) return
+      // Held for now: look again after another stretch, so a pause or a background task that ends starts no new wait.
+      if (this.keepsProcess(chatId, live)) this.startIdle(chatId)
+      else this.end(chatId, live)
+    }, IDLE_STOP_MS)
+    // An idle clock never keeps Kernel running.
+    clock.unref?.()
+    this.idle.set(chatId, clock)
+  }
+
+  private stopIdle(chatId: string) {
+    clearTimeout(this.idle.get(chatId))
+    this.idle.delete(chatId)
+  }
+
+  /**
+   * Something still needs the idle chat's process: messages waiting to go, a brief held for setup, a paused room or a
+   * hold on every room, a usage limit it waits out, or a background task it runs.
+   */
+  private keepsProcess(chatId: string, live: Live): boolean {
+    const chat = this.d.store.chat(chatId)
+    return !!chat && (this.queued(chatId).length > 0 || this.pausedChat(chat) || this.isCutOff(chatId) || live.tasks.size > 0)
   }
 
   /** Start a new session for a chat whose session ended, resuming its conversation with a nudge to carry on. */
@@ -561,6 +791,87 @@ export class Sessions {
   }
   stopAll() { for (const id of [...this.live.keys()]) this.stop(id) }
 
+  /**
+   * Kernel is quitting (KERNEL-215). The journal of working chats freezes, so turns that end now stay in it and carry on
+   * at the next launch. Every running turn is interrupted at once and gets `budgetMs` to end; then every process is
+   * ended, the ones still working too. Queues are kept and saved, and nothing new goes out. Close chat and archive use
+   * `stop`, which drops the queue as before.
+   */
+  async shutdown(budgetMs = QUIT_BUDGET_MS) {
+    this.closing = true
+    const running = [...this.live.entries()].filter(([, l]) => l.running)
+    // A Stop pressed just before the quit stands: that turn ends as a Stop, drops its queue and doesn't carry on.
+    const stopping = (live: Live) => live.interrupted && !live.sendNext
+    for (const [id, live] of running) if (stopping(live)) this.working.delete(id)
+    this.saveWorking()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const ended = Promise.all(running.map(([, live]) => new Promise<void>((resolve) => {
+      live.whenIdle = resolve
+      if (stopping(live)) return
+      // Like Send now, the turn ends without dropping the queue, and no interrupted row: the note at launch says it.
+      live.interrupted = true
+      live.sendNext = true
+      void live.query.interrupt().catch(() => undefined)
+    })))
+    await Promise.race([ended, new Promise<void>((resolve) => { timer = setTimeout(resolve, budgetMs) })])
+    clearTimeout(timer)
+    for (const [id, live] of [...this.live]) {
+      this.end(id, live)
+      // The SDK waits about 2 seconds after closing stdin before it kills the process, and Kernel is gone by then. A
+      // process left mid-step carries on alone, so it gets SIGTERM now, which also ends the shells its tools started.
+      if (live.proc.child && live.proc.child.exitCode === null) live.proc.child.kill('SIGTERM')
+    }
+  }
+
+  /**
+   * Claude Code processes from the last run that are still alive (KERNEL-215). A force quit or a crash leaves them running
+   * the step they were on, in the same worktree a resumed session is about to use. Each saved pid that is still alive and
+   * still the same binary gets SIGTERM, then SIGKILL if it hasn't gone within `waitMs`. Returns the pids it ended.
+   */
+  async endLeftovers(waitMs = 2000): Promise<number[]> {
+    const saved = this.d.store.meta<SavedPid[]>(PIDS) ?? []
+    const left: SavedPid[] = []
+    for (const p of Array.isArray(saved) ? saved : []) if (typeof p?.pid === 'number' && !this.pids.has(p.pid) && (await runs(p))) left.push(p)
+    for (const p of left) signal(p.pid, 'SIGTERM')
+    const until = Date.now() + waitMs
+    let alive = left
+    while (alive.length && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, 100))
+      alive = (await Promise.all(alive.map(async (p) => ((await runs(p)) ? p : undefined)))).filter((p): p is SavedPid => !!p)
+    }
+    for (const p of alive) signal(p.pid, 'SIGKILL')
+    // Only now, so a crash during the wait still finds them at the next launch.
+    this.savePids()
+    return left.map((p) => p.pid)
+  }
+
+  /** Kernel quit or closed while a turn ran, or a chat waits to carry on: what `restore` will start, so Kernel checks the account first. */
+  wasWorking(): boolean { return (this.d.store.meta<string[]>(WORKING) ?? []).length > 0 }
+
+  /**
+   * Starts Claude Code the way the SDK's own spawn does, and records its pid until it exits, so a launch after a crash can
+   * end it (`endLeftovers`). The SDK reads no stderr from a custom spawn, so Kernel keeps the end of it for the error note.
+   */
+  private spawn(o: SpawnOptions, proc: Proc): SpawnedProcess {
+    const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, signal: o.signal, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
+    proc.child = child
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (d: string) => { proc.stderr = (proc.stderr + d).slice(-STDERR_KEPT) })
+    child.stderr?.on('error', () => undefined)
+    const pid = child.pid
+    if (pid) {
+      this.pids.set(pid, { command: o.command, ...(o.args[0] ? { arg: o.args[0] } : {}) })
+      this.savePids()
+      child.once('exit', () => { if (this.pids.delete(pid)) this.savePids() })
+    }
+    return child
+  }
+
+  private savePids() {
+    // Written from the exit of a process that outlives a stopped Kernel too, whose database is closed by then.
+    try { this.d.store.saveMeta<SavedPid[]>(PIDS, [...this.pids].map(([pid, p]) => ({ pid, ...p }))) } catch { /* Kernel stopped */ }
+  }
+
   private baseMode(): NonNullable<Options['permissionMode']> { return this.d.settings().permissions.mode === 'ask' ? 'default' : 'acceptEdits' }
 
   private start(chat: Chat, ws: Workspace): Live {
@@ -568,10 +879,13 @@ export class Sessions {
     const input = new InputQueue<SDKUserMessage>()
     const abort = new AbortController()
     const commands = new Map<string, string>()
+    const proc: Proc = { stderr: '' }
     const ctx = { roomId: ws.roomId, workspaceId: ws.id, agentId: agent?.id }
     // Known before the process starts, so the hook server never mistakes this session's first hooks for an outside one.
     const sessionId = chat.sessionId ?? randomUUID()
     this.managedIds.add(sessionId)
+    const mcpServers = this.d.mcpFor(ws, agent, chat)
+    const off = switchedOff(this.d.disabledFor?.(ws), Object.keys(mcpServers ?? {}))
     const options: Options = {
       cwd: ws.path,
       model: chat.model,
@@ -582,17 +896,19 @@ export class Sessions {
       canUseTool: this.canUseTool(chat, ws, agent, commands),
       settingSources: ['user', 'project', 'local'],
       systemPrompt: { type: 'preset', preset: 'claude_code', append: agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent)) },
-      mcpServers: this.d.mcpFor(ws, agent, chat),
+      mcpServers,
+      ...(off ? { settings: off } : {}),
       hooks: kernelHooks(ctx, commands, (command) => bashVerdict(command, this.d.settings().permissions, this.d.roomAllow(ws.roomId)), () => this.paused.get(ws.roomId)?.open ?? this.global?.open, () => this.d.settings().permissions.network !== false,
         agent?.lead ? { afterPlan: () => (this.handoffs.due(chat.id) ? HANDOFF_NOW : undefined), atStop: () => this.handoffs.reminder(chat.id) } : undefined),
       includeHookEvents: true,
       ...(chat.sessionId ? { resume: chat.sessionId } : { sessionId }),
       abortController: abort,
-      env: sessionEnv(process.env, { KERNEL_PORT: String(ws.port), KERNEL_WORKSPACE_ID: ws.id }, { agentTeams: this.d.settings().models?.agentTeams }),
-      pathToClaudeCodeExecutable: packagedClaude()
+      env: sessionEnv(this.d.envFor?.(ws) ?? buildEnv({ base: process.env, kernel: kernelVars(ws, this.d.store.room(ws.roomId)?.path ?? ws.path) }), {}, { agentTeams: this.d.settings().models?.agentTeams, compact: true }),
+      pathToClaudeCodeExecutable: packagedClaude(),
+      spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
     const q = query({ prompt: input, options })
-    const live: Live = { query: q, input, abort, running: false, interrupted: false, toolItems: new Map(), agentModels: new Set(), commands }
+    const live: Live = { query: q, input, abort, running: false, interrupted: false, tasks: new Set(), toolItems: new Map(), agentModels: new Set(), commands, proc }
     this.live.set(chat.id, live)
     void this.consume(chat.id, ws, live)
     return live
@@ -607,13 +923,13 @@ export class Sessions {
       if (!live.abort.signal.aborted) ended = ''
     } catch (err) {
       if (!live.abort.signal.aborted) {
-        ended = String((err as Error).message ?? err)
+        ended = withStderr(String((err as Error).message ?? err), live.proc.stderr)
         this.item(this.mustChat(chatId), { kind: 'note', id: randomUUID(), ts: Date.now(), text: `Session stopped: ${ended}` })
       }
     } finally {
       const replaced = this.replaced(chatId, live)
       const midTurn = live.running
-      if (this.live.get(chatId) === live) this.live.delete(chatId)
+      if (this.live.get(chatId) === live) { this.live.delete(chatId); this.stopIdle(chatId) }
       const chat = this.d.store.chat(chatId)
       if (chat && !replaced) this.setRunning(chat, ws, live, false)
       if (chat && !replaced) this.drainWaiting()
@@ -650,11 +966,13 @@ export class Sessions {
           this.billing.set(chatId, msg.apiKeySource)
           this.setRunning(chat, ws, live, true)
         }
-        if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, live, msg.hook_event, msg.stderr || msg.output || msg.stdout)
+        if (msg.subtype === 'hook_response' && msg.exit_code === 2 && BLOCKING_HOOKS.has(msg.hook_event)) this.blocked(ws, chatId, msg.hook_event, msg.stderr || msg.output || msg.stdout)
+        // The SDK's level signal for background work, which replaces the whole set. Ambient tasks are housekeeping, not work.
+        if (msg.subtype === 'background_tasks_changed') live.tasks = new Set(msg.tasks.filter((t) => !t.ambient).map((t) => t.task_id))
         if (msg.subtype === 'api_retry') {
           const failure = failureOf(msg.error, msg.error_status)
           // A connection error is the network's banner, not the overloaded one.
-          if (failure === 'network' || failure === 'auth') this.d.onFailure?.(failure, ws)
+          if (failure === 'network' || failure === 'auth') { live.failed = failure; this.d.onFailure?.(failure, ws) }
           else { live.retrying = true; bus.push({ type: 'retry', chatId, retry: { attempt: msg.attempt, of: msg.max_retries, nextAt: now + msg.retry_delay_ms } }) }
         }
         if (msg.subtype === 'compact_boundary') void this.refreshContext(chatId, live)
@@ -670,11 +988,13 @@ export class Sessions {
         live.agentModels.clear()
         if (msg.trigger === 'clear') live.cleared = true
         bus.push({ type: 'chat.cleared', chatId })
+        this.d.onReset?.(ws, chat, msg.trigger)
         return
       }
       case 'assistant': {
         this.clearRetry(chatId, live)
         const failure = failureOf(msg.error)
+        if (failure === 'auth' || failure === 'network') live.failed = failure
         if (failure === 'auth') this.d.onFailure?.(failure, ws)
         if (failure === 'limit') live.limited = true
         this.d.onReply?.(ws, chat)
@@ -690,7 +1010,7 @@ export class Sessions {
             const model = SUBAGENT_TOOLS.has(block.name) && block.input?.model && block.input.subagent_type !== 'fork' ? String(block.input.model) : undefined
             if (model) live.agentModels.add(block.id)
             const label = model ? `${d.title} · ${modelName(model)}` : d.title
-            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running' }
+            const item: ChatItem & { kind: 'tool' } = { kind: 'tool', id, ts: now, toolUseId: block.id, name: block.name, label, detail: toolDetail(block.name, block.input), status: 'running', input: clipInput(block.input) }
             live.toolItems.set(block.id, item)
             this.item(chat, item)
           }
@@ -705,10 +1025,11 @@ export class Sessions {
           const item = live.toolItems.get(block.tool_use_id)
           live.commands.delete(block.tool_use_id)
           // A step that went through after a PreToolUse refusal: the agent found its way past it.
-          if (item && !block.is_error && live.blocked === 'PreToolUse') this.unblock(chat, ws, live)
+          if (item && !block.is_error && this.turns.get(chatId)?.blocked === 'PreToolUse') this.unblock(chat, ws)
           if (!item) continue
           const output = typeof block.content === 'string' ? block.content : (block.content ?? []).map((c: any) => c.text ?? '').join('\n')
-          const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, 4000), ts: item.ts } as ChatItem & { kind: 'tool' }
+          const cut = output.length > TOOL_TEXT_MAX
+          const done = { ...item, status: block.is_error ? 'failed' : 'done', output: output.slice(0, TOOL_TEXT_MAX), outputCut: cut || undefined, ts: item.ts } as ChatItem & { kind: 'tool' }
           live.toolItems.set(block.tool_use_id, done)
           this.item(chat, done)
         }
@@ -723,17 +1044,24 @@ export class Sessions {
         const stopped = live.interrupted && !live.sendNext
         const interrupted = live.interrupted
         // Cut off by a limit Kernel knows about, so it can tell when to carry on. An unknown one would loop.
-        if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, true)
+        if (live.limited && !stopped && this.limitHolds(chat)) this.setCutOff(chatId, 'limit')
+        // A carry-on after a quit that failed on a sign-out or a dropped connection waits for that hold to lift and tries
+        // again, as at launch. Without a hold in place nothing would ever lift, so it stays stopped like any failed turn.
+        if (!ok && !stopped && live.carrying && live.failed && this.global) this.setCutOff(chatId, 'quit')
+        live.carrying = false
+        live.failed = undefined
         live.interrupted = false
         live.sendNext = false
         // The hook that refused to let the agent finish has now let it finish.
-        if (ok && live.blocked !== 'PreToolUse') live.blocked = undefined
+        const turns = this.turnsOf(chatId)
+        if (ok && turns.blocked !== 'PreToolUse') turns.blocked = undefined
         // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
         if (ok) this.crashed.delete(chatId)
         live.limited = false
         live.cleared = false
         this.setRunning(chat, ws, live, false)
-        this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: live.from ?? 'user' })
+        // A turn a quit interrupted isn't over: it carries on at the next launch, which reports it then.
+        if (!this.closing) this.d.onTurnDone?.(ws, chat, { ok, interrupted, by: turns.from ?? 'user' })
         // Stop means stop: held messages are dropped, not sent. Send now keeps them.
         if (stopped) this.setQueue(chatId, [])
         else this.drain(chatId)
@@ -770,30 +1098,38 @@ export class Sessions {
       const isQuestion = toolName === 'AskUserQuestion'
       const shown = command ? { ...input, command } : input
       const d = describeTool(toolName, shown)
-      const options = isQuestion ? ((input as any).questions?.[0]?.options ?? []).map((o: any) => String(o.label ?? o)) : undefined
+      const questions = isQuestion ? askedQuestions(input) : undefined
+      const options = questions?.[0]?.options.map((o) => o.label) ?? (isQuestion ? [] : undefined)
       this.setStatus(ws, agent, 'needs', d.title)
       const isPlan = toolName === 'ExitPlanMode'
       const plan = isPlan ? String((input as any).plan ?? '') : ''
       const reuse = isPlan ? this.lastPlanFile(chat, ws) : undefined
       const { approval, decision } = this.d.approvals.request({
         kind: isQuestion ? 'question' : isPlan ? 'plan' : 'tool', source: 'sdk', roomId: ws.roomId, workspaceId: ws.id, chatId: chat.id, agentId: agent?.id,
-        toolName, input: shown, title: isQuestion ? String((input as any).questions?.[0]?.question ?? 'Question') : isPlan ? `Plan for ${ws.name}` : d.title,
-        detail: isPlan ? plan : d.detail, options
+        toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : isPlan ? `Plan for ${ws.name}` : d.title,
+        detail: isPlan ? plan : d.detail, options, questions
       }, { signal })
       this.placeApproval(chat.id, approval.id)
       if (isPlan && plan.trim() && existsSync(ws.path)) {
         void savePlan(ws.path, plan, { fallback: approval.title, reuse }).then((planFile) => this.d.approvals.update(approval.id, { planFile }), () => undefined)
       }
       const result = await decision
-      if (!this.showBlocked(ws, this.live.get(chat.id))) this.setStatus(ws, agent, 'working')
+      if (!this.showBlocked(ws, chat.id)) this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
       // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
       if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
       if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
-      // Answers to questions travel back as the denial message, which the model reads as the user's reply.
-      if (result.behavior === 'answer') return { behavior: 'deny', message: `The user answered: ${result.text}` }
+      // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
+      // With several, the tool's result would drop the unanswered ones without a word, so a denial says what happened.
+      if (result.behavior === 'answer') {
+        const given = result.answers && Object.keys(result.answers).length ? result.answers : undefined
+        const answers = given ?? (questions?.length === 1 ? { [questions[0].question]: result.text } : undefined)
+        if (isQuestion && answers) return { behavior: 'allow', updatedInput: { ...input, answers } }
+        if (questions && questions.length > 1) return { behavior: 'deny', message: `The user saw and answered only your first question, "${questions[0].question}": ${result.text}. Ask the other ${questions.length - 1} again.` }
+        return { behavior: 'deny', message: `The user answered: ${result.text}` }
+      }
       return { behavior: 'deny', message: result.message ?? 'Denied in Kernel.' }
     }
   }
@@ -801,9 +1137,21 @@ export class Sessions {
   private setRunning(chat: Chat, ws: Workspace, live: Live, running: boolean) {
     if (live.running === running) return
     live.running = running
+    if (!running) { live.whenIdle?.(); live.whenIdle = undefined }
+    // The journal is written at every turn start and end, so a crash leaves the right list. A quit freezes it.
+    if (!this.closing && this.working.has(chat.id) !== running) {
+      if (running) this.working.add(chat.id)
+      else this.working.delete(chat.id)
+      this.saveWorking()
+    }
     bus.push({ type: 'chat.running', chatId: chat.id, running })
+    // A turn starting stops the idle clock, and one ending starts it.
+    if (running) this.stopIdle(chat.id)
+    else this.startIdle(chat.id)
+    // This chat's queue now waits for something else, and a slot was taken or freed for the others.
+    this.pushReasons()
     // An agent that gave up after a hook refused it still needs someone to look.
-    if (!running && this.showBlocked(ws, live)) return
+    if (!running && this.showBlocked(ws, chat.id)) return
     this.setStatus(ws, this.d.agentFor(ws), running ? (chat.plan ? 'planning' : 'working') : 'idle')
   }
 
@@ -861,10 +1209,10 @@ export class Sessions {
   }
 
   /** A hook exited with code 2: it refused the step. The agent shows as blocked with the hook's own words. */
-  private blocked(ws: Workspace, live: Live, event: string, output: string) {
-    live.blocked = event
+  private blocked(ws: Workspace, chatId: string, event: string, output: string) {
+    this.turnsOf(chatId).blocked = event
     const lines = output.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4)
-    this.showBlocked(ws, live)
+    this.showBlocked(ws, chatId)
     bus.activity({
       kind: 'agent.status', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: 'was blocked on', object: ws.name, warn: true,
       data: { status: 'blocked', detail: `The ${event} hook refused the last step. Read its output, then fix it or ask the agent to.`, output: lines.length ? lines : undefined }
@@ -875,14 +1223,15 @@ export class Sessions {
    * Shows the agent as blocked while a hook's refusal stands. False when nothing blocks it.
    * Blocked is kept per chat but shown per agent, so an agent with a blocked chat and a working one shows whichever pushed last.
    */
-  private showBlocked(ws: Workspace, live: Live | undefined): boolean {
-    if (!live?.blocked) return false
-    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${live.blocked} hook`)
+  private showBlocked(ws: Workspace, chatId: string): boolean {
+    const blocked = this.turns.get(chatId)?.blocked
+    if (!blocked) return false
+    this.setStatus(ws, this.d.agentFor(ws), 'blocked', `Blocked by the ${blocked} hook`)
     return true
   }
 
-  private unblock(chat: Chat, ws: Workspace, live: Live) {
-    live.blocked = undefined
+  private unblock(chat: Chat, ws: Workspace) {
+    this.turnsOf(chat.id).blocked = undefined
     this.setStatus(ws, this.d.agentFor(ws), chat.plan ? 'planning' : 'working')
   }
 
@@ -920,6 +1269,11 @@ export class Sessions {
     this.item(this.mustChat(chatId), { kind: 'approval', id: `approval-${approvalId}`, ts: Date.now(), approvalId })
   }
 
+  /** Where a shared file's card sits in the chat that shared it, one per version (KERNEL-302). */
+  placeShared(chatId: string, sharedId: string, version: number) {
+    this.item(this.mustChat(chatId), { kind: 'shared', id: `shared-${sharedId}-v${version}`, ts: Date.now(), sharedId, version })
+  }
+
   private mustChat(id: string) { const c = this.d.store.chat(id); if (!c) throw new Error(`Unknown chat ${id}`); return c }
   private mustWorkspace(id: string) { const w = this.d.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
 }
@@ -949,6 +1303,20 @@ export function builtinCommands(list: SlashCommand[]): BuiltinCommand[] {
   return list.filter((c) => c.builtin && !c.name.startsWith('_')).map((c) => ({ name: c.name, description: c.description, argumentHint: c.argumentHint ?? '', aliases: c.aliases?.length ? c.aliases : undefined }))
 }
 
+/** Every question of an AskUserQuestion call, with what the card needs from each. */
+function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
+  const list = Array.isArray(input.questions) ? input.questions : []
+  return list.filter((q: any) => q && typeof q.question === 'string').map((q: any) => ({
+    question: q.question,
+    ...(typeof q.header === 'string' ? { header: q.header } : {}),
+    options: (Array.isArray(q.options) ? q.options : []).map((o: any) => ({
+      label: String(o?.label ?? o),
+      ...(typeof o?.description === 'string' ? { description: o.description } : {})
+    })),
+    ...(typeof q.multiSelect === 'boolean' ? { multiSelect: q.multiSelect } : {})
+  }))
+}
+
 /** The tool that starts a subagent. Task is its old name. */
 const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
 
@@ -956,6 +1324,19 @@ const SUBAGENT_TOOLS = new Set(['Agent', 'Task'])
 function modelName(model: string): string {
   const m = model.toLowerCase()
   return MODELS.find(({ id }) => m === id || m === id.split('-')[1] || id.includes(`-${m}-`))?.label ?? model
+}
+
+/** How much of a tool's output, and of each string in its input, a chat row keeps, so a big Write or log can't bloat chat_items. */
+const TOOL_TEXT_MAX = 20_000
+
+/** The tool's input for its row, with every string longer than TOOL_TEXT_MAX clipped, nested ones too. */
+function clipInput(input: unknown): Record<string, unknown> | undefined {
+  const clip = (v: unknown): unknown =>
+    typeof v === 'string' ? v.slice(0, TOOL_TEXT_MAX)
+      : Array.isArray(v) ? v.map(clip)
+        : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, clip(x)]))
+          : v
+  return input && typeof input === 'object' && !Array.isArray(input) ? clip(input) as Record<string, unknown> : undefined
 }
 
 function toolDetail(name: string, input: any): string {
@@ -1032,8 +1413,33 @@ export const PAUSE_KEEPS = new Set<AgentStatus>(['needs', 'blocked', 'offline'])
 /** What Kernel sends a chat a usage limit stopped, once the limit lifts. */
 export const LIMIT_LIFTED = 'The usage limit that stopped you no longer applies. Pick up where you left off.'
 
-/** Kernel's restart and limit nudges, which carry on a turn rather than start one. */
-export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED)
+/** What Kernel sends a chat whose turn was running when Kernel quit or closed, once it opens again (KERNEL-215). */
+export const RELAUNCH_NUDGE = 'Kernel closed while you were working, so your last step may not have finished. Check the worktree and what you already did (git status, open PRs, workspaces you handed off) before you redo anything, then carry on.'
+
+/** Why a chat that carries on after a relaunch stopped, as `onExit` reports it: a quit, or a crash or a force quit. */
+export const QUIT_REASON = 'Kernel quit'
+export const CRASH_REASON = 'Kernel closed unexpectedly'
+
+/** The note in a chat whose turn a quit cut off, and the one after a crash or a force quit. */
+export const QUIT_NOTE = 'Kernel quit while this agent was working.'
+export const CRASH_NOTE = 'Kernel closed unexpectedly while this agent was working.'
+
+/** What a tool row still marked running says once Kernel opens again. */
+export const TOOL_STOPPED = 'Stopped when Kernel quit'
+
+/** How long a quit waits for interrupted turns to end before it stops their processes. */
+export const QUIT_BUDGET_MS = 3000
+
+/** Meta keys Sessions saves itself: the working journal, every queue not held for setup, and the pids of live processes. */
+const WORKING = 'working'
+const QUEUES = 'queues'
+const PIDS = 'claudePids'
+
+/** How much of a process's stderr Kernel keeps for the error note. */
+const STDERR_KEPT = 4000
+
+/** Kernel's restart, limit and relaunch nudges, which carry on a turn rather than start one. */
+export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED || parts[0].text === RELAUNCH_NUDGE)
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
@@ -1110,18 +1516,41 @@ export function roomRule(command: string, suggestions?: PermissionUpdate[], supp
 }
 
 /** Sessions bill the Claude plan through Claude Code's own login. An API key in Kernel's environment would bill the API instead. */
-export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean } = {}): Record<string, string> {
+export function sessionEnv(base: NodeJS.ProcessEnv, extra: Record<string, string>, o: { agentTeams?: boolean; compact?: boolean } = {}): Record<string, string> {
   const env = { ...base, ...extra } as Record<string, string>
   delete env.ANTHROPIC_API_KEY
   delete env.ANTHROPIC_AUTH_TOKEN
   // Settings > Models > "Use agent teams" decides for Kernel's own sessions, whatever the user's shell exports (D-027).
   if (o.agentTeams === true) env[AGENT_TEAMS] = '1'
   else if (o.agentTeams === false) delete env[AGENT_TEAMS]
+  // A chat on a 1M model compacts near 200k instead of near 1M. A window the user set themselves wins (KERNEL-226).
+  if (o.compact && !env[COMPACT_WINDOW]) env[COMPACT_WINDOW] = String(COMPACT_AT)
   return env
 }
 
 /** Claude Code's switch for agent teams (TaskCreated, TaskCompleted, TeammateIdle, a shared task list). */
 export const AGENT_TEAMS = 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS'
+
+/**
+ * The window Claude Code compacts against. It compacts about 33k tokens below it, and a model's own smaller window still
+ * applies. `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` didn't move the threshold in the pinned CLI (KERNEL-226).
+ */
+export const COMPACT_WINDOW = 'CLAUDE_CODE_AUTO_COMPACT_WINDOW'
+export const COMPACT_AT = 200_000
+
+/**
+ * What the room switched off, as the session's flag settings: each skill hidden from the model and the / menu, each MCP
+ * server never started. Kernel's own servers (`own`) stay whatever their name. Nothing switched off adds nothing (KERNEL-226).
+ */
+export function switchedOff(off: { skills: string[]; mcp: string[] } | undefined, own: string[] = []): Options['settings'] | undefined {
+  const skills = [...new Set(off?.skills ?? [])]
+  const mcp = [...new Set(off?.mcp ?? [])].filter((name) => !own.includes(name))
+  if (!skills.length && !mcp.length) return undefined
+  return {
+    ...(skills.length ? { skillOverrides: Object.fromEntries(skills.map((name) => [name, 'off' as const])) } : {}),
+    ...(mcp.length ? { deniedMcpServers: mcp.map((serverName) => ({ serverName })) } : {})
+  }
+}
 
 const WINDOWS = ['five_hour', 'seven_day', 'seven_day_opus', 'seven_day_sonnet'] as const
 
@@ -1173,6 +1602,28 @@ export function mergeLimit(prev: RateLimit | undefined, patch: LimitPatch, now: 
   const room = prev?.status === 'rejected' && patch.status === undefined && patch.utilization !== undefined && patch.utilization < Math.min(prev.utilization ?? 1, LIFTED_UNDER)
   return { ...prev, status: reset || room || !prev ? 'allowed' : prev.status, ...defined(patch) }
 }
+
+/** The SDK adds the end of stderr to a process's exit error only when it spawned the process itself. */
+function withStderr(message: string, stderr: string): string {
+  const tail = stderr.trim().slice(-500)
+  return tail && !message.includes('stderr:') ? `${message}. stderr: ${tail}` : message
+}
+
+/**
+ * The process is alive and was started the way Kernel saved: its binary and first argument. Matching the first argument
+ * too keeps a reused pid running `node something-else` from passing for `node cli.js`. An exited one (`(claude)`) is not.
+ */
+function runs(p: SavedPid): Promise<boolean> {
+  const started = [p.command, p.arg].filter(Boolean).join(' ')
+  return new Promise((resolve) => {
+    execFile('ps', ['-ww', '-p', String(p.pid), '-o', 'command='], (err, out) => {
+      const line = out.trim()
+      resolve(!err && !!p.command && (line === started || line.startsWith(`${started} `)))
+    })
+  })
+}
+
+function signal(pid: number, sig: NodeJS.Signals) { try { process.kill(pid, sig) } catch { /* already gone */ } }
 
 const defined = <T extends object>(o: T): T => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as T
 

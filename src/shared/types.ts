@@ -91,6 +91,11 @@ export interface Room {
   archived?: boolean
   /** Bash rules the user chose "Always allow in this room" for. An exact command, or `prefix:*`. They beat Always ask. */
   allow?: string[]
+  /**
+   * The room's picture: the GitHub owner's avatar or a picked PNG or JPEG, saved as `file` in the data folder's room-icons.
+   * No icon means the letter. The image itself comes from `rooms.icon`, so room pushes stay small (KERNEL-241).
+   */
+  icon?: { kind: 'github' | 'image'; file: string; at: number }
   createdAt: number
 }
 
@@ -173,7 +178,8 @@ export interface Overlap {
 // ---------- workspaces
 
 export type WorkspaceMode = 'worktree' | 'current'
-export type WorkspaceStatus = 'setup' | 'ready' | 'failed' | 'archived'
+/** `trust`: the room's scripts or files.copy list changed, or were never trusted, so the workspace waits for `rooms.trust` (KERNEL-209). */
+export type WorkspaceStatus = 'setup' | 'trust' | 'ready' | 'failed' | 'archived'
 /**
  * The PR header state. `creating`, `resolving` and `merging` are Kernel's own while the agent or gh works;
  * the rest come from `gh pr view` (github.ts prStateOf).
@@ -231,6 +237,20 @@ export interface Workspace {
   createdAt: number
   mergedAt?: number
   archivedAt?: number
+  /** The workspaces whose PRs must merge before this one goes on (KERNEL-259). */
+  waitsFor?: WaitsFor
+}
+
+/**
+ * A workspace waiting for other workspaces' PRs to merge (KERNEL-259). `on` lists their ids. `held` means the brief hasn't
+ * gone out. `base` is HEAD when the brief was held. `releasing` means they merged and the teammate, which had already
+ * started, hasn't taken Kernel's message yet.
+ */
+export interface WaitsFor {
+  on: string[]
+  held: boolean
+  base?: string
+  releasing?: boolean
 }
 
 /** Git facts the archive and discard confirmations show (ConfirmArchive.png, ConfirmDiscard.png). */
@@ -291,8 +311,40 @@ export interface Checkpoint {
 
 export type ScriptKind = 'setup' | 'run' | 'archive'
 
+/**
+ * A room's scripts and files.copy list as Kernel would run them, after merging settings.toml and settings.local.toml,
+ * waiting for the user to trust that exact text (KERNEL-209).
+ */
+export interface ScriptTrust {
+  roomId: string
+  /** What `rooms.trust` takes back. Text that changes after the user read it gets a new hash and asks again. */
+  hash: string
+  scripts: { setup?: string; run?: string; archive?: string }
+  /** Named run scripts from `[run_scripts]` other than `run`, which is `scripts.run` (KERNEL-244). Left out when there are none. */
+  runScripts?: { name: string; command: string }[]
+  copy: string[]
+  /**
+   * The repo's `[env] files` list. A file can set ZDOTDIR or BASH_ENV, which makes a shell run repo code, so the list waits
+   * for trust like a script (KERNEL-247). Left out when the repo sets none.
+   */
+  envFiles?: string[]
+  /** Open workspaces held in `trust` until the room is trusted. */
+  workspaceIds: string[]
+}
+
+/** Each workspace gets this many ports, `$KERNEL_PORT` to `$KERNEL_PORT + 9` (KERNEL-244). */
+export const PORT_BLOCK = 10
+
+/** A run script's name: a letter or digit, then up to 31 letters, digits, `-` or `_`. `run` is `[scripts] run` (KERNEL-244). */
+export const RUN_SCRIPT_NAME = /^[a-z0-9][\w-]{0,31}$/i
+
+/** Whether a run script's name is the reserved `run`, in any case, so `RUN` and `Run` aren't a second script. */
+export const isRunName = (name: string) => name.toLowerCase() === 'run'
+
 export interface ScriptLine {
   kind: ScriptKind
+  /** Which run script printed the line (`run` is the default one). Setup and archive lines have none. */
+  name?: string
   line: string
   stream: 'stdout' | 'stderr'
 }
@@ -335,6 +387,10 @@ export interface Chat {
   contextUsage?: { used: number; max: number; rows: { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' }[] }
   /** Closed tabs keep their transcript but leave the tab strip. */
   closed?: boolean
+  /** A big terminal's preset and the command it types into the login shell, null for a plain shell. Older terminal chats have none and run `claude` (KERNEL-248). */
+  terminal?: { preset: string; command: string | null }
+  /** Kernel picks this chat's name and may change it. `turns` is the finished-turn count it last named it at. A name the user types clears it (KERNEL-202). */
+  autoTitle?: { turns: number }
   createdAt: number
 }
 
@@ -344,13 +400,29 @@ export type ChatItem =
   | { kind: 'user'; id: string; ts: number; parts: ChatPart[]; from?: MessageFrom; update?: TeamUpdate }
   | { kind: 'text'; id: string; ts: number; text: string }
   | { kind: 'thinking'; id: string; ts: number; text: string }
-  | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; durationMs?: number }
+  /** `input` is the tool's input as the SDK sent it, long strings clipped. `outputCut` says `output` was cut short. */
+  | { kind: 'tool'; id: string; ts: number; toolUseId: string; name: string; label: string; detail: string; status: 'running' | 'done' | 'failed'; output?: string; outputCut?: boolean; input?: Record<string, unknown>; durationMs?: number }
   /** End of a turn. `files` is the "Changed" chip row under the reply. */
   | { kind: 'result'; id: string; ts: number; durationMs: number; ok: boolean; error?: string; files?: ChangedFile[] }
-  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string } }
+  /** `pr` is the PR state a note about a PR is for, so the row can draw that state's icon (KERNEL-313). Older notes and other notes have none. */
+  | { kind: 'note'; id: string; ts: number; text: string; link?: { label: string; href: string }; pr?: 'merged' | 'closed' | 'cifail' }
   | { kind: 'interrupted'; id: string; ts: number }
   /** Where an approval card sits in the transcript. The card itself reads the Approval, so the Inbox and floor stay in sync (D-007). */
   | { kind: 'approval'; id: string; ts: number; approvalId: string }
+  /** A file the agent shared with share_file. The card reads the SharedFile, so a later version shows on it (KERNEL-302). */
+  | { kind: 'shared'; id: string; ts: number; sharedId: string; version: number }
+
+/** What a shared file is, from its extension and first bytes (KERNEL-302). */
+export type SharedKind = 'html' | 'image' | 'pdf' | 'markdown'
+
+/**
+ * One version of a shared file. `file` is the copy's name in `<dataDir>/shared/<id>/v<n>/`. `chatId` is the chat that shared
+ * it, `thumb` says a thumbnail was captured, and `outside` counts the HTML's references to other files or the network.
+ */
+export interface SharedVersion { n: number; at: number; file: string; mime: string; bytes: number; sha256: string; chatId?: string; note?: string; thumb?: boolean; width?: number; height?: number; outside?: number }
+
+/** A file an agent shared, one per workspace and source path, with every version Kernel kept (KERNEL-302). `source` is relative to the workspace. */
+export interface SharedFile { id: string; roomId: string; workspaceId: string; agentId: string; source: string; title: string; kind: SharedKind; versions: SharedVersion[]; createdAt: number; updatedAt: number }
 
 /** Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. */
 export type ChatPart =
@@ -374,6 +446,12 @@ export interface QueuedMessage {
   update?: TeamUpdate
 }
 
+/**
+ * What a chat's queue waits for: the running turn, the workspace's setup, a paused room, every room held (`offline` covers
+ * a lost connection and a sign-out alike), or the agent limit in Settings, Models. Computed, never saved (KERNEL-271).
+ */
+export type QueueReason = 'running' | 'setup' | 'paused' | 'offline' | 'capacity'
+
 /** Who sent a message the user didn't type: Kernel itself, or the Lead handing work to a teammate. */
 export type MessageFrom = 'kernel' | 'lead'
 
@@ -382,6 +460,8 @@ export type TeamEventKind =
   | 'turn' | 'error' | 'crash' | 'setup.failed' | 'setup.passed'
   | 'pr.opened' | 'pr.ready' | 'pr.cifail' | 'pr.changes' | 'pr.conflict' | 'pr.merged' | 'pr.closed'
   | 'review'
+  | 'wait.started' | 'wait.released' | 'wait.broken'
+  | 'shared'
 
 /** One event in a Team update row. `text` is the card's wording ("Opened PR #108"); `actionable` means it needs the Lead. */
 export interface TeamUpdateEvent {
@@ -401,6 +481,8 @@ export interface TeamUpdateRow {
   /** The teammate's last reply, or a reviewer's summary, as the Lead got it. */
   reply?: string
   fromChat?: string
+  /** Files the teammate shared since the last update, newest version of each. The card draws them, not `events` (KERNEL-302). */
+  shared?: { sharedId: string; version: number; title: string; kind: SharedKind }[]
 }
 
 /** Kernel's update to a Lead chat. The card draws this; the Lead reads the item's text. `omitted` counts workspaces left out. */
@@ -462,6 +544,14 @@ export interface PlanStep {
   workspaceId?: string
 }
 
+/** One question of an AskUserQuestion call. A call can carry several. */
+export interface AskedQuestion {
+  question: string
+  header?: string
+  options: { label: string; description?: string }[]
+  multiSelect?: boolean
+}
+
 export interface Approval {
   id: string
   kind: ApprovalKind
@@ -475,6 +565,10 @@ export interface Approval {
   title: string
   detail?: string
   options?: string[]
+  /** Question approvals: every question the agent asked. `title` and `options` stay the first one's. */
+  questions?: AskedQuestion[]
+  /** Question approvals: the answer to each question, keyed by its text. */
+  answers?: Record<string, string>
   /** Plan approvals. */
   steps?: PlanStep[]
   /** Plan-mode plans: the copy Kernel keeps, relative to the workspace folder, for example `.kernel/plans/export-invoices.md`. */
@@ -490,7 +584,8 @@ export type Decision =
   | { behavior: 'allow'; always?: boolean }
   /** `images` go with a plan's change request: main saves each one in the workspace and names its path in `message` (D-134). */
   | { behavior: 'deny'; message?: string; images?: { name: string; dataUrl: string }[] }
-  | { behavior: 'answer'; text: string }
+  /** `answers` maps each question's text to its answer; `text` is them joined for display. A text-only answer goes to the first question. */
+  | { behavior: 'answer'; text: string; answers?: Record<string, string> }
 
 // ---------- board
 
@@ -718,8 +813,10 @@ export interface ClaudeAccount {
 // ---------- system
 
 export interface PreflightCheck {
-  id: 'claude' | 'auth' | 'teams' | 'gh' | 'hooks'
+  id: 'claude' | 'auth' | 'teams' | 'git' | 'gh' | 'hooks'
   ok: boolean
+  /** A failing blocking check keeps the user on the checks screen. A failing non-blocking one is a warning (KERNEL-213). */
+  blocking: boolean
   title: string
   detail: string
   /** Right-hand meta, for example "v2.1.284" or "localhost:7420". */
@@ -734,6 +831,10 @@ export interface HookStatus {
   /** All hook entries are present in ~/.claude/settings.json. */
   installed: boolean
   events: { name: string; installed: boolean; lastSeen?: number }[]
+  /** The secret the hook command sends, so the Settings > Hooks snippet matches what Install writes (KERNEL-206). */
+  token?: string
+  /** Kernel couldn't bring its out-of-date entries up to date at start, so outside sessions don't report until Install. */
+  needsInstall?: boolean
 }
 
 /** Auto-update (UpdateReady.png, WhatsNew.png). KERNEL-30. */
@@ -762,16 +863,17 @@ export interface Integration {
 export type Theme = 'dark' | 'light'
 export type SettingsPage =
   | 'general' | 'appearance' | 'notifications' | 'account' | 'shortcuts'
-  | 'models' | 'agents' | 'permissions' | 'skills'
-  | 'git' | 'scripts' | 'prs' | 'files'
-  | 'hooks' | 'integrations' | 'experimental' | 'about'
+  | 'models' | 'permissions' | 'env'
+  | 'git' | 'scripts' | 'prs'
+  | 'hooks' | 'integrations' | 'experimental' | 'bigterm' | 'about'
+  /** A room's own pages. `section` on the route picks one, and none means General. */
   | 'room'
 
 /** App-wide settings, stored as JSON in the app's data folder. Every Settings page maps to a key here. */
 export interface AppSettings {
   hookPort: number
   worktreeRoot: string
-  general: { homeView: 'home' | 'inbox' | 'lastRoom'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
+  general: { openTo: 'lastPlace' | 'home' | 'inbox'; openAtLogin: boolean; menuBar: boolean; sendWith: 'enter' | 'cmdEnter' }
   floor: { style: 'isometric' | 'plan' | 'list'; nameTags: boolean; animate: boolean }
   appearance: { theme: Theme | 'system'; fontSize: 'default' | 'small' | 'large'; density: 'comfortable' | 'compact'; pointerCursors: boolean; reduceMotion: boolean }
   notifications: {
@@ -793,26 +895,94 @@ export interface AppSettings {
   /** `defaultTemplate` seeds an empty room (Settings > Agents). */
   team: { addNewAgents: boolean; showNames: boolean; defaultTemplate: 'starter' | 'pair' }
   permissions: { mode: 'ask' | 'acceptEdits' | 'bypassInWorktrees'; network: boolean; alwaysAsk: string[]; neverAllow: string[]; protectedBranches: string[]; approvalTimeoutSec: number }
-  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean; createInstructions: string; resolveInstructions: string }
+  pr: { mergeMethod: 'squash' | 'merge' | 'rebase'; draft: boolean; requireGreen: boolean; requireReviewer: boolean } & PrInstructions
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
-  experimental: { bigTerminal: boolean; bigTerminalWorktreeOnly: boolean; walking: boolean; floor3d: boolean; voice: boolean }
+  /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
+  terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
+  /** `sharing` gives agents share_file. No page shows it; KERNEL-308 turns it on (KERNEL-302). */
+  experimental: { walking: boolean; floor3d: boolean; voice: boolean; sharing?: boolean }
 }
+
+/**
+ * What a big terminal tab can run: the built-ins, the CLIs found on the PATH, then the user's custom commands (KERNEL-248).
+ * `command` is typed into the login shell, null for a plain shell. `builtin` is false for custom commands only.
+ */
+export interface TerminalPreset {
+  id: string
+  name: string
+  command: string | null
+  builtin: boolean
+  skipsPermissions: boolean
+}
+
+/** The flag Only in worktrees takes out of a command on a current-branch workspace (KERNEL-248). */
+export const SKIP_FLAG = '--dangerously-skip-permissions'
+
+/** Other agent CLIs the big terminal lists when they are on the PATH. Settings checks a custom command's name against these (KERNEL-248, KERNEL-251). */
+export const KNOWN_CLIS: readonly { id: string; name: string }[] = [
+  { id: 'codex', name: 'Codex' },
+  { id: 'opencode', name: 'OpenCode' },
+  { id: 'amp', name: 'Amp' },
+  { id: 'copilot', name: 'Copilot' },
+  { id: 'gemini', name: 'Gemini' }
+]
 
 /** Per-room settings from .kernel/settings.toml, with personal overrides from .kernel/settings.local.toml (SettingsRoom.png). */
 export interface RoomSettings {
   scripts: { setup?: string; run?: string; archive?: string; runMode?: 'concurrent' | 'single' }
+  /**
+   * The room's run scripts in file order: `run` (from `[scripts] run`) first when set, then the `[run_scripts]` table.
+   * Their sources are keyed `runScripts.<name>` (KERNEL-244).
+   */
+  runScripts: { name: string; command: string }[]
+  /** `copy` takes exact paths and patterns like `.env*` (KERNEL-245). */
   files: { copy: string[]; symlinkNodeModules?: boolean }
   workspace: Partial<AppSettings['workspace']>
   /** Skills and MCP servers switched off for this room, by name. */
   disabled?: { skills: string[]; mcp: string[] }
   /** The room's Linear team, by key ("KERNEL"). The Issues screen opens on it. */
   linear?: { team?: string }
+  /** The room's PR instructions, a `[pr]` table. A missing key uses the app's (KERNEL-190). */
+  pr?: Partial<PrInstructions>
+  /**
+   * The room's preview URLs, a `[[preview.urls]]` array of tables, in order. `url` may use `$KERNEL_PORT` forms that
+   * `resolvePreviewUrl` fills in. A patch replaces the whole list (KERNEL-246).
+   */
+  preview: { urls: { name: string; url: string }[] }
+  /**
+   * The room's env files, an `[env] files` key, read in order and resolved against the workspace folder. A later file
+   * wins over an earlier one, and the room's own variables win over them all (KERNEL-247).
+   */
+  env: { files: string[] }
+  /**
+   * Which file set each value, by app-side dotted path (`scripts.setup`, `workspace.remote`, `pr.createInstructions`).
+   * A path missing here means the app default applies (KERNEL-190).
+   */
+  sources: Record<string, RoomSettingSource>
 }
 
-/** A patch to a room's settings file. `null` removes the key so the app default applies again. */
-export type RoomSettingsPatch = {
-  [K in keyof RoomSettings]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+/** The text Kernel sends the agent for each PR action (Settings > Pull requests, and per room). */
+export interface PrInstructions { createInstructions: string; resolveInstructions: string; fixChecksInstructions: string; addressReviewInstructions: string }
+
+/** `shared`: only `.kernel/settings.toml` sets the value. `local`: only `.kernel/settings.local.toml`. `override`: both, and the personal one wins. */
+export type RoomSettingSource = 'shared' | 'local' | 'override'
+
+/** The sections of a room's settings page. A route without one opens General. */
+export type RoomSettingsSection = 'general' | 'git' | 'scripts' | 'files' | 'environment' | 'instructions' | 'permissions' | 'agents' | 'skills'
+
+/** One file a new worktree gets from the main checkout. `path` is relative to the room's folder, `size` is in bytes. */
+export interface FileToCopy {
+  path: string
+  size: number
 }
+
+/**
+ * A patch to a room's settings file. `null` removes the key so the app default applies again.
+ * `runScripts` maps a name to its command, and `run` is `[scripts] run`.
+ */
+export type RoomSettingsPatch = {
+  [K in Exclude<keyof RoomSettings, 'sources' | 'runScripts'>]?: { [P in keyof NonNullable<RoomSettings[K]>]?: NonNullable<RoomSettings[K]>[P] | null }
+} & { runScripts?: Record<string, string | null> }
 
 /** Recursive partial for settings patches. */
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends (infer U)[] ? U[] : T[K] extends object | null ? DeepPartial<T[K]> : T[K] }
@@ -833,7 +1003,8 @@ export type Route =
   | { name: 'workspace'; workspaceId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
   | { name: 'issues'; issueId?: string }
-  | { name: 'settings'; page: SettingsPage; roomId?: string }
+  /** `section` is for `page: 'room'`, and none means General. */
+  | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection }
   /** The component gallery (KERNEL-9). Dev builds open it from `#/dev/ui/<page>`; fixtures can force it for shots. */
   | { name: 'devUi'; page: DevUiPage }
 
@@ -849,6 +1020,8 @@ export type Modal =
   | { name: 'newAgent'; roomId: string; step: 'describe' | 'draft' | 'done'; prefill?: NewAgentPrefill }
   /** `update` is the install What's new opened with, which later update pushes must not replace (KERNEL-30). */
   | { name: 'whatsNew'; update?: AppUpdate }
+  /** The add and edit form on an Environment page. No `roomId` is the app's page, and `editName` is the variable being edited (KERNEL-254). */
+  | { name: 'envVar'; roomId?: string; editName?: string }
   | { name: 'confirm'; kind: 'archive'; workspaceId: string }
   | { name: 'confirm'; kind: 'discard'; workspaceId: string }
   | { name: 'confirm'; kind: 'removeRoom'; roomId: string }
@@ -864,7 +1037,7 @@ export type MenuId =
   | 'rooms' | `room:${string}` | 'account' | 'plan' | 'quickAsk'
   | 'pr' | 'tab' | 'newTab'
   | 'plus' | 'model' | 'mention' | 'slash' | 'linkIssue' | 'linkWorkspaces'
-  | 'branch' | 'from'
+  | 'branch' | 'from' | 'settingsFiles' | 'roomIcon' | 'preview'
 
 /** Failure banners (DESIGN.md Patterns). The banner component reads the facts it shows from the store. */
 export type BannerKind = 'limit' | 'context' | 'offline' | 'auth' | 'setup' | 'hooks' | 'retry'
@@ -886,17 +1059,31 @@ export interface Toast {
 
 /** The workspace screen's panes, so fixtures can open any of them. */
 export interface WorkspaceView {
-  right: 'files' | 'changes' | 'checks'
+  right: 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
   checkpoints: boolean
   /** Tool call groups shown expanded (WorkspaceToolCalls.png). */
   toolsOpen: boolean
-  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
-  tab?: string
   /** What the composer starts with. Fixtures force it so a shot can show chips and an open @ or / menu; the app never sets it. */
   composer?: { parts: ChatPart[]; draft: string }
   /** The composer's context popover is open. Fixtures force it for a shot; the app never sets it. */
   contextOpen?: boolean
+}
+
+/** One workspace's open tabs. They outlast the workspace screen, so Settings or another workspace never resets them. */
+export interface WorkspaceTabs {
+  /** Active tab: a chat id, `file:<path>` for a file preview, `diff:<path>` for a diff (empty path for all changes), `image:<n>` or `text:<n>`. */
+  tab?: string
+  /** The chat the composer is on while a file, diff, image or text tab is active. */
+  lastChat?: string
+  /** Paths of the open file tabs. */
+  files: string[]
+  /** Paths of the open diff tabs. An empty path is All changes. */
+  diffs: string[]
+  /** Ids of the open `shared:<id>` tabs (KERNEL-302). */
+  shared?: string[]
+  /** By shared id, the version a tab shows when it isn't the newest. */
+  sharedVersion?: Record<string, number>
 }
 
 export interface UiState {
@@ -909,6 +1096,10 @@ export interface UiState {
   /** A step of the floor briefing sequence. Real runs derive it from events; fixtures force it. */
   stage?: string
   workspace: WorkspaceView
+  /** By workspace id. Each workspace keeps its own open tab, chat and file and diff tabs. */
+  tabs: Record<string, WorkspaceTabs>
+  /** Ids of the Lead chats folded by hand in the sidebar, which hides the workspaces they started. Only folded chats are listed; kept across launches. */
+  foldedChats: string[]
   /** The left sidebar is showing. Its title bar toggle and Cmd+B hide it; kept across launches. */
   sidebar: boolean
   /** The screen's right panel is showing: the floor's Logs, a workspace's files and run panels. Cmd+Option+B; kept across launches. */

@@ -1,6 +1,6 @@
 import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
-import { agent, at, ids, scene, team, withWorkspace } from './base'
+import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
@@ -244,12 +244,25 @@ const askedFromTable = (f: Fixture, leadGone: boolean): Partial<Fixture> => {
   }
 }
 
+/** The Lead's workspace with three chats, on the first, and invoice-table as the second workspace (KERNEL-199). The test walks through Settings and back. */
+const navMemory = (f: Fixture): Partial<Fixture> => {
+  const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(10, minute) })
+  return {
+    ...homeScene(f),
+    chats: [...f.chats, chat('chat-lead-two', 'Second chat', 20), chat('chat-lead-three', 'Third chat', 21)],
+    ui: { route: { name: 'workspace', workspaceId: ids.lead } }
+  }
+}
+
+/** An open chat of the Lead's workspace, for the sidebar fixtures. */
+const leadChatRow = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
+
 /**
  * SidebarLeadChats (no PNG, KERNEL-165): Client A with four open Lead chats. One waits on a plan, one is running and started three
  * workspaces, one has a title too long for the sidebar, and one workspace has no owning chat. Rooms fill in the rest of the sidebar.
  */
 const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
-  const chat = (id: string, title: string, minute: number) => ({ id, workspaceId: ids.lead, title, kind: 'chat' as const, model: 'claude-opus-5-5' as const, effort: 'high' as const, plan: false, createdAt: at(9, minute) })
+  const chat = leadChatRow
   const ownedBy = (leadChatId: string) => ({ leadChatId })
   const review: Workspace = { ...f.workspaces.find((w) => w.id === ids.schema)!, id: 'ws-review-pr-146', name: 'review-pr-146', branch: 'feat/t-14-invoice-table-review', agentId: 'theo', port: 4315, prNumber: undefined }
   const rooms = roomsScene(f)
@@ -270,10 +283,29 @@ const sidebarLeadChats = (f: Fixture): Partial<Fixture> => {
       { id: 'ap-lead-plan', kind: 'plan', source: 'sdk', roomId: ids.roomA, agentId: 'rowan', workspaceId: ids.lead, chatId: 'chat-lead-ui', title: 'Plan for the sidebar review', detail: '1. Kai lists the chats\n2. Ivy checks the shots', status: 'pending', createdAt: at(10, 44) }
     ],
     push: [{ type: 'chat.running', chatId: 'chat-lead-inbox', running: true }],
-    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'chat-lead-tools' } }
+    ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.lead]: { tab: 'chat-lead-tools', files: [], diffs: [] } } }
   }
 }
 
+/**
+ * SidebarChatFolded.png (KERNEL-207): Client A on Home, with three Lead chats. The first waits on a plan, the second is running and
+ * folded over two workspaces, one of which asks to run a command, so its row shows the needs-you icon. org-invites has no chat.
+ */
+const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
+  const home = homeScene(f)
+  const owner = 'chat-lead-table'
+  return {
+    ...home,
+    chats: [
+      ...f.chats.filter((c) => c.workspaceId !== ids.lead),
+      leadChatRow('chat-lead-export', 'Export invoices as PDF', 5), leadChatRow(owner, 'Invoice table and empty states', 6), leadChatRow('chat-lead-login', 'Client portal login', 7)
+    ],
+    workspaces: home.workspaces!.map((w) => (w.id === ids.table || w.id === ids.schema ? { ...w, leadChatId: owner } : w)),
+    approvals: home.approvals!.map((a) => (a.id === 'ap-plan15' ? { ...a, workspaceId: ids.lead, chatId: 'chat-lead-export' } : a)),
+    push: [{ type: 'chat.running', chatId: owner, running: true }],
+    ui: { route: { name: 'home' }, foldedChats: [owner] }
+  }
+}
 
 // ---------- Issues (KERNEL-160)
 
@@ -374,6 +406,16 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
 
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
+  // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
+  HomeRoomIcon: scene((f) => {
+    const home = homeScene(f)
+    return {
+      ...home,
+      rooms: home.rooms!.map((r) => (r.id === ids.roomB ? { ...r, icon: { kind: 'github' as const, file: `${ids.roomB}-1.png`, at: at(9, 0) } } : r)),
+      roomIcons: { [ids.roomB]: invaderIcon },
+      ui: { route: { name: 'home' } }
+    }
+  }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),
   QuickAsk: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'quickAsk' } })),
@@ -387,6 +429,8 @@ export const teamFixtures: Record<string, Fixture> = {
   QuickAskOpenChat: scene((f) => askedFromTable(f, false)),
   // No PNG: the same, but the Lead's workspace is gone, so `lead.open` fails and Open chat must leave the tab alone.
   QuickAskLeadGone: scene((f) => askedFromTable(f, true)),
+  // No PNG: Lead chat 3, then Settings and back, then another workspace and back (KERNEL-199). The test opens it in Electron.
+  NavMemory: scene(navMemory),
   History: scene((f) => ({ ...historyScene(f), ui: { route: { name: 'history' } } })),
   Board: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'board', roomId: ids.roomA } } })),
   TaskDetail: scene((f) => ({ ...boardScene(f), ui: { route: { name: 'task', roomId: ids.roomA, taskId: 'T-14' } } })),
@@ -444,6 +488,7 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
+  SidebarChatFolded: scene(sidebarChatFolded),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }

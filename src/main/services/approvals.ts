@@ -12,10 +12,14 @@ type Pending = { resolve: (d: Decision | null) => void; timer?: NodeJS.Timeout }
  */
 export class Approvals {
   private pending = new Map<string, Pending>()
+  /** Kernel is quitting (`expirePending`): nothing new waits, and nothing is saved, since the database is about to close. */
+  private closed = false
   constructor(private store?: Store) {}
 
   request(a: Omit<Approval, 'id' | 'status' | 'createdAt'>, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): { approval: Approval; decision: Promise<Decision | null> } {
     const approval: Approval = { ...a, id: randomUUID(), status: 'pending', createdAt: Date.now() }
+    // A hook request that lands while Kernel quits gets the fallback answer at once, so Claude Code asks in its own window.
+    if (this.closed) return { approval: { ...approval, status: 'expired' }, decision: Promise.resolve(null) }
     this.store?.saveApproval(approval)
     bus.push({ type: 'approval', approval })
     bus.activity({ kind: 'approval.requested', roomId: a.roomId, workspaceId: a.workspaceId, agentId: a.agentId, text: a.title, object: a.toolName })
@@ -37,7 +41,7 @@ export class Approvals {
 
   /** Change a saved approval and tell every window, for example to link a plan step to the workspace it was handed to. */
   update(id: string, patch: Partial<Approval>): Approval | undefined {
-    const prev = this.store?.approvals().find((x) => x.id === id)
+    const prev = this.store?.approval(id)
     if (!prev) return undefined
     const next = { ...prev, ...patch }
     this.store?.saveApproval(next)
@@ -61,6 +65,17 @@ export class Approvals {
     return (this.store?.approvals({ workspaceId, pendingOnly: true }) ?? []).map((a) => this.finish(a.id, null, 'expired') ?? this.expire(a))
   }
 
+  /**
+   * Kernel is quitting: every approval still waiting ends as expired, while the database is still open, and its waiter
+   * resolves null, so a hook falls back to Claude Code's own prompt. An abort that arrives after the database closes,
+   * as a dropped hook connection's does, then finds nothing pending. Requests after this answer null at once without
+   * saving anything (KERNEL-215).
+   */
+  expirePending(): Approval[] {
+    this.closed = true
+    return [...this.pending.keys()].flatMap((id) => this.finish(id, null, 'expired') ?? [])
+  }
+
   private expire(a: Approval): Approval {
     const next: Approval = { ...a, status: 'expired' }
     this.store?.saveApproval(next)
@@ -75,9 +90,10 @@ export class Approvals {
     if (p.timer) clearTimeout(p.timer)
     this.pending.delete(id)
     p.resolve(decision)
-    const prev = this.store?.approvals().find((x) => x.id === id)
+    const prev = this.store?.approval(id)
     if (!prev) return undefined
-    const next: Approval = { ...prev, status, answer: decision && decision.behavior === 'answer' ? decision.text : prev.answer }
+    const answered = decision?.behavior === 'answer' ? decision : undefined
+    const next: Approval = { ...prev, status, answer: answered ? answered.text : prev.answer, answers: answered?.answers ?? prev.answers }
     this.store?.saveApproval(next)
     bus.push({ type: 'approval', approval: next })
     bus.activity({ kind: 'approval.decided', roomId: next.roomId, workspaceId: next.workspaceId, agentId: next.agentId, text: `${status} ${next.title}`, object: next.toolName })
@@ -106,6 +122,7 @@ export function describeTool(toolName: string, input: unknown): { title: string;
     case 'Bash': return { title: `Run ${String(i.command ?? '').split('\n')[0].slice(0, 80)}`, detail: i.description }
     case 'Edit': case 'Write': case 'MultiEdit': return { title: `${toolName} ${i.file_path ?? ''}` }
     case 'WebFetch': return { title: `Fetch ${i.url ?? ''}` }
+    case 'mcp__kernel__share_file': return { title: `Share ${String(i.path ?? '').split('/').pop()}` }
     default: return { title: toolName.startsWith('mcp__') ? toolName.split('__').slice(1).join(' · ') : toolName }
   }
 }

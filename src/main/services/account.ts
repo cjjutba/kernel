@@ -16,6 +16,15 @@ export async function readAccount(): Promise<ClaudeAccount> {
   return { signedIn: true, name, login, email, plan: planName(status.subscriptionType) }
 }
 
+/**
+ * Whether Claude Code is signed in, from `claude auth status` alone, with none of `readAccount`'s GitHub and git reads.
+ * Kernel asks at launch before agents carry on (KERNEL-215), where only this answer matters.
+ */
+export async function claudeSignedIn(): Promise<boolean> {
+  const a = await exec('claude', ['auth', 'status'], { timeoutMs: 15000 })
+  try { return !!JSON.parse(a.stdout).loggedIn } catch { return false }
+}
+
 export async function signOut(): Promise<ClaudeAccount> {
   await exec('claude', ['auth', 'logout'], { timeoutMs: 15000 })
   return readAccount()

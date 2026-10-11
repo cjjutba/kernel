@@ -1,14 +1,18 @@
+import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { TOKEN_HEADER } from '@shared/hookEntry'
 import { parseHook, permissionResponse, type HookPayload } from '@shared/hookSchemas'
 import type { ActivityEvent } from '@shared/types'
 import { bus } from '../bus'
-import { describeTool, type Approvals } from './approvals'
+import { describeTool, needsUser, type Approvals } from './approvals'
 import { firstLine } from './text'
 
 export interface HookContext { roomId?: string; workspaceId?: string; agentId?: string }
 
 export interface HookServerOptions {
   port: number
+  /** The secret the installed hook command sends (KERNEL-206). A post without it gets a 401. */
+  token: string
   approvals: Approvals
   /** Map a session's cwd to the room and workspace it belongs to. */
   resolve: (cwd: string, sessionId: string) => HookContext
@@ -28,6 +32,10 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
   const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url === '/health') return json(res, 200, { ok: true })
     if (req.method !== 'POST' || !req.url?.startsWith('/hooks')) return json(res, 404, { error: 'not found' })
+    // Checked before the body is read, so a forged post costs nothing (KERNEL-206). A foreign Host is DNS rebinding,
+    // a missing token is a web page or another process, and a web page's no-cors post can only send text/plain.
+    if (!hostOk(req.headers.host, o.port) || !tokenOk(req.headers[TOKEN_HEADER.toLowerCase()], o.token)) return reject(res, 401, 'unauthorized')
+    if (req.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') return reject(res, 415, 'expected application/json')
     let body: unknown
     try { body = JSON.parse(await readBody(req)) } catch { return json(res, 400, { error: 'invalid json' }) }
     const parsed = parseHook(body)
@@ -49,11 +57,14 @@ export function startHookServer(o: HookServerOptions): Promise<Server> {
     if (ev.hook_event_name === 'PermissionRequest') {
       // A session outside every room asks in its own window, as if Kernel weren't installed (D-138).
       if (!ctx.roomId) return json(res, 200, permissionResponse(null))
+      // A plan or a question belongs to the app that started the session, which answers it in its own window (KERNEL-285).
+      if (needsUser(ev.tool_name)) return json(res, 200, permissionResponse(null))
       // Claude Code stops waiting when the user answers in the terminal or the session ends, so the approval ends too.
       const closed = new AbortController()
       res.on('close', () => { if (!res.writableFinished) closed.abort() })
       const { title, detail } = describeTool(ev.tool_name, ev.tool_input)
-      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', ...ctx, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
+      // Room only: Kernel can't tell which chat an outside session belongs to, so it asks in Inbox and Home, never in a workspace's chats.
+      const { decision } = o.approvals.request({ kind: 'tool', source: 'hook', roomId: ctx.roomId, toolName: ev.tool_name, input: ev.tool_input, title, detail }, { timeoutMs: typeof o.approvalTimeoutMs === 'function' ? o.approvalTimeoutMs() : o.approvalTimeoutMs, signal: closed.signal })
       const d = await decision
       if (!d) return json(res, 200, permissionResponse(null))
       if (d.behavior === 'allow') return json(res, 200, permissionResponse({ behavior: 'allow' }))
@@ -126,6 +137,21 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on('end', () => resolve(data))
     req.on('error', reject)
   })
+}
+
+const hostOk = (host: string | undefined, port: number) => host === `127.0.0.1:${port}` || host === `localhost:${port}`
+
+/** Constant time, so the answer's timing says nothing about how much of a guess was right. */
+function tokenOk(sent: string | string[] | undefined, token: string): boolean {
+  if (typeof sent !== 'string') return false
+  const a = Buffer.from(sent), b = Buffer.from(token)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
+/** Closes the connection too, so a client that sent a body it may not post can't keep the socket. */
+function reject(res: ServerResponse, status: number, error: string) {
+  res.writeHead(status, { 'content-type': 'application/json', connection: 'close' })
+  res.end(JSON.stringify({ error }))
 }
 
 function json(res: ServerResponse, status: number, body: unknown) {

@@ -1,7 +1,9 @@
-import { readFile, writeFile, mkdir, copyFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { readFile, writeFile, mkdir, copyFile, realpath, rename, rm, stat } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { kernelHookMatcher } from '@shared/hookEntry'
+import { kernelHookMatcher, tokenArg } from '@shared/hookEntry'
 
 /**
  * Events Kernel installs a hook for. Tool events take a "*" matcher; the rest take none.
@@ -20,16 +22,18 @@ const KERNEL_URL = /^http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks$/
 const KERNEL_COMMAND = /^\/usr\/bin\/curl .* http:\/\/(localhost|127\.0\.0\.1):\d+\/hooks \|\| true$/
 /** The http entries installs before KERNEL-56 wrote. Every install removes them, and they never count as installed. */
 const isLegacy = (h: HookEntry) => h.type === 'http' && typeof h.url === 'string' && KERNEL_URL.test(h.url)
-const isCurrent = (h: HookEntry) => h.type === 'command' && typeof h.command === 'string' && KERNEL_COMMAND.test(h.command)
-const isOurs = (h: HookEntry) => isLegacy(h) || isCurrent(h)
+const isCommand = (h: HookEntry) => h.type === 'command' && typeof h.command === 'string' && KERNEL_COMMAND.test(h.command)
+/** A command entry without this install's token gets a 401 from the server, so it counts as not installed (KERNEL-206). */
+const isCurrent = (h: HookEntry, token: string) => isCommand(h) && h.command!.includes(` ${tokenArg(token)} `)
+const isOurs = (h: HookEntry) => isLegacy(h) || isCommand(h)
 
 /** Pure merge: returns settings with Kernel's hooks added (or replaced), old Kernel entries removed, and every other hook kept as is. */
-export function withKernelHooks(settings: Settings, port: number, approvalTimeoutSec: number): Settings {
-  // Drop every entry of ours first, so one an older install left (SessionStart, an http entry) goes too.
+export function withKernelHooks(settings: Settings, port: number, approvalTimeoutSec: number, token: string): Settings {
+  // Drop every entry of ours first, so one an older install left (SessionStart, an http entry, an old token) goes too.
   const next = withoutKernelHooks(settings)
   next.hooks = { ...(next.hooks ?? {}) }
   for (const event of KERNEL_HOOK_EVENTS) {
-    next.hooks![event] = [...(next.hooks![event] ?? []), kernelHookMatcher(event, port, approvalTimeoutSec)]
+    next.hooks![event] = [...(next.hooks![event] ?? []), kernelHookMatcher(event, port, approvalTimeoutSec, token)]
   }
   return next
 }
@@ -45,14 +49,48 @@ export function withoutKernelHooks(settings: Settings): Settings {
   return next
 }
 
-/** Events with a current Kernel hook. An old http entry does not count, so Kernel offers Install, which replaces it. */
-export function installedEvents(settings: Settings): string[] {
-  return Object.entries(settings.hooks ?? {}).filter(([, ms]) => ms.some((m) => m.hooks.some(isCurrent))).map(([e]) => e)
+/** Events with a current Kernel hook. An old http entry or another token does not count, so Kernel offers Install, which replaces it. */
+export function installedEvents(settings: Settings, token: string): string[] {
+  return Object.entries(settings.hooks ?? {}).filter(([, ms]) => ms.some((m) => m.hooks.some((h) => isCurrent(h, token)))).map(([e]) => e)
 }
 
 /** Any Kernel hook, current or old. A port or timeout change rewrites the hooks only when this is true. */
 export function hasKernelHooks(settings: Settings): boolean {
   return Object.values(settings.hooks ?? {}).some((ms) => ms.some((m) => m.hooks.some(isOurs)))
+}
+
+/**
+ * Kernel's own entries brought up to date where they are, for the start of each run (KERNEL-206). An entry without this
+ * install's token, or with another port or timeout, becomes the current one in the same place. An event with no Kernel entry
+ * gets none, so a user who never installed gets nothing and one who removed an event keeps it removed. An entry for an event
+ * Kernel no longer hooks (SessionStart, D-047) goes, as Install does. Every other hook stays as it is. Null when nothing changes.
+ */
+export function withCurrentKernelHooks(settings: Settings, port: number, approvalTimeoutSec: number, token: string): Settings | null {
+  let changed = false
+  const hooks: Record<string, Matcher[]> = {}
+  for (const [event, matchers] of Object.entries(settings.hooks ?? {})) {
+    const want = (KERNEL_HOOK_EVENTS as readonly string[]).includes(event) ? kernelHookMatcher(event, port, approvalTimeoutSec, token).hooks[0] : null
+    let placed = false
+    const next = matchers.map((m) => ({
+      ...m,
+      hooks: m.hooks.flatMap((h): HookEntry[] => {
+        if (!isOurs(h)) return [h]
+        // One Kernel entry per event: a second one would post every event twice.
+        if (!want || placed) { changed = true; return [] }
+        placed = true
+        if (h.type === want.type && h.command === want.command && h.timeout === want.timeout) return [h]
+        changed = true
+        return [want]
+      })
+    }))
+    // Only a group this emptied goes. One the user left empty stays.
+    const kept = next.filter((m, i) => m.hooks.length || !matchers[i].hooks.length)
+    if (kept.length) hooks[event] = kept
+  }
+  if (!changed) return null
+  const out: Settings = { ...settings, hooks }
+  if (!Object.keys(hooks).length) delete out.hooks
+  return out
 }
 
 async function readSettings(file: string): Promise<Settings> {
@@ -64,23 +102,61 @@ function assertWritable(file: string) {
   if (process.env.VITEST && resolve(file) === join(homedir(), '.claude', 'settings.json')) throw new Error(`Refusing to write ${file} under vitest. Pass a temp claudeSettingsFile.`)
 }
 
-/** Writes ~/.claude/settings.json, keeping a one-time backup next to it. */
-export async function installHooks(file: string, port: number, approvalTimeoutSec: number): Promise<string[]> {
+/**
+ * The first copy of the file before Kernel touched it. Never overwritten, so a second install or an uninstall can't replace
+ * the user's original settings with ones Kernel already changed (KERNEL-206).
+ */
+async function backupOnce(file: string) {
+  try { await copyFile(file, file + '.kernel-backup', constants.COPYFILE_EXCL) } catch (e: any) { if (e.code !== 'EEXIST' && e.code !== 'ENOENT') throw e }
+}
+
+/**
+ * Writes a temp file next to the target and renames it over, so Claude Code never reads half a file and a write of its own
+ * lands whole, before or after ours. A symlinked settings file keeps its link: the write goes to the file it points at.
+ * The hooks carry the token, so group and others lose read access (KERNEL-206).
+ */
+async function writeAtomic(file: string, settings: Settings) {
+  const target = await realpath(file).catch(() => file)
+  const mode = await stat(target).then((s) => s.mode & 0o700, () => 0o600)
+  await mkdir(dirname(target), { recursive: true })
+  const tmp = `${target}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+  try {
+    await writeFile(tmp, JSON.stringify(settings, null, 2) + '\n', { mode, flag: 'wx' })
+    await rename(tmp, target)
+  } catch (e) { await rm(tmp, { force: true }); throw e }
+}
+
+/** Writes ~/.claude/settings.json, keeping the first backup next to it. */
+export async function installHooks(file: string, port: number, approvalTimeoutSec: number, token: string): Promise<string[]> {
   assertWritable(file)
   const current = await readSettings(file)
-  await mkdir(dirname(file), { recursive: true })
-  try { await copyFile(file, file + '.kernel-backup') } catch { /* first install */ }
-  const next = withKernelHooks(current, port, approvalTimeoutSec)
-  await writeFile(file, JSON.stringify(next, null, 2) + '\n')
-  return installedEvents(next)
+  await backupOnce(file)
+  const next = withKernelHooks(current, port, approvalTimeoutSec, token)
+  await writeAtomic(file, next)
+  return installedEvents(next, token)
+}
+
+/**
+ * Runs at start: rewrites Kernel's out-of-date entries with the same safe write as Install, and writes nothing when they are
+ * current or there are none. Returns whether it wrote. Throws, leaving the file alone, when the file can't be read, parsed or
+ * written, so Kernel can ask the user to install instead.
+ */
+export async function refreshHooks(file: string, port: number, approvalTimeoutSec: number, token: string): Promise<boolean> {
+  const next = withCurrentKernelHooks(await readSettings(file), port, approvalTimeoutSec, token)
+  if (!next) return false
+  assertWritable(file)
+  await backupOnce(file)
+  await writeAtomic(file, next)
+  return true
 }
 
 export async function uninstallHooks(file: string) {
   assertWritable(file)
   const current = await readSettings(file)
-  await writeFile(file, JSON.stringify(withoutKernelHooks(current), null, 2) + '\n')
+  await backupOnce(file)
+  await writeAtomic(file, withoutKernelHooks(current))
 }
 
-export async function hookStatus(file: string) { return installedEvents(await readSettings(file)) }
+export async function hookStatus(file: string, token: string) { return installedEvents(await readSettings(file), token) }
 
 export async function kernelHooksPresent(file: string) { return hasKernelHooks(await readSettings(file)) }

@@ -34,7 +34,7 @@ export function AccountButton() {
           label="Account" anchorRef={anchor} onClose={actions.ui.closeMenu} style={{ left: 0, top: 'calc(100% + 6px)', width: 232 }}
           items={[
             ...(who ? [{ id: 'who', label: who, disabled: true }] : []),
-            { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => go({ name: 'settings', page: 'general' }) },
+            { id: 'settings', label: 'Settings', shortcut: '⌘,', onSelect: () => actions.ui.openSettings() },
             { id: 'shortcuts', label: 'Keyboard shortcuts', onSelect: () => go({ name: 'settings', page: 'shortcuts' }) },
             { id: 'usage', label: 'Usage', onSelect: () => go({ name: 'settings', page: 'account' }) },
             { id: 'new', label: "What's new", onSelect: () => actions.ui.openModal({ name: 'whatsNew' }) },

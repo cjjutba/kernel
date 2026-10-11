@@ -1,9 +1,14 @@
-import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, Workspace } from '@shared/types'
+import { isRunName } from '@shared/types'
+import type { AgentDef, Approval, Chat, ClaudeAccount, HookStatus, LinearIssue, RoomSettings, Workspace } from '@shared/types'
 import type { Fixture } from '../../fixtures'
-import { join } from 'node:path'
+import type { PushEvent } from '@shared/ipc'
+import { localUrlIn } from '@shared/previewUrl'
+import { join, matchesGlob } from 'node:path'
 import type { Handlers } from './kernel'
-import { applySettingsPatch, DEFAULT_SETTINGS } from './services/settings'
+import { applySettingsPatch, DEFAULT_SETTINGS, previewUrlsOf } from './services/settings'
 import { agentFromFile, draftAgent } from './services/agents'
+import { isPattern } from './services/filesToCopy'
+import { presetList, resolvePreset, terminalTitle } from './services/terminalPresets'
 
 const ok = { ok: true } as const
 const fixtureAccount: ClaudeAccount = { signedIn: true, name: 'Sam Rivera', login: 'samrivera', plan: 'Claude Max' }
@@ -42,7 +47,12 @@ export function fixtureHandlers(f: Fixture): Handlers {
   const hooks: HookStatus = f.hooks ?? { port: settings.hookPort, listening: true, installed: true, events: [] }
   const update = f.update ?? { status: 'idle' as const, current: '0.1.0' }
   const account = f.account ?? fixtureAccount
-  const roomSettings = (roomId: string) => f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+  const roomSettings = (roomId: string): RoomSettings => {
+    const rs = f.roomSettings?.[roomId] ?? { scripts: {}, files: { copy: ['.env', '.env.local'] }, workspace: {} }
+    // Like the engine, `run` comes first, from `[scripts] run`.
+    const runScripts = rs.runScripts ?? (rs.scripts.run ? [{ name: 'run', command: rs.scripts.run }] : [])
+    return { ...rs, runScripts, disabled: { skills: [], mcp: [], ...rs.disabled }, preview: { urls: rs.preview?.urls ?? [] }, env: { files: rs.env?.files ?? [] }, sources: rs.sources ?? {} }
+  }
   const queue = (chatId: string) => f.queue?.[chatId] ?? []
   const decided = (a: Approval, d: Parameters<Handlers['approvals.decide']>[0]['decision']): Approval =>
     d.behavior === 'answer' ? { ...a, status: 'answered', answer: d.text } : { ...a, status: d.behavior === 'allow' ? 'allowed' : 'denied' }
@@ -59,6 +69,11 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.add': async ({ path, name }) => f.rooms.find((r) => r.path === path) ?? { id: 'fixture-room', name: name ?? path.split('/').pop() ?? path, path, defaultBranch: 'main', paused: false, createdAt: Date.now() },
     'rooms.create': async ({ name, desc, source, from }) => ({ id: 'fixture-room', name, desc, kind: source, path: from, defaultBranch: 'main', paused: false, createdAt: Date.now() }),
     'rooms.update': async ({ roomId, patch }) => ({ ...room(roomId), ...patch }),
+    'rooms.setIcon': async ({ roomId, icon }) => {
+      const { icon: _old, ...r } = room(roomId)
+      return icon.kind === 'letter' ? r : { ...r, icon: { kind: icon.kind, file: `${roomId}-fixture.png`, at: Date.now() } }
+    },
+    'rooms.icon': async ({ roomId }) => (room(roomId).icon ? f.roomIcons?.[roomId] ?? null : null),
     'rooms.remove': async () => ok,
     'rooms.setPaused': async ({ roomId, paused }) => ({ ...room(roomId), paused }),
     'rooms.brief': async ({ roomId, agentId }) => {
@@ -72,6 +87,8 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'rooms.resolveOverlap': async () => ok,
     'rooms.inspectFolder': async ({ path }) => f.folders?.find((x) => x.path === path) ?? { path, git: true, branch: 'main', dirty: 0 },
     'rooms.recentFolders': async () => f.folders ?? [],
+    'rooms.scriptTrust': async () => null,
+    'rooms.trust': async () => ok,
     'github.repos': async ({ query }) => (f.repos ?? []).filter((r) => !query || r.fullName.includes(query)),
     'agents.list': async ({ roomId, retired }) => (f.agents[roomId] ?? []).filter((a) => !!a.retired === !!retired),
     'agents.status': async ({ roomId }) => f.status[roomId] ?? {},
@@ -120,10 +137,14 @@ export function fixtureHandlers(f: Fixture): Handlers {
       return { chatId: c.id, workspaceId: ws.id }
     },
     'chats.list': async ({ workspaceId }) => f.chats.filter((c) => c.workspaceId === workspaceId),
-    'chats.create': async ({ workspaceId, kind }) => {
+    'chats.create': async ({ workspaceId, kind, preset }) => {
       const first = f.chats.find((c) => c.workspaceId === workspaceId)
       if (!first) throw new Error(`Unknown workspace ${workspaceId}`)
-      return { ...first, id: `fixture-chat-${Date.now()}`, kind: kind ?? 'chat', title: kind === 'terminal' ? 'Terminal (claude)' : 'New chat', sessionId: undefined, plan: false }
+      const base = { ...first, id: `fixture-chat-${Date.now()}`, sessionId: undefined, plan: false, terminal: undefined, autoTitle: undefined }
+      if (kind !== 'terminal') return { ...base, kind: 'chat', title: 'New chat' }
+      if (!settings.terminal.enabled) throw new Error('Big terminal tabs are off. Turn them on in Settings, Big terminal.')
+      const term = resolvePreset(presetList(settings.terminal, f.terminalClis ?? []), settings.terminal, workspace(workspaceId).mode, preset)
+      return { ...base, kind: 'terminal', title: terminalTitle(term.preset), terminal: term.terminal }
     },
     'chats.items': async ({ chatId }) => f.items[chatId] ?? [],
     'chats.send': async () => ({ queued: false }),
@@ -139,6 +160,7 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'chats.compact': async () => ok,
     'chats.restart': async () => ok,
     'chats.queue': async ({ chatId }) => queue(chatId),
+    'chats.queueReason': async () => null,
     'chats.unqueue': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'chats.sendNow': async ({ chatId, id }) => queue(chatId).filter((q) => q.id !== id),
     'skills.list': async () => f.skills ?? [],
@@ -195,17 +217,79 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'account.get': async () => account,
     'account.signIn': async () => account,
     'account.signOut': async () => ({ signedIn: false }),
+    'terminal.presets': async () => presetList(settings.terminal, f.terminalClis ?? []),
     'settings.get': async () => settings,
     'settings.set': async ({ patch }) => (settings = applySettingsPatch(settings, patch)),
     'settings.room': async ({ roomId }) => roomSettings(roomId),
-    'settings.setRoom': async ({ roomId, patch }) => {
-      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing.
-      const cur = roomSettings(roomId) as unknown as Record<string, Record<string, unknown>>
-      const next: Record<string, Record<string, unknown>> = { scripts: { ...cur.scripts }, files: { ...cur.files }, workspace: { ...cur.workspace }, disabled: { skills: [], mcp: [], ...cur.disabled }, linear: { ...cur.linear } }
-      for (const [group, values] of Object.entries(patch)) for (const [k, v] of Object.entries(values ?? {})) { if (v === null) delete next[group][k]; else next[group][k] = v }
-      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: next as never }
+    'settings.setRoom': async ({ roomId, patch, shared }) => {
+      // Keeps the change for the life of the fixture, so a toggle in a screenshot run behaves like the real thing. Any group
+      // the patch names is applied the same way, and the sources follow the file it was written to. `runScripts` is a list
+      // here and a table in the patch, so it is applied by name, with `run` kept as `[scripts] run`.
+      const cur = roomSettings(roomId)
+      const next: Record<string, unknown> = { ...cur }
+      const sources = { ...cur.sources }
+      const file = shared ? 'shared' : 'local'
+      const other = shared ? 'local' : 'shared'
+      const runs = new Map(cur.runScripts.map((r) => [r.name, r.command]))
+      // `RUN` and `Run` are `run`, as in the engine.
+      if (patch.runScripts) patch = { ...patch, runScripts: Object.fromEntries(Object.entries(patch.runScripts).map(([k, v]) => [isRunName(k) ? 'run' : k, v])) }
+      // A preview list with no entry left removes the key, as in the engine (KERNEL-246).
+      if (patch.preview?.urls) {
+        const urls = previewUrlsOf(patch.preview.urls)
+        patch = { ...patch, preview: { urls: urls.length ? urls : null } }
+      }
+      for (const [group, values] of Object.entries(patch)) {
+        const g = group === 'runScripts' ? Object.fromEntries(runs) : { ...(cur as unknown as Record<string, Record<string, unknown> | undefined>)[group] }
+        for (const [k, v] of Object.entries(values ?? {})) {
+          const path = `${group}.${k}`
+          // Removing a key from one file leaves the other file's, as the engine does. The fixture keeps the value it shows.
+          if (v === null) {
+            if (sources[path] === 'override' || sources[path] === other) sources[path] = other
+            else { delete g[k]; delete sources[path] }
+          } else {
+            g[k] = v
+            sources[path] = sources[path] && sources[path] !== file ? 'override' : file
+          }
+        }
+        if (group === 'runScripts') {
+          runs.clear()
+          for (const [k, v] of Object.entries(g)) if (typeof v === 'string') runs.set(k, v)
+        } else next[group] = g
+      }
+      // `run` is one value with two names: whichever the patch set wins, and its source follows.
+      const [from, to] = patch.runScripts && 'run' in patch.runScripts ? ['runScripts.run', 'scripts.run'] : ['scripts.run', 'runScripts.run']
+      if (sources[from]) sources[to] = sources[from]
+      else delete sources[to]
+      const run = from === 'runScripts.run' ? runs.get('run') : (next.scripts as RoomSettings['scripts']).run
+      next.scripts = { ...(next.scripts as RoomSettings['scripts']), run }
+      next.runScripts = [...(run ? [{ name: 'run', command: run }] : []), ...[...runs].filter(([n]) => n !== 'run').map(([name, command]) => ({ name, command }))]
+      f.roomSettings = { ...(f.roomSettings ?? {}), [roomId]: { ...next, sources } as RoomSettings }
       return roomSettings(roomId)
     },
+    'files.preview': async ({ roomId, patterns }) => {
+      const entries = patterns ?? roomSettings(roomId).files.copy
+      return (f.localFiles?.[roomId] ?? []).filter((file) => entries.some((e) => (isPattern(e) ? matchesGlob(file.path, e) : file.path === e)))
+        .sort((a, b) => a.path.localeCompare(b.path))
+    },
+    'shared.list': async ({ roomId, workspaceId, limit }) => (f.shared ?? [])
+      .filter((x) => (!roomId || x.roomId === roomId) && (!workspaceId || x.workspaceId === workspaceId))
+      .sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit ?? undefined),
+    'shared.read': async ({ sharedId, version }) => {
+      const file = f.shared?.find((x) => x.id === sharedId)
+      const v = file?.versions.find((x) => x.n === version)
+      if (!file || !v) throw new Error('That shared file or version is gone.')
+      const data = f.sharedData?.[sharedId]?.[version]
+      return { kind: file.kind, mime: v.mime, ...(data?.text !== undefined ? { text: data.text } : {}), ...(data?.dataUrl ? { dataUrl: data.dataUrl } : {}) }
+    },
+    'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
+    'shared.reveal': async () => ok,
+    // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
+    'env.get': async ({ roomId }) => {
+      const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }
+      return { names: [...(scope?.names ?? [])].sort(), files: roomId ? scope?.files ?? roomSettings(roomId).env.files.map((path) => ({ path, missing: false })) : [] }
+    },
+    'env.set': async () => ok,
+    'env.reveal': async () => { throw new Error('Fixture mode has no values to show.') },
     'mcp.list': async () => f.mcp ?? [],
     'integrations.list': async () => f.integrations ?? [],
     'integrations.connect': async ({ id }) => ({ id, name: id, connected: true, detail: '' }),
@@ -217,4 +301,26 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'app.openTerminal': async () => ok,
     'app.checkOnline': async () => ({ online: !f.push.some((e) => e.type === 'online' && !e.online) })
   }
+}
+
+/**
+ * The events a fixture replays, with the `script.url` events the engine would push among them: a run script's first local
+ * URL right after the line that prints it, and null when it exits (KERNEL-246). A fixture that pushes its own keeps it.
+ */
+export function fixturePush(f: Fixture): PushEvent[] {
+  const out: PushEvent[] = []
+  const found = new Set<string>()
+  for (const e of f.push) {
+    if (e.type === 'script.exit' && e.kind === 'run' && found.delete(JSON.stringify([e.workspaceId, e.name ?? 'run']))) {
+      out.push({ type: 'script.url', workspaceId: e.workspaceId, name: e.name ?? 'run', url: null })
+    }
+    out.push(e)
+    if (e.type === 'script.url' && e.url) found.add(JSON.stringify([e.workspaceId, e.name]))
+    if (e.type !== 'script.output' || e.kind !== 'run') continue
+    const name = e.name ?? 'run'
+    const k = JSON.stringify([e.workspaceId, name])
+    const url = found.has(k) ? null : localUrlIn(e.line)
+    if (url) { found.add(k); out.push({ type: 'script.url', workspaceId: e.workspaceId, name, url }) }
+  }
+  return out
 }

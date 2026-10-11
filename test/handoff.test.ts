@@ -1,8 +1,8 @@
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, Decision, Workspace } from '@shared/types'
+import type { AgentDef, Chat, Decision, QueueReason, Workspace } from '@shared/types'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
 import { HANDOFF_NOW, HANDOFF_REMINDER, Handoffs, LEAD_RULE } from '../src/main/services/handoff'
@@ -122,6 +122,19 @@ describe('request_plan_approval follows the chat\'s plan mode (KERNEL-176)', () 
   })
 })
 
+describe('waiting for another PR (KERNEL-259)', () => {
+  it('tells the Lead to pass wait_for, to call wait_for_merge for a teammate that waits, and how to start one anyway', async () => {
+    expect(LEAD_RULE).toContain("When a task needs another task's PR merged first, pass that workspace's id in wait_for and tell the user which merge starts it.")
+    expect(LEAD_RULE).toContain('When a teammate says it is waiting on another PR, call wait_for_merge for it.')
+    expect(LEAD_RULE).toContain('To start a waiting teammate anyway, call wait_for_merge with an empty list.')
+    const rowan = await readFile(join(__dirname, '..', 'docs', 'starter-agents', 'rowan.md'), 'utf8')
+    expect(rowan).toContain("pass that workspace's id in wait_for and tell the user which merge starts it")
+    const tools = kernelTools({} as KernelToolDeps)
+    expect(tools.find((x) => x.name === 'create_workspace')!.description).not.toContain('Starts the agent right away')
+    expect(tools.map((x) => x.name)).toContain('wait_for_merge')
+  })
+})
+
 describe('create_workspace with issue (KERNEL-163)', () => {
   it('passes the issue key through, and the rule tells the Lead to', async () => {
     const asked: Parameters<KernelToolDeps['createWorkspace']>[0][] = []
@@ -171,7 +184,7 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
     { id: 'theo-2', name: 'Theo', role: 'Reviewer', lead: false },
     { id: 'ivy-qa', name: 'Ivy', role: 'QA', lead: false }
   ] as AgentDef[]
-  function tools(made: Partial<Workspace & { setupFailed: string }> = {}) {
+  function tools(made: Partial<Workspace & { setupFailed: string; queued: QueueReason }> = {}) {
     const asked: string[] = []
     const deps: KernelToolDeps = {
       roomId: 'room', lead: team[0], agents: async () => team, workspaces: () => [],
@@ -212,6 +225,18 @@ describe('create_workspace picks a real teammate (KERNEL-119)', () => {
   it('says when setup failed, so the teammate has not started, and keeps the Created prefix (KERNEL-126)', async () => {
     const t = tools({ status: 'failed', setupFailed: 'exit code 1' })
     expect(await t.create('kai')).toEqual({ isError: false, text: "Created ws-1 on feat/x for kai. Setup failed (exit code 1), so Kai hasn't started. The brief waits until the user fixes setup and clicks Run again in that workspace." })
+  })
+
+  it('says when the brief waits for a slot, a pause or the connection, so the teammate has not started (KERNEL-272)', async () => {
+    const said: [QueueReason | undefined, string][] = [
+      ['capacity', "Created ws-1 on feat/x for kai. Every agent slot in Settings, Models is in use, so Kai hasn't started. The brief goes out when a slot frees up."],
+      ['paused', "Created ws-1 on feat/x for kai. The room is paused, so Kai hasn't started. The brief goes out when the user resumes it."],
+      ['offline', "Created ws-1 on feat/x for kai. Kernel is offline or signed out, so Kai hasn't started. The brief goes out once it is back."],
+      // The brief went out: a message the Lead sent during setup waiting behind it is not the teammate waiting.
+      ['running', 'Created ws-1 on feat/x for kai.'],
+      [undefined, 'Created ws-1 on feat/x for kai.']
+    ]
+    for (const [queued, note] of said) expect(await tools({ queued }).create('kai')).toEqual({ isError: false, text: note })
   })
 
   it('refuses to hand a task to the Lead', async () => {

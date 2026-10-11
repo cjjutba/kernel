@@ -6,7 +6,8 @@ import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
 import { allOverlaps, inboxItems, needsYou } from '../../screens/inbox/model'
 import { isLeadWorkspace, leadOf, openLead, openLeadChat, useLeadWaiting } from '../../lead'
-import { roomLetter } from '../../screens/rooms/roomInfo'
+import { tabOf } from '../../nav'
+import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
@@ -19,7 +20,13 @@ import { leadHomeOf, liveWorkspaces, mergeChatList, sidebarRows, slotKey, slotsF
 import { chatGlyph, leadGlyph, workspaceGlyph, type WorkspaceGlyph } from './workspaceGlyph'
 import './sidebar.css'
 
-const same = (a: Route, b: Route) => JSON.stringify(a) === JSON.stringify(b)
+/** Routes hold only strings, so equal fields mean the same page. An unset field and a missing one are the same. */
+const same = (a: Route, b: Route) => {
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>
+  for (const k in x) if (x[k] !== y[k]) return false
+  for (const k in y) if (!(k in x) && y[k] !== undefined) return false
+  return true
+}
 
 /** How long ⌘ is held alone before the rows show their numbers. Shorter and ⌘K or ⌘C would flash them. */
 const HINT_DELAY = 400
@@ -98,28 +105,38 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
 /**
  * One of the Lead's open chats. Its icon is the one its tab shows (a plan to review, something that needs you, a running turn), from
  * the same approvals and `running` flag. It opens the Lead's workspace on that chat's tab, and the full title is the tooltip.
+ * A chat that started workspaces folds like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the
+ * icon also shows what a hidden workspace needs from you, so nothing waits out of sight.
  */
-function ChatItem({ roomId, chat, slot }: { roomId: string; chat: Chat; slot?: RowKey }) {
+function ChatItem({ roomId, chat, owned, folded, slot }: { roomId: string; chat: Chat; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
-  const waiting = useMemo(() => approvals.filter((a) => a.chatId === chat.id && a.status === 'pending'), [approvals, chat.id])
+  const waiting = useMemo(
+    () => approvals.filter((a) => a.status === 'pending' && (a.chatId === chat.id || (folded && owned.some((w) => w.id === a.workspaceId)))),
+    [approvals, chat.id, folded, owned]
+  )
   const running = useStore((s) => !!s.running[chat.id])
-  // A workspace with no tab chosen opens on its first tab that isn't closed, as the workspace screen does.
+  // The chat the workspace shows, which is none while a file or diff tab is open there (D-139).
   const current = useStore((s) => {
     const r = s.ui.route
-    if (r.name !== 'workspace' || r.workspaceId !== chat.workspaceId) return false
-    const tab = s.ui.workspace.tab
-    return tab ? tab === chat.id : (s.chats[chat.workspaceId] ?? []).find((c) => !c.closed)?.id === chat.id
+    return r.name === 'workspace' && r.workspaceId === chat.workspaceId && tabOf(s, chat.workspaceId) === chat.id
   })
   const g = chatGlyph({ waiting, running })
   return (
-    <button
-      className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${chat.title}, ${g.label}` : chat.title}
-      aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => void openLeadChat(roomId, chat.id)}
-    >
-      <span className="nav-glyph" data-tone={g.tone} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
-      <span className="grow ellipsis">{chat.title}</span>
-      {slot?.hint && <KeyHint n={slot.n} />}
-    </button>
+    <div className="hv chat-row">
+      <button
+        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${chat.title}, ${g.label}` : chat.title}
+        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={chat.title} onClick={() => void openLeadChat(roomId, chat.id)}
+      >
+        <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
+        <span className="grow ellipsis">{chat.title}</span>
+        {slot?.hint && <KeyHint n={slot.n} />}
+      </button>
+      {owned.length > 0 && (
+        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${chat.title}`} onClick={() => actions.ui.foldChat(chat.id, !folded)}>
+          <Icon name="right" size={14} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -190,7 +207,7 @@ function useChatLists(workspaceIds: string[]) {
 }
 
 /**
- * A room in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it, then the workspaces
+ * A room in the sidebar. Expanded, it lists the Lead's open chats with the workspaces each started under it (unless the chat is folded), then the workspaces
  * no open chat owns (D-139; D-104 hid Floor and Board). Pressing the row folds or unfolds it, as in Conductor, and hovering it
  * swaps the room's letter for a chevron and shows the menu button.
  */
@@ -200,9 +217,10 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const agents = useStore((s) => s.agents)
   const workspaces = useStore((s) => s.workspaces)
   const chats = useStore((s) => s.chats)
-  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats), [room, agents, workspaces, chats])
+  const foldedChats = useStore((s) => s.ui.foldedChats)
+  const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, foldedChats), [room, agents, workspaces, chats, foldedChats])
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
-  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats])
+  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, foldedChats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, foldedChats])
   const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)
@@ -214,7 +232,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       <div ref={anchor} className="hv room-row" style={{ position: 'relative' }}>
         <button className="nav-item" style={{ color: current ? 'var(--ink)' : undefined, paddingRight: 60 }} aria-expanded={expanded} onClick={onToggle}>
           <span className="room-mark">
-            <span className="room-letter" data-current={current || undefined}>{roomLetter(room.name)}</span>
+            <RoomIcon room={room} className="room-letter" current={current} />
             <span className="room-chev" data-open={expanded}><Icon name="right" size={14} /></span>
           </span>
           <span className="grow ellipsis">{room.name}</span>
@@ -229,7 +247,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
       {expanded && rows.map((row) => {
         const key = slotKey(row)
         if (row.kind === 'lead') return <LeadItem key={key} roomId={room.id} slot={slotOf(row)} />
-        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} chat={row.chat} slot={slotOf(row)} />
+        if (row.kind === 'chat') return <ChatItem key={key} roomId={room.id} chat={row.chat} owned={row.owned} folded={row.folded} slot={slotOf(row)} />
         return <WorkspaceItem key={key} ws={row.ws} nested={row.nested} slot={slotOf(row)} />
       })}
     </div>
@@ -262,7 +280,12 @@ const readSaved = () => readWidth(SIDEBAR_KEY, SIDEBAR_MIN, SIDEBAR_MAX) ?? SIDE
 export function Sidebar() {
   const rooms = useStore((s) => s.rooms.filter((r) => !r.hidden && !r.archived))
   const workspaces = useStore((s) => s.workspaces)
-  const inbox = useStore((s) => inboxItems(s.notifications, s.approvals, s.rooms, allOverlaps(s.overlaps)).filter(needsYou).length)
+  // The count reads these four slices and nothing else, so terminal chunks and script lines leave it alone.
+  const notifications = useStore((s) => s.notifications)
+  const approvals = useStore((s) => s.approvals)
+  const allRooms = useStore((s) => s.rooms)
+  const overlaps = useStore((s) => s.overlaps)
+  const inbox = useMemo(() => inboxItems(notifications, approvals, allRooms, allOverlaps(overlaps)).filter(needsYou).length, [notifications, approvals, allRooms, overlaps])
   const route = useStore((s) => s.ui.route)
   const numberedRoom = useStore((s) => roomInView(s.ui.route, s.rooms, s.workspaces)?.id)
   const hints = useCmdHeld()
@@ -296,12 +319,12 @@ export function Sidebar() {
       <div className="row" style={{ height: 36, paddingLeft: 4 }}>
         <AccountButton />
         <span className="grow" />
-        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘⇧N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
+        <button className="icon-btn" aria-label="New chat" data-tip-kbd="⌘N" style={{ border: '1px solid var(--line-2)', background: 'var(--surface)' }} onClick={() => actions.ui.openModal({ name: 'newWorkspace', roomId: openRoom })}><Icon name="compose" /></button>
       </div>
       <div className="nav-list" style={{ marginTop: 10 }}>
         <button className="nav-item" onClick={() => actions.ui.openModal({ name: 'search' })}><Icon name="search" /><span className="grow">Search</span><span className="muted" style={{ fontSize: 11.5 }}>⌘K</span></button>
         <NavItem route={{ name: 'home' }} icon="home" label="Home" />
-        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="muted" style={{ fontSize: 12 }}>{inbox}</span> : null} />
+        <NavItem route={{ name: 'inbox' }} icon="inbox" label="Inbox" right={inbox ? <span className="nav-count">{inbox}</span> : null} />
         <NavItem route={{ name: 'issues' }} icon="issues" label="Issues" />
         <NavItem route={{ name: 'history' }} icon="history" label="History" />
       </div>
@@ -324,7 +347,7 @@ export function Sidebar() {
         {plan && <PlanButton plan={plan} />}
         <span className="grow" />
         <IconButton icon="sparkle" label="What's new" onClick={() => actions.ui.openModal({ name: 'whatsNew' })} />
-        <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => go({ name: 'settings', page: 'general' })} />
+        <IconButton icon="sliders" label="Settings" data-tip-kbd="⌘," onClick={() => actions.ui.openSettings()} />
       </div>
       <ResizeHandle
         targetRef={nav} edge="right" label="Resize sidebar" width={width} min={SIDEBAR_MIN} limit={widthLimit} defaultWidth={sidebarDefault}

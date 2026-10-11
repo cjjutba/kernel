@@ -1,8 +1,8 @@
 import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
-  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FolderInfo, ForcedUi, HookStatus, Hunk,
+  ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, Skill, Task, TeamTemplate,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -32,6 +32,10 @@ export interface KernelApi {
   /** New room modal. Progress arrives as `room.setup` push events. */
   'rooms.create': { req: NewRoomRequest; res: Room }
   'rooms.update': { req: { roomId: string; patch: Partial<Pick<Room, 'name' | 'desc' | 'hidden' | 'archived' | 'desks' | 'allow'>> }; res: Room }
+  /** Sets the room icon. The letter clears it. When the GitHub avatar can't be fetched it throws a plain error and the room keeps its letter. */
+  'rooms.setIcon': { req: { roomId: string; icon: { kind: 'letter' } | { kind: 'github' } | { kind: 'image'; path: string } }; res: Room }
+  /** The room icon as a data URL, or null for the letter. */
+  'rooms.icon': { req: { roomId: string }; res: string | null }
   'rooms.remove': { req: { roomId: string; deleteWorktrees: boolean }; res: Ok }
   'rooms.setPaused': { req: { roomId: string; paused: boolean }; res: Room }
   /** Floor composer: send a brief to the room's Lead, or a message to one agent. `parts` is the message in order when it has chips inline; `text` is its plain words. */
@@ -41,6 +45,10 @@ export interface KernelApi {
   'rooms.lastActivity': { req: { roomId: string }; res: Record<string, number> }
   /** "Let Rowan sort it": the Lead decides which worktree keeps the change. */
   'rooms.resolveOverlap': { req: { overlapId: string }; res: Ok }
+  /** What the room's scripts and files.copy list wait on, or null when there is nothing to trust (KERNEL-209). */
+  'rooms.scriptTrust': { req: { roomId: string }; res: ScriptTrust | null }
+  /** Trust the text behind `hash` and release the room's workspaces held in `trust`. Rejects when the text changed since. */
+  'rooms.trust': { req: { roomId: string; hash: string }; res: Ok }
   'rooms.inspectFolder': { req: { path: string }; res: FolderInfo }
   'rooms.recentFolders': { req: void; res: FolderInfo[] }
   'github.repos': { req: { query?: string }; res: RepoSummary[] }
@@ -93,7 +101,8 @@ export interface KernelApi {
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal' }; res: Chat }
+  /** `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
@@ -108,6 +117,8 @@ export interface KernelApi {
   /** Start a crashed session again (FloorOffline "Restart session"). */
   'chats.restart': { req: { chatId: string }; res: Ok }
   'chats.queue': { req: { chatId: string }; res: QueuedMessage[] }
+  /** What the chat's queue waits for, null when it is empty. `chat.queue` events carry each change (KERNEL-271). */
+  'chats.queueReason': { req: { chatId: string }; res: QueueReason | null }
   'chats.unqueue': { req: { chatId: string; id: string }; res: QueuedMessage[] }
   /** Interrupt the running turn and send this queued message now. */
   'chats.sendNow': { req: { chatId: string; id: string }; res: QueuedMessage[] }
@@ -116,6 +127,8 @@ export interface KernelApi {
   'commands.list': { req: void; res: BuiltinCommand[] }
   'terminal.write': { req: { chatId: string; data: string }; res: Ok }
   'terminal.resize': { req: { chatId: string; cols: number; rows: number }; res: Ok }
+  /** The presets a new big terminal tab can run: the built-ins, the CLIs on the PATH, then the custom ones (KERNEL-248). */
+  'terminal.presets': { req: void; res: TerminalPreset[] }
 
   // checkpoints (KERNEL-13)
   'checkpoints.list': { req: { workspaceId: string }; res: Checkpoint[] }
@@ -154,8 +167,10 @@ export interface KernelApi {
   'pr.continue': { req: { workspaceId: string }; res: Workspace }
 
   // scripts
-  'scripts.run': { req: { workspaceId: string; kind: ScriptKind }; res: Ok }
-  'scripts.stop': { req: { workspaceId: string; kind: 'run' }; res: Ok }
+  /** `name` picks a run script. Without one it is `run`, the default (KERNEL-244). */
+  'scripts.run': { req: { workspaceId: string; kind: ScriptKind; name?: string }; res: Ok }
+  /** Stops the named run script, or every run script in the workspace without a name. */
+  'scripts.stop': { req: { workspaceId: string; kind: 'run'; name?: string }; res: Ok }
 
   // activity, usage and account (KERNEL-21, 25, 28)
   'activity.recent': { req: { roomId?: string; limit?: number }; res: ActivityEvent[] }
@@ -173,6 +188,14 @@ export interface KernelApi {
   'settings.room': { req: { roomId: string }; res: RoomSettings }
   /** Writes .kernel/settings.local.toml unless `shared` is set, then .kernel/settings.toml. A `null` removes that key from the file, which is "Use default". */
   'settings.setRoom': { req: { roomId: string; patch: RoomSettingsPatch; shared?: boolean }; res: RoomSettings }
+  /** Files to copy: exactly what a new worktree would get, sorted by path. Without `patterns` it reads the room's saved list (KERNEL-245). */
+  'files.preview': { req: { roomId: string; patterns?: string[] }; res: FileToCopy[] }
+  // environment variables (KERNEL-247). Without `roomId` it is the app's, which has no env files. Values only leave
+  // main through `env.reveal`.
+  'env.get': { req: { roomId?: string }; res: { names: string[]; files: { path: string; missing: boolean }[] } }
+  /** A `null` value deletes the variable. Throws for a bad name, one of Kernel's own, or when values can't be encrypted. */
+  'env.set': { req: { roomId?: string; name: string; value: string | null }; res: Ok }
+  'env.reveal': { req: { roomId?: string; name: string }; res: string }
   'mcp.list': { req: { roomId?: string }; res: McpServer[] }
   'integrations.list': { req: void; res: Integration[] }
   /** Linear takes a `token` (an empty one disconnects). GitHub signs in through `gh`, so it only reports its status. */
@@ -181,8 +204,11 @@ export interface KernelApi {
   // app (KERNEL-25, 30)
   'update.get': { req: void; res: AppUpdate }
   'update.check': { req: void; res: AppUpdate }
-  /** Restart into the downloaded version. Running agents pause first. */
-  'update.install': { req: void; res: Ok }
+  /**
+   * Restart into the downloaded version. With agents working Kernel asks first, and `canceled` says the user chose
+   * Cancel, so Kernel keeps running (KERNEL-214). Without it Kernel is quitting.
+   */
+  'update.install': { req: void; res: Ok & { canceled?: true } }
   /** Writes the activity log to a file in the data folder and returns where (Settings > About). */
   'app.exportLogs': { req: void; res: { path: string } }
   /** What Settings > About shows: Kernel's version and where its data lives. */
@@ -192,8 +218,20 @@ export interface KernelApi {
   /** "Try again" on the offline banner: check the network now. Main also pushes `online` when it changes. */
   'app.checkOnline': { req: void; res: { online: boolean } }
 
+  // shared files (KERNEL-302)
+  /** Files agents shared, newest first: a room's (the Lead's panel) or one workspace's. */
+  'shared.list': { req: { roomId?: string; workspaceId?: string; limit?: number }; res: SharedFile[] }
+  /** One version's contents: Markdown and HTML as text, images and PDFs as a data URL. */
+  'shared.read': { req: { sharedId: string; version: number }; res: { kind: SharedKind; mime: string; text?: string; dataUrl?: string } }
+  /** The version's thumbnail as a data URL, or null when none was captured. */
+  'shared.thumb': { req: { sharedId: string; version: number }; res: string | null }
+  /** Show in Finder: the source file while it still matches that version, else Kernel's copy. */
+  'shared.reveal': { req: { sharedId: string; version: number }; res: Ok }
+
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
+  /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
+  'system.pickImage': { req: void; res: string | null }
   'system.openExternal': { req: { url: string }; res: Ok }
   'system.openInEditor': { req: { path: string }; res: Ok }
   /** Where the traffic lights sit: over the sidebar's top strip, or in the header row while the sidebar is hidden. */
@@ -212,17 +250,26 @@ export type PushEvent =
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }
   | { type: 'chat.running'; chatId: string; running: boolean }
-  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[] }
+  /**
+   * The chat's queue, or what it waits for, changed. `why` is set while the queue holds messages and something holds them,
+   * and is absent once it is empty (KERNEL-271).
+   */
+  | { type: 'chat.queue'; chatId: string; queue: QueuedMessage[]; why?: QueueReason }
   | { type: 'terminal.data'; chatId: string; data: string }
   | { type: 'approval'; approval: Approval }
   | { type: 'room'; room: Room }
   | { type: 'room.setup'; roomId: string; steps: RoomSetupStep[] }
+  /** The room's scripts wait for the user to trust them. Null once they are trusted (KERNEL-209). */
+  | { type: 'room.trust'; roomId: string; trust: ScriptTrust | null }
   | { type: 'overlap'; overlap: Overlap }
   | { type: 'agents'; roomId: string; agents: AgentDef[] }
   | { type: 'workspace'; workspace: Workspace }
   | { type: 'agent.status'; roomId: string; agentId: string; status: AgentStatus; activity?: string }
-  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; line: string; stream: 'stdout' | 'stderr' }
-  | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; code: number | null }
+  /** `name` is set for run scripts, so each keeps its own output and exit (KERNEL-244). */
+  | { type: 'script.output'; workspaceId: string; kind: ScriptKind; name?: string; line: string; stream: 'stdout' | 'stderr' }
+  | { type: 'script.exit'; workspaceId: string; kind: ScriptKind; name?: string; code: number | null }
+  /** The first local URL a run script printed, and null when it starts or exits (KERNEL-246). */
+  | { type: 'script.url'; workspaceId: string; name: string; url: string | null }
   | { type: 'checkpoint'; checkpoint: Checkpoint }
   | { type: 'task'; task: Task }
   | { type: 'notification'; notification: Notification }
@@ -238,6 +285,8 @@ export type PushEvent =
   | { type: 'online'; online: boolean }
   /** Claude is overloaded and the session is retrying (WorkspaceOverloaded.png). Null when it recovers. */
   | { type: 'retry'; chatId: string; retry: { attempt: number; of: number; nextAt: number } | null }
+  /** A file was shared, or got a new version (KERNEL-302). */
+  | { type: 'shared'; file: SharedFile }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
 export const NOT_IMPLEMENTED = 'Not built yet'

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
 import { isNotImplemented } from '../src/shared/ipc'
 import { Kernel, UNBUILT } from '../src/main/kernel'
 import { fixtures } from '../fixtures'
-import { fixtureHandlers } from '../src/main/fixtures'
+import { fixtureHandlers, fixturePush } from '../src/main/fixtures'
 import { actions, apply, getState } from '../src/renderer/src/store'
 import { tempRepo } from './helpers'
 
@@ -49,6 +49,60 @@ describe('IPC contract', () => {
     expect((await h['linear.issue']({ id: 'KERNEL-83' })).description).toBe('Build it.')
   })
 
+  it('fixture mode answers the shared file channels from the fixture, empty without one (KERNEL-302)', async () => {
+    const empty = fixtureHandlers(fixtures.Workspace)
+    expect(await empty['shared.list']({})).toEqual([])
+    expect(await empty['shared.thumb']({ sharedId: 'x', version: 1 })).toBeNull()
+    const v = { n: 1, at: 1, file: 'a.html', mime: 'text/html', bytes: 4, sha256: 'x' }
+    const file = (id: string, workspaceId: string, updatedAt: number) => ({ id, roomId: 'room-a', workspaceId, agentId: 'kai', source: `${id}.html`, title: id, kind: 'html' as const, versions: [v], createdAt: 1, updatedAt })
+    const h = fixtureHandlers({ ...fixtures.Workspace, shared: [file('a', 'w1', 1), file('b', 'w2', 2)], sharedData: { a: { 1: { text: '<p>', thumb: 'data:image/png;base64,AA' } } } })
+    expect((await h['shared.list']({ roomId: 'room-a' })).map((f) => f.id)).toEqual(['b', 'a'])
+    expect((await h['shared.list']({ workspaceId: 'w1' })).map((f) => f.id)).toEqual(['a'])
+    expect(await h['shared.read']({ sharedId: 'a', version: 1 })).toEqual({ kind: 'html', mime: 'text/html', text: '<p>' })
+    expect(await h['shared.thumb']({ sharedId: 'a', version: 1 })).toBe('data:image/png;base64,AA')
+    await expect(h['shared.read']({ sharedId: 'a', version: 2 })).rejects.toThrow()
+  })
+
+  it('fixture mode answers the room icon channels, with the icon fixtures showing a small PNG', async () => {
+    const h = fixtureHandlers(fixtures.SettingsRoomIcon)
+    expect(await h['rooms.icon']({ roomId: 'room-a' })).toMatch(/^data:image\/png;base64,iVBORw0KGgo/)
+    expect(await h['rooms.icon']({ roomId: 'room-b' })).toBeNull()
+    expect((await h['rooms.setIcon']({ roomId: 'room-b', icon: { kind: 'github' } })).icon?.kind).toBe('github')
+    expect((await h['rooms.setIcon']({ roomId: 'room-a', icon: { kind: 'letter' } })).icon).toBeUndefined()
+    expect(await fixtureHandlers(fixtures.HomeRoomIcon)['rooms.icon']({ roomId: 'room-b' })).toMatch(/^data:image\/png;base64,/)
+    // The other screens draw letters, so no base fixture room carries an icon.
+    expect(await fixtureHandlers(fixtures.Workspace)['rooms.icon']({ roomId: 'room-portfolio' })).toBeNull()
+  })
+
+  it('fixture mode answers files.preview from the room\'s local files, with the saved list or the given patterns (KERNEL-245)', async () => {
+    expect(await fixtureHandlers(fixtures.Workspace)['files.preview']({ roomId: 'room-a' })).toEqual([])
+    const localFiles = { 'room-a': [{ path: 'apps/web/.env', size: 64 }, { path: '.env.local', size: 48 }, { path: '.env', size: 120 }, { path: 'notes.txt', size: 3 }] }
+    const h = fixtureHandlers({ ...fixtures.Workspace, localFiles, roomSettings: { 'room-a': { scripts: {}, files: { copy: ['.env'] }, workspace: {} } } })
+    expect(await h['files.preview']({ roomId: 'room-a' })).toEqual([{ path: '.env', size: 120 }])
+    expect((await h['files.preview']({ roomId: 'room-a', patterns: ['.env*', 'apps/**/.env'] })).map((f) => f.path)).toEqual(['.env', '.env.local', 'apps/web/.env'])
+  })
+
+  it('fixture mode answers env names and files only, with no value to reveal (KERNEL-247)', async () => {
+    const h = fixtureHandlers({ ...fixtures.Workspace, env: { app: ['B', 'A'], rooms: { 'room-a': { names: ['TOKEN'], files: [{ path: '.env', missing: true }] } } } })
+    expect(await h['env.get']({})).toEqual({ names: ['A', 'B'], files: [] })
+    expect(await h['env.get']({ roomId: 'room-a' })).toEqual({ names: ['TOKEN'], files: [{ path: '.env', missing: true }] })
+    await expect(h['env.reveal']({ roomId: 'room-a', name: 'TOKEN' })).rejects.toThrow('no values')
+    expect(await fixtureHandlers(fixtures.Workspace)['env.get']({ roomId: 'room-a' })).toEqual({ names: [], files: [] })
+  })
+
+  it('fixture mode answers terminal.presets and opens a terminal tab with a preset (KERNEL-248)', async () => {
+    const codex = { id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }
+    expect((await fixtureHandlers(fixtures.Workspace)['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell'])
+    const h = fixtureHandlers({ ...fixtures.Workspace, terminalClis: [codex] })
+    await h['settings.set']({ patch: { terminal: { custom: [{ id: 'logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } } })
+    expect((await h['terminal.presets']()).map((p) => p.id)).toEqual(['claude', 'claude-skip', 'shell', 'codex', 'logs'])
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect(await h['chats.create']({ workspaceId, kind: 'terminal', preset: 'codex' })).toMatchObject({ kind: 'terminal', title: 'Terminal (codex)', terminal: { preset: 'codex', command: 'codex' } })
+    expect((await h['chats.create']({ workspaceId })).terminal).toBeUndefined()
+    await h['settings.set']({ patch: { terminal: { enabled: false } } })
+    await expect(h['chats.create']({ workspaceId, kind: 'terminal' })).rejects.toThrow('Big terminal tabs are off')
+  })
+
   it('serves app and room settings', async () => {
     const repo = await tempRepo({ 'README.md': '# r\n', '.kernel/settings.toml': '[scripts]\nsetup = "pnpm install"\n' })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
@@ -59,7 +113,67 @@ describe('IPC contract', () => {
     expect((await h['settings.get']()).experimental.floor3d).toBe(false)
     const room = await k.addRoom(repo)
     expect((await h['settings.room']({ roomId: room.id })).scripts.setup).toBe('pnpm install')
+    expect((await h['settings.room']({ roomId: room.id })).sources).toEqual({ 'scripts.setup': 'shared' })
     await k.stop()
+  })
+
+  it('fixture mode answers the run script shapes: runScripts, a runScripts patch by name, and named Run and Stop (KERNEL-244)', async () => {
+    const h = fixtureHandlers(structuredClone(fixtures.Workspace))
+    const roomId = fixtures.Workspace.rooms[0].id
+    const workspaceId = fixtures.Workspace.workspaces[0].id
+    expect((await h['settings.room']({ roomId })).runScripts).toEqual([])
+    const rs = await h['settings.setRoom']({ roomId, patch: { runScripts: { run: 'pnpm dev', web: 'pnpm web' } }, shared: true })
+    expect(rs.runScripts).toEqual([{ name: 'run', command: 'pnpm dev' }, { name: 'web', command: 'pnpm web' }])
+    expect(rs.scripts.run).toBe('pnpm dev')
+    expect(rs.sources).toMatchObject({ 'runScripts.web': 'shared', 'runScripts.run': 'shared', 'scripts.run': 'shared' })
+    // `RUN` is `run`, as in the engine.
+    expect((await h['settings.setRoom']({ roomId, patch: { runScripts: { RUN: 'pnpm start' } }, shared: true })).runScripts[0]).toEqual({ name: 'run', command: 'pnpm start' })
+    const after = await h['settings.setRoom']({ roomId, patch: { runScripts: { web: null } }, shared: true })
+    expect(after.runScripts).toEqual([{ name: 'run', command: 'pnpm start' }])
+    expect(after.sources['runScripts.web']).toBeUndefined()
+    expect(await h['scripts.run']({ workspaceId, kind: 'run', name: 'web' })).toEqual({ ok: true })
+    expect(await h['scripts.stop']({ workspaceId, kind: 'run', name: 'web' })).toEqual({ ok: true })
+    expect(await h['scripts.stop']({ workspaceId, kind: 'run' })).toEqual({ ok: true })
+  })
+
+  it('fixture mode answers with the URL one workspace\'s run script printed, and preview URLs round trip (KERNEL-246)', async () => {
+    const f = structuredClone(fixtures.Workspace)
+    const found = fixturePush(f).filter((e) => e.type === 'script.url')
+    expect(found).toEqual([{ type: 'script.url', workspaceId: expect.any(String), name: 'run', url: 'http://localhost:4312' }])
+    // Right after the line that printed it, as the engine pushes it.
+    const push = fixturePush(f)
+    const at = push.findIndex((e) => e.type === 'script.url')
+    expect(push[at - 1]).toMatchObject({ type: 'script.output', workspaceId: found[0].workspaceId, line: 'Next.js ready on http://localhost:4312' })
+    // An exit clears it.
+    const ws = found[0].workspaceId
+    expect(fixturePush({ ...f, push: [...f.push, { type: 'script.exit', workspaceId: ws, kind: 'run', code: 0 }] }).filter((e) => e.type === 'script.url').map((e) => e.type === 'script.url' && e.url))
+      .toEqual(['http://localhost:4312', null])
+    const h = fixtureHandlers(f)
+    const roomId = f.rooms[0].id
+    expect((await h['settings.room']({ roomId })).preview).toEqual({ urls: [] })
+    const urls = [{ name: 'Web', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API', url: 'http://localhost:$((KERNEL_PORT + 1))' }]
+    const rs = await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    expect(rs.preview.urls).toEqual(urls)
+    expect(rs.sources['preview.urls']).toBe('local')
+    expect((await h['settings.setRoom']({ roomId, patch: { preview: { urls: null } } })).preview.urls).toEqual([])
+    // An empty list, or all blank rows, removes the key as in the engine.
+    await h['settings.setRoom']({ roomId, patch: { preview: { urls } } })
+    const blank = await h['settings.setRoom']({ roomId, patch: { preview: { urls: [{ name: '', url: ' ' }] } } })
+    expect(blank.preview.urls).toEqual([])
+    expect(blank.sources['preview.urls']).toBeUndefined()
+  })
+
+  it('fixture mode returns where room settings came from, and applies a patch to any group (KERNEL-190)', async () => {
+    const h = fixtureHandlers(fixtures.Workspace)
+    const roomId = fixtures.Workspace.rooms[0].id
+    expect((await h['settings.room']({ roomId })).sources).toEqual({})
+    const rs = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: '# Mine' }, workspace: { remote: 'upstream' } } })
+    expect(rs.pr).toEqual({ createInstructions: '# Mine' })
+    expect(rs.sources).toEqual({ 'pr.createInstructions': 'local', 'workspace.remote': 'local' })
+    expect((await h['settings.setRoom']({ roomId, patch: { workspace: { remote: 'fork' } }, shared: true })).sources['workspace.remote']).toBe('override')
+    const after = await h['settings.setRoom']({ roomId, patch: { pr: { createInstructions: null } } })
+    expect(after.pr).toEqual({})
+    expect(after.sources).toEqual({ 'workspace.remote': 'override' })
   })
 })
 
@@ -68,8 +182,8 @@ describe('docs/SCREENS.md', () => {
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
     .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 126 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(126)
+  it('lists all 154 screens, each with a route and a component file', () => {
+    expect(rows).toHaveLength(154)
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
@@ -94,6 +208,18 @@ describe('renderer store', () => {
     expect(getState().ui.toasts.map((t) => t.title)).toEqual(['Copied'])
     actions.ui.dismissToast(id)
     expect(getState().ui.toasts).toEqual([])
+  })
+
+  it('foldChat adds and removes the id, and an unfold leaves no empty entry', () => {
+    actions.ui.foldChat('c1', true)
+    actions.ui.foldChat('c2', true)
+    actions.ui.foldChat('c1', true)
+    expect(getState().ui.foldedChats).toEqual(['c2', 'c1'])
+    actions.ui.foldChat('c1', false)
+    actions.ui.foldChat('c3', false)
+    expect(getState().ui.foldedChats).toEqual(['c2'])
+    actions.ui.foldChat('c2', false)
+    expect(getState().ui.foldedChats).toEqual([])
   })
 
   it('applies push events to their slices', () => {

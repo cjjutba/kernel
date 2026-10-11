@@ -60,7 +60,7 @@ Run `/release` in Claude Code. It does the steps below, stops for you where a pe
 
 `pnpm release --dry` does everything except publish, skips the tag check, and writes the release body to `dist/release-body.md`. `pnpm dist:mac` makes an unsigned local build with no certificate needed.
 
-When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`.
+When the release PR merges, Vercel redeploys the site, because the release file is inside `site/`. The Ignored Build Step compares with the last successful deployment (D-057), so the deploy happens even when later commits skip `site/`. Vercel deploys only from main (KERNEL-233), so a release that merges while Vercel is rate limited deploys on the next push to main after the limit resets, and the release file is still in that diff because the step compares with the last successful deployment.
 
 ## When notarization is slow
 

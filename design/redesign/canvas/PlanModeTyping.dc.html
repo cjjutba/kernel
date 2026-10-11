@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kernel Lead chat, plan mode typing</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+.k{--canvas:#08090a;--panel:#0f1011;--side-panel:#0c0d0e;--card:#121315;--surface:#141516;--surface-2:#18191b;--surface-3:#1c1d21;--hover:#232428;--line:#1a1b1e;--line-2:#23252a;--line-3:#2a2b30;--panel-line:#1d1e22;--ink:#f7f8f8;--ink-2:#d0d6e0;--ink-3:#b7bcc4;--muted:#8a8f98;--faint:#62666d;--add:#4cb782;--del:#eb5757;--merged:#b9a3f5;--tint-add:#173327;--tint-del:#2f191b;--tint-merged:#2c2545;--on-ink:#08090a;--input-bg:#0b0c0d;--code-bg:#18191b;--needs:var(--signal);--count:var(--signal)}
+.k{font-family:'Inter',-apple-system,system-ui,sans-serif;font-feature-settings:'cv01','ss03';-webkit-font-smoothing:antialiased;font-size:13px;line-height:1.45;color:var(--ink);background:var(--canvas)}
+.k *{box-sizing:border-box}
+.k button{font:inherit;color:inherit;background:none;border:0;padding:0;text-align:left}
+.k code{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;background:var(--code-bg);border-radius:4px;padding:1px 5px;color:var(--ink-2)}
+.mono{font-family:'Geist Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+.row{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;border-radius:6px;color:var(--ink-2);width:100%}
+.row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .kbd{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;color:var(--faint)}
+.row .ds{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.row.sel{background:var(--surface-3);color:var(--ink)}
+.sa{color:var(--add)}.sd{color:var(--del)}
+.nav{display:flex;flex-direction:column;gap:3px}
+.sub .row{padding-left:22px}
+.g-muted{color:var(--muted)}.g-merged{color:var(--merged)}.g-add{color:var(--add)}.g-del{color:var(--del)}
+.av{width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:500;flex-shrink:0;background:var(--surface-3);color:var(--ink-2)}
+.ib{width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted)}
+.tr{line-height:1.6;font-size:14px;color:var(--ink-2)}
+.tr p{margin:0 0 12px}
+.meta{font-size:12px;color:var(--faint);margin:4px 0 14px}
+.calls{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);margin:2px 0 12px}
+.ctab{display:flex;align-items:center;gap:7px;padding:0 10px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
+.ctab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.tab{font-size:12.5px;color:var(--muted);padding:4px 8px;border-radius:6px}
+.tab.on{color:var(--ink);background:var(--surface-3)}
+.btab{display:flex;align-items:center;height:38px;padding:0 6px;border-bottom:1px solid var(--line);gap:2px;flex-shrink:0}
+.btab .bt{height:38px;display:inline-flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--muted);border-bottom:2px solid transparent}
+.btab .bt.on{color:var(--ink);border-bottom-color:var(--ink)}
+.btab .bi{width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:var(--muted);border-radius:6px}
+.k .runbtn{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;font-size:12px;color:var(--ink-2);background:var(--surface);border:1px solid var(--line-3);border-radius:6px}
+.k .runbtn.big{height:28px;padding:0 12px}
+.empty{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;text-align:center}
+.tu{border:1px solid var(--line-2);border-radius:10px;overflow:hidden}
+.tu-head{display:flex;align-items:center;gap:6px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:12px}
+.tu-head .h{font-weight:500;color:var(--muted)}
+.tu-head .f{color:var(--faint)}
+.tu-row{padding:13px 16px 14px}
+.tu-row + .tu-row{border-top:1px solid var(--line)}
+.tu-line{display:flex;align-items:baseline;gap:8px;min-width:0}
+.tu-name{font-size:13px;font-weight:500;color:var(--ink);flex-shrink:0}
+.tu-key{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--faint);flex-shrink:0}
+.tu-task{flex:1;min-width:0;font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k .tu-open{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);flex-shrink:0}
+.tu-events{margin-top:3px;font-size:12.5px;color:var(--muted)}
+.tu-events .sep{color:var(--faint);margin:0 6px}
+.tu-events .bad{color:var(--del)}.tu-events .good{color:var(--add)}.tu-events .mrg{color:var(--merged)}
+.tr .tu-reply{margin:9px 0 0;font-size:13px;line-height:1.55;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.k .tu-more{margin-top:5px;font-size:12px;color:var(--faint)}
+.cmp{position:relative;overflow:hidden;width:640px;background:var(--input-bg);border:1px solid var(--line-2);border-radius:12px;padding:12px 10px 10px 14px}
+.cmp > *{position:relative;z-index:1}
+.cmp.plan{border-color:rgba(90,162,255,.7);background:radial-gradient(130% 115% at 50% 135%,rgba(90,162,255,.26) 0%,rgba(90,162,255,.09) 42%,rgba(90,162,255,0) 70%),#0c0d10}
+.cmp.plan .caret{background:#5aa2ff}
+.k .cmp.plan .mode{width:28px;height:28px;border-radius:8px;background:rgba(90,162,255,.16);color:#5aa2ff}
+.cmp-text{min-height:48px;font-size:14px;line-height:24px;color:var(--ink)}
+.caret{display:inline-block;width:1.5px;height:17px;background:var(--ink);vertical-align:-3px}
+.cmp-foot{display:flex;align-items:center;gap:10px;margin-top:10px}
+.cmp-agent{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 4px;font-size:12.5px}
+.cmp-sep{width:1px;height:16px;background:var(--line-3)}
+.k .send{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;background:var(--surface-3);color:var(--faint)}
+.k .cmp.plan .send.on{background:#5aa2ff;color:#06101e}
+.k .cmp.plan.wait .send.on{background:var(--ink);color:var(--on-ink)}
+.cmp-text.ph{color:var(--faint)}
+.tr ol,.tr ul{margin:0 0 12px;padding-left:20px}
+.tr li{margin-bottom:6px}
+.tr b{color:var(--ink);font-weight:500}
+.ububble{display:flex;justify-content:flex-end;margin:0 0 18px}
+.ububble div{max-width:480px;background:var(--surface-2);border-radius:10px;padding:10px 14px;color:var(--ink)}
+.prow{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);margin:2px 0 10px}
+.prow .f{font-family:'Geist Mono',ui-monospace,monospace;font-size:11.5px;color:var(--muted)}
+.pdoc{border:1px solid var(--line-2);border-radius:10px;padding:16px 18px 4px;margin:0 0 6px}
+.pdoc h3{margin:0 0 6px;font-size:15px;font-weight:600;color:var(--ink)}
+.tr .pdoc .lead{font-size:13.5px;line-height:1.55;color:var(--ink-2);margin:0 0 12px}
+.pstep{display:flex;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.pstep .num{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;color:#5aa2ff;width:14px;flex-shrink:0;padding-top:2px}
+.pstep .t{font-size:13.5px;font-weight:500;color:var(--ink)}
+.pstep .who{font-size:12.5px;font-weight:400;color:var(--faint);margin-left:6px}
+.pstep .d{font-size:13px;line-height:1.5;color:var(--ink-3);margin-top:2px}
+.pnote{font-size:12.5px;line-height:1.5;color:var(--muted);padding:10px 0 12px;border-top:1px solid var(--line)}
+.pbar{display:flex;align-items:center;gap:6px;margin:-12px -10px 12px -14px;padding:8px 8px 8px 14px;background:rgba(90,162,255,.08);border-bottom:1px solid rgba(90,162,255,.24)}
+.pbar .ic{display:inline-flex;color:#5aa2ff}
+.k .pb{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.k .pb.acc{background:#5aa2ff;color:#06101e}
+.pb .kb{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;font-weight:400;opacity:.6}
+</style>
+</helmet>
+<div class="k" style="width: 1440px; height: 900px; display: flex; overflow: hidden; --signal: {{signal}}">
+
+<aside style="width: 240px; flex-shrink: 0; display: flex; flex-direction: column; padding: 0 8px 8px">
+<div style="height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 8px">
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #ff5f57"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #febc2e"></span>
+<span style="width: 12px; height: 12px; border-radius: 50%; background: #28c840"></span>
+<button class="ib" aria-label="Hide sidebar" style="margin-left: 8px"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="2"></rect><path d="M6 3v10"></path></svg></button>
+</div>
+<div style="display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; margin-bottom: 8px">
+<span class="av" style="width: 20px; height: 20px; border-radius: 6px; background: var(--ink); color: var(--canvas)">CJ</span>
+<span style="font-weight: 500; color: var(--ink)">CJ Jutba</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--muted)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg>
+<button class="ib" aria-label="New workspace" style="margin-left: auto; border: 1px solid var(--line-3)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M7 3H3.5v9.5H13V9"></path><path d="M11.5 2.5l2 2L8 10H6V8z"></path></svg></button>
+</div>
+
+<div class="nav">
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5 14 14"></path></svg><span class="t">Search</span><span class="kbd">⌘K</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 7 8 2.5 13.5 7v6.5h-11z"></path></svg><span class="t">Home</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 9.5h3l1 1.5h3l1-1.5h3"></path><path d="M2.5 9.5 4 3.5h8l1.5 6v3.5h-11z"></path></svg><span class="t">Inbox</span><span class="mono" style="font-size: 11.5px; font-weight: 500; color: var(--count)">10</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3l2 1.5"></path></svg><span class="t">History</span></button>
+</div>
+
+<div style="font-size: 12px; color: var(--faint); padding: 0 8px; margin: 20px 0 6px">Your rooms</div>
+<div class="nav">
+<button class="row" style="color: var(--ink)"><span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">K</span><span class="t">Kernel</span><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<div class="nav sub">
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="6" r="2.2"></circle><path d="M2.5 13c.4-2 1.8-3 3.5-3s3.1 1 3.5 3"></path><path d="M10.5 4.2a2 2 0 0 1 0 3.6M11.5 10.2c1 .4 1.7 1.3 2 2.8"></path></svg><span class="t">Team</span></button>
+<button class="row sel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--ink-2)"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg><span class="t">Rowan</span><span style="font-size: 12px; color: var(--muted)">Lead</span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-166-draw-rowan</span><span class="ds"><span class="sa">+557</span> <span class="sd">-477</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">one-file-per-decision</span><span class="ds"><span class="sa">+4</span> <span class="sd">-4</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-160-issues-screen</span><span class="ds"><span class="sa">+1050</span> <span class="sd">-8</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-161-room-s-linear</span><span class="ds"><span class="sa">+89</span> <span class="sd">-6</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-172-duplicates-show</span><span class="ds"><span class="sa">+28</span> <span class="sd">-7</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-173-screen-list-test</span><span class="ds"><span class="sa">+4</span> <span class="sd">-4</span></span></button>
+<button class="row"><svg class="i g-merged" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="10" r="1.5"></circle><path d="M5 5.5v5M5 5.5c0 3 2 4.5 4.5 4.5"></path></svg><span class="t">kernel-176-rowan-asks</span><span class="ds"><span class="sa">+117</span> <span class="sd">-16</span></span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5.5v5M11 7.5c0 2-2 2.5-6 3"></path></svg><span class="t">review-pr-161-kernel-176</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">say-when-fetching-origin-fails</span></button>
+<button class="row"><svg class="i g-del" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg><span class="t">kernel-182-new-chats-focus</span><span class="ds"><span class="sa">+49</span> <span class="sd">-5</span></span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">kernel-183-stop-idle-chat-sessions</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">kernel-184-run-the-test-suite</span></button>
+<button class="row"><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5a5.5 5.5 0 1 1-5.5 5.5"></path></svg><span class="t">review-kernel-182-pr-162</span></button>
+</div>
+<button class="row" style="color: var(--ink); margin-top: 3px"><span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">U</span><span class="t">Ulat</span><svg class="i g-muted" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+</div>
+
+<div style="margin-top: auto; display: flex; align-items: center; gap: 4px; padding: 0 4px">
+<span style="font-size: 11.5px; color: var(--muted); border: 1px solid var(--line-3); border-radius: 6px; padding: 2px 8px">Claude Max</span>
+<button class="ib" aria-label="What's new" style="margin-left: auto"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v3M8 10.5v3M2.5 8h3M10.5 8h3"></path></svg></button>
+<button class="ib" aria-label="Settings"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h10M3 11h10"></path><circle cx="6" cy="5" r="1.5"></circle><circle cx="10" cy="11" r="1.5"></circle></svg></button>
+</div>
+</aside>
+
+<div style="flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 8px 8px 0 0">
+<div style="flex: 1; min-height: 0; display: flex; background: var(--panel); border: 1px solid var(--panel-line); border-radius: 10px; overflow: hidden">
+
+<section style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+<div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line)">
+<span class="av" style="width: 16px; height: 16px; font-size: 9.5px; border-radius: 4px">K</span>
+<span style="color: var(--ink-2)">Kernel</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M6 4l4 4-4 4"></path></svg>
+<span style="color: var(--ink); font-weight: 500">lead</span>
+<span class="mono" style="font-size: 11.5px; color: var(--faint)">current branch · main</span>
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--muted)"><path d="M5.5 5 2.5 8l3 3M10.5 5l3 3-3 3"></path></svg>
+<button class="ib" aria-label="Hide panel" style="margin-left: auto"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="10" rx="2"></rect><path d="M10 3v10"></path></svg></button>
+</div>
+<div style="height: 38px; flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--line)">
+<div class="ctab"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg>Plan the week</div>
+<div class="ctab"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg>Inbox rows</div>
+<div class="ctab"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg>Linear setup</div>
+<div class="ctab on"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px; color: var(--muted)"><path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z"></path></svg>Navigation state<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 13px; height: 13px; color: var(--faint)"><path d="M10.5 3l2.5 2.5L6 12.5H3.5V10z"></path></svg></div>
+<button class="ib" aria-label="New chat" style="align-self: center"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<div style="margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><circle cx="8" cy="8" r="5.5"></circle><path d="M8 5v3l2 1.5"></path></svg>Checkpoints</div>
+</div>
+
+<div style="flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 24px">
+<div class="tr" style="width: 640px">
+
+<div class="meta">21:19</div>
+<div class="ububble"><div>Kernel should remember where I was when I come back, the way Conductor does. Plan it for the team.</div></div>
+<div class="calls"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px"><path d="M6 4l4 4-4 4"></path></svg>6 tool calls, 4 messages</div>
+<p>Here's what "remembers where you were" would cover:</p>
+<ul>
+<li>Each workspace remembers its own open tab, and its open file and diff tabs.</li>
+<li>Quit and reopen puts you on the same screen and tab. If that was archived or closed in the meantime, it falls back one level at a time (the workspace's first chat, then the room, then Home) without an error.</li>
+<li>Drafts survive a quit.</li>
+<li>Optional: ⌘[ and ⌘] to go back and forward.</li>
+</ul>
+<p><b>How I'd split it</b></p>
+<ol>
+<li><b>Remember where you were during a session</b> (Kai). Settings records the screen you came from, and Back to app and Esc return there. ⌘, reopens the last Settings page.</li>
+<li><b>Reopen where you left off</b> (Kai, after 1 merges). Save the screen and each workspace's tabs, check them when the app starts using the fallbacks above, and save text drafts to disk.</li>
+<li><b>Back and forward</b> (optional, Kai, after 1 merges). A history of screens in the store, with ⌘[ and ⌘] listed in Settings, Shortcuts.</li>
+</ol>
+<p><b>Two decisions for you</b></p>
+<ul>
+<li><b>Restart behavior.</b> Should "where I left off" replace Last room in Settings, General, Default home view, and become the default?</li>
+<li><b>Back and forward.</b> Should it go in this round, or later?</li>
+</ul>
+<p>If the split works for you, I'll file the issues in Linear and hand issue 1 to Kai now.</p>
+<div class="meta">1m 56s · 21:22</div>
+</div>
+</div>
+
+<div style="flex-shrink: 0; display: flex; justify-content: center; padding: 0 24px 16px">
+<div class="cmp plan">
+<div class="cmp-text">Yes, back and forward goes in this round, and a restart should reopen where I left off. Write the full implementation plan.<span class="caret"></span></div>
+<div class="cmp-foot">
+<span class="cmp-agent"><span style="color: var(--ink-2)">Rowan</span><span style="color: var(--faint)">Lead</span></span><span class="cmp-sep"></span>
+<div style="display: flex; align-items: center; gap: 6px; font-size: 12.5px"><span style="color: var(--ink-2)">Opus 5.5</span><span style="color: var(--faint)">Extra high</span><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 12px; height: 12px; color: var(--faint)"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></div>
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 16px; height: 16px; margin-left: auto"><circle cx="8" cy="8" r="5.5" fill="none" stroke="var(--line-3)" stroke-width="2"></circle><path d="M8 2.5a5.5 5.5 0 0 1 4.8 2.8" fill="none" stroke="var(--muted)" stroke-width="2"></path></svg>
+<button class="ib mode" aria-label="Plan mode" aria-pressed="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5l1.2 1.2 2.1-2.4M2.5 10.5l1.2 1.2 2.1-2.4M8 4.5h5.5M8 10.5h5.5"></path></svg></button>
+<button class="ib" aria-label="Add"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="send on" aria-label="Send"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.5M4 7.5l4-4 4 4"></path></svg></button>
+</div>
+</div>
+</div>
+</section>
+
+<section style="width: 360px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--side-panel); display: flex; flex-direction: column">
+<div style="height: 44px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 0 10px; border-bottom: 1px solid var(--line)">
+<span class="tab">All files</span>
+<span class="tab on">Changes <span style="color: var(--faint); font-size: 11.5px">0</span></span>
+<span class="tab">Checks</span>
+</div>
+<div class="empty" style="gap: 6px">
+<div style="font-size: 13px; color: var(--ink-2)">No file changes yet</div>
+<div style="font-size: 12px; color: var(--muted)">Changes appear here.</div>
+</div>
+<div style="height: 300px; flex-shrink: 0; border-top: 1px solid var(--line); display: flex; flex-direction: column">
+<div class="btab">
+<button class="bi" aria-label="Collapse panel"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M4.5 6.5 8 10l3.5-3.5"></path></svg></button>
+<button class="bt">Setup</button>
+<button class="bt on">Run</button>
+<button class="bt">Terminal</button>
+<button class="bi" aria-label="New terminal"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 14px; height: 14px"><path d="M8 3.5v9M3.5 8h9"></path></svg></button>
+<button class="runbtn" style="margin-left: auto"><svg viewBox="0 0 16 16" aria-hidden="true" style="width: 10px; height: 10px"><path d="M4 2.5v11l9-5.5z" fill="currentColor"></path></svg>Run</button>
+</div>
+<div class="empty">
+<svg viewBox="0 0 16 16" aria-hidden="true" style="width: 40px; height: 40px; color: var(--ink-3)"><path d="M5 3.2c0-.6.7-1 1.2-.6l6.2 4.4c.4.3.4 1 0 1.3l-6.2 4.4c-.5.4-1.2 0-1.2-.6z" fill="currentColor"></path></svg>
+<button class="runbtn big" style="margin-top: 10px">Start run script</button>
+<div style="font-size: 12px; color: var(--muted)">Runs on port 4300. Output shows here.</div>
+</div>
+</div>
+</section>
+
+</div>
+<div style="height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 0 6px; font-size: 12px; color: var(--muted)">
+<svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="width: 13px; height: 13px"><path d="M13.5 2.5 2.5 7l4.5 1.5L8.5 13z"></path><path d="M7 8.5l3-3"></path></svg>Ask Rowan
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"signal":{"editor":"color","default":"#f5b83d","options":["#f5b83d","#ff9157","#cfe36a","#f7f8f8"]},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { signal: this.props.signal ?? '#f5b83d' };
+  }
+}
+</script>
+</body>
+</html>

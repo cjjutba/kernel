@@ -5,9 +5,10 @@ export type FromTab = 'prs' | 'branches' | 'issues'
 /** One row in the From popover. `id` is the number or issue key, empty for branches. */
 export interface FromRow { key: string; id: string; title: string; source: WorkspaceSource; baseRef: string; prompt: string }
 
-export const prRow = (p: PrSummary): FromRow => ({
+/** `remote` is the room's git remote (Settings > Git), and a PR's branch lives on it. */
+export const prRow = (p: PrSummary, remote = 'origin'): FromRow => ({
   key: `pr-${p.number}`, id: `#${p.number}`, title: p.title,
-  source: { kind: 'pr', number: p.number, title: p.title }, baseRef: `origin/${p.branch}`, prompt: `Continue PR #${p.number}: ${p.title}`
+  source: { kind: 'pr', number: p.number, title: p.title }, baseRef: `${remote}/${p.branch}`, prompt: `Continue PR #${p.number}: ${p.title}`
 })
 
 export const branchRow = (branch: string): FromRow => ({
@@ -29,9 +30,9 @@ export function sourceLabel(s: WorkspaceSource | null): { button: string; chip: 
 /** Branch names the From popover and the target menu offer, filtered by the search text. */
 export const matches = (text: string, q: string) => !q.trim() || text.toLowerCase().includes(q.trim().toLowerCase())
 
-/** Remote branches for the Target branch menu. Falls back to the room's default branch. */
-export function targetOptions(branches: string[], fallback: string, current: string): string[] {
-  const remote = branches.filter((b) => b.startsWith('origin/'))
-  const list = remote.length ? remote : [fallback]
+/** The room remote's branches for the Target branch menu. Falls back to the room's default branch. */
+export function targetOptions(branches: string[], fallback: string, current: string, remote = 'origin'): string[] {
+  const onRemote = branches.filter((b) => b.startsWith(`${remote}/`))
+  const list = onRemote.length ? onRemote : [fallback]
   return list.includes(current) ? list : [current, ...list]
 }

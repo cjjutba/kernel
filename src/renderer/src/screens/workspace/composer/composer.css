@@ -8,15 +8,15 @@
 .cmp-input:focus-visible { outline: none; }
 .cmp-input[data-empty]::before { content: attr(data-placeholder); position: absolute; color: var(--muted); pointer-events: none; }
 .cmp-input[contenteditable='false'] { cursor: default; }
-.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px 0 4px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
-.cmp-agent .agent-dot { flex-shrink: 0; }
+/* The agent is its name and role, with no letter tile (KERNEL-274). */
+.cmp-agent { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 26px; padding: 0 8px 0 6px; border-radius: 7px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .cmp-name, .cmp-role { overflow: hidden; text-overflow: ellipsis; }
-.agent-dot { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--line-4); color: var(--ink); font-size: 9px; font-weight: 600; }
 .cmp-sep { width: 1px; height: 16px; background: var(--card-line); }
 .cmp-model { padding: 0 8px; color: var(--ink-2); gap: 6px; }
 /* At size 11 the glyph has about 3px of air each side of its box. Pull it in so the gap before it matches the gap before the effort label (canvas: 8px). */
 .cmp-model > svg:last-child { position: relative; top: -1px; margin: 0 -3px 0 -1.5px; color: var(--muted); }
 .cmp-model[aria-expanded='true'] { background: var(--card-line); }
+.icon-btn.send { width: 28px; height: 28px; border-radius: var(--r); }
 .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .icon-btn.send:not([data-ready='true']) { background: var(--surface-3); }
 .icon-btn.send:disabled { cursor: default; }
@@ -113,15 +113,27 @@
 }
 @container chat (max-width: 420px) { .cmp-name { display: none; } }
 
-/* A plan waiting on you (D-092): Copy and Approve on top of the box, and a hatched box for the changes. */
-/* Plan mode is the hatched box, with no chip (D-093). A waiting plan adds the bar on top. */
-.cmp[data-plan='true'], .nw[data-plan] { background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--line-2) 55%, transparent) 7px 8px); }
+/* Plan mode is a blue box with no chip or label (D-093, KERNEL-274): a `--plan` border, a soft glow rising from the bottom
+   edge, a blue caret and a blue send. A waiting plan (D-092) keeps the blue and puts Copy and Approve in a blue strip on
+   top, where send stays ink so Approve is the one blue button. No hatch, no stripes. The New workspace modal takes the
+   glow and the caret; its border is the modal shell's. */
+.cmp[data-plan='true'], .nw[data-plan] {
+  background-image: radial-gradient(130% 115% at 50% 135%, color-mix(in srgb, var(--plan) 22%, transparent) 0%, color-mix(in srgb, var(--plan) 8%, transparent) 42%, transparent 70%);
+}
+.cmp[data-plan='true'] { border-color: color-mix(in srgb, var(--plan) 45%, var(--surface)); }
+.cmp[data-plan='true']:focus-within { border-color: color-mix(in srgb, var(--plan) 70%, var(--surface)); }
+.cmp[data-plan='true'] .cmp-input, .nw[data-plan] .cmp-input { caret-color: var(--plan); }
+.cmp[data-plan='true'] .icon-btn.send[data-ready='true'] { background: var(--plan); color: var(--on-plan); }
+.cmp:has(> .cmp-planbar) .icon-btn.send[data-ready='true'] { background: var(--ink); color: var(--on-ink); }
 .cmp:has(> .cmp-planbar) { padding-top: 0; }
-.cmp-planbar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 -10px 2px -14px; padding: 7px 8px; border-bottom: 1px solid var(--line-2); border-radius: var(--r-lg) var(--r-lg) 0 0; background: var(--surface); }
+.cmp-planbar { display: flex; align-items: center; gap: 6px; margin: 0 -10px 2px -14px; padding: 7px 8px 7px 14px; border-bottom: 1px solid color-mix(in srgb, var(--plan) 24%, transparent); border-radius: var(--r-lg) var(--r-lg) 0 0; background: color-mix(in srgb, var(--plan) 8%, var(--surface)); }
+.cmp-planbar-icon { display: inline-flex; color: var(--plan); }
 .cmp-planbar .btn { height: 28px; }
 .cmp-planbar .btn.ghost { color: var(--ink-2); }
 .cmp-planbar .btn.ghost:hover { color: var(--ink); }
-.cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.55; }
+.cmp-planbar .btn.primary:not(:disabled) { background: var(--plan); border-color: var(--plan); color: var(--on-plan); }
+.cmp-planbar .btn.primary:not(:disabled):hover { background: color-mix(in srgb, var(--plan) 88%, var(--on-plan)); }
+.cmp-planbar-kbd { margin-left: 2px; font-size: 11.5px; font-weight: 400; letter-spacing: 0.04em; opacity: 0.6; }
 
 /* context ring and its popover (KERNEL-96) */
 .ctx-ring { flex-shrink: 0; }

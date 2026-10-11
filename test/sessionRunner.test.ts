@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, symlink } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanUseTool, HookCallback, Options } from '@anthropic-ai/claude-agent-sdk'
@@ -8,7 +9,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { LIMIT_LIFTED, RESTART_NUDGE, Sessions, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
+import { CRASH_NOTE, isNudge, LIMIT_LIFTED, QUIT_NOTE, RELAUNCH_NUDGE, RESTART_NUDGE, Sessions, TOOL_STOPPED, type SessionDeps, type TurnBy } from '../src/main/services/sessions'
 import { LEGACY_UPDATE_HEADER } from '../src/shared/teamUpdate'
 import { HANDOFF_NOW, HANDOFF_REMINDER, LEAD_RULE } from '../src/main/services/handoff'
 import type { AppSettings } from '../src/main/services/settings'
@@ -47,7 +48,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
 
 const flush = () => new Promise((r) => setTimeout(r, 10))
 
-async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => undefined; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
+async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, agent: unknown, chat: Chat) => Options['mcpServers']; disabledFor?: SessionDeps['disabledFor']; agent?: AgentDef; models?: Partial<AppSettings['models']>; onTurnDone?: SessionDeps['onTurnDone']; onExit?: SessionDeps['onExit'] } = {}) {
   const store = new Store(join(await mkdtemp(join(tmpdir(), 'kernel-runner-')), 'kernel.db'))
   const ws: Workspace = { id: 'ws', roomId: 'room', name: 'invoice-schema', branch: 'feat/invoice-schema', baseRef: 'main', path: '/tmp/ws', mode: 'worktree', agentId: 'noor', port: 4300, status: 'ready', prState: 'none', createdAt: 1 }
   const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Invoice schema', kind: 'chat', model: 'claude-sonnet-5-5', effort: 'low', plan: false, createdAt: 1 }
@@ -57,7 +58,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
   const approvals = new Approvals(store)
   const settings = { permissions: { mode, alwaysAsk: ['drizzle-kit push'], neverAllow: ['git push origin main'], protectedBranches: [], approvalTimeoutSec: 300 }, ...(hooks.models ? { models: hooks.models } : {}) } as unknown as AppSettings
   const sessions = new Sessions({
-    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat),
+    store, approvals, settings: () => settings, agentFor: () => hooks.agent, mcpFor: (ws, agent, chat) => hooks.mcpFor?.(ws, agent, chat), disabledFor: hooks.disabledFor,
     roomAllow: () => allow, allowInRoom: (_room, rule) => { allow.push(rule) }, onTurnDone: hooks.onTurnDone, onExit: hooks.onExit
   })
   await sessions.send(chat.id, [{ type: 'text', text: 'Add a pdf_url column' }])
@@ -88,6 +89,22 @@ describe('questions to the user', () => {
     expect(seen).toEqual([chat.id])
   })
 
+  it("starts the session without the room's switched-off skills and MCP servers, and never without Kernel's own server (KERNEL-226)", async () => {
+    const kernel = { type: 'sdk', name: 'kernel', instance: {} } as never
+    const { options } = await setup('acceptEdits', { mcpFor: () => ({ kernel }), disabledFor: () => ({ skills: ['impeccable', 'impeccable'], mcp: ['chrome-devtools', 'kernel'] }) })
+    expect(options.mcpServers).toEqual({ kernel })
+    expect(options.settings).toEqual({ skillOverrides: { impeccable: 'off' }, deniedMcpServers: [{ serverName: 'chrome-devtools' }] })
+    // Everything else Claude Code finds still loads: plugin skills, claude.ai connectors, servers Settings doesn't list.
+    expect(options).not.toHaveProperty('strictMcpConfig')
+    expect(options).not.toHaveProperty('skills')
+  })
+
+  it('adds no settings when the room switched nothing off, and compacts a long chat near 200k (KERNEL-226)', async () => {
+    const { options } = await setup('acceptEdits', { disabledFor: () => ({ skills: [], mcp: [] }) })
+    expect(options).not.toHaveProperty('settings')
+    expect(options.env?.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe('200000')
+  })
+
   it('leaves plan mode once the plan is approved', async () => {
     const { options, approvals, store } = await setup()
     store.saveChat({ ...store.chat('chat')!, plan: true })
@@ -96,6 +113,65 @@ describe('questions to the user', () => {
     approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'allow' })
     await answer
     expect(store.chat('chat')?.plan).toBe(false)
+  })
+
+  const asked = {
+    questions: [
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ]
+  }
+  const ask = (options: Options, id: string) => (options.canUseTool as CanUseTool)('AskUserQuestion', asked, { signal: new AbortController().signal, toolUseID: id, requestId: `r-${id}` })
+
+  it('keeps every question of an AskUserQuestion call on one approval, titled with the first', async () => {
+    const { options, store } = await setup('bypassInWorktrees')
+    void ask(options, 'q1')
+    await flush()
+    const pending = store.approvals({ pendingOnly: true })
+    expect(pending).toHaveLength(1)
+    expect(pending[0]).toMatchObject({ kind: 'question', title: 'Which store?', options: ['Postgres', 'SQLite'] })
+    expect(pending[0].questions).toEqual([
+      { question: 'Which store?', header: 'Store', options: [{ label: 'Postgres', description: 'The main database' }, { label: 'SQLite' }], multiSelect: false },
+      { question: 'Which regions?', header: 'Regions', options: [{ label: 'EU' }, { label: 'US' }], multiSelect: true },
+      { question: 'Ship it today?', header: 'Ship', options: [{ label: 'Yes' }, { label: 'No' }], multiSelect: false }
+    ])
+  })
+
+  it('sends each answer back in the tool input, and saves them on the approval', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q2')
+    await flush()
+    const id = store.approvals({ pendingOnly: true })[0].id
+    const answers = { 'Which store?': 'Postgres', 'Which regions?': 'EU, US', 'Ship it today?': 'No' }
+    approvals.decide(id, { behavior: 'answer', text: 'Postgres · EU, US · No', answers })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...asked, answers } })
+    expect(store.approvals().find((a) => a.id === id)).toMatchObject({ status: 'answered', answer: 'Postgres · EU, US · No', answers })
+  })
+
+  it('tells the model a text-only answer to several questions covered only the first, so it asks the rest again', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q3')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'deny', message: 'The user saw and answered only your first question, "Which store?": Use whatever is cheapest. Ask the other 2 again.' })
+  })
+
+  it('treats an empty answers map as a text-only answer', async () => {
+    const { options, approvals, store } = await setup()
+    const result = ask(options, 'q4')
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Postgres', answers: {} })
+    expect(await result).toMatchObject({ behavior: 'deny', message: expect.stringContaining('Ask the other 2 again.') })
+  })
+
+  it('gives a text-only answer to a lone question', async () => {
+    const { options, approvals, store } = await setup()
+    const one = { questions: [asked.questions[0]] }
+    const result = (options.canUseTool as CanUseTool)('AskUserQuestion', one, { signal: new AbortController().signal, toolUseID: 'q5', requestId: 'r-q5' })
+    await flush()
+    approvals.decide(store.approvals({ pendingOnly: true })[0].id, { behavior: 'answer', text: 'Use whatever is cheapest' })
+    expect(await result).toEqual({ behavior: 'allow', updatedInput: { ...one, answers: { 'Which store?': 'Use whatever is cheapest' } } })
   })
 
   it('still lets bypass answer an ordinary tool', async () => {
@@ -711,5 +787,426 @@ describe('Agent rows name the subagent model (KERNEL-158)', () => {
     expect(row(store, 'b1')).toMatchObject({ label: 'Run pnpm test', detail: 'pnpm test' })
     expect(row(store, 'r1')).toMatchObject({ label: 'Read', detail: 'src/main/db.ts' })
     expect(row(store, 'm1')).toMatchObject({ label: 'kernel · say', detail: '{"text":"Hi","description":"Greet"}' })
+  })
+})
+
+describe('Tool rows keep the full input and more output (KERNEL-197)', () => {
+  type Tool = ChatItem & { kind: 'tool' }
+  const row = (store: Store, toolUseId: string) => store.items('chat').find((i): i is Tool => i.kind === 'tool' && i.toolUseId === toolUseId)
+  const use = (id: string, name: string, input: Record<string, unknown>) => ({ type: 'assistant', uuid: `a-${id}`, parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id, name, input }] } })
+  const result = (id: string, content: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content }] } })
+
+  it('keeps a multi-line Bash command whole, while the row still shows its first line', async () => {
+    const { call, store } = await setup()
+    const command = 'cd src\npnpm test\necho done'
+    call.feed(use('b1', 'Bash', { command, description: 'Run tests' }))
+    call.feed(result('b1', 'ok'))
+    await flush()
+    expect(row(store, 'b1')).toMatchObject({ detail: 'cd src', input: { command, description: 'Run tests' }, output: 'ok', status: 'done' })
+    expect(row(store, 'b1')?.outputCut).toBeUndefined()
+  })
+
+  it("keeps an Edit's old and new text", async () => {
+    const { call, store } = await setup()
+    call.feed(use('e1', 'Edit', { file_path: 'src/a.ts', old_string: 'const a = 1\n', new_string: 'const a = 2\n', replace_all: false }))
+    await flush()
+    expect(row(store, 'e1')).toMatchObject({ detail: 'src/a.ts', input: { file_path: 'src/a.ts', old_string: 'const a = 1\n', new_string: 'const a = 2\n', replace_all: false } })
+  })
+
+  it('keeps 20,000 characters of output and says when it was cut', async () => {
+    const { call, store } = await setup()
+    call.feed(use('r1', 'Bash', { command: 'cat big.log' }))
+    call.feed(result('r1', 'x'.repeat(25_000)))
+    call.feed(use('r2', 'Bash', { command: 'cat exact.log' }))
+    call.feed(result('r2', 'y'.repeat(20_000)))
+    await flush()
+    expect(row(store, 'r1')?.output).toHaveLength(20_000)
+    expect(row(store, 'r1')?.outputCut).toBe(true)
+    expect(row(store, 'r2')?.output).toHaveLength(20_000)
+    expect(row(store, 'r2')?.outputCut).toBeUndefined()
+  })
+
+  it("clips a long Write content, nested strings too, and leaves the rest of the input alone", async () => {
+    const { call, store } = await setup()
+    call.feed(use('w1', 'Write', { file_path: 'big.txt', content: 'z'.repeat(30_000) }))
+    call.feed(use('m1', 'MultiEdit', { file_path: 'b.ts', edits: [{ old_string: 'q'.repeat(21_000), new_string: 'r' }] }))
+    await flush()
+    const write = row(store, 'w1')!.input as { file_path: string; content: string }
+    expect(write.file_path).toBe('big.txt')
+    expect(write.content).toHaveLength(20_000)
+    const multi = row(store, 'm1')!.input as { edits: { old_string: string; new_string: string }[] }
+    expect(multi.edits[0].old_string).toHaveLength(20_000)
+    expect(multi.edits[0].new_string).toBe('r')
+  })
+})
+
+describe('Send now past the agent limit, and why a queue waits (KERNEL-271)', () => {
+  const result = { type: 'result', subtype: 'success', is_error: false, uuid: 'r', duration_ms: 1, result: '', session_id: 's' }
+  const text = (t: string) => [{ type: 'text' as const, text: t }]
+
+  /** The limit at 1 and `chat` running. `other` is a second teammate's chat in the same room, idle. */
+  async function busy() {
+    const s = await setup('acceptEdits', { models: { agentLimit: 1 } })
+    s.store.saveWorkspace({ id: 'ws2', roomId: 'room', name: 'pdf-export', branch: 'feat/pdf-export', baseRef: 'main', path: '/tmp/ws2', mode: 'worktree', agentId: 'kai', port: 4301, status: 'ready', prState: 'none', createdAt: 2 })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2', title: 'PDF export' })
+    const why: Record<string, (string | undefined)[]> = {}
+    const onPush = (e: PushEvent) => { if (e.type === 'chat.queue') (why[e.chatId] ??= []).push(e.why) }
+    bus.on('push', onPush)
+    return { ...s, why, done: () => bus.off('push', onPush) }
+  }
+
+  it('queues a second chat for a slot, and Send now starts it over the limit', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      expect(await sessions.send('other', text('Export the invoice'))).toEqual({ queued: true, why: 'capacity' })
+      expect(sessions.queueReason('other')).toBe('capacity')
+      await flush()
+      expect(why.other).toEqual(['capacity'])
+      const before = sdk.calls.length
+      expect(await sessions.sendNow('other', sessions.queued('other')[0].id)).toEqual([])
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sdk.calls).toHaveLength(before + 1)
+      // The running chat goes on: Send now in one chat never stops another.
+      expect(sessions.isRunning('chat')).toBe(true)
+      expect(call.interrupts).toBe(0)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      await flush()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('tells the renderer when what a queue waits for changes', async () => {
+    const { sessions, call, why, done } = await busy()
+    try {
+      await sessions.send('other', text('Export the invoice'))
+      await sessions.send('chat', text('Then add a test'))
+      await flush()
+      expect(why.chat).toEqual(['running'])
+      sessions.pause('room')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      expect(why.chat.at(-1)).toBe('running')
+      sessions.holdAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('offline')
+      sessions.releaseAll('offline')
+      await flush()
+      expect(why.other.at(-1)).toBe('paused')
+      // The turn ends while the room is paused: the chat's own queue now waits for the pause, not the turn.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('chat')).toBe(false)
+      expect(why.chat.at(-1)).toBe('paused')
+      // Resuming sends the chat's own message first, which takes the slot again.
+      sessions.resume('room')
+      expect(sessions.isRunning('chat')).toBe(true)
+      await flush()
+      expect(why.other.at(-1)).toBe('capacity')
+      // The running turn ends and the slot frees: the second chat's message goes out.
+      call.feed(result)
+      await flush()
+      expect(sessions.isRunning('other')).toBe(true)
+      expect(sessions.queueReason('other')).toBeUndefined()
+      expect(why.other.at(-1)).toBeUndefined()
+    } finally { done() }
+  })
+
+  it('keeps a user pause: Send now waits for Resume', async () => {
+    const { sessions, call, done } = await busy()
+    try {
+      call.feed(result)
+      await flush()
+      sessions.pause('room')
+      await sessions.send('other', text('Export the invoice'))
+      expect(sessions.queueReason('other')).toBe('paused')
+      await sessions.sendNow('other', sessions.queued('other')[0].id)
+      expect(sessions.isRunning('other')).toBe(false)
+      expect(sessions.queued('other')).toHaveLength(1)
+    } finally { done() }
+  })
+})
+
+describe('agents that were working when Kernel quit or crashed (KERNEL-215)', () => {
+  type Setup = Awaited<ReturnType<typeof setup>>
+  const result = (uuid: string, subtype = 'success') => ({ type: 'result', subtype, uuid, duration_ms: 5 })
+  const texts = (store: Store, chatId = 'chat') => store.items(chatId).flatMap((i) => (i.kind === 'user' ? [(i.parts[0] as { text: string }).text] : []))
+  const notes = (store: Store, chatId = 'chat') => store.items(chatId).flatMap((i) => (i.kind === 'note' ? [i.text] : []))
+
+  /** The chat mid-turn with a tool running and a message queued behind it, as when Cmd+Q or a crash comes. */
+  async function midTurn(o: Parameters<typeof setup>[1] = {}) {
+    const s = await setup('acceptEdits', o)
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    s.call.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } }] } })
+    await flush()
+    await s.sessions.send('chat', [{ type: 'text', text: 'Then add a test' }])
+    return s
+  }
+
+  /** Kernel opening again on the same database: a new Sessions, what the last run left, and `restore`. */
+  function relaunch(s: Setup, o: { clean?: boolean; agentLimit?: number; before?: (sessions: Sessions) => void; cutOff?: string[] | Record<string, 'limit' | 'quit'> } = {}) {
+    const exits: { reason: string; midTurn: boolean; resumed: boolean }[] = []
+    let cutOff: Record<string, string> = {}
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: o.agentLimit ?? 0 } } as unknown as AppSettings
+    // As in Kernel: a sign-out a session reports holds every room until sign-in.
+    const sessions: Sessions = new Sessions({
+      store: s.store, approvals: new Approvals(s.store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
+      roomAllow: () => [], allowInRoom: () => {}, onExit: (_ws, _chat, reason, midTurn, resumed) => { exits.push({ reason, midTurn, resumed }) },
+      onFailure: (failure) => { if (failure === 'auth') sessions.holdAll('auth') },
+      onCutOff: (c) => { cutOff = c }
+    })
+    o.before?.(sessions)
+    const calls = sdk.calls.length
+    sessions.restore([], o.cutOff ?? {}, {}, { clean: o.clean })
+    return { sessions, exits, started: () => sdk.calls.slice(calls), cutOff: () => cutOff }
+  }
+
+  it('saves the chats with a running turn at every turn start and end', async () => {
+    const s = await setup()
+    expect(s.store.meta('working')).toEqual(['chat'])
+    s.call.feed(result('r1'))
+    await flush()
+    expect(s.store.meta('working')).toEqual([])
+  })
+
+  it('interrupts every running turn on quit, keeps the journal and the queue, and starts nothing new', async () => {
+    const turns: TurnBy[] = []
+    const s = await midTurn({ onTurnDone: (_ws, _chat, t) => { turns.push(t.by) } })
+    const calls = sdk.calls.length
+    const quit = s.sessions.shutdown(5_000)
+    expect(s.call.interrupts).toBe(1)
+    // The interrupted turn ends well inside the budget. It drops out of nothing and sends nothing.
+    s.call.feed(result('r1', 'error_during_execution'))
+    const t0 = Date.now()
+    await quit
+    expect(Date.now() - t0).toBeLessThan(1_000)
+    expect(s.store.meta('working')).toEqual(['chat'])
+    expect(s.store.meta<Record<string, { parts: { text: string }[] }[]>>('queues')?.chat.map((q) => q.parts[0].text)).toEqual(['Then add a test'])
+    expect(s.sessions.queued('chat')).toHaveLength(1)
+    expect(sdk.calls.length).toBe(calls)
+    expect(s.options.abortController?.signal.aborted).toBe(true)
+    expect(turns).toEqual([])
+    expect(s.store.items('chat').some((i) => i.kind === 'interrupted')).toBe(false)
+    // An interrupted Lead turn that messages a teammate on its way out: the message waits for the next launch.
+    expect(await s.sessions.send('chat', [{ type: 'text', text: 'From the Lead' }], { from: 'lead' })).toEqual({ queued: true })
+    expect(s.sessions.post('chat', [{ type: 'text', text: 'Team update' }])).toBe(false)
+  })
+
+  it('ends a turn that ignores the interrupt once the budget runs out', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(50)
+    expect(s.options.abortController?.signal.aborted).toBe(true)
+    expect(s.store.meta('working')).toEqual(['chat'])
+  })
+
+  it('carries on after a quit: stuck tool rows fail, the note says Kernel quit, and what was queued goes before the nudge', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(0)
+    const next = relaunch(s, { clean: true })
+    expect(s.store.items('chat').find((i) => i.kind === 'tool')).toMatchObject({ status: 'failed', output: TOOL_STOPPED })
+    expect(notes(s.store)).toEqual([QUIT_NOTE])
+    expect(next.exits).toEqual([{ reason: 'Kernel quit', midTurn: true, resumed: true }])
+    // It resumes the same conversation, with the queued message first and the nudge after it.
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(next.started()[0].options.resume).toBe('session-1')
+    expect(texts(s.store).at(-1)).toBe('Then add a test')
+    expect(next.sessions.queued('chat').map((q) => [q.parts[0].type === 'text' && q.parts[0].text, q.from])).toEqual([[RELAUNCH_NUDGE, 'kernel']])
+    next.started()[0].feed(result('r2'))
+    await flush()
+    expect(texts(s.store).at(-1)).toBe(RELAUNCH_NUDGE)
+    expect(isNudge([{ type: 'text', text: RELAUNCH_NUDGE }])).toBe(true)
+    // The nudge's turn is the user's turn it carries on, and it ends the journal entry like any other.
+    expect(next.sessions.turnFrom('chat')).toBeUndefined()
+    next.started()[0].feed(result('r3'))
+    await flush()
+    expect(s.store.meta('working')).toEqual([])
+    expect(s.store.meta('cutOff')).toBeUndefined()
+  })
+
+  it('says Kernel closed unexpectedly after a crash, and sends the nudge at once when nothing was queued', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    // A crash, a force quit or a power cut: no shutdown ran, and the journal is what the last turn start wrote.
+    const next = relaunch(s)
+    expect(notes(s.store)).toEqual([CRASH_NOTE])
+    expect(next.exits[0]).toMatchObject({ reason: 'Kernel closed unexpectedly', resumed: true })
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(s.store.items('chat').filter((i) => i.kind === 'user').at(-1)).toMatchObject({ from: 'kernel', parts: [{ type: 'text', text: RELAUNCH_NUDGE }] })
+  })
+
+  it('adds one nudge however many times Kernel quits before it goes', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(0)
+    relaunch(s, { before: (sessions) => sessions.pause('room') }).sessions.shutdown(0)
+    const third = relaunch(s, { clean: true, before: (sessions) => sessions.pause('room') })
+    expect(third.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual(['Then add a test', RELAUNCH_NUDGE])
+  })
+
+  it('waits for Resume in a paused room, for the connection when offline, and for a slot at the agent limit', async () => {
+    const s = await midTurn()
+    s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws2', name: 'invoice-export', path: '/tmp/ws2' })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2' })
+    await s.sessions.shutdown(0)
+
+    const paused = relaunch(s, { before: (sessions) => sessions.pause('room') })
+    expect(paused.sessions.isRunning('chat')).toBe(false)
+    expect(paused.started()).toHaveLength(0)
+    paused.sessions.resume('room')
+    expect(paused.sessions.isRunning('chat')).toBe(true)
+    await paused.sessions.shutdown(0)
+
+    const offline = relaunch(s, { before: (sessions) => sessions.holdAll('offline') })
+    expect(offline.sessions.isRunning('chat')).toBe(false)
+    offline.sessions.releaseAll('offline')
+    expect(offline.sessions.isRunning('chat')).toBe(true)
+    await offline.sessions.shutdown(0)
+
+    // Both were working, and the limit is one: the first takes the slot and the second waits for it to free.
+    s.store.saveMeta('working', ['other', 'chat'])
+    const full = relaunch(s, { agentLimit: 1 })
+    expect(full.sessions.isRunning('other')).toBe(true)
+    expect(full.sessions.isRunning('chat')).toBe(false)
+    sdk.calls.at(-1)!.feed(result('r-other'))
+    await flush()
+    expect(full.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it('puts a carry-on that failed on a sign-out back to wait, and carries it on again after sign-in', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s)
+    // The nudge goes out and meets a sign-out, which holds every room.
+    const call = next.started()[0]
+    call.feed({ type: 'assistant', uuid: 'a2', parent_tool_use_id: null, error: 'authentication_failed', message: { content: [] } })
+    call.feed(result('r2', 'error_during_execution'))
+    await flush()
+    expect(next.sessions.heldFor()).toEqual(['auth'])
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    // Signed in again: it carries on with a new nudge.
+    next.sessions.releaseAll('auth')
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(texts(s.store).filter((t) => t === RELAUNCH_NUDGE)).toHaveLength(2)
+  })
+
+  it('leaves a failed carry-on stopped when nothing holds the rooms, so it cannot loop', async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s)
+    const call = next.started()[0]
+    // A connection error with the network check saying online: no hold comes, so nothing would lift one.
+    call.feed({ type: 'system', subtype: 'api_retry', attempt: 10, max_retries: 10, retry_delay_ms: 1, error: 'connection_error', error_status: null })
+    call.feed(result('r2', 'error_during_execution'))
+    await flush()
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({})
+  })
+
+  it('respects a Stop pressed just before the quit: the queue goes and the chat does not carry on', async () => {
+    const s = await midTurn()
+    // The Stop's interrupt is on its way when Cmd+Q comes.
+    const stop = s.sessions.interrupt('chat')
+    const quit = s.sessions.shutdown(5_000)
+    expect(s.call.interrupts).toBe(1)
+    s.call.feed(result('r1', 'error_during_execution'))
+    await stop
+    await quit
+    expect(s.store.meta('working')).toEqual([])
+    expect(s.store.meta('queues')).toEqual({})
+    const next = relaunch(s)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(notes(s.store)).toEqual([])
+  })
+
+  it('holds only the chats that carry on during the launch check: other sends and queues go at once', async () => {
+    const s = await midTurn()
+    s.store.saveWorkspace({ ...s.store.workspace('ws')!, id: 'ws2', name: 'invoice-export', path: '/tmp/ws2' })
+    s.store.saveChat({ ...s.chat, id: 'other', workspaceId: 'ws2' })
+    s.store.saveChat({ ...s.chat, id: 'third', workspaceId: 'ws2' })
+    await s.sessions.shutdown(0)
+    // A message that waited for a free slot in another chat before the quit.
+    s.store.saveMeta('queues', { ...s.store.meta<Record<string, unknown>>('queues'), third: [{ id: 'q3', chatId: 'third', parts: [{ type: 'text', text: 'Export the CSV' }], ts: 1 }] })
+    const next = relaunch(s, { before: (sessions) => sessions.holdCarryOn() })
+    expect(next.sessions.heldFor()).toEqual([])
+    expect(next.sessions.isRunning('third')).toBe(true)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.sessions.queued('chat').map((q) => q.parts[0].type === 'text' && q.parts[0].text)).toEqual(['Then add a test', RELAUNCH_NUDGE])
+    expect(await next.sessions.send('other', [{ type: 'text', text: 'Export it' }])).toEqual({ queued: false })
+    expect(next.sessions.isRunning('other')).toBe(true)
+    // A turn ending elsewhere drains queues, but not the chat that waits for the check.
+    next.started().find((c) => c.options.cwd === '/tmp/ws2')!.feed(result('r-other'))
+    await flush()
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    next.sessions.releaseCarryOn()
+    expect(next.sessions.isRunning('chat')).toBe(true)
+    expect(texts(s.store).at(-1)).toBe('Then add a test')
+  })
+
+  it("keeps Kernel's own updates out of a chat that waits for the launch check, so it still gets the nudge", async () => {
+    const s = await setup()
+    s.call.feed({ type: 'system', subtype: 'init', session_id: 'session-1', apiKeySource: 'none' })
+    await flush()
+    const next = relaunch(s, { before: (sessions) => sessions.holdCarryOn() })
+    // The Lead's update batch fires while the checks still run: refused, like any held message, and the chat stays cut off.
+    expect(next.sessions.post('chat', [{ type: 'text', text: 'Team update from Kernel' }])).toBe(false)
+    expect(next.sessions.isRunning('chat')).toBe(false)
+    expect(next.cutOff()).toEqual({ chat: 'quit' })
+    next.sessions.releaseCarryOn()
+    expect(texts(s.store).at(-1)).toBe(RELAUNCH_NUDGE)
+  })
+
+  it('leaves a closed chat and an archived workspace alone', async () => {
+    const s = await midTurn()
+    await s.sessions.shutdown(0)
+    s.store.saveChat({ ...s.store.chat('chat')!, closed: true })
+    const closed = relaunch(s)
+    expect(closed.sessions.isRunning('chat')).toBe(false)
+    expect(closed.sessions.queued('chat')).toEqual([])
+    expect(notes(s.store)).toEqual([])
+    expect(s.store.meta('working')).toEqual([])
+  })
+
+  it('still reads cut-off chats saved as a list before KERNEL-215 as stopped by a limit', async () => {
+    const s = await setup()
+    s.call.feed(result('r1'))
+    await flush()
+    const next = relaunch(s, { cutOff: ['chat'] })
+    expect(texts(s.store).at(-1)).toBe(LIMIT_LIFTED)
+    expect(next.sessions.isRunning('chat')).toBe(true)
+  })
+
+  it('records the pid of every Claude Code process it starts, and ends ones a crash left behind', async () => {
+    const s = await setup()
+    // A stand-in for the claude binary that the test can name: sleep, through a link (macOS kills a copied system binary).
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-pids-'))
+    const claude = join(dir, 'claude')
+    await symlink('/bin/sleep', claude)
+    const abort = new AbortController()
+    const proc = s.options.spawnClaudeCodeProcess!({ command: claude, args: ['30'], env: process.env, signal: abort.signal })
+    // The SDK listens for the abort error on a real session.
+    proc.on('error', () => undefined)
+    const pid = (proc as unknown as { pid: number }).pid
+    expect(s.store.meta('claudePids')).toEqual([{ pid, command: claude, arg: '30' }])
+    const exited = new Promise((r) => proc.once('exit', r))
+    abort.abort()
+    await exited
+    expect(s.store.meta('claudePids')).toEqual([])
+
+    // What a crash leaves: a claude process from the last run, and pids now used by other programs, one of them the
+    // same binary started another way (as `node other.js` would be next to `node cli.js`).
+    const left = spawn(claude, ['30'], { stdio: 'ignore' })
+    const other = spawn('/bin/sleep', ['30'], { stdio: 'ignore' })
+    const sameBinary = spawn(claude, ['31'], { stdio: 'ignore' })
+    try {
+      s.store.saveMeta('claudePids', [{ pid: left.pid, command: claude, arg: '30' }, { pid: other.pid, command: claude, arg: '30' }, { pid: sameBinary.pid, command: claude, arg: '3' }])
+      const gone = new Promise((r) => left.once('exit', (_code, sig) => r(sig)))
+      expect(await s.sessions.endLeftovers()).toEqual([left.pid])
+      expect(await gone).toBe('SIGTERM')
+      expect(other.exitCode).toBeNull()
+      expect(sameBinary.exitCode).toBeNull()
+      expect(s.store.meta('claudePids')).toEqual([])
+    } finally { left.kill('SIGKILL'); other.kill('SIGKILL'); sameBinary.kill('SIGKILL') }
   })
 })

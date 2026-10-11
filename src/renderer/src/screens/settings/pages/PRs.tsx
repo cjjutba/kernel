@@ -6,14 +6,16 @@ import { patchSettings } from '../useSettings'
 type Pr = AppSettings['pr']
 const set = (patch: Partial<Pr>) => void patchSettings({ pr: patch })
 
-/** Settings > Pull requests (SettingsPRs.png). The two instruction files are what Create PR and Resolve conflicts send to the agent. */
+/** Settings > Pull requests (SettingsPRs.png). The default instructions each PR button sends to the agent. A room can replace any of them on its Instructions page. */
 export function PRs({ s }: { s: AppSettings }) {
   const p = s.pr
   return (
-    <Page title="Pull requests">
+    <Page title="Pull requests" intro="The default instructions agents get. Each room can override them on its own Instructions page.">
       <Section title="Instructions">
         <Row label="Create PR" desc="Sent to the agent when you press Create PR" full={<TextField label="create-pr.md" value={p.createInstructions} onSave={(createInstructions) => set({ createInstructions })} />} />
         <Row label="Resolve conflicts" desc="Sent when you press Resolve conflicts" full={<TextField label="resolve-conflicts.md" value={p.resolveInstructions} onSave={(resolveInstructions) => set({ resolveInstructions })} />} />
+        <Row label="Fix checks" desc="Sent when you press Fix checks" full={<TextField label="fix-checks.md" value={p.fixChecksInstructions} onSave={(fixChecksInstructions) => set({ fixChecksInstructions })} />} />
+        <Row label="Address review" desc="Sent when you press Address review" full={<TextField label="address-review.md" value={p.addressReviewInstructions} onSave={(addressReviewInstructions) => set({ addressReviewInstructions })} />} />
       </Section>
       <Section title="Merging">
         <Row label="Merge method">

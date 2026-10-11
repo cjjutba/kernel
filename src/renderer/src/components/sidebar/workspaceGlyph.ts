@@ -3,8 +3,11 @@ import type { IconName } from '../../icons'
 import { STATUS_WORD } from '../../screens/team/model'
 import { isPlanApproval } from '../../screens/workspace/cards/steps'
 
-/** The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. */
-export type GlyphTone = 'muted' | 'ink' | 'add' | 'del' | 'merged'
+/**
+ * The colors a workspace's sidebar icon takes. Green, red and purple mean what they mean in a diff and on GitHub. Amber
+ * (`needs`) is what waits on you, the same color as the hover card's "needs you" (KERNEL-274).
+ */
+export type GlyphTone = 'muted' | 'needs' | 'add' | 'del' | 'merged'
 
 export interface WorkspaceGlyph {
   /** `spin` draws the spinner instead of an icon. */
@@ -22,8 +25,8 @@ const spin = (label: string): WorkspaceGlyph => ({ icon: 'spin', tone: 'muted', 
  */
 const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
   waiting.every(isPlanApproval)
-    ? { icon: 'plan', tone: 'ink', label: 'Plan to review' }
-    : { icon: 'question', tone: 'ink', label: 'Needs you' }
+    ? { icon: 'plan', tone: 'needs', label: 'Plan to review' }
+    : { icon: 'question', tone: 'needs', label: 'Needs you' }
 
 /**
  * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, or something that needs you), then what is running, then the pull request.
@@ -62,7 +65,7 @@ export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGl
   const label = STATUS_WORD[status]
   switch (status) {
     case 'working': case 'planning': case 'walking': return spin(label)
-    case 'needs': return { icon: 'question', tone: 'ink', label }
+    case 'needs': return { icon: 'question', tone: 'needs', label }
     case 'blocked': return { icon: 'warning', tone: 'del', label }
     case 'offline': return { icon: 'warning', tone: 'muted', label }
     case 'paused': return { icon: 'pause', tone: 'muted', label }

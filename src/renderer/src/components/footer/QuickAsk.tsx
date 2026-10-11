@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call } from '../../api'
-import { actions, getState, useStore } from '../../store'
-import { isLeadWorkspace, openLead } from '../../lead'
-import { Avatar, Button, Icon, Spinner, useBusy } from '../../ui'
+import { actions, useStore } from '../../store'
+import { openLead, openLeadChat } from '../../lead'
+import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
 
@@ -37,14 +37,9 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   const openChat = async () => {
     if (!room) return
     onClose()
-    await openLead(room.id)
-    if (!asked) return
-    // After a question, land on the chat it went to rather than the tab last selected. The tab is set after `openLead`
-    // navigates: the workspace screen clears the tab when the workspace changes, so setting it first would be wiped.
-    // `openLead` swallows its errors, so check the Lead's workspace is on screen before pointing a tab at its chat.
-    const { route } = getState().ui
-    const shown = route.name === 'workspace' ? getState().workspaces.find((w) => w.id === route.workspaceId) : undefined
-    if (shown && isLeadWorkspace(shown, room.id, lead?.id)) actions.ui.setWorkspaceView({ tab: asked.chatId })
+    // After a question, land on the chat it went to rather than the tab last selected.
+    if (asked) await openLeadChat(room.id, asked.chatId)
+    else await openLead(room.id)
   }
   const ask = () => {
     if (!room || !text.trim()) return
@@ -66,7 +61,6 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
   return (
     <div ref={ref} role="dialog" aria-label={`Ask ${name}`} className="qa">
       <div className="qa-head">
-        <Avatar name={name} size={20} solid />
         <span className="qa-name">Ask {name}</span>
         {room && <span className="qa-room">{room.name}</span>}
         <span className="grow" />
@@ -76,6 +70,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
       {asked ? (
         <div className="qa-thread" aria-live="polite">
           <p className="qa-q">{asked.question}</p>
+          {(answer || failed) && <span className="qa-who" aria-hidden="true">{name}</span>}
           {answer ? <p className="qa-a selectable">{answer}</p> : failed ? <p className="qa-a">{name} could not answer. Open the chat to retry.</p> : <p className="qa-wait"><Spinner label={`${name} is answering`} />{name} is answering</p>}
         </div>
       ) : (
@@ -94,7 +89,7 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
             <Button variant="primary" disabled={!lead} onClick={() => void openChat()}>{done ? 'Open full chat' : 'Open chat'}</Button>
           </>
         ) : (
-          <Button variant="primary" busy={!!busy || sending} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask</Button>
+          <Button variant="primary" busy={!!busy || sending} busyLabel="Asking" disabled={!room || !text.trim()} onClick={ask}>Ask<span className="qa-kbd" aria-hidden="true">↵</span></Button>
         )}
       </div>
     </div>

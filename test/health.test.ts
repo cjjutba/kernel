@@ -14,7 +14,7 @@ import type { AppSettings } from '../src/main/services/settings'
 import { blockingLimit, failureOf, fallbackModel, limitedModels, NetworkMonitor, terminalScript } from '../src/main/services/health'
 import { discardChanges, gitStatus, pushBranch } from '../src/main/services/archive'
 import { run } from '../src/main/services/exec'
-import { tempRepo } from './helpers'
+import { tempRepo, trustRoom } from './helpers'
 
 // A scripted SDK, as in sessionRunner.test.ts. `context` is the percentage getContextUsage reports, `contextReply` a full
 // answer that replaces it (null: percentage only), `usage` what the usage call answers (null: unsupported).
@@ -315,6 +315,7 @@ async function kernel(files: Record<string, string> = {}) {
   const k = new Kernel({ dataDir, home })
   await k.start()
   const room = await k.addRoom(repo)
+  await trustRoom(k, room.id)
   return { k, room, repo }
 }
 
@@ -328,7 +329,9 @@ describe('kernel recovery paths', () => {
     const k = new Kernel({ dataDir, home })
     await k.start()
     const room = await k.addRoom(repo)
-    const again = async () => { const next = new Kernel({ dataDir, home }); await next.start(); return next }
+    await trustRoom(k, room.id)
+    // A start with work to carry on checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
+    const again = async () => { const next = new Kernel({ dataDir, home }); next.signedInReader = async () => true; await next.start(); return next }
     return { k, room, again }
   }
   const texts = (k: Kernel, chatId: string) => k.sessions.queued(chatId).map((q) => [(q.parts[0] as { text: string }).text, q.from])
@@ -355,11 +358,13 @@ describe('kernel recovery paths', () => {
     await k2.stop()
   })
 
-  it('marks a workspace ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
+  // A workspace that waits for a PR is ready with its brief still held (KERNEL-259), so this holds for the ones that don't.
+  it('marks a workspace that waits for nothing ready only as Run again sends its held brief, with nothing a quit could land between (KERNEL-136)', async () => {
     const { k, room } = await restartable({ '.kernel/settings.toml': '[scripts]\nsetup = "test -f ok.txt"\n' })
     const lead = await k.leadChat(room.id)
     const ws = await k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: lead.id })
     const chat = k.store.chats(ws.id)[0]
+    expect(ws.waitsFor).toBeUndefined()
     await writeFile(join(ws.path, 'ok.txt'), 'ok\n')
     let heldWhenReady: unknown = 'never ready'
     const on = (e: PushEvent) => { if (e.type === 'workspace' && e.workspace.id === ws.id && e.workspace.status === 'ready') queueMicrotask(() => { heldWhenReady = k.store.meta<Record<string, unknown>>('held')?.[chat.id] ?? null }) }
@@ -596,6 +601,8 @@ describe('kernel recovery paths', () => {
     const dataDir = (k as unknown as { o: { dataDir: string } }).o.dataDir
     await k.stop()
     const again = new Kernel({ dataDir })
+    // A start with a cut-off chat checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
+    again.signedInReader = async () => true
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: true, pausedBy: 'limit' })
     expect(again.sessions.isPaused(room.id)).toBe(true)
@@ -605,7 +612,10 @@ describe('kernel recovery paths', () => {
     try {
       vi.setSystemTime(resetsAt * 1000 + 1000)
       const later = new Kernel({ dataDir })
+      later.signedInReader = async () => true
       await later.start()
+      // The chats carry on once the launch check, in the background, lets them.
+      await flush()
       expect(later.store.room(room.id)?.paused).toBe(false)
       expect(later.sessions.isRunning(chat.id)).toBe(true)
       expect(later.store.items(chat.id).filter((i) => i.kind === 'user').pop()).toMatchObject({ parts: [{ type: 'text', text: LIMIT_LIFTED }] })

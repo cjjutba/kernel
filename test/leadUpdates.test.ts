@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, PrState, ReviewVerdict, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedVersion, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
@@ -383,6 +383,15 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a PR closed without merging', [ev('pr.closed')], 'closed', {}, ["PR #54 was closed without merging. Ask the user whether Noor's work is still wanted."]],
     ['a PR closed and opened again', [ev('pr.closed')], 'open', {}, []],
     ['a merge that leaves other tasks open', [ev('pr.merged')], 'merged', { allMerged: () => false }, []],
+    ['a wait the Lead set itself (KERNEL-259)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, told: true } })], 'none', {}, []],
+    ['a held brief the Lead heard nothing about', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel sends Noor the brief when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['a wait the teammate set itself (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['the turn that set its own wait (KERNEL-262)', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, ['Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']],
+    ['a turn after a wait the Lead set', [ev('wait.started', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: false, told: true } }), ev('turn', { n: 2, by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a merge that released a wait', [ev('wait.released', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true } })], 'none', {}, []],
+    ['a wait whose PR closed without merging', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('closed'), id: 'w2', prNumber: 60 }) }, ["Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]],
+    ['a wait whose PR closed and opened again', [ev('wait.broken', { wait: { on: ['w2'], label: 'PR #60 by Kai', held: true, target: 'w2', gone: 'closed' } })], 'none', { workspace: () => ({ ...ws('open'), id: 'w2', prNumber: 60 }) }, []],
+    ['a started teammate whose wait broke', [ev('wait.broken', { wait: { on: ['w2'], label: "Kai's work", held: false, target: 'w2', gone: 'archived' } })], 'none', { workspace: () => ({ ...ws('none'), id: 'w2', status: 'archived' }) }, ["Noor is waiting for Kai's work, which was archived without merging. Ask the user whether Noor should carry on without it (wait_for_merge with an empty list) or archive Noor's workspace."]],
     ["the chat's last merge", [ev('pr.merged')], 'merged', { allMerged: () => true }, ['Every task you handed off in this chat has merged. Tell the user in one line.']],
     ['a PR opening', [ev('pr.opened')], 'checks', {}, []],
     ['a PR that passed checks, with a reviewer and no review', [ev('pr.ready')], 'ready', { reviewer: THEO }, [NEEDS_REVIEW]],
@@ -407,7 +416,7 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['a turn after an older PR event', [ev('pr.opened', { n: 0 }), ev('turn', { by: 'lead' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]]
   ]
   it.each(rows)('%s', (_label, events, prState, c, todo) => {
-    const out = decide({ ws: ws(prState), name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
+    const out = decide({ ws: { ...ws(prState), waitsFor: { on: ['w2'], held: true } }, name: 'Noor', events }, { allMerged: () => false, workspace: () => undefined, ...c })
     expect(out.todo).toEqual(todo)
     expect(out.wake.size).toBe(todo.length)
   })
@@ -497,6 +506,86 @@ describe("a teammate's setup (KERNEL-126)", () => {
     u.setup(w1, true)
     await wait()
     expect(s.posts).toEqual([])
+  })
+})
+
+describe('a teammate that waits for another PR (KERNEL-259)', () => {
+  const KAI_60 = { on: ['w2'], label: 'PR #60 by Kai', held: true }
+  async function waiting() {
+    const t = await setup()
+    t.store.saveWorkspace({ ...t.store.workspace('w1')!, waitsFor: { on: ['w2'], held: true } })
+    return { ...t, w1: t.store.workspace('w1')! }
+  }
+
+  it("rides along when it starts and when it is released, and the setup that passed says it still waits", async () => {
+    const { u, s, w1, pr } = await waiting()
+    u.waits(w1, 'wait.started', { ...KAI_60, told: true })
+    u.setup(w1, true, { wait: KAI_60 })
+    u.waits(w1, 'wait.released', KAI_60)
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    expect(parts(s.posts.pop()!).body).toEqual([NOOR, '- Setup passed on Run again. Noor still waits for PR #60 by Kai to merge, and Kernel sends the brief then.', '- PR #60 by Kai merged, so Kernel sent Noor the brief.', OPENED_54, '- Checks failed on PR #54.'])
+  })
+
+  it('wakes the Lead when the PR it waits for closes, and says nothing once it opened again', async () => {
+    const { u, s, w1, store } = await waiting()
+    store.saveWorkspace({ ...store.workspace('w2')!, prState: 'closed', prNumber: 60 })
+    u.waits(w1, 'wait.broken', { ...KAI_60, target: 'w2', gone: 'closed' })
+    await wait()
+    expect(parts(s.posts.pop()!)).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, '- Noor is waiting for PR #60 by Kai, which was closed without merging.'],
+      todo: ["- Noor is waiting for PR #60 by Kai, which was closed without merging. Ask the user whether Noor should start anyway (wait_for_merge with an empty list) or archive Noor's workspace."]
+    })
+    s.accept = false
+    u.waits(w1, 'wait.broken', { ...KAI_60, target: 'w2', gone: 'closed' })
+    store.saveWorkspace({ ...store.workspace('w2')!, prState: 'open' })
+    s.accept = true
+    await wait()
+    expect(s.posts).toEqual([])
+  })
+
+  it('wakes the Lead once when a teammate sets its own wait, with the turn that set it and no line to read the reply (KERNEL-262)', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false, why: 'It needs the inbox actions.' })
+    // The turn runs on well past the update delay. Its wait goes out with its end, not before.
+    await wait(120)
+    expect(s.posts).toEqual([])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0])).toEqual({
+      header: UPDATE_HEADER,
+      body: [NOOR, '- Waits for PR #60 by Kai to merge. Noor says: It needs the inbox actions. Kernel tells Noor to rebase onto it when it does.', ...QUOTED],
+      todo: ['- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.']
+    })
+  })
+
+  it("doesn't hold a teammate's wait, or the Lead chat's other updates, past a turn stopped by archive or close (KERNEL-262)", async () => {
+    const { u, s, w1, pr } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    pr('w2', 'cifail', 60)
+    await wait(120)
+    expect(s.posts).toEqual([])
+    // Stopping the session ends the chat's run without a turn end.
+    bus.push({ type: 'chat.running', chatId: 'nc', running: false })
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).todo).toEqual([
+      '- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.',
+      '- Tell Kai about the failed checks on PR #60 with message_agent (workspace w2).'
+    ])
+  })
+
+  it("doesn't hold a teammate's wait past a crash (KERNEL-262)", async () => {
+    const { u, s, w1 } = await setup()
+    u.waits(w1, 'wait.started', { on: ['w2'], label: 'PR #60 by Kai', held: false })
+    u.crashed(w1, 'exit 1')
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).todo).toContain('- Noor is waiting for PR #60 by Kai. Kernel starts Noor again when it merges. Tell the user in one line that merging it unblocks Noor.')
   })
 })
 
@@ -661,6 +750,23 @@ describe("a teammate's turn and its PR (KERNEL-136)", () => {
     await wait()
     expect(s.posts.pop()).toContain("- Noor's session ended unexpectedly (exit 1), partway through a turn. A message waiting for Noor started a new session, so Noor is working again.")
     expect(store.workspace('w1')).toBeTruthy()
+  })
+
+  it('says a teammate Kernel quit or closed on carries on by itself, without calling it unexpected or working (KERNEL-215)', async () => {
+    const { u, s, pr, w1 } = await setup()
+    u.crashed(w1, 'Kernel quit', { resumed: true })
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w1', 'cifail')
+    await wait()
+    const post = s.posts.pop()!
+    expect(post).toContain('- Kernel quit while Noor was partway through a turn. Noor carries on by itself once nothing holds it, such as a paused room or the agent limit.')
+    expect(post).not.toMatch(/unexpectedly|working again/)
+    expect(s.updates.at(-1)?.rows[0].events[0]).toEqual({ kind: 'crash', text: 'Stopped when Kernel quit', actionable: false })
+    u.crashed(w1, 'Kernel closed unexpectedly', { resumed: true })
+    pr('w1', 'conflict')
+    await wait()
+    expect(s.posts.pop()).toContain('- Kernel closed unexpectedly while Noor was partway through a turn.')
   })
 
   it('drops a close the PR left by opening again', async () => {
@@ -878,5 +984,51 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     expect(lines.filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])).toEqual(['Own 3', 'Own 4', 'Own 5', 'Own 6', 'Closed 1', 'Closed 2', 'Closed 3', 'Closed 4'])
     expect(lines).toContain('From "Composer unit tests", a Lead chat that is now closed. This work is yours now.')
     expect(lines).toContain('Kernel left out updates on 2 more workspaces. Call list_workspaces to see where they stand.')
+  })
+})
+
+describe('shared files in Team updates (KERNEL-302)', () => {
+  const file = (id: string, workspaceId: string, title: string, n: number, kind: SharedFile['kind'] = 'html'): [SharedFile, SharedVersion] => {
+    const v: SharedVersion = { n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: String(n) }
+    return [{ id, roomId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
+  }
+  const SHARED = (title: string, n: number, source: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}). The user can open it from this update.`
+
+  it('never wakes the Lead on its own, and goes out with the next update that does, in row.shared rather than events', async () => {
+    const { u, s, store, w1, nc } = await setup()
+    u.shared(w1, ...file('f1', 'w1', 'Checkout mockup', 1))
+    await wait()
+    expect(s.posts).toEqual([])
+    expect(store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')?.pending[0][1].events.map((e) => e.kind)).toEqual(['shared'])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).body).toEqual([NOOR, SHARED('Checkout mockup', 1, '.kernel/shared/f1.html'), ...QUOTED])
+    const [row] = s.updates[0].rows
+    expect(row.shared).toEqual([{ sharedId: 'f1', version: 1, title: 'Checkout mockup', kind: 'html' }])
+    expect(row.events.map((e) => e.kind)).toEqual(['turn'])
+  })
+
+  it('keeps the newest version of each file', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.shared(w1, ...file('f1', 'w1', 'Checkout mockup', 1))
+    u.shared(w1, ...file('f2', 'w1', 'Logo', 1, 'image'))
+    u.shared(w1, ...file('f1', 'w1', 'Checkout, take two', 2))
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.updates[0].rows[0].shared).toEqual([
+      { sharedId: 'f2', version: 1, title: 'Logo', kind: 'image' },
+      { sharedId: 'f1', version: 2, title: 'Checkout, take two', kind: 'html' }
+    ])
+    expect(parts(s.posts[0]).body.filter((l) => l.startsWith('- Shared'))).toEqual([SHARED('Logo', 1, '.kernel/shared/f2.html', 'image'), SHARED('Checkout, take two', 2, '.kernel/shared/f1.html')])
+  })
+
+  it("adds nothing for the Lead's own workspace", async () => {
+    const { u, s, store, lead, w1, nc } = await setup()
+    u.shared(lead, ...file('f1', 'lead', 'Plan diagram', 1))
+    expect(store.meta<{ pending: unknown[] }>('leadUpdates')?.pending ?? []).toEqual([])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.updates[0].rows.map((r) => r.shared)).toEqual([undefined])
   })
 })

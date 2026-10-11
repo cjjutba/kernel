@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { _electron as electron } from 'playwright-core'
+import { _electron as electron, type Page } from 'playwright-core'
 import pngjs from 'pngjs'
 
 const { PNG } = pngjs
@@ -35,6 +35,29 @@ const allDesigns = () => readdirSync(designDir).filter((f) => f.endsWith('.png')
 const fixtureNames = () => new Set(readdirSync(join(root, 'fixtures')).filter((f) => f.endsWith('.ts')).flatMap((f) => [...readFileSync(join(root, 'fixtures', f), 'utf8').matchAll(/^ {2}([A-Z]\w+):/gm)].map((m) => m[1])))
 const withFixture = () => allDesigns().filter((n) => fixtureNames().has(n))
 
+// Screens that need a click to reach the state in the shot, such as a chat row opened in place. That state is local to the
+// component, so a fixture can't set it.
+async function openRows(page: Page, rows: string[]) {
+  for (const row of rows) await page.locator('.trow-btn', { hasText: row }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
+async function stepToSecondQuestion(page: Page) {
+  await page.getByRole('button', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('checkbox', { name: 'Row actions menu' }).click()
+  await page.getByRole('checkbox', { name: 'Invoice detail header' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+const interactions: Record<string, (page: Page) => Promise<void>> = {
+  WorkspaceQuestionSteps: stepToSecondQuestion,
+  WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
+  WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
+}
+
 async function capture(name: string): Promise<boolean> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_RENDERER_URL') env[k] = v
@@ -52,8 +75,14 @@ async function capture(name: string): Promise<boolean> {
     await app.evaluate(({ BrowserWindow }, size) => BrowserWindow.getAllWindows()[0]?.setContentSize(size.w, size.h), { w: WIDTH, h: HEIGHT })
     await page.waitForSelector('html[data-fixture="ready"]', { state: 'attached', timeout: 15_000 })
     await page.evaluate(() => document.fonts.ready.then(() => undefined))
+    // Settings, Floor and Board are lazy chunks. App shows the boot shell with data-lazy until the chunk has loaded, and their data
+    // loads on mount, so wait for the chunk first and for the screen's data after.
+    const lazyLoaded = () => page.waitForSelector('[data-lazy="pending"]', { state: 'detached', timeout: 15_000 })
+    await lazyLoaded()
     // Screens load their own data on mount (loadRoom, loadWorkspace, changes). Give those calls a moment to land.
     await page.waitForTimeout(500)
+    await interactions[name]?.(page)
+    await lazyLoaded()
     await page.screenshot({ path: join(shotsDir, `${name}${suffix}.png`) })
     console.log(`shots/${name}${suffix}.png`)
     return true

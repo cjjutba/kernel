@@ -1,11 +1,12 @@
 import { useRef, useSyncExternalStore } from 'react'
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, Banner, Chat, ChatItem, Checkpoint, ClaudeAccount,
-  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QuickAskState, RateLimit, Room, RoomSettings,
-  RoomSetupStep, Route, ScriptKind, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceView
+  ForcedUi, HookStatus, MenuId, Modal, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, QueueReason, QuickAskState, RateLimit, Room, RoomSettings,
+  RoomSettingsSection, RoomSetupStep, Route, ScriptKind, SettingsPage, ScriptLine, Task, Theme, Toast, UiState, Workspace, WorkspaceTabs, WorkspaceView
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { call, onPush } from './api'
+import { hasTab, isChatTab, nearest, placeToSave, restorePlace, roomHome, samePlace, stillThere, tabOf, type Place } from './nav'
 
 export type { Modal, Route }
 
@@ -29,10 +30,12 @@ export interface State {
   saying: Record<string, string>
   // workspaces
   workspaces: Workspace[]
-  /** By workspace id. */
+  /** By workspace id. Lines carry the run script's `name`, and each script keeps its own last 400. */
   scripts: Record<string, ScriptLine[]>
-  /** By workspace id. Exit code of the last run of each script. */
-  scriptExit: Record<string, Partial<Record<ScriptKind, number | null>>>
+  /** By workspace id, then `scriptKey`. Exit code of the last run of each script. */
+  scriptExit: Record<string, Record<string, number | null | undefined>>
+  /** By workspace id, then run script name. The first local URL the script printed, while it runs (`script.url`, KERNEL-246). */
+  scriptUrl: Record<string, Record<string, string>>
   /** By workspace id. */
   checkpoints: Record<string, Checkpoint[]>
   // chats
@@ -44,6 +47,8 @@ export interface State {
   running: Record<string, boolean>
   /** By chat id. */
   queue: Record<string, QueuedMessage[]>
+  /** By chat id. What the queue waits for, absent while it is empty (KERNEL-273). */
+  queueWhy: Record<string, QueueReason>
   /** By chat id. Raw pty output for terminal chats. */
   terminal: Record<string, string>
   /** By chat id. Set while Claude is overloaded and the session retries. */
@@ -81,20 +86,31 @@ function showing(panel: keyof typeof HIDDEN) {
 function keep(panel: keyof typeof HIDDEN, open: boolean) {
   try { if (open) localStorage.removeItem(HIDDEN[panel]); else localStorage.setItem(HIDDEN[panel], '1') } catch { /* not remembered */ }
 }
+/** The Lead chats folded in the sidebar, by id, kept across launches like the panel toggles. localStorage may be missing or blocked, and its value may not be a list. */
+const FOLDED_CHATS = 'kernel.foldedChats'
+function foldedChats(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(FOLDED_CHATS) ?? '[]')
+    return Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : []
+  } catch { return [] }
+}
+function keepFoldedChats(ids: string[]) {
+  try { localStorage.setItem(FOLDED_CHATS, JSON.stringify(ids)) } catch { /* not remembered */ }
+}
 /** Panels a narrow window folded (`ui.fold`). A fold never touches the saved toggle, and toggling a panel by hand forgets its fold. */
 const folded = new Set<keyof typeof HIDDEN>()
 
 let state: State = {
   rooms: [], roomSetup: {}, overlaps: {},
   agents: {}, status: {}, saying: {},
-  workspaces: [], scripts: {}, scriptExit: {}, checkpoints: {},
-  chats: {}, items: {}, running: {}, queue: {}, terminal: {}, retry: {},
+  workspaces: [], scripts: {}, scriptExit: {}, scriptUrl: {}, checkpoints: {},
+  chats: {}, items: {}, running: {}, queue: {}, queueWhy: {}, terminal: {}, retry: {},
   approvals: [], tasks: {}, activity: [], lastActivity: {}, notifications: [],
   prs: {},
   usage: [], account: null, settings: null, roomSettings: {},
   system: { booted: false, online: true, preflight: null, hooks: null, update: null },
   quickAsk: {},
-  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
+  ui: { route: { name: 'home' }, modal: null, menu: null, toasts: [], banner: null, theme: 'dark', workspace: workspaceView, tabs: {}, foldedChats: foldedChats(), sidebar: showing('sidebar'), rightPanel: showing('rightPanel') }
 }
 const listeners = new Set<() => void>()
 
@@ -127,6 +143,19 @@ export function useStore<T>(select: (s: State) => T): T {
   })
 }
 
+/** Lines kept for each script. */
+const SCRIPT_LINES = 400
+/** A run script's name, `run` for the default one. Setup and archive have none. */
+const runName = (kind: ScriptKind, name?: string) => (kind === 'run' ? name ?? 'run' : undefined)
+/**
+ * Where a script's exit code lives in `scriptExit`: `setup`, `archive`, `run` for the default run script and `run:<name>` for the rest.
+ * A run script may be named `setup`, so its key can't be the bare name.
+ */
+export const scriptKey = (kind: ScriptKind, name?: string) => {
+  const n = runName(kind, name)
+  return n && n !== 'run' ? `run:${n}` : kind
+}
+
 const upsert = <T extends { id: string }>(list: T[], item: T) => (list.some((x) => x.id === item.id) ? list.map((x) => (x.id === item.id ? item : x)) : [...list, item])
 const byRecent = <T extends { createdAt: number }>(list: T[]) => [...list].sort((a, b) => b.createdAt - a.createdAt)
 /** `all` with each of `times` written into the room's entry when it is later than what is there. Unchanged rooms keep their identity. */
@@ -142,8 +171,131 @@ function rememberRoom(route: Route) {
   if (!id || route.name === 'settings') return
   try { localStorage.setItem(LAST_ROOM, id) } catch { /* not remembered */ }
 }
-function lastRoom(): string | null {
+export function lastRoom(): string | null {
   try { return localStorage.getItem(LAST_ROOM) } catch { return null }
+}
+const emptyTabs: WorkspaceTabs = { files: [], diffs: [] }
+/** `tabs` with `tab` selected. A chat id also becomes `lastChat`; a file or diff tab joins the open ones. */
+function withTab(tabs: WorkspaceTabs | undefined, tab: string): WorkspaceTabs {
+  const t = { ...emptyTabs, ...tabs, tab }
+  if (tab.startsWith('file:')) { const path = tab.slice(5); return t.files.includes(path) ? t : { ...t, files: [...t.files, path] } }
+  if (tab.startsWith('diff:')) { const path = tab.slice(5); return t.diffs.includes(path) ? t : { ...t, diffs: [...t.diffs, path] } }
+  if (tab.startsWith('image:') || tab.startsWith('text:')) return t
+  return { ...t, lastChat: tab }
+}
+/** Selects the tab without recording a step. */
+function selectTab(workspaceId: string, tab: string) {
+  setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: withTab(s.ui.tabs[workspaceId], tab) } } }))
+}
+/** Where the app is now. */
+const placeNow = (): Place => {
+  const { route } = state.ui
+  return route.name === 'workspace' ? { route, tab: tabOf(state, route.workspaceId) } : { route }
+}
+/** Where Settings was opened from, the last Settings page, and where the app opened. Module level like `folded`: none of it outlasts a restart. */
+let returnTo: Place | undefined
+let lastSettings: { page: SettingsPage; roomId?: string; section?: RoomSettingsSection } | undefined
+let launch: Route = { name: 'home' }
+/**
+ * The place a relaunch reopens (KERNEL-201), kept in localStorage like the other `kernel.*` keys, which may be missing or blocked.
+ * Nothing is written before the first route is chosen (`system.booted`), so a restore never overwrites what it read, and none in fixture mode.
+ */
+const LAST_PLACE = 'kernel.lastPlace'
+let fixtureMode = false
+/** Fixture mode runs on a shared folder of its own and must neither read nor write what a real launch saved. */
+export const isFixture = () => fixtureMode
+function savePlace() {
+  if (!state.system.booted || fixtureMode) return
+  const place = placeToSave(state, returnTo)
+  if (!place) return
+  try { localStorage.setItem(LAST_PLACE, JSON.stringify(place)) } catch { /* not remembered */ }
+}
+function savedPlace(): string | null {
+  try { return localStorage.getItem(LAST_PLACE) } catch { return null }
+}
+// A tab closed, or a workspace's tabs dropped with the workspace, changes what a relaunch shows without being a move. Every write to
+// `ui.tabs` makes a new object (`dropTabs` keeps the old one when it drops nothing), so a changed identity is a changed tab list.
+let savedTabs = state.ui.tabs
+subscribe(() => {
+  if (state.ui.tabs === savedTabs) return
+  savedTabs = state.ui.tabs
+  savePlace()
+})
+/** The workspaces whose whole chat list has been read. `chats[id]` alone can't say: a pushed chat creates the entry with just itself. Drafts use it (KERNEL-201). */
+const loadedChats = new Set<string>()
+export const chatsLoaded = (workspaceId: string) => loadedChats.has(workspaceId)
+/** Back and forward: the places you left, newest last, and the ones Back stepped over. Module level like `returnTo`, so a restart starts empty. */
+const HISTORY_LIMIT = 50
+let past: Place[] = []
+let future: Place[] = []
+/** How a move is recorded. `push` keeps the place left, `replace` stands in for it, `none` is Back and Forward themselves. */
+export type HistoryMode = 'push' | 'replace' | 'none'
+const capped = (list: Place[]) => list.length > HISTORY_LIMIT ? list.slice(-HISTORY_LIMIT) : list
+/** Every move ends here, whether it changed the route (`go`) or the tab (`openTab`). The place-keeping lines of the issues after it go here too. */
+function moved(from: Place, to: Place, history: HistoryMode = 'push') {
+  if (to.route.name === 'settings') {
+    if (from.route.name !== 'settings') returnTo = from
+    lastSettings = { page: to.route.page, ...(to.route.roomId ? { roomId: to.route.roomId } : {}), ...(to.route.section ? { section: to.route.section } : {}) }
+  }
+  // Callers apply the move before calling this, so the state is already `to` with its tabs. Saved ahead of the history block, which returns early, and for Back and Forward too.
+  savePlace()
+  if (history === 'none' || samePlace(from, to)) return
+  // Onboarding and the dev pages are not somewhere to come back to, and nor is a page of Settings once you are in Settings.
+  const quiet = to.route.name === 'onboarding' || to.route.name === 'devUi' || from.route.name === 'onboarding' || (from.route.name === 'settings' && to.route.name === 'settings')
+  if (history === 'replace' || quiet) return
+  past = capped([...past, from])
+  future = []
+}
+/** The place with the chat you were last on in place of a file, diff, image or text tab. */
+function onChat(place: Place): Place {
+  if (place.route.name !== 'workspace' || !place.tab || isChatTab(place.tab)) return place
+  return { route: place.route, tab: state.ui.tabs[place.route.workspaceId]?.lastChat }
+}
+/** Where you are, as a place to come back to. Image and text tabs live in the screen and are gone once you leave, so they count as the chat you were last on. */
+function leaving(): Place {
+  const here = placeNow()
+  return here.tab?.startsWith('image:') || here.tab?.startsWith('text:') ? onChat(here) : here
+}
+/** The entry as it would open now: a tab closed since falls back through `tabOf`, which is why that is where it is compared. */
+function resolved(entry: Place): Place {
+  if (entry.route.name !== 'workspace' || !entry.tab || hasTab(state, entry.route.workspaceId, entry.tab)) return entry
+  return { route: entry.route, tab: tabOf(state, entry.route.workspaceId) }
+}
+/** Is this entry somewhere to go: still there, and not where you already are. */
+const reachable = (entry: Place, now: Place) => stillThere(entry.route, state) && !samePlace(resolved(entry), now)
+/** Takes `list` to its newest reachable entry, dropping the dead ones on the way. Returns that entry and the rest of the list. */
+function takeNewest(list: Place[], now: Place): { entry: Place; rest: Place[] } | undefined {
+  for (let i = list.length - 1; i >= 0; i--) if (reachable(list[i], now)) return { entry: list[i], rest: list.slice(0, i) }
+  return undefined
+}
+/** Goes to `entry` without recording it: its tab when that tab is still open, then its route. */
+function arrive(entry: Place) {
+  if (entry.route.name === 'workspace' && entry.tab && hasTab(state, entry.route.workspaceId, entry.tab)) selectTab(entry.route.workspaceId, entry.tab)
+  actions.ui.go(entry.route, { history: 'none' })
+}
+/** Takes the newest reachable entry of `past` (back) or `future` (forward), and puts where you are now on the other list. */
+function step(dir: 'back' | 'forward'): boolean {
+  const now = leaving()
+  const taken = takeNewest(dir === 'back' ? past : future, now)
+  // Nothing reachable, so everything in that list is dead or where you already are.
+  if (!taken) { if (dir === 'back') past = []; else future = []; return false }
+  const other = capped([...(dir === 'back' ? future : past), now])
+  if (dir === 'back') { past = taken.rest; future = other } else { future = taken.rest; past = other }
+  arrive(taken.entry)
+  return true
+}
+/** Is there a place Back or Forward would reach. */
+export const canBack = () => takeNewest(past, leaving()) !== undefined
+export const canForward = () => takeNewest(future, leaving()) !== undefined
+/** Empties both lists. For tests, which share the module. */
+export function resetHistory() { past = []; future = [] }
+/** `tabs` without the workspaces `gone` picks out. Tabs with nothing to drop keep their identity. */
+function dropTabs(tabs: UiState['tabs'], gone: (workspaceId: string) => boolean): UiState['tabs'] {
+  const ids = Object.keys(tabs).filter(gone)
+  if (!ids.length) return tabs
+  const out = { ...tabs }
+  for (const id of ids) delete out[id]
+  return out
 }
 const setUi = (patch: Partial<UiState>) => setState((s) => ({ ui: { ...s.ui, ...patch } }))
 let toastSeq = 0
@@ -152,7 +304,29 @@ let toastSeq = 0
 export const actions = {
   ui: {
     /** Navigate. Closes any modal and menu. */
-    go: (route: Route) => { setUi({ route, modal: null, menu: null }); rememberRoom(route) },
+    go: (route: Route, opts?: { history?: HistoryMode }) => {
+      const from = leaving()
+      setUi({ route, modal: null, menu: null })
+      rememberRoom(route)
+      moved(from, placeNow(), opts?.history)
+    },
+    /** ⌘[ and the mouse's back button: the newest place you left that is still there. False when there is none. */
+    back: () => step('back'),
+    /** ⌘] and the mouse's forward button: undoes a Back. */
+    forward: () => step('forward'),
+    /** ⌘, : the Settings page you were on last, or General when that page's room is gone. */
+    openSettings: () => {
+      const last = lastSettings
+      const route: Route = last && stillThere({ name: 'settings', ...last }, state) ? { name: 'settings', ...last } : { name: 'settings', page: 'general' }
+      actions.ui.go(route)
+    },
+    /** Back to app: where Settings was opened from, or the nearest place that is still there. */
+    leaveSettings: () => {
+      // The Settings pages replace each other, so the newest entry is where Settings was opened from, unless it is dead or Settings was opened by a restart.
+      const newest = past[past.length - 1]
+      if (newest && newest.route.name !== 'settings' && reachable(newest, leaving())) actions.ui.back()
+      else actions.ui.go(nearest((returnTo ?? { route: launch }).route, state), { history: 'replace' })
+    },
     openModal: (modal: Exclude<Modal, null>) => setUi({ modal, menu: null }),
     closeModal: () => setUi({ modal: null }),
     /** Opens the menu, or closes it when it is already open. */
@@ -174,6 +348,26 @@ export const actions = {
     setTheme: (theme: Theme) => { setUi({ theme }); document.documentElement.dataset.theme = theme },
     setStage: (stage: string | undefined) => setUi({ stage }),
     setWorkspaceView: (patch: Partial<WorkspaceView>) => setState((s) => ({ ui: { ...s.ui, workspace: { ...s.ui.workspace, ...patch } } })),
+    /** Selects a tab of the workspace. A chat id also remembers the chat, and a file or diff tab is added to the open ones. */
+    openTab: (workspaceId: string, tab: string) => {
+      // A file or diff tab is not a step, so switching chats from one steps from the chat you opened it from. Leaving the workspace keeps the tab (`go`).
+      const from = onChat(leaving())
+      const shown = state.ui.tabs[workspaceId]?.tab
+      selectTab(workspaceId, tab)
+      // Only switching chats in the workspace on screen is a step. A file or diff is a detour from the chat, and another workspace's tab is not on screen.
+      // Nor is moving off a tab that was closed, as closing a chat does: `from` is then a fallback chat you never chose.
+      const closed = !!shown && !hasTab(state, workspaceId, shown)
+      moved(from, placeNow(), isChatTab(tab) && !closed ? 'push' : 'none')
+    },
+    /** Changes a workspace's tabs without selecting anything new, for closing a tab. */
+    setTabs: (workspaceId: string, patch: Partial<WorkspaceTabs>) => setState((s) => ({ ui: { ...s.ui, tabs: { ...s.ui.tabs, [workspaceId]: { ...emptyTabs, ...s.ui.tabs[workspaceId], ...patch } } } })),
+    /** Folds or unfolds a Lead chat's workspaces in the sidebar. Unfolding drops the id, so the list holds only folded chats. */
+    foldChat: (chatId: string, fold: boolean) => {
+      const ids = getState().ui.foldedChats.filter((id) => id !== chatId)
+      const next = fold ? [...ids, chatId] : ids
+      setUi({ foldedChats: next })
+      keepFoldedChats(next)
+    },
     setSidebar: (open: boolean) => { folded.delete('sidebar'); setUi({ sidebar: open }); keep('sidebar', open) },
     setRightPanel: (open: boolean) => { folded.delete('rightPanel'); setUi({ rightPanel: open }); keep('rightPanel', open) },
     /** The window got too narrow for a panel, or wide enough again. Widening brings back only a panel that folding hid (D-080). */
@@ -185,7 +379,10 @@ export const actions = {
   rooms: {
     set: (rooms: Room[]) => setState({ rooms }),
     upsert: (room: Room) => setState((s) => ({ rooms: upsert(s.rooms, room) })),
-    remove: (roomId: string) => setState((s) => ({ rooms: s.rooms.filter((r) => r.id !== roomId), workspaces: s.workspaces.filter((w) => w.roomId !== roomId) })),
+    remove: (roomId: string) => setState((s) => ({
+      rooms: s.rooms.filter((r) => r.id !== roomId), workspaces: s.workspaces.filter((w) => w.roomId !== roomId),
+      ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => s.workspaces.find((w) => w.id === id)?.roomId === roomId) }
+    })),
     setSetup: (roomId: string, steps: RoomSetupStep[]) => setState((s) => ({ roomSetup: { ...s.roomSetup, [roomId]: steps } })),
     setOverlaps: (roomId: string, list: Overlap[]) => setState((s) => ({ overlaps: { ...s.overlaps, [roomId]: list } })),
     upsertOverlap: (o: Overlap) => setState((s) => ({ overlaps: { ...s.overlaps, [o.roomId]: upsert(s.overlaps[o.roomId] ?? [], o) } }))
@@ -198,10 +395,27 @@ export const actions = {
     }))
   },
   workspaces: {
-    set: (list: Workspace[]) => setState({ workspaces: list }),
-    upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws) })),
-    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => ({ scripts: { ...s.scripts, [workspaceId]: [...(s.scripts[workspaceId] ?? []), line].slice(-400) } })),
-    scriptExited: (workspaceId: string, kind: ScriptKind, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...(s.scriptExit[workspaceId] ?? {}), [kind]: code } } })),
+    set: (list: Workspace[]) => setState((s) => ({ workspaces: list, ui: { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => !list.some((w) => w.id === id && w.status !== 'archived')) } })),
+    upsert: (ws: Workspace) => setState((s) => ({ workspaces: upsert(s.workspaces, ws), ui: ws.status === 'archived' ? { ...s.ui, tabs: dropTabs(s.ui.tabs, (id) => id === ws.id) } : s.ui })),
+    appendScript: (workspaceId: string, line: ScriptLine) => setState((s) => {
+      const named: ScriptLine = { ...line, name: runName(line.kind, line.name) }
+      const next = [...(s.scripts[workspaceId] ?? []), named]
+      // A chatty script drops its own oldest line, so it can't push another script's output out. The lines that stay are the
+      // same objects, so the log's rows keep their keys and only new lines are drawn (KERNEL-211).
+      if (next.length > SCRIPT_LINES) {
+        const mine = next.filter((l) => l.kind === named.kind && l.name === named.name)
+        if (mine.length > SCRIPT_LINES) next.splice(next.indexOf(mine[0]), 1)
+      }
+      return { scripts: { ...s.scripts, [workspaceId]: next } }
+    }),
+    scriptExited: (workspaceId: string, kind: ScriptKind, name: string | undefined, code: number | null) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: code } } })),
+    /** The URL a run script printed, or null when the push says the run started again or exited. */
+    setScriptUrl: (workspaceId: string, name: string, url: string | null) => setState((s) => {
+      const { [name]: _gone, ...rest } = s.scriptUrl[workspaceId] ?? {}
+      return { scriptUrl: { ...s.scriptUrl, [workspaceId]: url ? { ...rest, [name]: url } : rest } }
+    }),
+    /** A new run starts clean, so the last exit code no longer says it stopped. */
+    clearScriptExit: (workspaceId: string, kind: ScriptKind, name?: string) => setState((s) => ({ scriptExit: { ...s.scriptExit, [workspaceId]: { ...s.scriptExit[workspaceId], [scriptKey(kind, name)]: undefined } } })),
     setCheckpoints: (workspaceId: string, list: Checkpoint[]) => setState((s) => ({ checkpoints: { ...s.checkpoints, [workspaceId]: list } })),
     /** Only one checkpoint is where the worktree is now, so a new current one clears the flag on the rest. */
     upsertCheckpoint: (c: Checkpoint) => setState((s) => {
@@ -210,12 +424,19 @@ export const actions = {
     })
   },
   chats: {
-    set: (workspaceId: string, list: Chat[]) => setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })),
+    set: (workspaceId: string, list: Chat[]) => { loadedChats.add(workspaceId); setState((s) => ({ chats: { ...s.chats, [workspaceId]: list } })) },
     upsert: (chat: Chat) => setState((s) => ({ chats: { ...s.chats, [chat.workspaceId]: upsert(s.chats[chat.workspaceId] ?? [], chat) } })),
     setItems: (chatId: string, list: ChatItem[]) => setState((s) => ({ items: { ...s.items, [chatId]: list } })),
     upsertItem: (chatId: string, item: ChatItem) => setState((s) => ({ items: { ...s.items, [chatId]: upsert(s.items[chatId] ?? [], item) } })),
     setRunning: (chatId: string, running: boolean) => setState((s) => ({ running: { ...s.running, [chatId]: running } })),
-    setQueue: (chatId: string, list: QueuedMessage[]) => setState((s) => ({ queue: { ...s.queue, [chatId]: list } })),
+    /** A `chat.queue` event passes its reason, or null when nothing holds the queue. A list handed back by a call passes none (undefined), so the last reason stays until the next event. An empty queue has none. */
+    setQueue: (chatId: string, list: QueuedMessage[], why?: QueueReason | null) => setState((s) => {
+      const queueWhy = { ...s.queueWhy }
+      if (!list.length || why === null) delete queueWhy[chatId]
+      else if (why) queueWhy[chatId] = why
+      return { queue: { ...s.queue, [chatId]: list }, queueWhy }
+    }),
+    setQueueWhy: (chatId: string, why: QueueReason) => setState((s) => ({ queueWhy: { ...s.queueWhy, [chatId]: why } })),
     appendTerminal: (chatId: string, data: string) => setState((s) => ({ terminal: { ...s.terminal, [chatId]: ((s.terminal[chatId] ?? '') + data).slice(-200_000) } })),
     setRetry: (chatId: string, retry: State['retry'][string] | null) => setState((s) => {
       const next = { ...s.retry }
@@ -288,7 +509,7 @@ export function apply(e: PushEvent) {
     case 'chat.item': return actions.chats.upsertItem(e.chatId, e.item)
     case 'chat.cleared': return actions.chats.setItems(e.chatId, [])
     case 'chat.running': return actions.chats.setRunning(e.chatId, e.running)
-    case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue)
+    case 'chat.queue': return actions.chats.setQueue(e.chatId, e.queue, e.why ?? null)
     case 'terminal.data': return actions.chats.appendTerminal(e.chatId, e.data)
     case 'retry': return actions.chats.setRetry(e.chatId, e.retry)
     case 'approval': return actions.approvals.upsert(e.approval)
@@ -298,8 +519,9 @@ export function apply(e: PushEvent) {
     case 'agents': return actions.agents.set(e.roomId, e.agents)
     case 'agent.status': return actions.agents.setStatus(e.roomId, e.agentId, e.status, e.activity)
     case 'workspace': return actions.workspaces.upsert(e.workspace)
-    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, line: e.line, stream: e.stream })
-    case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.code)
+    case 'script.output': return actions.workspaces.appendScript(e.workspaceId, { kind: e.kind, name: e.name, line: e.line, stream: e.stream })
+    case 'script.exit': return actions.workspaces.scriptExited(e.workspaceId, e.kind, e.name, e.code)
+    case 'script.url': return actions.workspaces.setScriptUrl(e.workspaceId, e.name, e.url)
     case 'checkpoint': return actions.workspaces.upsertCheckpoint(e.checkpoint)
     case 'task': return actions.tasks.upsert(e.task)
     case 'notification': return actions.notifications.upsert(e.notification)
@@ -324,6 +546,7 @@ export async function boot() {
     call('rooms.list', undefined), call('workspaces.list', {}), call('approvals.list', {}), call('notifications.list', undefined), call('activity.recent', { limit: 100 }), call('usage.get', undefined),
     call('settings.get', undefined), call('system.fixture', undefined)
   ])
+  fixtureMode = !!fixture
   setState({ rooms, workspaces, approvals: byRecent(approvals), notifications: byRecent(notifications), activity, usage, settings })
   // The footer and the account menu read these. Neither blocks the first paint, and a failure leaves them empty.
   void call('account.get', undefined).then(actions.account.set).catch(() => undefined)
@@ -332,10 +555,15 @@ export async function boot() {
   // The checks rerun on every launch. A failing check shows its screen even when rooms exist (KERNEL-27).
   const checks = await call('preflight.run', undefined).catch(() => null)
   if (checks) actions.system.setPreflight(checks)
+  // Chosen before the branches below, so a launch that stops at the checks still has its tabs back, and the first move after the checks
+  // can't save an empty tab list over them. Continue on the checks screen asks again and lands on the same place.
+  const opening = launchRoute()
   // A fresh install always starts at Welcome, whose Get started runs the checks.
-  if (!rooms.length) go({ name: 'onboarding', step: 'welcome' })
-  else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' })
-  else go(homeRoute(settings, rooms, workspaces))
+  // Replace, so Back right after launch has nowhere to go.
+  const replace = { history: 'replace' } as const
+  if (!rooms.length) go({ name: 'onboarding', step: 'welcome' }, replace)
+  else if (checks?.some((c) => !c.ok)) go({ name: 'onboarding', step: 'checks' }, replace)
+  else go(opening, replace)
   for (const r of rooms) void loadRoom(r.id)
   actions.system.booted()
   if (fixture) applyFixture(fixture.ui, fixture.push)
@@ -345,23 +573,30 @@ export async function boot() {
 }
 
 /**
- * Settings > General > Default home view: where the app opens. Last room opens the Lead's chat, found the way the sidebar
- * does (the `lead` workspace on the main checkout), since agents load after this. A room nobody has briefed opens Team (D-104).
+ * Where the app opens once the checks pass: `boot` goes there, and so does Continue on the checks screen (call it with `go(..., { history: 'replace' })`),
+ * so the two can't drift. Settings > General > Default home view picks it. Where I left off reopens the saved place and brings back the tabs
+ * of its workspaces that are still live (a tab already open wins, so asking twice changes nothing). Without a saved place (a first launch,
+ * unreadable JSON, fixture mode) it opens the last room's Lead chat, found the way the sidebar does (the `lead` workspace on the main
+ * checkout), since agents load after this. A room nobody has briefed opens Team (D-104). Also the route Settings falls back to (`launch`).
  */
-function homeRoute(settings: AppSettings, rooms: Room[], workspaces: Workspace[]): Route {
-  const { homeView } = settings.general
-  const last = rooms.find((r) => r.id === lastRoom() && !r.hidden && !r.archived)
-  if (homeView === 'inbox') return { name: 'inbox' }
-  if (homeView === 'lastRoom' && last) {
-    const lead = workspaces.find((w) => w.roomId === last.id && w.name === 'lead' && w.mode === 'current' && w.status !== 'archived')
-    return lead ? { name: 'workspace', workspaceId: lead.id } : { name: 'team', roomId: last.id }
+export function launchRoute(): Route {
+  const openTo = state.settings?.general.openTo
+  let route: Route = { name: 'home' }
+  if (openTo === 'inbox') route = { name: 'inbox' }
+  else if (openTo === 'lastPlace') {
+    const restored = fixtureMode ? undefined : restorePlace(savedPlace(), state)
+    const last = state.rooms.find((r) => r.id === lastRoom())
+    if (restored) {
+      setState((s) => ({ ui: { ...s.ui, tabs: { ...restored.tabs, ...s.ui.tabs } } }))
+      route = restored.route
+    } else if (last) route = nearest(roomHome(last.id, state), state)
   }
-  return { name: 'home' }
+  return launch = route
 }
 
 /** Fixture mode: force the screen, replay its push events, then tell the screenshot harness it can capture. */
 function applyFixture({ quickAsk, ...ui }: ForcedUi, push: PushEvent[]) {
-  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace } }, quickAsk: quickAsk ?? s.quickAsk }))
+  setState((s) => ({ ui: { ...s.ui, ...ui, modal: ui.modal ?? null, workspace: { ...s.ui.workspace, ...ui.workspace }, tabs: { ...s.ui.tabs, ...ui.tabs } }, quickAsk: quickAsk ?? s.quickAsk }))
   // useAppearance applies settings.appearance.theme, so a fixture's theme goes there too or it would be painted over.
   if (ui.theme) setState((s) => (s.settings ? { settings: { ...s.settings, appearance: { ...s.settings.appearance, theme: ui.theme! } } } : {}))
   push.forEach(apply)

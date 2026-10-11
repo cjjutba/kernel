@@ -1,6 +1,7 @@
 @import './ui/ui.css';
-/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working`, `--needs` and the
-   `--tint-*` pill fills color status words in the sidebar's hover cards only (D-084). */
+/* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
+   pill fills color status words in the sidebar's hover cards (D-084); `--needs` also marks what waits on you in the sidebar.
+   `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
@@ -32,6 +33,29 @@
   --tint-del: #2f191b;
   --tint-merged: #2c2545;
   --tint-muted: #222428;
+  --aside: #0c0d0e;
+  --plan: #5aa2ff;
+  --on-plan: #06101e;
+  --pr-merged-band: #2a2140;
+  --pr-merged-line: #3c2f5c;
+  --pr-merged-soft: #372b55;
+  --pr-merged-edge: #64509c;
+  --pr-merged-fg: #d4c2ff;
+  --pr-merged-text: #b88fff;
+  --pr-merged-solid: #8b45f5;
+  --pr-ready-band: #15281f;
+  --pr-ready-line: #22432f;
+  --pr-ready-soft: #1d3b2c;
+  --pr-ready-edge: #33704f;
+  --pr-ready-fg: #a3e8c3;
+  --pr-ready-text: #62d69d;
+  --pr-ready-solid: #1b7f50;
+  --pr-fail-band: #2c1719;
+  --pr-fail-line: #472428;
+  --pr-fail-soft: #3e2125;
+  --pr-fail-edge: #70353c;
+  --pr-fail-fg: #ffbdbd;
+  --pr-fail-text: #ff8a8a;
   --danger: #e5484d;
   --on-solid: #ffffff;
   --on-ink: #08090a;
@@ -85,6 +109,29 @@
   --tint-del: #fbe1e1;
   --tint-merged: #ebe5fc;
   --tint-muted: #e8e8ec;
+  --aside: #f7f7f8;
+  --plan: #1f5fbf;
+  --on-plan: #ffffff;
+  --pr-merged-band: #f3effd;
+  --pr-merged-line: #e2d9fa;
+  --pr-merged-soft: #ebe4fc;
+  --pr-merged-edge: #b9a7ef;
+  --pr-merged-fg: #4f34ad;
+  --pr-merged-text: #5e3fc6;
+  --pr-merged-solid: #7c5ce0;
+  --pr-ready-band: #eef7f2;
+  --pr-ready-line: #d3eadd;
+  --pr-ready-soft: #e1f1e8;
+  --pr-ready-edge: #8fc5a7;
+  --pr-ready-fg: #0f5235;
+  --pr-ready-text: #166a45;
+  --pr-ready-solid: #1a7a4f;
+  --pr-fail-band: #fcf0f0;
+  --pr-fail-line: #f3d6d6;
+  --pr-fail-soft: #f8e5e5;
+  --pr-fail-edge: #e0a3a3;
+  --pr-fail-fg: #8f2222;
+  --pr-fail-text: #b32e2e;
   --danger: #bd2b2b;
   --on-solid: #ffffff;
   --on-ink: #f3f3f4;
@@ -158,7 +205,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); }
 .nav-item[aria-current='page'] { background: var(--surface-3); color: var(--ink); }
 .nav-item svg { color: var(--muted); flex-shrink: 0; }
 .nav-item[aria-current='page'] svg { color: var(--ink-2); }
-.nav-sub { padding-left: 30px; }
+.nav-sub { padding-left: 20px; }
 /* A few pixels between rows, so a hovered row's fill never touches the selected row's (Conductor). */
 .nav-list { display: flex; flex-direction: column; gap: 3px; }
 .section-label { height: 28px; display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding: 0 2px 0 8px; font-size: 12px; font-weight: 500; color: var(--muted); }

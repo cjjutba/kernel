@@ -1,6 +1,7 @@
 import type { AgentDef, Approval, Room, Route, SettingsPage, Workspace } from '@shared/types'
 
 import { roomLetter } from '../rooms/roomInfo'
+import { ROOM_PAGES } from '../settings/roomPages'
 import { hasChanges } from '../workspace/pr/model'
 
 export type Section = 'Suggested' | 'Go to' | 'Rooms' | 'Results'
@@ -21,9 +22,9 @@ export interface PaletteItem {
 /** Settings pages the palette can jump to, with the names the Settings sidebar uses. */
 export const settingsPages: [SettingsPage, string][] = [
   ['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Keyboard shortcuts'],
-  ['models', 'Models'], ['agents', 'Agents'], ['permissions', 'Permissions'], ['skills', 'Skills'],
-  ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'], ['files', 'Files'],
-  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['about', 'About']
+  ['models', 'Models'], ['permissions', 'Permissions'],
+  ['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests'],
+  ['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['about', 'About']
 ]
 
 /**
@@ -65,6 +66,8 @@ export interface PaletteInput {
   approvals: Approval[]
   /** By room id. */
   agents: Record<string, AgentDef[]>
+  /** The big terminal's switch and the preset a new tab runs. Unset reads as off, like settings that haven't loaded (KERNEL-251). */
+  terminal?: { enabled: boolean; preset?: string }
   act: {
     go: (route: Route) => void
     newWorkspace: (roomId?: string) => void
@@ -106,13 +109,14 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
   const item = (id: string, section: PaletteItem['section'], glyph: string, label: string, run: () => void, extra: Partial<PaletteItem> = {}): PaletteItem => ({ id, section, glyph, label, run, ...extra })
 
   const suggested: PaletteItem[] = [
-    item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.newWorkspace(room?.id), { keys: ['⌘', '⇧', 'N'] }),
+    item('new-ws', 'Suggested', '+', room ? `New chat in ${room.name}` : 'New chat', () => act.newWorkspace(room?.id), { keys: ['⌘', 'N'] }),
     ...(forPr ? [item('create-pr', 'Suggested', '↗', `Create PR for ${forPr.name}`, () => act.go({ name: 'workspace', workspaceId: forPr.id }), { keys: ['⌘', '⇧', 'P'], also: 'pull request' })] : []),
     ...(pending ? [item('approve', 'Suggested', '✓', approvalLabel(pending, nameOf(pending.roomId, pending.agentId)), () => act.approve(pending), { keys: ['⌘', '↵'], also: 'allow permission' })] : []),
     ...(room && leadAgent ? [item('lead-chat', 'Suggested', '›', `Open ${lead}'s chat`, () => act.openLead(room.id), { keys: ['⌘', '⇧', 'L'], also: 'lead chat workspace brief ask' })] : []),
     ...(current ? [
       item('new-chat', 'Suggested', '+', 'New chat tab', () => act.newChat(current.id), { keys: ['⌘', 'T'] }),
-      item('terminal', 'Suggested', '>', 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell' })
+      // Main refuses a terminal tab while the big terminal is off, so the palette leaves the entry out until the settings say it is on. A new tab runs the settings' preset.
+      ...(i.terminal?.enabled ? [item('terminal', 'Suggested', '>', i.terminal?.preset ? `Big terminal tab: ${i.terminal.preset}` : 'Big terminal tab', () => act.newChat(current.id, 'terminal'), { keys: ['⌘', '⇧', 'T'], also: 'shell terminal' })] : [])
     ] : [])
   ]
 
@@ -122,7 +126,7 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
     goto('go-inbox', 'Inbox', { name: 'inbox' }, { keys: ['G', 'I'] }),
     goto('go-issues', 'Issues', { name: 'issues' }, { also: 'linear tickets' }),
     ...(shown ? [goto('go-ws', `${shown.name} workspace`, { name: 'workspace', workspaceId: shown.id })] : []),
-    goto('go-settings', 'Settings: Git and worktrees', { name: 'settings', page: 'git' }, { keys: ['⌘', ','], also: 'preferences' }),
+    goto('go-settings', 'Settings', { name: 'settings', page: 'general' }, { keys: ['⌘', ','], also: 'preferences' }),
     ...(room ? [goto('go-team', 'Team', { name: 'team', roomId: room.id }, { also: 'agents' })] : []),
     goto('go-history', 'History', { name: 'history' }, { also: 'archived restore' }),
     item('go-new', 'Go to', '◇', "What's new", act.whatsNew, { also: 'update release notes' })
@@ -147,7 +151,9 @@ export function buildItems(i: PaletteInput): { items: PaletteItem[]; more: Palet
       ]
     }),
     ...workspaces.filter(live).map((w) => goto(`go-ws-${w.id}`, `${w.name} workspace`, { name: 'workspace', workspaceId: w.id }, { also: w.branch })),
-    ...settingsPages.filter(([p]) => p !== 'git').map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' }))
+    ...settingsPages.map(([p, label]) => goto(`go-set-${p}`, `Settings: ${label}`, { name: 'settings', page: p }, { also: 'preferences' })),
+    // Each room's own pages, named after the room: "Settings: Client A, Scripts".
+    ...visible.filter((r) => !r.hidden).flatMap((r) => ROOM_PAGES.map((p) => goto(`go-set-${r.id}-${p.section}`, `Settings: ${r.name}, ${p.label}`, { name: 'settings', page: 'room', roomId: r.id, section: p.section }, { also: 'preferences room' })))
   ]
 
   return { items: [...suggested, ...goDefault, ...roomItems], more }

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangedFile, Room, Workspace as WorkspaceModel } from '@shared/types'
 import { call } from '../../api'
-import { actions, loadWorkspace, useStore } from '../../store'
+import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { Icon, IconButton } from '../../ui'
 import { RightPanelToggle, SidebarToggle } from '../../components/PanelToggles'
 import { ResizeHandle, readWidth } from '../../components/ResizeHandle'
 import { openRoom } from '../../lead'
-import { roomLetter } from '../rooms/roomInfo'
+import { tabOf } from '../../nav'
+import { RoomIcon } from '../../components/RoomIcon'
 import { ChatTabs, diffTab, fileTab } from './ChatTabs'
 import { CheckpointsDrawer } from './checkpoints/Checkpoints'
 import { OpenImage, OpenText, type ImagePart, type TextPart } from './composer/Chip'
@@ -14,6 +15,7 @@ import { Composer } from './composer/Composer'
 import { DiffView, FileView, ImageView, TextView } from './FileView'
 import { BottomPanel, RightPanel } from './Panels'
 import { PrHeader } from './pr/PrHeader'
+import { SkipNotice } from './terminal/SkipNotice'
 import { TerminalView } from './terminal/Terminal'
 import { Transcript, TranscriptSkeleton } from './Transcript'
 import { useBanner, WorkspaceBanner } from './banners/Banners'
@@ -22,6 +24,8 @@ import { githubIssueUrl, isGithubKey } from './issueKey'
 import './workspace.css'
 
 const EMPTY_CHATS: never[] = []
+const NO_TABS: string[] = []
+const NO_CHANGES: ChangedFile[] = []
 const PANEL_MIN = 320
 const PANEL_MAX = 720
 const PANEL_KEY = 'kernel.rightPanelWidth'
@@ -31,8 +35,6 @@ const PANEL_HIDE_BELOW = 240
 const CHAT_MIN = 420
 /** What `.ws-aside` is until the user drags: 28% of the window between 320 and 400px (D-080), so its CSS and this agree. */
 const panelDefault = () => Math.min(400, Math.max(PANEL_MIN, Math.round(window.innerWidth * 0.28)))
-/** The workspace the stored tab belongs to. */
-let viewOwner: string | undefined
 let imageCount = 0
 let textCount = 0
 
@@ -49,20 +51,23 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const agent = useStore((s) => (ws ? s.agents[ws.roomId]?.find((a) => a.id === ws.agentId) : undefined))
   const chats = useStore((s) => s.chats[workspaceId] ?? EMPTY_CHATS)
   const view = useStore((s) => s.ui.workspace)
+  const stored = useStore((s) => tabOf(s, workspaceId))
+  const tabs = useStore((s) => s.ui.tabs[workspaceId])
   const panels = useStore((s) => s.ui.rightPanel)
-  const [changes, setChanges] = useState<ChangedFile[]>([])
-  const [openFiles, setOpenFiles] = useState<string[]>([])
-  const [openDiffs, setOpenDiffs] = useState<string[]>([])
+  // The changed files remember which workspace they were read for, so a late answer or a switch never shows another workspace's files.
+  const [fetched, setFetched] = useState<{ workspaceId: string; files: ChangedFile[] }>({ workspaceId, files: NO_CHANGES })
+  const changes = fetched.workspaceId === workspaceId ? fetched.files : NO_CHANGES
+  const shown = useRef({ workspaceId, request: 0 })
+  shown.current.workspaceId = workspaceId
   const [images, setImages] = useState<OpenedImage[]>([])
   const [texts, setTexts] = useState<OpenedText[]>([])
-  const [lastChat, setLastChat] = useState<string | undefined>()
   const [prefill, setPrefill] = useState<{ text: string; n: number }>()
   // The panel's width is the CSS clamp until it is dragged, then a saved px width. It is read once. The CSS caps a saved width so the chat column keeps CHAT_MIN, whatever the window or the sidebar does.
   const aside = useRef<HTMLElement>(null)
   const [panelWidth, setPanelWidth] = useState(() => readWidth(PANEL_KEY, PANEL_MIN, PANEL_MAX))
   const panelLimit = () => Math.max(PANEL_MIN, Math.min(PANEL_MAX, (aside.current?.parentElement?.clientWidth ?? window.innerWidth) - CHAT_MIN))
 
-  const stored = view.tab ?? lastChat ?? chats[0]?.id
+  const lastChat = chats.some((c) => !c.closed && c.id === tabs?.lastChat) ? tabs?.lastChat : undefined
   // Images and pasted texts live only as long as this screen, so such a tab left in the store after it remounts falls back to the chat.
   const gone = (stored?.startsWith('image:') && !images.some((i) => i.id === stored)) || (stored?.startsWith('text:') && !texts.some((t) => t.id === stored))
   const tab = gone ? lastChat ?? chats[0]?.id : stored
@@ -72,59 +77,50 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
   const image = images.find((i) => i.id === tab)?.part
   const text = texts.find((t) => t.id === tab)?.part
   const chat = filePath || diffPath !== undefined || image || text ? chats.find((c) => c.id === lastChat) ?? chats[0] : chats.find((c) => c.id === tab) ?? chats[0]
-  const files = filePath && !openFiles.includes(filePath) ? [...openFiles, filePath] : openFiles
-  const diffs = diffPath !== undefined && !openDiffs.includes(diffPath) ? [...openDiffs, diffPath] : openDiffs
+  const files = tabs?.files ?? NO_TABS
+  const diffs = tabs?.diffs ?? NO_TABS
   const running = useStore((s) => (chat ? !!s.running[chat.id] : false))
   const banner = useBanner(ws, chat, agent?.name ?? 'The agent', running)
   const empty = useStore((s) => (chat ? !s.items[chat.id]?.length : true))
 
-  // Anything can open a diff by setting the store's tab (the hunk card does), so keep the tab in the list once it is active,
-  // or it would vanish when the user moves to another tab.
-  useEffect(() => { if (diffPath !== undefined) setOpenDiffs((d) => (d.includes(diffPath) ? d : [...d, diffPath])) }, [diffPath])
-  // Likewise remember the open chat however it was reached, so a diff, file, image or text tab opened from there closes back to it
-  // and the composer stays on it.
-  useEffect(() => { if (tab && chats.some((c) => c.id === tab)) setLastChat(tab) }, [tab, chats])
-  // These run before the clear below on purpose, so on a workspace switch the clear has the last word.
-
-  // The open tab lives in the store, so it outlasts this screen. Whenever the screen shows a different workspace
-  // than the one it belongs to, clear it. The very first mount keeps what a fixture or a restored view set.
+  // Images and pasted texts belong to the screen, not the store, so they start empty for each workspace. A tab of one left in the
+  // store from before goes back to the chat, or the sidebar and closing a chat would still think it is the one on screen.
   useEffect(() => {
-    if (viewOwner !== undefined && viewOwner !== workspaceId) {
-      setOpenFiles([]); setOpenDiffs([]); setImages([]); setTexts([]); setLastChat(undefined)
-      actions.ui.setWorkspaceView({ tab: undefined })
-    }
-    viewOwner = workspaceId
+    setImages([]); setTexts([])
+    const t = getState().ui.tabs[workspaceId]
+    if (t?.tab?.startsWith('image:') || t?.tab?.startsWith('text:')) actions.ui.setTabs(workspaceId, { tab: t.lastChat })
   }, [workspaceId])
 
   useEffect(() => { void loadWorkspace(workspaceId) }, [workspaceId])
-  const refresh = () => call('workspaces.changes', { workspaceId }).then(setChanges).catch(() => setChanges([]))
-  useEffect(() => { void refresh() }, [workspaceId])
+  // An answer counts only if it is for the workspace on screen and the latest asked for.
+  const refresh = useCallback(() => {
+    const request = ++shown.current.request
+    return call('workspaces.changes', { workspaceId }).catch((): ChangedFile[] => NO_CHANGES).then((files) => {
+      if (shown.current.workspaceId === workspaceId && shown.current.request === request) setFetched({ workspaceId, files })
+    })
+  }, [workspaceId])
+  useEffect(() => { setFetched((c) => (c.workspaceId === workspaceId ? c : { workspaceId, files: NO_CHANGES })); void refresh() }, [refresh])
   useEffect(() => { if (!running) void refresh() }, [running])
-  useEffect(() => onRefreshChanges((id) => { if (id === workspaceId) void refresh() }), [workspaceId])
+  useEffect(() => onRefreshChanges((id) => { if (id === workspaceId) void refresh() }), [workspaceId, refresh])
+  // Stable, so the memoized transcript stays put while the screen redraws.
+  const edit = useCallback((text: string) => setPrefill({ text, n: Date.now() }), [])
+  const select = useCallback((id: string) => {
+    if (id) actions.ui.openTab(workspaceId, id)
+  }, [workspaceId])
 
   if (!ws) return <div className="panel" />
   const setup = ws.status === 'setup'
   const blocked = setup || ws.status === 'failed' || !!banner?.blocks
 
-  const select = (id: string) => {
-    if (!/^(file|diff|image|text):/.test(id)) setLastChat(id)
-    actions.ui.setWorkspaceView({ tab: id })
-  }
-  const openFile = (path: string) => {
-    setOpenFiles((f) => (f.includes(path) ? f : [...f, path]))
-    select(fileTab(path))
-  }
+  const openFile = (path: string) => select(fileTab(path))
   const closeFile = (path: string) => {
-    setOpenFiles((f) => f.filter((x) => x !== path))
+    actions.ui.setTabs(workspaceId, { files: files.filter((x) => x !== path) })
     if (tab === fileTab(path)) select(chat?.id ?? '')
   }
   /** The same diff again selects its tab. An empty path is All changes. */
-  const openDiff = (path: string) => {
-    setOpenDiffs((d) => (d.includes(path) ? d : [...d, path]))
-    select(diffTab(path))
-  }
+  const openDiff = (path: string) => select(diffTab(path))
   const closeDiff = (path: string) => {
-    setOpenDiffs((d) => d.filter((x) => x !== path))
+    actions.ui.setTabs(workspaceId, { diffs: diffs.filter((x) => x !== path) })
     if (tab === diffTab(path)) select(chat?.id ?? '')
   }
   /** The same image again selects its tab instead of opening a second one. */
@@ -157,7 +153,7 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
     <div className="panel ws-panel">
       <header className="header">
         <SidebarToggle />
-        <span className="crumb-avatar" aria-hidden="true">{room ? roomLetter(room.name) : ''}</span>
+        <RoomIcon room={room} className="crumb-avatar" />
         <button type="button" className="crumb" onClick={() => room && void openRoom(room.id)}>{room?.name}</button>
         <span className="muted"><Icon name="right" size={12} /></span>
         <h1 className="ellipsis">{ws.name}</h1>
@@ -187,9 +183,9 @@ export function Workspace({ workspaceId }: { workspaceId: string }) {
                   : ws.status === 'failed' && empty
                     ? <div className="grow" />
                   : chat?.kind === 'terminal'
-                    ? <TerminalView id={chat.id} label="Big terminal" />
+                    ? <><SkipNotice chat={chat} /><TerminalView id={chat.id} label="Big terminal" /></>
                   : chat
-                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={(text) => setPrefill({ text, n: Date.now() })} onForked={select} />
+                    ? <Transcript chat={chat} workspaceId={workspaceId} changes={changes} onEdit={edit} onForked={select} />
                     : <div className="grow" />}
           </div>
           {chat && chat.kind !== 'terminal' && <Composer chat={chat} agent={agent} blocked={blocked} running={running} prefill={prefill} banner={banner && <WorkspaceBanner view={banner} ws={ws} chat={chat} />} />}

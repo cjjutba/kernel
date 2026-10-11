@@ -1,5 +1,5 @@
-import { mkdir, stat } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { mkdir, realpath, rename, stat } from 'node:fs/promises'
+import { basename, dirname, join, resolve } from 'node:path'
 import { exec, git } from './exec'
 import type { ChangedFile } from '@shared/types'
 
@@ -9,24 +9,74 @@ export function slugify(text: string, max = 48): string {
   return (s.slice(0, max).replace(/-+$/, '') || 'workspace')
 }
 
-/** Fill a branch pattern like "feat/{slug}" or "feat/{task}-{slug}". */
-export function branchName(pattern: string, vars: { slug: string; task?: string }): string {
-  return pattern.replace('{slug}', vars.slug).replace('{task}', vars.task ? vars.task.toLowerCase() : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, '')
+/** Words a branch name can do without (KERNEL-275). */
+const FILLER = new Set(['a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'when', 'that', 'its'])
+
+/**
+ * A few words of a title for a branch: "A review can't start when the reviewed branch name is long" ->
+ * "review-cant-start-reviewed-branch". Filler words go unless nothing else is left. Whole words up to `max` characters,
+ * and a single longer word is cut.
+ */
+export function shortSlug(text: string, max = 35): string {
+  const all = slugify(text.replace(/['’]/g, ''), Infinity).split('-')
+  const kept = all.filter((w) => !FILLER.has(w))
+  const words = kept.length ? kept : all
+  let out = words[0].slice(0, max)
+  for (const w of words.slice(1)) { if (out.length + 1 + w.length > max) break; out += `-${w}` }
+  return out.replace(/-+$/, '') || 'workspace'
+}
+
+/** An issue key for a branch: "KERNEL-267" -> "kernel-267", "#41" -> "41". */
+export const taskToken = (task: string) => task.toLowerCase().replace(/[^a-z0-9-]/g, '')
+
+/** Cuts a branch name to `max` characters at its last `-` or `/`, with no trailing `-`, `/` or `.`. */
+export function capBranch(name: string, max = 60): string {
+  if (name.length <= max) return name
+  const head = name.slice(0, max + 1)
+  const at = Math.max(head.lastIndexOf('-'), head.lastIndexOf('/'))
+  return (at > 0 ? head.slice(0, at) : name.slice(0, max)).replace(/[-/.]+$/, '')
+}
+
+/** `fix` for an issue with a label named Bug, in any case, else `feat`. */
+export const branchType = (labels: string[] = []): 'fix' | 'feat' => labels.some((l) => l.toLowerCase() === 'bug') ? 'fix' : 'feat'
+
+/** A review's branch: `review/<key>` for an issue's work, else `review/<a few words of its title>`. */
+export function reviewBranch(title: string, task?: string): string {
+  const key = task ? taskToken(task) : ''
+  return capBranch(`review/${key || shortSlug(title)}`)
+}
+
+/** Fill a branch pattern like "{type}/{task}-{slug}" or "feat/{slug}", cut to 60 characters. */
+export function branchName(pattern: string, vars: { slug: string; task?: string; type?: 'fix' | 'feat' }): string {
+  return capBranch(pattern.replace('{type}', vars.type ?? 'feat').replace('{slug}', vars.slug).replace('{task}', vars.task ? taskToken(vars.task) : '').replace(/\/-|-\//g, '/').replace(/-{2,}/g, '-').replace(/[-/]+$/, ''))
 }
 
 /**
  * The branch for a task. With a task id (a Linear issue) the id leads the slug, `feat/{task}-{slug}`,
  * even when the configured pattern only has `{slug}`.
  */
-export function taskBranch(pattern: string, title: string, task?: string): string {
+export function taskBranch(pattern: string, title: string, task?: string, type?: 'fix' | 'feat'): string {
   const p = task && !pattern.includes('{task}') ? pattern.replace('{slug}', '{task}-{slug}') : pattern
-  return branchName(p, { slug: slugify(title), task })
+  return branchName(p, { slug: shortSlug(title), task, type })
 }
 
-/** Local and remote branches, newest first, for the From popover and the target branch menu. `origin/HEAD` is left out. */
-export async function listBranches(repo: string): Promise<string[]> {
-  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads', 'refs/remotes')
-  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && l !== 'origin' && !l.endsWith('/HEAD'))
+/** `origin/main` -> `main` for the room's remote. Any other ref comes back as it is. */
+export const stripRemote = (ref: string, remote = 'origin') => (ref.startsWith(`${remote}/`) ? ref.slice(remote.length + 1) : ref)
+
+/**
+ * A base ref from Settings names the remote `origin`, since that was the only one (`origin/main`). With another remote
+ * set, it means that remote's branch (KERNEL-190).
+ */
+export const onRemote = (ref: string, remote = 'origin') => (remote !== 'origin' && ref.startsWith('origin/') ? `${remote}/${ref.slice('origin/'.length)}` : ref)
+
+/**
+ * Local branches and remote branches, newest first, for the From popover and the target branch menu. With `remote`, only that
+ * remote's branches are listed; without one, every remote's, as before KERNEL-190 (KERNEL-244). `<remote>/HEAD` is left out.
+ */
+export async function listBranches(repo: string, remote?: string): Promise<string[]> {
+  const out = await git(repo, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', 'refs/heads', remote ? `refs/remotes/${remote}` : 'refs/remotes')
+  const names = out.split('\n').map((l) => l.trim()).filter((l) => l && !l.endsWith('/HEAD'))
+    .map((l) => l.replace(/^refs\/heads\//, '').replace(/^refs\/remotes\//, ''))
   return [...new Set(names)]
 }
 
@@ -39,11 +89,11 @@ export async function currentBranch(repo: string): Promise<string> {
   return (await git(repo, 'rev-parse', '--abbrev-ref', 'HEAD')).trim()
 }
 
-/** origin/HEAD when it is set, else main, then master (on origin or locally), else the current branch. */
-export async function defaultBranch(repo: string): Promise<string> {
-  const r = await exec('git', ['-C', repo, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD'])
-  if (r.code === 0) return r.stdout.trim().replace(/^origin\//, '')
-  for (const b of ['main', 'master']) if (await refExists(repo, `origin/${b}`) || await branchExists(repo, b)) return b
+/** `<remote>/HEAD` when it is set, else main, then master (on the remote or locally), else the current branch. */
+export async function defaultBranch(repo: string, remote = 'origin'): Promise<string> {
+  const r = await exec('git', ['-C', repo, 'symbolic-ref', '--short', `refs/remotes/${remote}/HEAD`])
+  if (r.code === 0) return stripRemote(r.stdout.trim(), remote)
+  for (const b of ['main', 'master']) if (await refExists(repo, `${remote}/${b}`) || await branchExists(repo, b)) return b
   return currentBranch(repo)
 }
 
@@ -52,83 +102,140 @@ async function refExists(repo: string, ref: string): Promise<boolean> {
 }
 
 /**
- * `git fetch origin`, with a 30 second limit. On failure: git's first line of stderr, or the timeout, and when origin
- * was last fetched (FETCH_HEAD's mtime), so a caller can say how old `origin/<branch>` is (KERNEL-179). Git empties
+ * `git fetch <remote>`, with a 30 second limit. On failure: git's first line of stderr, or the timeout, and when the
+ * room last fetched (FETCH_HEAD's mtime), so a caller can say how old `<remote>/<branch>` is (KERNEL-179). Git empties
  * FETCH_HEAD as a fetch starts, even one that fails, so it is read before the fetch, and an empty one (a fetch that
- * failed) gives no time.
+ * failed) gives no time. Fetch from the room's folder, not a worktree: each worktree keeps its own FETCH_HEAD.
  */
-export function fetchOrigin(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
-  // Two workspaces started together share one fetch. Two at once race for origin's ref locks, and the loser fails.
-  const running = fetching.get(repo)
-  if (running) return running
-  const next = fetchNow(repo).finally(() => fetching.delete(repo))
-  fetching.set(repo, next)
+export function fetchOrigin(repo: string, remote = 'origin', o: { fresh?: boolean } = {}): Promise<Fetched> {
+  // Fetches that overlap share one. Two at once race for the remote's ref locks, and the loser fails. A `fresh` caller
+  // needs what merged a moment ago, which a fetch already running may have missed, so it fetches again after that one.
+  const key = `${repo}\n${remote}`
+  const running = fetching.get(key)
+  if (running && !o.fresh) return running
+  const next: Promise<Fetched> = (running ?? Promise.resolve()).catch(() => undefined).then(() => fetchNow(repo, remote))
+    .finally(() => { if (fetching.get(key) === next) fetching.delete(key) })
+  fetching.set(key, next)
   return next
 }
-const fetching = new Map<string, ReturnType<typeof fetchNow>>()
+type Fetched = { ok: true } | { ok: false; error: string; lastFetch?: number }
+const fetching = new Map<string, Promise<Fetched>>()
 
-async function fetchNow(repo: string): Promise<{ ok: true } | { ok: false; error: string; lastFetch?: number }> {
+async function fetchNow(repo: string, remote: string): Promise<Fetched> {
   const head = await exec('git', ['-C', repo, 'rev-parse', '--git-path', 'FETCH_HEAD'])
   const lastFetch = head.code === 0 ? await stat(resolve(repo, head.stdout.trim())).then((s) => s.size > 0 ? s.mtimeMs : undefined, () => undefined) : undefined
-  const r = await exec('git', ['-C', repo, 'fetch', '--quiet', 'origin'], { timeoutMs: 30000 })
+  const r = await exec('git', ['-C', repo, 'fetch', '--quiet', remote], { timeoutMs: 30000 })
   if (r.code === 0) return { ok: true }
   const error = r.timedOut ? 'timed out after 30 seconds' : r.stderr.split('\n').map((l) => l.trim()).find(Boolean) ?? `git fetch exited with code ${r.code}`
   return { ok: false, error, ...(lastFetch === undefined ? {} : { lastFetch }) }
 }
 
 /**
- * The ref a workspace starts from: `wanted` when it exists, else the same branch without `origin/` locally,
- * else the default branch, `origin/<default>` when the remote has it. A folder with no remote and only
- * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, an `origin/` ref fetches first.
+ * The ref a workspace starts from: `wanted` when it exists, else the same branch without `<remote>/` locally,
+ * else the default branch, `<remote>/<default>` when the remote has it. A folder with no remote and only
+ * `master` gets `master` for the `origin/main` default (KERNEL-62). With `fetch`, a `<remote>/` ref fetches first,
+ * through `fetchOrigin`.
  * `strict` is for a base the user picked (a PR or a branch): it throws rather than start somewhere else.
  */
-export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean } = {}): Promise<string> {
-  if (o.fetch && wanted.startsWith('origin/')) await fetchOrigin(repo)
-  const name = wanted.replace(/^origin\//, '')
+export async function resolveBaseRef(repo: string, wanted: string, o: { fetch?: boolean; strict?: boolean; remote?: string } = {}): Promise<string> {
+  const remote = o.remote ?? 'origin'
+  if (o.fetch && wanted.startsWith(`${remote}/`)) await fetchOrigin(repo, remote)
+  const name = stripRemote(wanted, remote)
   for (const ref of new Set([wanted, name])) if (await refExists(repo, ref)) return ref
-  if (o.strict) throw new Error(`${name} is not on origin or in this repo, so there is nothing to start from.`)
-  const d = await defaultBranch(repo)
-  return await refExists(repo, `origin/${d}`) ? `origin/${d}` : d
+  if (o.strict) throw new Error(`${name} is not on ${remote} or in this repo, so there is nothing to start from.`)
+  const d = await defaultBranch(repo, remote)
+  return await refExists(repo, `${remote}/${d}`) ? `${remote}/${d}` : d
 }
 
-export async function remoteRepo(repo: string): Promise<string | undefined> {
-  const r = await exec('git', ['-C', repo, 'remote', 'get-url', 'origin'])
+/**
+ * Moves the branch checked out at `path` forward to `ref`, only when that needs no merge commit and no tracked file has
+ * uncommitted changes. Untracked files don't count: the fast-forward stops on its own if one is in the way. False when
+ * it didn't move, and the agent is told to rebase instead (KERNEL-259).
+ */
+export async function fastForward(path: string, ref: string): Promise<boolean> {
+  const status = await exec('git', ['-C', path, 'status', '--porcelain', '--untracked-files=no'])
+  if (status.code !== 0 || status.stdout.trim()) return false
+  return (await exec('git', ['-C', path, 'merge', '--ff-only', '--quiet', ref])).code === 0
+}
+
+export async function remoteRepo(repo: string, remote = 'origin'): Promise<string | undefined> {
+  const r = await exec('git', ['-C', repo, 'remote', 'get-url', remote])
   if (r.code !== 0) return undefined
   const m = /github\.com[:/]([^/]+\/[^/.]+)(\.git)?$/.exec(r.stdout.trim())
   return m?.[1]
 }
 
 export async function branchExists(repo: string, branch: string): Promise<boolean> {
-  return (await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).code === 0
+  return (await branchState(repo, branch)) === 'exists'
 }
 
-/** Pick a branch name that does not exist yet by appending -2, -3... */
+/**
+ * Whether a local branch exists. `rev-parse --verify --quiet` exits 1 only for a missing ref; any other failure (128
+ * outside a repo, 127 when git can't start) is `unknown`, which must count as neither free nor safe to delete (KERNEL-276).
+ */
+export async function branchState(repo: string, branch: string): Promise<'exists' | 'missing' | 'unknown'> {
+  const { code } = await exec('git', ['-C', repo, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])
+  return code === 0 ? 'exists' : code === 1 ? 'missing' : 'unknown'
+}
+
+/** Pick a branch name that does not exist yet by appending -2, -3... Throws when git can't say whether a name is taken. */
 export async function freeBranch(repo: string, wanted: string): Promise<string> {
-  let name = wanted
-  for (let i = 2; await branchExists(repo, name); i++) name = `${wanted}-${i}`
-  return name
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? wanted : `${wanted}-${i}`
+    const state = await branchState(repo, name)
+    if (state === 'missing') return name
+    if (state === 'unknown') throw new Error(`Kernel couldn't check whether the branch ${name} exists.`)
+  }
 }
 
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string }
 
-/** Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path. */
+/**
+ * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
+ * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
+ * otherwise get the same folder (KERNEL-267).
+ */
+export async function freeWorktreePath(repo: string, root: string, branch: string): Promise<string> {
+  const max = 80
+  const stem = branch.replace(/\//g, '-')
+  const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
+  // git may list a worktree by its real path (/private/var/... for /var/... on macOS).
+  const real = await realpath(root)
+  for (let i = 1; ; i++) {
+    const name = i === 1 ? slugify(stem, max) : `${slugify(stem, max - `-${i}`.length)}-${i}`
+    if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
+  }
+}
+
+/**
+ * Creates <root>/<branch-slug> on a new branch from baseRef (see `resolveBaseRef`). Returns the worktree path.
+ * `worktree add -b` makes the branch before it checks the folder, so a failed add deletes the branch it made, never one
+ * that was already there (KERNEL-276). A check git can't answer counts as "keep the branch".
+ */
 export async function createWorktree(o: CreateWorktree): Promise<string> {
   await mkdir(o.root, { recursive: true })
-  const path = join(o.root, slugify(o.branch.replace(/\//g, '-'), 80))
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  const path = await freeWorktreePath(o.repo, o.root, o.branch)
+  const wasMissing = (await branchState(o.repo, o.branch)) === 'missing'
+  try {
+    await git(o.repo, 'worktree', 'add', '-b', o.branch, path, o.baseRef)
+  } catch (e) {
+    if (wasMissing && (await branchState(o.repo, o.branch)) === 'exists') await exec('git', ['-C', o.repo, 'branch', '-D', o.branch])
+    throw e
+  }
   return path
 }
 
 /**
- * Recreates a worktree for a branch that already exists, at `path`. Falls back to origin/<branch> when the
+ * Recreates a worktree for a branch that already exists, at `path`. Falls back to <remote>/<branch> when the
  * local branch was deleted on archive. Throws a plain message when the branch is gone everywhere.
  */
-export async function restoreWorktree(o: { repo: string; path: string; branch: string }): Promise<void> {
+export async function restoreWorktree(o: { repo: string; path: string; branch: string; remote?: string }): Promise<void> {
+  const remote = o.remote ?? 'origin'
   await mkdir(dirname(o.path), { recursive: true })
   if (await branchExists(o.repo, o.branch)) { await git(o.repo, 'worktree', 'add', o.path, o.branch); return }
-  const remote = await exec('git', ['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/origin/${o.branch}`])
-  if (remote.code !== 0) throw new Error(`The branch ${o.branch} no longer exists, so there is nothing to restore.`)
-  await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `origin/${o.branch}`)
+  const copy = await exec('git', ['-C', o.repo, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${o.branch}`])
+  if (copy.code !== 0) throw new Error(`The branch ${o.branch} no longer exists, so there is nothing to restore.`)
+  await git(o.repo, 'worktree', 'add', '-b', o.branch, o.path, `${remote}/${o.branch}`)
 }
 
 /**
@@ -155,12 +262,46 @@ export async function removeWorktree(repo: string, path: string, opts: { deleteB
   if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
 }
 
-export interface WorktreeInfo { path: string; branch?: string; head: string }
+/**
+ * `removeWorktree` without the wait: the folder moves to `<parent>/.trash/<name>-<time>`, which is instant on the same
+ * disk, and the caller deletes it later (KERNEL-284). `moving` gets that path before the move, so the caller can save it
+ * first and a quit halfway still deletes it. Returns the path, or nothing when there was no folder to move or the move
+ * failed and `git worktree remove` deleted it here. Same guards: a gone folder only prunes, an unreadable one throws, and
+ * so does one that isn't this repo's worktree, the repo itself, or a locked one, whose record prune would keep.
+ * `slugify` never starts a worktree folder with a dot, so `.trash` can't be one.
+ */
+export async function detachWorktree(repo: string, path: string, opts: { deleteBranch?: string; force?: boolean; moving?: (trash: string) => void } = {}): Promise<string | undefined> {
+  let moved: string | undefined
+  if (await folderGone(path)) await git(repo, 'worktree', 'prune')
+  else {
+    // git may list a worktree by its real path (/private/var/... for /var/... on macOS). The first entry is the repo.
+    const real = await realpath(path)
+    const entry = (await listWorktrees(repo)).slice(1).find((w) => w.path === path || w.path === real)
+    if (!entry) throw new Error(`${path} is not a worktree of ${repo}.`)
+    if (entry.locked) throw new Error(`git has locked the worktree at ${path}. Unlock it with git worktree unlock, then archive again.`)
+    const trash = join(dirname(path), '.trash', `${basename(path)}-${Date.now()}`)
+    opts.moving?.(trash)
+    try {
+      await mkdir(dirname(trash), { recursive: true })
+      await rename(path, trash)
+      moved = trash
+    } catch {
+      await git(repo, 'worktree', 'remove', ...(opts.force ? ['--force'] : []), path)
+    }
+    // The record points at a folder that is no longer there, so prune drops it. The folder has moved either way, so a
+    // failed prune doesn't fail the archive: the next prune drops the record.
+    if (moved) await exec('git', ['-C', repo, 'worktree', 'prune'])
+  }
+  if (opts.deleteBranch) await exec('git', ['-C', repo, 'branch', '-D', opts.deleteBranch])
+  return moved
+}
+
+export interface WorktreeInfo { path: string; branch?: string; head: string; locked?: boolean }
 export async function listWorktrees(repo: string): Promise<WorktreeInfo[]> {
   const out = await git(repo, 'worktree', 'list', '--porcelain')
   return out.trim().split(/\n\n+/).filter(Boolean).map((block) => {
     const get = (k: string) => block.split('\n').find((l) => l.startsWith(k + ' '))?.slice(k.length + 1)
-    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', '') }
+    return { path: get('worktree') ?? '', head: get('HEAD') ?? '', branch: get('branch')?.replace('refs/heads/', ''), locked: block.split('\n').some((l) => l === 'locked' || l.startsWith('locked ')) }
   })
 }
 

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatPart, Effort, ModelId, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { call } from '../../api'
-import { actions, go, loadWorkspace, useStore } from '../../store'
-import { leadOf } from '../../lead'
+import { actions, loadWorkspace, useStore } from '../../store'
+import { leadOf, openLeadChat } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
@@ -12,18 +12,18 @@ import { effortFor } from '@shared/effort'
 import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
 import { PlusMenu, type PlusPanel } from '../workspace/composer/PlusMenu'
 import '../workspace/composer/composer.css'
+import { useRemote } from '../settings/useSettings'
 import { FromPopover } from './FromPopover'
 import { briefParts, leadMessage, pickedLines } from './brief'
+import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { sourceLabel, targetOptions, type FromRow, type FromTab } from './pick'
 import './newWorkspace.css'
+import { RoomIcon } from '../../components/RoomIcon'
 
 const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
   { id: 'worktree', label: 'New worktree', hint: 'An isolated copy on its own branch, named from your task.' },
   { id: 'current', label: 'Current branch', hint: 'Works in your checkout. Changes already there are kept and left out of the diff.' }
 ]
-
-/** "Client A" is A, "Own app" is O. */
-const letter = (name = '') => { const w = name.trim().split(/\s+/); const l = w[w.length - 1]; return (l.length === 1 ? l : w[0]).charAt(0).toUpperCase() || '?' }
 
 const reason = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
@@ -59,9 +59,10 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   const [error, setError] = useState<{ message: string } | null>(null)
 
   const current = rooms.find((r) => r.id === room)
-  const fallback = `origin/${current?.defaultBranch ?? 'main'}`
+  const remote = useRemote(room)
+  const fallback = `${remote}/${current?.defaultBranch ?? 'main'}`
   const target = baseRef || fallback
-  const targets = useMemo(() => targetOptions(branches, fallback, target), [branches, fallback, target])
+  const targets = useMemo(() => targetOptions(branches, fallback, target, remote), [branches, fallback, target, remote])
   const modeInfo = MODES.find((m) => m.id === mode) ?? MODES[0]
   const label = sourceLabel(source)
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model
@@ -121,8 +122,11 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
       actions.chats.upsert(chat)
       await loadWorkspace(chat.workspaceId)
     } catch { actions.chats.upsert(chat) }
-    go({ name: 'workspace', workspaceId: chat.workspaceId })
-    actions.ui.setWorkspaceView({ tab: chat.id })
+    // The dialog hands focus back to its trigger as it closes, so the composer takes it a frame later.
+    focusComposerWhenOpen(chat.id)
+    close()
+    // The workspace screen clears the tab when the workspace changes, so the tab is set after the navigation (lead.ts).
+    await openLeadChat(room, chat.id)
   }
 
   /** Enter creates and Shift+Enter breaks the line, as in the chat composer. Cmd+Enter is the keyboard shortcut below. */
@@ -145,7 +149,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
         <div className="nw-head">
           <span ref={roomAnchor} style={{ position: 'relative' }}>
             <Button variant="ghost" className="nw-room" aria-haspopup="menu" aria-expanded={roomMenu} onClick={() => { actions.ui.closeMenu(); setRoomMenu(!roomMenu) }}>
-              <span className="nw-letter" aria-hidden="true">{letter(current?.name)}</span>{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
+              <RoomIcon room={current} className="nw-letter" fallback="?" />{current?.name ?? 'Pick a room'}<Icon name="chevron" size={11} stroke={1.9} />
             </Button>
             {roomMenu && (
               <Menu label="Room" anchorRef={roomAnchor} onClose={() => setRoomMenu(false)} style={{ left: 0, top: 'calc(100% + 4px)' }}

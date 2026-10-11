@@ -1,4 +1,5 @@
-import type { Approval, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { PushEvent } from '@shared/ipc'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -19,7 +20,7 @@ const prTurn = (id: string, lines: string[], tools: number, reply: string): Chat
   { kind: 'text', id: `${id}-reply`, ts: at(10, 34), text: reply },
   { kind: 'result', id: `${id}-res`, ts: at(10, 34), durationMs: 65_000, ok: true }
 ]
-const prNote = (id: string, text: string): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text })
+const prNote = (id: string, text: string, pr: 'merged' | 'closed' | 'cifail'): ChatItem => ({ kind: 'note', id, ts: at(10, 40), text, pr })
 
 /** PR #42 on the invoice table in one state, with the transcript, checks and comments the canvas shows for it. */
 const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partial<Fixture> = {}, right: 'changes' | 'checks' = 'changes') =>
@@ -30,6 +31,69 @@ const prScene = (prState: Workspace['prState'], items: ChatItem[], extra: Partia
     ui: { ...open, workspace: { right, bottom: 'run', checkpoints: false, toolsOpen: false }, ...extra.ui }
   }))
 
+/** KERNEL-249: the Run tab of an open PR's workspace, with the room's three run scripts and `frontend` running. The port is the workspace's first. */
+function runScripts(): Fixture {
+  const open = prScene('open', [], { prs: prInfo('open') })
+  const frontend = ['$ pnpm --filter web dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4312', 'Studio ready on http://localhost:4314', 'Compiled /invoices', 'GET /invoices 200 in 84ms', 'GET /api/invoices 200 in 31ms']
+  return {
+    ...open,
+    roomSettings: { [ids.roomA]: {
+      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
+      runScripts: [
+        { name: 'run', command: 'pnpm dev --port $KERNEL_PORT' },
+        { name: 'frontend', command: 'pnpm --filter web dev --port $KERNEL_PORT' },
+        { name: 'backend', command: 'pnpm --filter api dev --port $((KERNEL_PORT + 1))' }
+      ],
+      files: { copy: [] }, workspace: {}
+    } },
+    // The seed's output belongs to `run`, which is idle here, so only `frontend` has lines.
+    push: [
+      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+      ...frontend.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', name: 'frontend', line, stream: 'stdout' }))
+    ]
+  }
+}
+
+/**
+ * KERNEL-250: the Checks tab of an open PR with the Open menu showing. The room has two preview URLs and `run` printed a third, so
+ * the menu lists the named ones, a hairline and Detected. The workspace's first port is 4312 and `run` prints 4314.
+ */
+function preview(): Fixture {
+  const open = prScene('open', [], {
+    prs: prInfo('open', { checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'pass', meta: '2m 4s' }] })
+  }, 'checks')
+  const run = ['$ pnpm dev --port $KERNEL_PORT', 'Next.js ready on http://localhost:4314', 'Compiled /inbox', 'GET /inbox 200 in 84ms', 'GET /api/requests 200 in 31ms']
+  return {
+    ...open,
+    roomSettings: { [ids.roomA]: {
+      scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' },
+      runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }],
+      files: { copy: [] }, workspace: {},
+      preview: { urls: [{ name: 'Web app', url: 'http://localhost:$KERNEL_PORT' }, { name: 'API docs', url: 'http://localhost:$((KERNEL_PORT + 1))/docs' }] }
+    } },
+    push: [
+      ...open.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+      ...run.map((line): PushEvent => ({ type: 'script.output', workspaceId: ids.table, kind: 'run', line, stream: 'stdout' }))
+    ],
+    ui: { ...open.ui, menu: 'preview' }
+  }
+}
+
+/**
+ * KERNEL-251: the tab strip's + menu with every terminal preset, on the open PR the KERNEL-274 look draws. Codex is on the PATH, one custom
+ * command is saved and a Codex terminal tab is open next to the chat.
+ */
+function terminalPresets(): Fixture {
+  const open = prScene('open', [], { prs: prInfo('open') })
+  return {
+    ...open,
+    chats: [...open.chats, extraChat('chat-term', 'Terminal (codex)', 'terminal')],
+    settings: { ...DEFAULT_SETTINGS('/Users/you'), terminal: { ...DEFAULT_SETTINGS('/Users/you').terminal, custom: [{ id: 'custom-dev-server-logs', name: 'Dev server logs', command: 'tail -f logs/dev.log' }] } },
+    terminalClis: [{ id: 'codex', name: 'Codex', command: 'codex', builtin: true, skipsPermissions: false }],
+    ui: { ...open.ui, menu: 'newTab' }
+  }
+}
+
 const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<string, PrInfo> => ({
   [ids.table]: { workspaceId: ids.table, number: 42, url: pr.prUrl, title: prTitle, state: prState, baseRef: 'main', checks: [], comments: [], conflicts: [], ...o }
 })
@@ -37,6 +101,26 @@ const prInfo = (prState: Workspace['prState'], o: Partial<PrInfo> = {}): Record<
 const PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
+
+/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select with descriptions. */
+const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
+  { question: 'Should the download keep the invoice number in the file name?', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
+  {
+    question: 'Where should the Download PDF action appear?', multiSelect: true,
+    options: [
+      { label: 'Row actions menu', description: 'Next to Duplicate and Void on every invoice row.' },
+      { label: 'Invoice detail header', description: 'Beside the status badge when an invoice is open.' },
+      { label: 'Bulk actions bar', description: 'Download the selected invoices as one zip.' }
+    ]
+  },
+  {
+    question: 'What should happen when the download fails?',
+    options: [
+      { label: 'Show a toast with a retry action', description: 'The same toast the invoice table uses.' },
+      { label: 'Show an inline error on the row', description: 'Stays until the next try.' }
+    ]
+  }
+]
 
 const pending = (kind: 'tool' | 'plan' | 'question' | 'agent', agentId: string, extra: object): Approval =>
   ({ id: `ap-${kind}-${agentId}`, kind, source: 'sdk', roomId: ids.roomA, workspaceId: ids.table, agentId, status: 'pending', createdAt: at(10, 30), title: '', ...extra })
@@ -69,6 +153,28 @@ const runningItems = (): ChatItem[] => {
     tool('rt4', 'Run the new tests', 'pnpm vitest run tests/invoice-pdf.spec.ts', { ts: t(20), status: 'running', durationMs: undefined })
   ]
 }
+
+/** A turn in progress with a long thinking row, a Bash call that printed output, an Edit and a Bash call still running. */
+const rowsOpenItems: ChatItem[] = [
+  userMsg('ro-u', 'Add a sort to the invoice table and run the tests.'),
+  { kind: 'thinking', id: 'ro-th', ts: at(10, 28), text: 'The table already has a sortable header for the amount column, so the date and client columns can reuse it.\n\nThe sort state lives in the URL, which keeps a reload on the same order. I will keep that and only add the two keys.' },
+  tool('ro-t1', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices --reporter=verbose' }, output: ' ✓ src/app/invoices/table.test.tsx (9)\n ✓ src/app/invoices/empty-state.test.tsx (4)\n ✓ src/app/invoices/page.test.tsx (8)\n\nTest Files  3 passed (3)\nTests  21 passed (21)', outputCut: true }),
+  tool('ro-t2', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')\nreturn <Table rows={rows} />", new_string: "const rows = sortBy(invoices, sort.key, sort.dir)\nreturn <Table rows={rows} sort={sort} />" } }),
+  tool('ro-t3', 'Run Playwright', 'pnpm playwright test invoices', { status: 'running', durationMs: undefined, input: { command: 'pnpm playwright test invoices --project=chromium' } })
+]
+
+/** The folded list (WorkspaceToolCalls) with a thinking row, a message and inputs on Edit and Write, for the rows a shot opens inside it. */
+const foldedRowsItems: ChatItem[] = [
+  tableItems[0],
+  { kind: 'thinking', id: 'fr-th', ts: at(10, 28), text: 'The table needs a sort key and a direction.\n\nI will read the plan, find where the table renders, then edit it.' },
+  tool('fr1', 'Read the plan', 'cat plans/t-14-invoice-table.md', { name: 'Read', durationMs: 100, input: { file_path: 'plans/t-14-invoice-table.md', offset: 1, limit: 80 } }),
+  tool('fr2', 'Find the invoices page', 'rg -n "InvoiceTable" src', { durationMs: 200, input: { command: 'rg -n "InvoiceTable" src' }, output: 'src/app/invoices/page.tsx:12:  <InvoiceTable invoices={rows} />' }),
+  { kind: 'text', id: 'fr-x', ts: at(10, 28), text: 'I will build the table first, then the empty state and the tests.' },
+  tool('fr3', 'Edit table.tsx', 'src/app/invoices/table.tsx', { name: 'Edit', durationMs: 120, input: { file_path: 'src/app/invoices/table.tsx', old_string: "const rows = sortBy(invoices, 'amount')", new_string: 'const rows = sortBy(invoices, sort.key, sort.dir)' } }),
+  tool('fr4', 'Create empty-state.tsx', 'src/app/invoices/empty-state.tsx', { name: 'Write', durationMs: 90, input: { file_path: 'src/app/invoices/empty-state.tsx', content: "export function EmptyState() {\n  return <p>No invoices yet</p>\n}" } }),
+  tool('fr5', 'Run unit tests', 'pnpm vitest run invoices', { durationMs: 8400, input: { command: 'pnpm vitest run invoices' }, output: 'Test Files  3 passed (3)\nTests  21 passed (21)' }),
+  ...tableItems.slice(-2)
+]
 
 const toolCalls: ChatItem[] = [
   tableItems[0],
@@ -221,7 +327,7 @@ const checkpoints: Checkpoint[] = ([
   ref: `refs/kernel/checkpoints/${ids.table}/${id}`, current: id === '4', ...(id === '0' ? { start: true } : {})
 }))
 
-const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab } } as const)
+const tabsView = (tab: string) => ({ ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab, files: [] as string[], diffs: [] as string[] } } } as const)
 const extraChat = (id: string, title: string, kind: 'chat' | 'terminal' = 'chat'): Chat =>
   ({ id, workspaceId: ids.table, title, kind, model: 'claude-sonnet-5-5', effort: 'high', plan: false, createdAt: at(10, 30) })
 
@@ -252,6 +358,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   })),
   WorkspaceToolCalls: scene(() => ({
     items: { [ids.tableChat]: toolCalls },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
+  })),
+  /** Rows opened in place (KERNEL-198). Local open state can't be set from a fixture, so scripts/shots.ts clicks the rows named there. */
+  WorkspaceRowsOpen: scene(() => ({
+    items: { [ids.tableChat]: rowsOpenItems },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  /** The folded list with a Thinking, a Message and an Edit row opened inside it (KERNEL-198). */
+  WorkspaceRowsFolded: scene(() => ({
+    items: { [ids.tableChat]: foldedRowsItems },
     ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: true } }
   })),
   WorkspaceCheckpoints: scene(() => ({
@@ -286,11 +402,11 @@ export const workspaceFixtures: Record<string, Fixture> = {
     ui: tabsView('chat-term')
   })),
   WorkspaceFile: scene(() => ({
-    ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'file:src/app/invoices/table.tsx' } }
+    ui: { ...open, workspace: { right: 'files', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'file:src/app/invoices/table.tsx', files: ['src/app/invoices/table.tsx'], diffs: [] } } }
   })),
   // No PNG draws a diff tab (KERNEL-144). The diff opens in a tab of its own next to the chat, with the composer below it.
   WorkspaceDiffTab: scene(() => ({
-    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, tab: 'diff:src/app/invoices/page.tsx' } }
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false }, tabs: { [ids.table]: { tab: 'diff:src/app/invoices/page.tsx', files: [], diffs: ['src/app/invoices/page.tsx'] } } }
   })),
   // Focus mode hides both sides the way Conductor does (D-063), so this shot has no rail where the PNG draws one.
   WorkspaceFocus: scene(() => ({
@@ -330,6 +446,36 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: 'Should the download keep the invoice number in the file name?', options: ['Yes, invoice-009.pdf', 'Add the client name, acme-invoice-009.pdf'] }), ...f.approvals]
   })),
+  WorkspaceQuestionSteps: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qs1', 'Build T-15b from the approved plan.', true),
+    ...folded('qs', 6, 0),
+    { kind: 'result', id: 'qs-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+  })),
+  // The card keeps its place in the transcript once answered, and the agent's reply comes after it.
+  WorkspaceQuestionAnswers: scene((f) => {
+    const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+      userMsg('qa1', 'Build T-15b from the approved plan.', true),
+      ...folded('qa', 6, 0),
+      { kind: 'result', id: 'qa-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+    ], {
+      approvals: [{
+        ...pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }),
+        status: 'answered',
+        answer: 'Yes, invoice-009.pdf · Row actions menu, Invoice detail header · Show a toast with a retry action',
+        answers: {
+          [DOWNLOAD_QUESTIONS[0].question]: 'Yes, invoice-009.pdf',
+          [DOWNLOAD_QUESTIONS[1].question]: 'Row actions menu, Invoice detail header',
+          [DOWNLOAD_QUESTIONS[2].question]: 'Show a toast with a retry action'
+        }
+      }, ...f.approvals]
+    })
+    const reply: ChatItem[] = [
+      { kind: 'text', id: 'qa-reply', ts: at(10, 31), text: 'Got it. I will keep the invoice number in the file name, add Download PDF to the row menu and the invoice header, and show a toast with a retry if it fails.' }
+    ]
+    return { ...s, items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), ...reply] } }
+  }),
   WorkspaceInterrupted: scene(() => ({
     items: { [ids.tableChat]: [
       userMsg('i0', 'Refactor the invoice table to use the shared DataTable component.'),
@@ -372,7 +518,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
   WorkspaceCIFailed: prScene('cifail', [
     ...prTurn('c', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test'], 6, 'Opened PR #42.'),
-    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.')
+    prNote('c-note', 'playwright failed on the PR: the download test timed out in CI.', 'cifail')
   ], {
     prs: prInfo('cifail', {
       checks: [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'typecheck', state: 'pass', meta: '31s' }, { name: 'vitest', state: 'pass', meta: '48s' }, { name: 'playwright', state: 'fail' }],
@@ -395,9 +541,26 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   WorkspaceMerged: prScene('merged', [
     ...prTurn('m', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit'], 6, 'Opened PR #42. Theo approved it and every check passed.'),
-    prNote('m-note', 'PR #42 was squashed into main.')
+    prNote('m-note', 'PR #42 was squashed into main.', 'merged')
   ], { prs: prInfo('merged') }),
-  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.')], { prs: prInfo('closed') }),
+  WorkspacePRClosed: prScene('closed', [prNote('x-note', 'PR #42 was closed without merging on GitHub.', 'closed')], { prs: prInfo('closed') }),
+  // The PR header in the states the canvas above doesn't draw (KERNEL-274, design/redesign/Pr*.png).
+  WorkspacePRNoChanges: scene((f) => ({
+    workspaces: withWorkspace(f, ids.table, { prState: 'none', stat: { files: 0, added: 0, removed: 0 } }),
+    changes: { [ids.table]: [] },
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
+  WorkspacePRNone: prScene('none', []),
+  WorkspacePRCreating: prScene('creating', []),
+  WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
+  WorkspaceRunScripts: runScripts(),
+  WorkspaceTerminalPresets: terminalPresets(),
+  WorkspacePreview: preview(),
+  WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
+  WorkspacePRConflict: prScene('conflict', [], { prs: prInfo('conflict') }),
+  WorkspacePRResolving: prScene('resolving', [], { prs: prInfo('resolving') }),
+  WorkspacePRReady: prScene('ready', [], { prs: prInfo('ready') }),
+  WorkspacePRMerging: prScene('merging', [], { prs: prInfo('merging') }),
   WorkspaceToast: prScene('merged', [], {
     prs: prInfo('merged'),
     ui: { toasts: [
@@ -427,6 +590,15 @@ export const workspaceFixtures: Record<string, Fixture> = {
     push: [...f.push, { type: 'chat.running', chatId: ids.tableChat, running: true }],
     ui: open
   })),
+  /** A brief held because every agent slot is in use (KERNEL-273). Not on the canvas, see docs/decisions/KERNEL-273.md. */
+  WorkspaceQueuedCapacity: scene((f) => {
+    const queue = [{ id: 'q1', chatId: ids.tableChat, ts: at(10, 30), parts: [{ type: 'text' as const, text: 'Build the loading skeleton from the plan' }] }]
+    return {
+      queue: { [ids.tableChat]: queue },
+      push: [...f.push, { type: 'chat.queue', chatId: ids.tableChat, queue, why: 'capacity' }],
+      ui: open
+    }
+  }),
   WorkspaceHunks: scene((f) => ({
     workspaces: withWorkspace(f, ids.table, { name: 'checkout-rounding', mode: 'current', branch: 'main', baseRef: 'main' }),
     items: { [ids.tableChat]: [

@@ -47,10 +47,12 @@ describe('the Lead names the branch', () => {
   it('creates the workspace on the given branch, with a suffix when the name is taken', async () => {
     const { k, room } = await setup()
     const ws = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Symlink node_modules', branch: LINEAR })
-    expect(ws.branch).toBe(LINEAR)
-    expect(await head(ws.path)).toBe(LINEAR)
+    // Cut to 60 characters at a dash (KERNEL-275).
+    const cut = 'cjjutbaofficial/kernel-53-symlink-node_modules-into-new'
+    expect(ws.branch).toBe(cut)
+    expect(await head(ws.path)).toBe(cut)
     const again = await k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Again', branch: LINEAR })
-    expect(again.branch).toBe(`${LINEAR}-2`)
+    expect(again.branch).toBe(`${cut}-2`)
     await expect(k.createWorkspace(room.id, { prompt: 'Go', agentId: 'kai', title: 'Bad', branch: 'bad..name' })).rejects.toThrow('not a valid branch name')
     await k.stop()
   })
@@ -67,7 +69,7 @@ describe('the Lead names the branch', () => {
     const out = await tool.handler({ agent: 'noor', title: 'Symlink node_modules', brief: 'Goal', branch: LINEAR } as never, {})
     expect(asked[0]).toMatchObject({ agentId: 'noor', branch: LINEAR })
     expect((out.content[0] as { text: string }).text).toBe(`Created ws-1 on ${LINEAR} for noor.`)
-    expect(LEAD_RULE).toContain('pass that name as branch')
+    expect(LEAD_RULE).toContain('Pass branch only when the user asks for a particular name.')
   })
 })
 

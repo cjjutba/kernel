@@ -14,6 +14,9 @@ export const ids = {
 
 const room = (id: string, name: string, path: string, repo?: string): Room => ({ id, name, path, repo, defaultBranch: 'main', paused: false, createdAt: at(9, 0) })
 
+/** A small pixel-art avatar PNG, mid gray on dark gray, for rooms whose picture a shot shows (KERNEL-253). */
+export const invaderIcon = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADgAAAA4CAIAAAAn5KxJAAAAYUlEQVR42u3ZsQ3AIAxFQeaKqLI0DSWDsUIKo4ivk15p4atNe/p7RQ0UFBQ0BDrmKgkUFBQ0HVq1uOodUFBQ0BToX/OgoKCgKdDTgYKCgqZDqw6zoKCgoOlQP3egoKCgn9qfdyqiBNJgiwAAAABJRU5ErkJggg=='
+
 export const agent = (id: string, name: string, role: string, model: string, lead = false): AgentDef => ({
   id, name, role, description: `${role} for this room.`, model, lead, prompt: '', file: `.claude/agents/${id}.md`
 })
@@ -126,9 +129,9 @@ export const base: Fixture = {
   ],
   usage: [],
   preflight: [
-    { id: 'claude', ok: true, title: 'Claude Code', detail: 'v2.1.292' },
-    { id: 'gh', ok: true, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
-    { id: 'hooks', ok: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
+    { id: 'claude', ok: true, blocking: false, title: 'Claude Code', detail: 'v2.1.292' },
+    { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: 'Signed in as samrivera' },
+    { id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening on localhost:7420' }
   ],
   changes: {
     [ids.table]: [

@@ -1,13 +1,38 @@
-/* Pull request header states and the PR cards in the transcript (WorkspacePRMenu, DraftPR, CIFailed, ChangesRequested, Merged, PRClosed). */
-.pr-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line-3); color: var(--ink-2); text-decoration: none; font: 12px var(--mono); }
-.pr-link:hover { background: var(--surface-3); }
-.pr-link[data-merged] { border-color: color-mix(in srgb, var(--merged-solid) 60%, var(--panel)); color: var(--merged); }
-.pr-status { padding: 0 4px; font-size: 12.5px; color: var(--muted); }
-.pr-status[data-tone='del'] { color: var(--del); }
-.pr-status[data-tone='ink2'] { color: var(--ink-2); }
-.pr-status.merged-label { font-size: 13px; font-weight: 500; color: var(--merged); }
-.btn.continue { border-style: dashed; border-color: color-mix(in srgb, var(--merged-solid) 85%, var(--panel)); color: var(--merged); }
-.btn.pr-strong { border-color: var(--line-4); }
+/* Pull request header states and the PR cards in the transcript. The header is a band in the state's tone (KERNEL-274):
+   `.pr-tone` is `display: contents`, so it keeps the parent's flex row and only hands its children the tone. */
+.pr-tone { display: contents; }
+.pr-tone[data-tone='idle'] { --b-soft: var(--surface-3); --b-edge: var(--line-4); --b-fg: var(--ink-2); --b-text: var(--ink-3); --b-solid: var(--ink); --b-on: var(--on-ink); }
+.pr-tone[data-tone='merged'] { --b-soft: var(--pr-merged-soft); --b-edge: var(--pr-merged-edge); --b-fg: var(--pr-merged-fg); --b-text: var(--pr-merged-text); --b-solid: var(--pr-merged-solid); --b-on: var(--on-solid); }
+.pr-tone[data-tone='ready'] { --b-soft: var(--pr-ready-soft); --b-edge: var(--pr-ready-edge); --b-fg: var(--pr-ready-fg); --b-text: var(--pr-ready-text); --b-solid: var(--pr-ready-solid); --b-on: var(--on-solid); }
+.pr-tone[data-tone='fail'] { --b-soft: var(--pr-fail-soft); --b-edge: var(--pr-fail-edge); --b-fg: var(--pr-fail-fg); --b-text: var(--pr-fail-text); }
+.ws-aside-head { container-type: inline-size; }
+.ws-aside-head:has(> .pr-tone[data-tone='idle']) { background: var(--surface); border-bottom-color: var(--line-2); }
+.ws-aside-head:has(> .pr-tone[data-tone='merged']) { background: var(--pr-merged-band); border-bottom-color: var(--pr-merged-line); }
+.ws-aside-head:has(> .pr-tone[data-tone='ready']) { background: var(--pr-ready-band); border-bottom-color: var(--pr-ready-line); }
+.ws-aside-head:has(> .pr-tone[data-tone='fail']) { background: var(--pr-fail-band); border-bottom-color: var(--pr-fail-line); }
+.pr-tone > :not(.pr-state):not(.grow) { flex-shrink: 0; }
+
+/* The `#42 | ↗` pill, then where the PR stands. The label shortens with an ellipsis before anything else gives way. */
+.pr-link { display: inline-flex; align-items: stretch; height: 24px; border: 1px solid var(--b-edge); border-radius: 6px; overflow: hidden; background: var(--b-soft); color: var(--b-fg); text-decoration: none; font: 11.5px var(--mono); }
+.pr-link:hover { background: color-mix(in srgb, var(--b-soft) 88%, var(--b-fg)); }
+.pr-num { display: inline-flex; align-items: center; padding: 0 7px; }
+.pr-ext { display: inline-flex; align-items: center; padding: 0 6px; border-left: 1px solid var(--b-edge); }
+.pr-state { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--b-text); }
+.pr-state svg { flex-shrink: 0; }
+.pr-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Soft buttons sit in the band's tone; Merge PR and Archive take its solid. Create PR stays ink on the neutral band. */
+.pr-tone .btn.pr-soft { background: var(--b-soft); border-color: var(--b-edge); color: var(--b-fg); }
+.pr-tone .btn.pr-soft:hover { background: color-mix(in srgb, var(--b-soft) 85%, var(--b-fg)); }
+.pr-tone .btn.pr-solid { background: var(--b-solid); border-color: var(--b-solid); color: var(--b-on); }
+.pr-tone .btn.pr-solid:hover { background: color-mix(in srgb, var(--b-solid) 88%, var(--b-on)); }
+.btn.continue { border-style: dashed; }
+/* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
+.pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
+.pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
+/* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row needs about 372px of the
+   header's content box, which is 377px when the panel is at its widest (400px). */
+@container (max-width: 370px) { .pr-tone .pr-btn-label { display: none; } }
 
 /* Create PR: a squared right edge, then the caret that opens the menu. */
 .pr-split { display: inline-flex; align-items: center; }

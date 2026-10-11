@@ -3,6 +3,7 @@ import { call } from '../../api'
 import { actions } from '../../store'
 import { Tabs } from '../../ui'
 import { useLayer } from '../../ui/hooks'
+import { useRemote } from '../settings/useSettings'
 import { branchRow, issueRow, matches, prRow, type FromRow, type FromTab } from './pick'
 
 const TABS = [{ id: 'prs', label: 'PRs' }, { id: 'branches', label: 'Branches' }, { id: 'issues', label: 'Issues' }]
@@ -18,6 +19,7 @@ export function FromPopover({ roomId, branches, tab, onTab, onPick, anchorRef }:
   const [q, setQ] = useState('')
   const [at, setAt] = useState(0)
   const [load, setLoad] = useState<Load>({ state: 'loading' })
+  const remote = useRemote(roomId)
   const ref = useRef<HTMLDivElement>(null)
   const close = actions.ui.closeMenu
   useLayer({ onEscape: close, onOutside: close, ref, anchorRef })
@@ -30,11 +32,11 @@ export function FromPopover({ roomId, branches, tab, onTab, onPick, anchorRef }:
     const t = setTimeout(() => {
       const done = (rows: FromRow[]) => { if (!stale) setLoad({ state: 'ready', rows }) }
       const fail = (e: unknown) => { if (!stale) setLoad({ state: 'error', message: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }) }
-      if (tab === 'prs') call('github.prs', { roomId, query: q || undefined }).then((r) => done(r.map(prRow)), fail)
+      if (tab === 'prs') call('github.prs', { roomId, query: q || undefined }).then((r) => done(r.map((p) => prRow(p, remote))), fail)
       else call('issues.list', { roomId, query: q || undefined }).then((r) => done(r.map(issueRow)), fail)
     }, q ? 200 : 0)
     return () => { stale = true; clearTimeout(t) }
-  }, [tab, q, roomId, branches])
+  }, [tab, q, roomId, branches, remote])
 
   const rows = load.state === 'ready' ? load.rows : []
   useEffect(() => { setAt(0) }, [tab, q])
