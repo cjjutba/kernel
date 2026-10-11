@@ -2,11 +2,11 @@ import { basename, dirname, join } from 'node:path'
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import type { Server } from 'node:http'
-import type { SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AppUpdate, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
+import type { SharedFile, WaitsFor, PrInfo, QueuedMessage, ReviewVerdict, AgentDef, AgentDraft, AgentEdit, AgentStatus, Chat, ClaudeAccount, ChatItem, ChatPart, PrState, WorkspaceSource, HookStatus, NewRoomRequest, RateLimit, Room, RoomSetupStep, RoomSettingsPatch, ScriptTrust, TeamTemplate, Workspace, WorkspaceMode, ModelId, Effort, Decision } from '@shared/types'
 import { MODELS } from '@shared/types'
 import { isKernelUpdate } from '@shared/teamUpdate'
 import { effortFor } from '@shared/effort'
-import { NotImplemented, type Channel, type KernelApi, type PushEvent } from '@shared/ipc'
+import { NotImplemented, type Channel, type KernelApi } from '@shared/ipc'
 import { Store, newId } from './db'
 import { bus } from './bus'
 import { createAgent, draftAgent, loadAgents, restoreAgent, retireAgent, saveAgent, updateAgent, watchAgents } from './services/agents'
@@ -16,12 +16,11 @@ import { Tasks } from './services/tasks'
 import { Notifications } from './services/notifications'
 import { LeadUpdates } from './services/leadUpdates'
 import { NUDGE_LIMIT, Nudges } from './services/nudges'
-import { reviewMcpServer, reviewTools, type ReviewInput } from './services/reviewMcp'
-import { teammateMcpServer, teammateTools, type TeammateToolDeps } from './services/teammateMcp'
-import { kernelServer } from './services/kernelServer'
+import { reviewTools, type ReviewInput } from './services/reviewMcp'
+import { teammateTools, type TeammateToolDeps } from './services/teammateMcp'
 import { SharedFiles, type ShareRequest } from './services/sharedFiles'
 import { sharedTools } from './services/sharedMcp'
-import { LEAD_SHARING_RULE, reviewRule, TEAMMATE_RULE } from './services/handoff'
+import { reviewRule } from './services/handoff'
 import { archiveSkip } from './services/archiveGuard'
 import { firstLine } from './services/text'
 import type { ReviewState } from './services/leadUpdates'
@@ -30,17 +29,17 @@ import { askTitle, titleText } from './services/titles'
 import { Ptys } from './services/pty'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from './services/terminalPresets'
 import type { forkSession as ForkSession, getSessionInfo as GetSessionInfo } from '@anthropic-ai/claude-agent-sdk'
-import { kernelMcpServer, kernelTools, LEAD_INSTRUCTIONS, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
+import { kernelMcpServer, kernelTools, queuedNote, reviewedByBase, type KernelToolDeps } from './services/kernelMcp'
 import { startHookServer } from './services/hookServer'
 import { hookToken } from './services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from './services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from './services/preflight'
-import { applySettingsPatch, configuredRemote, disabledInRoom, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
+import { applySettingsPatch, configuredRemote, loadAppSettings, loadRepoSettings, loadRepoSettingsSync, localSettingsOwn, prInstructions, remoteOf, saveAppSettings, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash, type AppSettings, type RepoSettings, type TrustSubject } from './services/settings'
 import { discoverMcp, integrationRows, saveLinearToken, storedLinearToken } from './services/integrations'
 import { branchType, capBranch, changedFiles, createWorktree, currentBranch, defaultBranch, diffText, branchExists, fastForward, fetchOrigin, folderGone, freeBranch, listBranches, mergeBase, onRemote, remoteRepo, detachWorktree, resolveBaseRef, restoreWorktree, reviewBranch, stripRemote, slugify, snapshotBaseline, taskBranch, validBranchName } from './services/worktrees'
 import { claudeSignedIn, readAccount, signOut } from './services/account'
 import { blocksOverlap, copyLocalFiles, linkNodeModules, portBlock, runScript, stopAllScripts, stopRuns, stopScript } from './services/scripts'
-import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames, type Cipher } from './services/env'
+import { buildEnv, envFileReadable, EnvStore, kernelVars, readEnvFiles, withoutClaudeNames } from './services/env'
 import { resolveFilesToCopy } from './services/filesToCopy'
 import { AVATAR_FAILED, githubAvatar, githubOwner, readImage, RoomIcons } from './services/roomIcons'
 import { agentFiles, assertFreeFolder, cloneRepo, copyTemplate, ensureRepoSettings, expandHome, initGit, inspectFolder, installCommand, listRepos, recentFolders, seatStarterTeam, copyAgentFiles, tildify } from './services/rooms'
@@ -54,6 +53,10 @@ import { checkpointTitle, clock, listCheckpoints, revertTo, snapshot } from './s
 import { blockingLimit, NetworkMonitor, terminalScript } from './services/health'
 import { discardChanges, gitStatus, pushBranch, unpushedCommits } from './services/archive'
 import { isMerged, joinLabels, waitLabel, waitMet, waitRefusal } from './services/waits'
+import type { KernelOptions } from './features/options'
+import { channels } from './features/channels'
+import { leadUpdateDeps, listen, notificationDeps, overlapDeps, taskDeps } from './features/wiring'
+import { sessionDeps } from './features/sessionDeps'
 
 const COPY = 'fork:'
 
@@ -77,9 +80,6 @@ const LIMIT_RECHECK_MS = 90_000
 const LIMIT_NAME: Record<RateLimit['type'], string> = {
   five_hour: '5-hour limit', seven_day: 'weekly limit', seven_day_opus: 'Opus limit', seven_day_sonnet: 'Sonnet limit', seven_day_overage_included: 'Fable limit', overage: 'extra usage limit'
 }
-
-/** How a hook from an outside session moves its agent on the floor. */
-const HOOK_STATUS: Record<string, AgentStatus> = { UserPromptSubmit: 'working', PreToolUse: 'working', PermissionRequest: 'needs', Stop: 'idle', SessionEnd: 'idle' }
 
 /** A composer message: `parts` in order when they carry text (chips sit inline), else `text` first and the parts after it. */
 const messageOf = (text: string, parts: ChatPart[] = []): ChatPart[] =>
@@ -162,6 +162,10 @@ export class Kernel {
    * synchronous and can't wait for the check (KERNEL-247).
    */
   private envFilesOk = new Map<string, string>()
+  // ---------- test seams
+  // Tests swap these on the instance, so code reads them through the Kernel when it calls them and never keeps a copy
+  // (KERNEL-324).
+
   /** Fetches a GitHub owner's avatar for a room icon. Tests swap it for one with gh and fetch stubbed. */
   avatar: (owner: string) => Promise<Buffer> = (owner) => githubAvatar(owner, { fetch: this.o.fetch })
   /** The SDK call behind a fork. Tests swap it for a stub. */
@@ -170,6 +174,13 @@ export class Kernel {
   sessionInfo: typeof GetSessionInfo = async (id, o) => (await import('@anthropic-ai/claude-agent-sdk')).getSessionInfo(id, o)
   /** The Haiku request that names a chat from its conversation (KERNEL-202). Tests swap it for a stub. */
   titleFor: typeof askTitle = askTitle
+  /** Reads `claude auth status`. Tests swap it for a stub. */
+  accountReader: () => Promise<ClaudeAccount> = readAccount
+  /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
+  signedInReader: () => Promise<boolean> = claudeSignedIn
+  /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
+  github: GitHub = gh
+
   settings!: AppSettings
   private hookServer?: Server
   /** The start-up rewrite of out-of-date hooks failed (KERNEL-206). The hooks banner shows until a write succeeds. */
@@ -201,37 +212,7 @@ export class Kernel {
   /** Chats with a turn running. Read from `chat.running` so the quit prompt can count agents (KERNEL-214). */
   private runningChats = new Set<string>()
 
-  constructor(private o: {
-    dataDir: string; home?: string; claudeSettingsFile?: string; starterDir?: string; showNotification?: (n: import('@shared/types').Notification, o: { silent: boolean }) => void; inBackground?: () => boolean
-    /** Can this machine reach Claude? The app passes a DNS probe; tests leave it out, so they never go offline. */
-    probeNetwork?: () => Promise<boolean>
-    /** Re-reads the user's PATH before each preflight, so "Check again" finds a CLI installed after launch. Tests leave it out. */
-    refreshPath?: () => Promise<void>
-    /** Kernel's version, for Settings > About. */
-    version?: string
-    /** Called with the settings at start and after every change, for the parts only the app shell can do (open at login). */
-    onSettings?: (s: AppSettings) => void
-    /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
-    updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
-    /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
-    fetch?: typeof fetch
-    /**
-     * Asked before Restart to update quits. False means the user canceled. True means Kernel has stopped and the app
-     * is quitting (KERNEL-214). Without it the restart goes ahead.
-     */
-    confirmQuit?: (reason: 'update') => Promise<boolean>
-    /**
-     * Draws a PNG thumbnail of a shared file's version for its card, or null when it can't (KERNEL-302). The app passes the
-     * preview host (KERNEL-303); tests pass a stub or leave it out, and a file then has no thumbnail.
-     */
-    capture?: { thumbnail(f: SharedFile, version: number): Promise<Buffer | null> }
-    /** Shows a file in Finder, for a shared file's Show in Finder. Left out, it does nothing. */
-    reveal?: (path: string) => void
-    /** Opens a file in the Mac's default app, for a shared PDF's Open in Preview. Rejects with the reason when it can't. Left out, it does nothing. */
-    openFile?: (path: string) => Promise<void>
-    /** Encrypts variables for `env.json`. The app passes `safeStorage`, tests a fake. Without one no variable can be set (KERNEL-247). */
-    cipher?: Cipher
-  }) {
+  constructor(readonly o: KernelOptions) {
     this.store = new Store(join(o.dataDir, 'kernel.db'))
     this.roomIcons = new RoomIcons(o.dataDir)
     this.shared = new SharedFiles({ dataDir: o.dataDir, store: this.store })
@@ -242,126 +223,13 @@ export class Kernel {
     })
     this.trusted = new ScriptTrustStore(join(o.dataDir, 'trust.json'))
     this.approvals = new Approvals(this.store)
-    this.tasks = new Tasks({ store: this.store, agents: (roomId) => this.agentsSync(roomId) })
-    this.notifications = new Notifications({
-      store: this.store,
-      settings: () => this.settings,
-      agentName: (roomId, agentId) => (roomId ? this.agentsSync(roomId).find((a) => a.id === agentId)?.name : undefined),
-      show: o.showNotification,
-      inBackground: o.inBackground
-    })
-    this.sessions = new Sessions({
-      store: this.store,
-      approvals: this.approvals,
-      settings: () => this.settings,
-      agentFor: (ws) => this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId),
-      // With sharing on, every agent's server adds share_file (KERNEL-302). Off, each gets exactly the server it had before.
-      mcpFor: (ws, agent, chat) => (this.sharing ? { kernel: kernelServer(this.toolsFor(ws, agent, chat), agent?.lead ? LEAD_INSTRUCTIONS : undefined) }
-        : agent?.lead ? { kernel: this.leadTools(ws.roomId, agent, chat) }
-        : ws.reviewOf ? { kernel: reviewMcpServer({ submit: (review) => this.submitReview(ws.id, review) }) }
-        : { kernel: teammateMcpServer(this.teammateToolDeps(ws.id)) }),
-      disabledFor: (ws) => { const room = this.store.room(ws.roomId); return room ? disabledInRoom(room.path) : undefined },
-      // The Lead's rule is LEAD_RULE, which agentPrompt adds itself. Sharing adds a line after it, only while on (KERNEL-302).
-      rulesFor: (ws, agent) => (agent?.lead ? (this.sharing ? LEAD_SHARING_RULE : undefined) : ws.reviewOf ? this.reviewRuleFor(ws) : TEAMMATE_RULE),
-      roomAllow: (roomId) => this.store.room(roomId)?.allow ?? [],
-      envFor: (ws) => this.envFor(ws),
-      allowInRoom: (roomId, rule) => {
-        const room = this.store.room(roomId)
-        if (room && !room.allow?.includes(rule)) this.store.saveRoom({ ...room, allow: [...(room.allow ?? []), rule] })
-      },
-      onReply: (ws, chat) => void this.nameChat(ws, chat),
-      onReset: (_ws, chat, trigger) => this.resetName(chat, trigger),
-      onTurnDone: (ws, chat, turn) => {
-        void this.checkpoint(ws, chat).catch(() => undefined)
-        void this.nameChat(ws, chat, true)
-        const lead = !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead
-        const done = { ...turn, lead, queued: this.sessions.queued(chat.id).length > 0 }
-        this.notifications.turnDone(ws, chat, done)
-        // The Lead works on the main checkout and never opens a PR of its own, so there is nothing to refresh. A teammate's
-        // update waits until Kernel has read its PR, so a PR the turn opened speaks for the turn however long GitHub takes.
-        const teammate = !this.isLeadWorkspace(ws)
-        if (teammate) this.leadUpdates.readingPr(ws.id)
-        this.leadUpdates.turnDone(ws, chat, done)
-        // A workspace that was still working when its work merged, or the work it reviewed merged or closed, goes now (KERNEL-114, KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
-        void this.changes(ws.id).catch(() => undefined)
-        if (teammate) void this.refreshPr(ws.id).catch(() => undefined).then(() => this.leadUpdates.readPr(ws.id)).catch(() => undefined)
-        void this.overlaps.check(ws.roomId).catch(() => undefined)
-        this.releaseTaken(ws.id, chat.id, turn.by)
-      },
-      onFailure: (failure) => {
-        if (failure === 'auth') this.signedOut()
-        else if (failure === 'network') void this.network?.check()
-      },
-      // A teammate whose session died mid-turn would look busy forever. Kernel tells the Lead that handed the work off (KERNEL-124).
-      onExit: (ws, _chat, reason, midTurn, resumed) => {
-        if (midTurn) this.leadUpdates.crashed(this.store.workspace(ws.id) ?? ws, reason, { resumed })
-        // A workspace waiting to be archived whose session died has no turn end coming to archive it (KERNEL-131).
-        if (this.reviewsToArchive.has(ws.id)) void this.archiveMarked(ws.id).catch(() => undefined)
-      },
-      onLimits: (limits) => this.applyLimits(limits),
-      onCutOff: (chatIds) => this.store.saveMeta('cutOff', chatIds),
-      onHeld: (held) => this.store.saveMeta('held', held)
-    })
+    this.tasks = new Tasks(taskDeps(this))
+    this.notifications = new Notifications(notificationDeps(this))
+    this.sessions = new Sessions(sessionDeps(this))
     this.nudges = new Nudges(this.store)
-    this.leadUpdates = new LeadUpdates({
-      store: this.store,
-      enabled: () => this.settings.models.leadUpdates !== false,
-      target: (roomId, owner) => this.leadUpdateTarget(roomId, owner),
-      isLead: (ws) => !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead,
-      agentName: (roomId, agentId) => this.agentsSync(roomId).find((a) => a.id === agentId)?.name,
-      post: (chatId, text, update) => this.sessions.post(chatId, [{ type: 'text', text }], { update }),
-      reviewState: (ws) => this.reviewState(ws),
-      // The team's reviewer is asked to look at a PR that passed checks (KERNEL-121). Retired agents are off the team.
-      reviewer: (roomId) => this.agentsSync(roomId).find((a) => !a.lead && !a.retired && /\breview/i.test(a.role)),
-      // A note, not a brief: a brief would restart the floor's briefing sequence (as sortOverlap does). The floor reads
-      // `leadUpdate` to keep the Lead's next turn from replaying the hand-off walk.
-      delivered: (roomId, chat, update) => {
-        const ws = this.store.workspace(chat.workspaceId)
-        const [one] = update.rows
-        const object = update.rows.length > 1 ? `${update.rows.length} teammates` : one.prNumber ? `${one.name}'s PR #${one.prNumber}` : `${one.name}'s work`
-        bus.activity({ kind: 'note', roomId, workspaceId: chat.workspaceId, agentId: ws?.agentId, text: 'heard from Kernel about', object, data: { leadUpdate: true } })
-      }
-    })
-    this.overlaps = new Overlaps({
-      workspaces: (roomId) => this.store.workspaces(roomId),
-      since: async (ws) => (ws.mode === 'current' ? ws.baselineRef ?? 'HEAD' : mergeBase(ws.path, ws.baseRef).catch(() => ws.baseRef)),
-      leadId: (roomId) => this.agentsSync(roomId).find((a) => a.lead)?.id,
-      saved: this.store
-    })
-    const onActivity = (e: Parameters<Store['saveActivity']>[0]) => this.store.saveActivity(e)
-    const onHook = (e: { hook_event_name: string }, ctx?: { roomId?: string; agentId?: string }) => {
-      this.hookSeen.set(e.hook_event_name, Date.now())
-      // Only sessions Kernel did not start reach here (the big terminal, or Claude Code run by hand), so the floor learns their status from the hooks.
-      const status = HOOK_STATUS[e.hook_event_name]
-      if (!status || !ctx?.roomId || !ctx.agentId) return
-      if (this.statuses.get(ctx.roomId)?.[ctx.agentId] === 'paused') return
-      bus.push({ type: 'agent.status', roomId: ctx.roomId, agentId: ctx.agentId, status })
-    }
-    const onPush = (e: PushEvent) => {
-      // A turn waiting on an approval or a question is still running, so its agent still counts as working.
-      // No database read here: the count looks the chats up when the quit asks for it.
-      if (e.type === 'chat.running') {
-        if (e.running) this.runningChats.add(e.chatId)
-        else this.runningChats.delete(e.chatId)
-      }
-      if (e.type === 'agent.status') this.statuses.set(e.roomId, { ...(this.statuses.get(e.roomId) ?? {}), [e.agentId]: e.status })
-      // The work merged, so the loop guard starts over for it and its reviews (KERNEL-125). Ready does too, in refreshPr.
-      if (e.type === 'pr' && e.state === 'merged') this.nudges.reset(e.workspaceId, ...this.reviewsOf(e.workspaceId))
-      // Its reviews are done once the work merged or closed (KERNEL-131). A PR opened again keeps them.
-      const reviews = e.type === 'pr' && (e.state === 'merged' || e.state === 'closed') ? this.archiveReviews(e.workspaceId).catch(() => undefined) : undefined
-      if (e.type === 'pr' && !reviews) this.unmarkReviews(...this.reviewsOf(e.workspaceId), e.workspaceId)
-      // A merge releases the workspaces that wait for it, and a close breaks their wait (KERNEL-259). Here, not in
-      // LeadUpdates, which drops events while Lead updates are off. The reviews and the waits run together, and the work
-      // itself is archived once both are done (KERNEL-114).
-      if (e.type === 'pr') {
-        const waits = this.onTargetPr(e.workspaceId, e.state).catch(() => undefined)
-        if (e.state === 'merged') void Promise.all([reviews, waits]).then(() => this.archiveMerged(e.workspaceId)).catch(() => undefined)
-      }
-    }
-    bus.on('activity', onActivity).on('hook', onHook).on('push', onPush)
-    // A stopped kernel has a closed database. Leave the shared bus so a second kernel in the same process doesn't write to it.
-    this.unlisten = () => { bus.off('activity', onActivity).off('hook', onHook).off('push', onPush) }
+    this.leadUpdates = new LeadUpdates(leadUpdateDeps(this))
+    this.overlaps = new Overlaps(overlapDeps(this))
+    this.unlisten = listen(this)
   }
 
   private get home() { return this.o.home ?? homedir() }
@@ -519,10 +387,6 @@ export class Kernel {
     else this.sessions.holdAll('offline')
   }
 
-  /** Reads `claude auth status`. Tests swap it for a stub. */
-  accountReader: () => Promise<ClaudeAccount> = readAccount
-  /** Whether Claude Code is signed in, read at launch before agents carry on (KERNEL-215). Tests swap it for a stub. */
-  signedInReader: () => Promise<boolean> = claudeSignedIn
   private authTimer?: NodeJS.Timeout
 
   /**
@@ -2054,8 +1918,6 @@ export class Kernel {
 
   // ---------- pull requests
 
-  /** The GitHub calls behind the PR methods. Tests swap it for a stub. */
-  github: GitHub = gh
   /** Workspaces whose merge Kernel is running, so the poll doesn't overwrite `merging`. */
   private merging = new Set<string>()
   /** The method of a merge Kernel ran, until the PR is seen merged, so the note says how it landed. */
@@ -2929,10 +2791,17 @@ export class Kernel {
   private mustWs(id: string) { const w = this.store.workspace(id); if (!w) throw new Error(`Unknown workspace ${id}`); return w }
   private isLeadWorkspace(ws: Workspace) { return ws.mode === 'current' && !!this.agentsSync(ws.roomId).find((a) => a.id === ws.agentId)?.lead }
 
-  /** Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. */
+  /**
+   * Every IPC channel, in one map. The preload exposes these to the renderer as window.kernel.invoke. Each feature brings
+   * its own channels, and `channels` throws if two answer the same one (KERNEL-324).
+   */
   handlers(): Handlers {
+    return channels(unbuilt(), this.coreHandlers())
+  }
+
+  /** The channels of features still in this file. They move into their feature's `handlers()` (KERNEL-325 to KERNEL-330). */
+  private coreHandlers(): Omit<Handlers, Unbuilt> {
     return {
-      ...unbuilt(),
       'update.get': async () => this.o.updater?.get() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
       'update.check': async () => this.o.updater?.check() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
       // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
