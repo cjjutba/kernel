@@ -13,6 +13,7 @@ import { RELAUNCH_NUDGE } from '../src/main/services/sessions'
 import { kernelTools, type KernelToolDeps } from '../src/main/services/kernelMcp'
 import { resolveTarget, waitBroken, waitLabel, waitMet, waitRefusal } from '../src/main/services/waits'
 import { saveLinearToken } from '../src/main/services/integrations'
+import { saveRepoSettings } from '../src/main/services/settings'
 import { tempRepo, trustRoom } from './helpers'
 
 // KERNEL-259: a teammate waits for other workspaces' PRs to merge, and Kernel starts it, or tells it to rebase, when they do.
@@ -74,6 +75,8 @@ async function setup(files: Record<string, string> = {}, o: { fetch?: typeof fet
   // The workspaces start from the local main, which a merge on GitHub doesn't move.
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, scripts: { runAfterSetup: true }, pr: { requireGreen: false } }))
   if (o.linearToken) await saveLinearToken(dataDir, o.linearToken)
+  // A room with a Linear token and team uses Linear (KERNEL-462).
+  if (o.fetch) await saveRepoSettings(repo, { linear: { team: 'KERNEL' } })
   const gh = { prs: new Map<string, PrInfo>() }
   const fake = (k: Kernel) => {
     // A start with work to carry on checks the sign-in (KERNEL-215). The real one runs `claude auth status`.

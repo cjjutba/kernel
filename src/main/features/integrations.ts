@@ -3,7 +3,12 @@ import { bus } from '../bus'
 import type { Handlers } from '../kernel'
 import { ghUser as ghUserName, openIssues, openPrs } from '../services/github'
 import { integrationRows, saveLinearToken, storedLinearToken } from '../services/integrations'
+import { loadRepoSettings } from '../services/settings'
+import { trackerKind } from '../services/trackers'
+import { githubKey, githubTracker } from '../services/trackers/github'
 import { getIssue, getScope, linearToken, linearTracker, listIssues, planParts, searchIssues } from '../services/trackers/linear'
+import { noneTracker } from '../services/trackers/none'
+import { remoteRepo } from '../services/worktrees'
 import { Feature } from './feature'
 
 /** Linear and GitHub, and the Integrations page that connects them (KERNEL-325). */
@@ -13,42 +18,74 @@ export class Integrations extends Feature {
   private get linearFetch(): typeof fetch { return this.o.fetch ?? fetch }
 
   /**
-   * A workspace started on a Linear issue: move the issue to In Progress (D-140). Nobody waits for it, and a failure is
-   * one note in the log, never a failed workspace. Without a token there is nothing to do.
+   * A workspace started on an issue: move it to In Progress in the room's tracker (D-140). Nobody waits for it, and a
+   * failure is one note in the log, never a failed workspace. Linear without a token, GitHub and no tracker move nothing.
    */
   async startIssue(ws: Workspace, key: string) {
     try {
-      await this.tracker.start(key)
+      await (await this.trackerFor(ws.roomId)).start(key)
     } catch (e) {
       bus.activity({ kind: 'note', roomId: ws.roomId, workspaceId: ws.id, agentId: ws.agentId, text: `could not move ${key} to In Progress in Linear:`, object: (e as Error).message, warn: true })
     }
   }
 
   /**
-   * create_workspace's `issue`: the source to save, the issue's labels, which pick the branch type, and the issues that
-   * block it (KERNEL-263), or the task title and no labels when Linear doesn't answer.
+   * create_workspace's `issue`: the source to save, with the tracker it came from, the issue's labels, which pick the branch
+   * type, and the issues that block it (KERNEL-263), or the task title and no labels when the tracker doesn't answer. A
+   * `#41` key is a GitHub issue in any room, and only a GitHub room's tracker reads it (KERNEL-462).
    */
-  async issueSource(key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
-    if (key.startsWith('#')) return { source: { kind: 'issue', id: key, title }, labels: [] }
+  async issueSource(roomId: string, key: string, title: string): Promise<{ source: WorkspaceSource; labels: string[]; blockedBy?: string[] }> {
+    const tracker = await this.trackerFor(roomId)
+    if (key.startsWith('#') && tracker.kind !== 'github') return { source: { kind: 'issue', id: key, title, tracker: 'github' }, labels: [] }
     try {
-      const issue = await this.tracker.issue(key)
-      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url }, labels: issue.labels, blockedBy: issue.blockedBy }
-    } catch { return { source: { kind: 'issue', id: key, title }, labels: [] } }
+      const issue = await tracker.issue(key)
+      const kind = tracker.kind === 'none' ? undefined : tracker.kind
+      return { source: { kind: 'issue', id: issue.id, title: issue.title, url: issue.url, ...(kind ? { tracker: kind } : {}) }, labels: issue.labels, blockedBy: issue.blockedBy }
+    } catch {
+      const gh = tracker.kind === 'github' ? githubKey(key) : undefined
+      return { source: { kind: 'issue', id: gh ?? key, title, ...(gh ? { tracker: 'github' as const } : {}) }, labels: [] }
+    }
   }
 
   /**
-   * A Linear issue's labels, for a workspace started from it in the New workspace modal. Linear gets 5 seconds, and no
-   * answer means no labels, so the branch starts with feat and Linear never holds a workspace up (KERNEL-275).
+   * An issue source with the tracker it came from (KERNEL-462). The New workspace modal sends the room tracker's issues
+   * without one. A `#41` key is GitHub's, and a GitHub room's other keys came from somewhere else, so they stay untagged.
    */
-  async issueLabels(key: string): Promise<string[]> {
+  async trackedSource(roomId: string, source: WorkspaceSource | undefined): Promise<WorkspaceSource | undefined> {
+    if (source?.kind !== 'issue' || source.tracker) return source
+    if (source.id.startsWith('#')) return { ...source, tracker: 'github' }
+    const { kind } = await this.trackerFor(roomId)
+    return kind === 'none' || kind === 'github' ? source : { ...source, tracker: kind }
+  }
+
+  /**
+   * An issue's labels, for a workspace started from it in the New workspace modal. The tracker gets 5 seconds, and no
+   * answer means no labels, so the branch starts with feat and the tracker never holds a workspace up (KERNEL-275).
+   */
+  async issueLabels(roomId: string, key: string): Promise<string[]> {
     let timer: ReturnType<typeof setTimeout> | undefined
     const late = new Promise<string[]>((resolve) => { timer = setTimeout(() => resolve([]), 5000) })
-    const read = this.tracker.issue(key).then((i) => i.labels, () => [])
+    const read = this.trackerFor(roomId).then((t) => t.issue(key)).then((i) => i.labels, () => [])
     try { return await Promise.race([read, late]) } finally { clearTimeout(timer) }
   }
 
-  /** The tracker issues come from. Every room uses Linear until a room can pick its own (KERNEL-450). */
-  private get tracker(): Tracker { return linearTracker(() => this.linearKey(), this.linearFetch) }
+  /**
+   * The room's issue tracker, built on every call, so a change to the room's settings, a new token or a new remote applies
+   * at once (KERNEL-462). Jira reads as no tracker until Kernel can read it (KERNEL-474).
+   */
+  async trackerFor(roomId: string): Promise<Tracker> {
+    const room = this.mustRoom(roomId)
+    const repo = await loadRepoSettings(room.path)
+    const kind = trackerKind({
+      kind: repo.tracker?.kind,
+      linearToken: !!(await this.linearKey()),
+      linearTeam: !!repo.linear?.team,
+      githubRemote: !!(room.repo ?? (await remoteRepo(room.path, await this.k.config.remoteFor(room.path, repo))))
+    })
+    if (kind === 'linear') return linearTracker(() => this.linearKey(), this.linearFetch)
+    if (kind === 'github') return githubTracker(room.path)
+    return noneTracker()
+  }
 
   private async integrations() {
     const [ghUser, linear] = await Promise.all([ghUserName().catch(() => null), this.linearKey()])
@@ -59,7 +96,7 @@ export class Integrations extends Feature {
     return {
       'github.prs': async ({ roomId, query }) => openPrs(this.mustRoom(roomId).path, query),
       'github.issues': async ({ roomId, query }) => openIssues(this.mustRoom(roomId).path, query),
-      'issues.list': async ({ query }) => this.tracker.search(query),
+      'issues.list': async ({ roomId, query }) => (await this.trackerFor(roomId)).search(query),
       'linear.issues': async ({ filter }) => listIssues(await this.linearKey(), filter, this.linearFetch),
       'linear.issue': async ({ id }) => getIssue(await this.linearKey(), id, this.linearFetch),
       'linear.scope': async () => getScope(await this.linearKey(), this.linearFetch),

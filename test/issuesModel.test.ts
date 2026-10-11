@@ -89,6 +89,12 @@ describe('linked workspaces', () => {
     expect(linkedWorkspaces('K-1', list).map((w) => w.id)).toEqual(['pr', 'new', 'old'])
   })
 
+  it('links a workspace whose source names its tracker as before (KERNEL-462)', () => {
+    const list = [ws('tagged', { source: { kind: 'issue', id: 'K-1', title: 'T', tracker: 'linear' } }), ws('github', { source: { kind: 'issue', id: '#41', title: 'T', tracker: 'github' } })]
+    expect(linkedWorkspaces('K-1', list).map((w) => w.id)).toEqual(['tagged'])
+    expect(linkedWorkspaces('#41', list).map((w) => w.id)).toEqual(['github'])
+  })
+
   it('says what a workspace is doing from its PR and running state', () => {
     expect(workspaceState(ws('a', { prState: 'open', prNumber: 41 }), false)).toBe('PR open')
     expect(workspaceState(ws('a', { prState: 'open', prNumber: 41 }), false, true)).toBe('PR #41 open')

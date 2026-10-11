@@ -40,7 +40,8 @@ export class Workspaces extends Feature {
 
   /** A workspace for the room's work: `cutWorkspace` makes it, then `setUpWorkspace` copies files, runs setup and sends the brief. */
   async createWorkspace(roomId: string, o: Omit<CutWorkspace, 'lead'>): Promise<Workspace> {
-    const { ws, room, repo, chat } = await this.cutWorkspace(roomId, o)
+    // An issue picked in New workspace comes without its tracker, which the room's tells (KERNEL-462).
+    const { ws, room, repo, chat } = await this.cutWorkspace(roomId, { ...o, source: await this.k.integrations.trackedSource(roomId, o.source) })
     // A brief from the Lead's hand-off is the Lead's message in the teammate's chat, not the user's (KERNEL-116).
     return this.setUpWorkspace(ws, room, repo, chat, { brief: messageOf(o.prompt, o.parts), prompt: o.prompt, from: o.leadChatId ? 'lead' : undefined, leadChatId: o.leadChatId })
   }
@@ -98,7 +99,7 @@ export class Workspaces extends Feature {
         const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
-        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(issue.id) : [])
+        const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed && !o.lead ? await this.k.integrations.issueLabels(roomId, issue.id) : [])
         const wanted = asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
           : o.lead ? branchName(repo.workspace.leadBranchPattern || s.workspace.leadBranchPattern, { slug: shortSlug(title || 'chat'), lead: agent.name })
           : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))

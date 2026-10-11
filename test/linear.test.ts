@@ -201,10 +201,13 @@ describe('Linear in the kernel', () => {
   const kernels: Kernel[] = []
   afterEach(async () => { vi.unstubAllEnvs(); for (const k of kernels.splice(0)) await k.stop() })
 
-  /** A Kernel on a temp repo with Rowan and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent. */
+  /**
+   * A Kernel on a temp repo with Rowan and Noor, whose Linear calls go to `answer`. Sessions only record what they are sent.
+   * The room names its Linear team, so with a token its tracker is Linear (KERNEL-462).
+   */
   async function kernel(answer: (c: Call) => unknown, o: { token?: string } = { token: 'lin_stored' }) {
     vi.stubEnv('LINEAR_API_KEY', '')
-    const repo = await tempRepo({ 'README.md': '# app\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/noor.md': NOOR })
+    const repo = await tempRepo({ 'README.md': '# app\n', '.kernel/settings.toml': '[linear]\nteam = "KERNEL"\n', '.claude/agents/rowan.md': ROWAN, '.claude/agents/noor.md': NOOR })
     const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
     const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
     await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' } }))
@@ -237,12 +240,12 @@ describe('Linear in the kernel', () => {
     : { issue: detail }
 
   it('reads the saved token first, then LINEAR_API_KEY, for every Linear channel', async () => {
-    const { k, calls } = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] }, issue: detail }))
+    const { k, room, calls } = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] }, issues: { nodes: [] }, issue: detail }))
     const h = k.handlers()
     await h['linear.scope']()
     await h['linear.issues']({ filter: { mine: false } })
     await h['linear.issue']({ id: 'KERNEL-83' })
-    await h['issues.list']({ roomId: 'x', query: '' })
+    await h['issues.list']({ roomId: room.id, query: '' })
     expect(calls.map((c) => c.auth)).toEqual(['lin_stored', 'lin_stored', 'lin_stored', 'lin_stored'])
     const env = await kernel(() => ({ teams: { nodes: [] }, projects: { nodes: [] }, cycles: { nodes: [] } }), {})
     vi.stubEnv('LINEAR_API_KEY', 'lin_env')
@@ -255,7 +258,7 @@ describe('Linear in the kernel', () => {
   it('create_workspace with issue links the workspace, names the branch from the key and moves the issue to In Progress', async () => {
     const { k, room, calls } = await kernel(answer)
     const { text, ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83' })
-    expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83' })
+    expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Issues screen', url: 'https://linear.app/cj/issue/KERNEL-83', tracker: 'linear' })
     // The Bug label makes it a fix, and Linear's own cj/kernel-83-issues-screen is not used (KERNEL-275).
     expect(ws.branch).toBe('fix/kernel-83-issues-screen')
     expect(text).toBe(`Created ${ws.id} on fix/kernel-83-issues-screen for noor.`)
@@ -308,7 +311,7 @@ describe('Linear in the kernel', () => {
     try {
       const { k, room } = await kernel(() => new Response('{}', { status: 500 }))
       const { ws } = await createWorkspace(k, room.id, { issue: 'KERNEL-83' })
-      expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Build the screen' })
+      expect(ws.source).toEqual({ kind: 'issue', id: 'KERNEL-83', title: 'Build the screen', tracker: 'linear' })
       expect(ws.branch).toBe('feat/kernel-83-build-screen')
       expect(ws.status).toBe('ready')
       await until(() => notes.length > 0)
@@ -321,7 +324,7 @@ describe('Linear in the kernel', () => {
   it('leaves a GitHub issue, and Linear without a token, alone', async () => {
     const github = await kernel(answer)
     const { ws } = await createWorkspace(github.k, github.room.id, { issue: '#41' })
-    expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Build the screen' })
+    expect(ws.source).toEqual({ kind: 'issue', id: '#41', title: 'Build the screen', tracker: 'github' })
     expect(ws.branch).toBe('feat/41-build-screen')
     const none = await kernel(answer, {})
     const made = await createWorkspace(none.k, none.room.id, { issue: 'KERNEL-83' })
