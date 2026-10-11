@@ -1,8 +1,10 @@
-import type { SharedFile } from '@shared/types'
+import type { Chat, SharedAnchor, SharedFile } from '@shared/types'
 import { bus } from '../bus'
 import type { ShareRequest } from '../services/sharedFiles'
+import { sendComment, type CommentImage } from '../services/sharedComments'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
+import { NEW_CHAT } from './shared'
 
 /** Files agents share, and their versions (KERNEL-302, KERNEL-329). */
 export class Sharing extends Feature {
@@ -31,6 +33,36 @@ export class Sharing extends Feature {
   /** A shared file's version and the path of Kernel's copy, for the preview host. Undefined when Kernel doesn't have it. */
   sharedFile(id: string, version: number) { return this.shared.get(id, version) }
 
+  /**
+   * A comment on a shared file, sent to the agent that shared it (KERNEL-310). It goes to the chat that shared the version
+   * while that chat is open, else the workspace's first open chat, else a new one, and the Lead's own files go to the
+   * Lead's chat. A busy chat or a workspace in setup queues it. Refused for an archived workspace and for a PDF.
+   */
+  async comment(o: { sharedId: string; version: number; note: string; anchor: SharedAnchor; image?: CommentImage }) {
+    const file = this.store.sharedFile(o.sharedId)
+    const version = file?.versions.find((v) => v.n === o.version)
+    if (!file || !version) throw new Error('That shared file or version is gone.')
+    if (file.kind === 'pdf') throw new Error('PDFs take no comments.')
+    if (!o.note.trim()) throw new Error('Write a comment first.')
+    const chat = await this.commentChat(file, version.chatId)
+    const r = await sendComment({ store: this.store, send: (id, parts) => this.sessions.send(id, parts), userSpoke: (id) => this.k.lead.userSpoke(id) }, chat.id, { file, ...o })
+    bus.push({ type: 'shared.comment', comment: r.comment })
+    return { chatId: chat.id, workspaceId: chat.workspaceId, queued: r.queued, ...(r.why ? { why: r.why } : {}) }
+  }
+
+  /** The chat a comment goes to, opened the way the Lead's message_agent opens one when the workspace has none. */
+  private async commentChat(file: SharedFile, chatId?: string): Promise<Chat> {
+    const ws = this.mustWs(file.workspaceId)
+    const was = chatId ? this.store.chat(chatId) : undefined
+    const open = was && !was.closed && was.kind !== 'terminal' && was.workspaceId === ws.id ? was : undefined
+    if (this.isLeadWorkspace(ws)) return open && ws.status !== 'archived' ? open : this.k.lead.leadChat(ws.roomId)
+    const agent = (await this.k.team.agents(ws.roomId)).find((a) => a.id === ws.agentId)
+    const name = agent?.name ?? ws.agentId
+    if (ws.status === 'archived') throw new Error(`${name}'s workspace is archived, so the comment can't reach ${name}. Restore it from History to send.`)
+    return open ?? this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
+      ?? this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
+  }
+
   handlers() {
     return {
       'shared.list': async ({ roomId, workspaceId, limit }) => this.store.sharedFiles({ roomId, workspaceId, limit }),
@@ -48,7 +80,9 @@ export class Sharing extends Feature {
         if (got.file.kind !== 'pdf') throw new Error('Only a PDF opens in Preview.')
         await this.o.openFile?.(got.path)
         return { ok: true }
-      }
+      },
+      'shared.comment': async (req) => this.comment(req),
+      'shared.comments': async ({ sharedId }) => this.store.sharedComments(sharedId)
     } satisfies Partial<Handlers>
   }
 }

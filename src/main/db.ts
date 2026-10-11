@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { migrate, refuseNewer } from './migrations'
-import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedFile, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, Notification, Overlap, Room, SharedComment, SharedFile, Task, Workspace } from '@shared/types'
 
 // One file, plain SQL. Rows keep a JSON column so the schema stays flat while the app is young. The schema lives in
 // migrations.ts, versioned with `PRAGMA user_version` (KERNEL-210).
@@ -104,6 +104,7 @@ export class Store {
       this.db.prepare('delete from notifications where room_id = ?').run(id)
       this.db.prepare('delete from tasks where room_id = ?').run(id)
       this.db.prepare('delete from overlaps where room_id = ?').run(id)
+      this.db.prepare('delete from shared_comments where shared_id in (select id from shared_files where room_id = ?)').run(id)
       this.db.prepare('delete from shared_files where room_id = ?').run(id)
       this.db.prepare('delete from rooms where id = ?').run(id)
     })()
@@ -122,6 +123,7 @@ export class Store {
       this.db.prepare(`delete from chat_items where chat_id in (select id from chats where workspace_id in (${mine}))`).run(json)
       this.db.prepare(`delete from chats where workspace_id in (${mine})`).run(json)
       this.db.prepare(`delete from workspaces where id in (${mine})`).run(json)
+      this.db.prepare(`delete from shared_comments where shared_id in (select id from shared_files where workspace_id in (${mine}))`).run(json)
       this.db.prepare(`delete from shared_files where workspace_id in (${mine})`).run(json)
       for (const table of ['approvals', 'activity', 'notifications']) this.db.prepare(`delete from ${table} where json_extract(data, '$.workspaceId') in (${mine})`).run(json)
     })()
@@ -234,6 +236,17 @@ export class Store {
     this.db.prepare('insert or replace into shared_files (id, room_id, workspace_id, source, data, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)')
       .run(f.id, f.roomId, f.workspaceId, f.source, JSON.stringify(f), f.createdAt, f.updatedAt)
     return f
+  }
+
+  // comments on shared files (KERNEL-310), oldest first
+  sharedComments(sharedId: string, version?: number): SharedComment[] {
+    return version === undefined
+      ? this.all('select data from shared_comments where shared_id = ? order by created_at, rowid', sharedId)
+      : this.all('select data from shared_comments where shared_id = ? and version = ? order by created_at, rowid', sharedId, version)
+  }
+  saveSharedComment(c: SharedComment) {
+    this.db.prepare('insert or replace into shared_comments (id, shared_id, version, data, created_at) values (?, ?, ?, ?, ?)').run(c.id, c.sharedId, c.version, JSON.stringify(c), c.at)
+    return c
   }
 
   // engine state that outlives a restart, one JSON value per key (usage limits, chats a limit stopped)

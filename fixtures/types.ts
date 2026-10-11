@@ -1,6 +1,6 @@
 import type {
   ActivityEvent, AgentDef, AgentStatus, AppSettings, AppUpdate, Approval, ChangedFile, Chat, ChatItem, Checkpoint, ClaudeAccount, DeletePreview,
-  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedFile,
+  FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk, IssueSummary, PrSummary, Notification, Overlap, PreflightCheck, PrInfo, QueuedMessage, RateLimit, RepoSummary, Room, RoomSettings, SharedComment, SharedFile,
   Integration, LinearIssueDetail, LinearScope, McpServer, Skill, Task, TerminalPreset, Workspace, WorkspaceGitStatus
 } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
@@ -87,6 +87,8 @@ export interface Fixture {
    * `still` is what `system.preview.open` returns in place of a live view, the thumbnail when unset (KERNEL-303).
    */
   sharedData?: Record<string, Record<number, { text?: string; dataUrl?: string; thumb?: string; still?: string }>>
+  /** Comments on shared files, every version (KERNEL-310). `shared.comments` filters them by shared id. */
+  sharedComments?: SharedComment[]
   ui: ForcedUi
   /**
    * Replayed once the renderer has booted, for state that only arrives as events (running chats, script output). A run
