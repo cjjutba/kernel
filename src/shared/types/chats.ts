@@ -59,6 +59,16 @@ export interface Thread {
   renamed?: boolean
 }
 
+/**
+ * What archiving a chat with Rowan would stop, one row per workspace, the chat's own last (KERNEL-405). A row with none of the
+ * four loses nothing. `pr` is the number of an open PR Kernel stops checking. `unknown` means Kernel couldn't read its git state.
+ */
+export interface ChatArchivePreview {
+  threadId: string
+  title: string
+  workspaces: { id: string; name: string; own: boolean; running: boolean; pr?: number; dirty: number; unpushed: number; unknown?: boolean }[]
+}
+
 /** Words in a note that open a workspace: "PR #164 by Noor" in "Waiting for PR #164 by Noor to merge." */
 export interface NoteRef { text: string; workspaceId: string }
 

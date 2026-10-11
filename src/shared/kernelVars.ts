@@ -6,7 +6,11 @@ export const KERNEL_VARS = {
   KERNEL_PORT: 'The first of the workspace\'s ten ports. Start a dev server on it.',
   KERNEL_WORKSPACE_ID: 'The workspace\'s id in Kernel.',
   KERNEL_WORKSPACE: 'The workspace\'s folder.',
-  KERNEL_ROOT_PATH: 'The room\'s main checkout.'
+  KERNEL_ROOT_PATH: 'The room\'s main checkout.',
+  KERNEL_WORKSPACE_NAME: 'The workspace\'s name, as the sidebar shows it.',
+  KERNEL_BRANCH: 'The branch the workspace started on.',
+  KERNEL_BASE_REF: 'The ref the workspace started from, like origin/main.',
+  KERNEL_DEFAULT_BRANCH: 'The room\'s default branch.'
 } as const
 
 export type KernelVar = keyof typeof KERNEL_VARS
@@ -20,7 +24,16 @@ export const SCRIPT_VARS = {
 /** A variable's name: a letter or `_`, then letters, digits and `_`. */
 export const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
 
-export const isKernelVar = (name: string): name is KernelVar => Object.hasOwn(KERNEL_VARS, name)
+/**
+ * What the setup script gets on top of `SCRIPT_VARS` (KERNEL-405). It writes NAME=value lines to the file, and the workspace's
+ * agents, run scripts and terminals get them once setup passes.
+ */
+export const SETUP_VARS = {
+  KERNEL_ENV: 'A file setup can write NAME=value lines to. The workspace\'s agents, run scripts and terminals get them.'
+} as const
+
+/** One of Kernel's names, which a variable the user or setup sets can't take. */
+export const isKernelVar = (name: string): boolean => Object.hasOwn(KERNEL_VARS, name) || Object.hasOwn(SETUP_VARS, name)
 
 /**
  * A name Kernel drops from app and room variables for chats and terminals, because it picks Claude Code's endpoint, account or

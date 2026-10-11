@@ -23,7 +23,15 @@ export interface AppSettings {
     sound: 'subtle' | 'chime' | 'none'; quietHours: { from: string; to: string } | null
   }
   usage: { warnBeforeWeekly: boolean; pauseNearLimit: boolean }
-  workspace: { mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean }
+  workspace: {
+    mode: WorkspaceMode; baseRef: string; remote: string; branchPattern: string; deleteBranchOnArchive: boolean; archiveOnMerge: boolean; setUpstream: boolean; baselineCurrentBranch: boolean; oneCurrentBranchPerRoom: boolean
+    /** The branch a new chat with Rowan starts on. `{lead}` is the Lead's name and `{slug}` the chat's title (KERNEL-405). */
+    leadBranchPattern: string
+    /** A chat with Rowan holds its first message until files.copy and setup pass (KERNEL-405). */
+    leadWaitForSetup: boolean
+    /** Archiving a chat with Rowan archives the workspaces it handed off too (KERNEL-405). */
+    archiveChatWorkspaces: boolean
+  }
   scripts: { setupOnCreate: boolean; runAfterSetup: boolean; archiveOnArchive: boolean
     /** Minutes a setup or archive script may run before Kernel stops it (KERNEL-216). Run scripts have no limit. */
     timeoutMinutes: number
