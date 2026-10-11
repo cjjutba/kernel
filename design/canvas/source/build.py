@@ -42,8 +42,14 @@ def room_icons(r, icons):
         assert m, room
         r=r[:m.start()]+m.group(1)+'overflow: hidden; '+m.group(2)+svg+m.group(3)+r[m.end():]
     return r
-def sidebar(active, empty=False, menu=None, fold=False, icons=None):
-    s=side_t.replace('%%ROOMS%%', EMPTY if empty else room_icons(rooms_folded if fold else rooms, icons or {}))
+def sidebar(active, empty=False, menu=None, fold=False, icons=None, rows_html=None):
+    base=side_t
+    if rows_html is not None:
+        # KERNEL-336: the room list scrolls in the app (sidebar.css), so a page with its own rows clips them in a box instead of pushing the footer off the window.
+        scroll='%%ROOMS%%\n\n<div style="flex: 1"></div>'
+        assert scroll in base
+        base=base.replace(scroll,'<div style="flex: 1; min-height: 0; overflow: hidden">%%ROOMS%%</div>')
+    s=base.replace('%%ROOMS%%', EMPTY if empty else rows_html if rows_html is not None else room_icons(rooms_folded if fold else rooms, icons or {}))
     s=s.replace('%%INBOXBADGE%%','' if empty else '<span style="font-size: 12px; color: #8a8f98">3</span>')
     for key,val in [('ROOMSMENU','rooms'),('ROOMMENU','room'),('ACCTMENU','acct')]:
         s=s.replace('%%'+key+'%%',' open' if menu==val else '')
@@ -59,9 +65,9 @@ def sidebar(active, empty=False, menu=None, fold=False, icons=None):
     return s
 out=[]
 HOOKS_DOWN='''<a href="CheckHooks.dc.html" style="display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 6px; margin-left: -6px; border-radius: 6px; color: #d0d6e0; text-decoration: none"><svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2.5v3M10 2.5v3M4.5 5.5h7V8a3.5 3.5 0 0 1-7 0ZM8 11.5V14"></path></svg>Hooks down<span style="margin-left: 4px; color: #f7f8f8; text-decoration: underline">Check hooks</span></a>'''
-def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False, icons=None):
+def emit(name, t, a, empty=False, menu=None, rail=False, light=False, update=False, hooks_down=False, fold=False, icons=None, rows_html=None):
     t=t.replace('<!--HELMET-->',helmet)
-    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons))
+    if '<!--SIDEBAR-->' in t: t=t.replace('<!--SIDEBAR-->',RAIL if rail else sidebar(a,empty,menu,fold,icons,rows_html))
     t=t.replace('<!--FOOTER-->',foot_t.replace('%%ASKOPEN%%',' open' if menu=='ask' else '').replace('%%UPDATEPILL%%', PILL if update else '').replace('%%HOOKS%%', HOOKS_DOWN if hooks_down else '<span></span>'))
     assert '<!--' not in t and '%%' not in t, (name, t[t.find('%%')-80:t.find('%%')+40])
     assert 'Agent Office' not in t, name
@@ -258,6 +264,209 @@ for n,pg in [
     ('SettingsRoomIcon','r-icon'),
 ]:
     emit(n, se.replace('%%PAGE%%',pg), None)
+# KERNEL-336: grouped chats. A chat is a sidebar row and its tabs are conversations inside it. KERNEL-338 builds the first eleven screens, KERNEL-339 the last two.
+# The rows are cut from _rooms.html, so they stay in step with the rest of the canvas. Nothing here changes a page built above.
+import json
+def gsub(s, a, b):
+    assert a in s, 'Template changed, missing: '+a[:80]
+    return s.replace(a,b)
+rl=rooms.split('\n')
+g_first=next(i for i,l in enumerate(rl) if l.startswith('<a href="WorkspaceLead.dc.html"%%leadC%%'))
+g_b=next(i for i,l in enumerate(rl) if '>Client B</span>' in l)-1
+g_head=rl[:g_first]; g_tail=rl[g_b:]
+def g_line(needle): return next(l for l in rl if needle in l)
+def g_svg(l): return re.search(r'<svg[\s\S]*?</svg>', l).group(0)
+G_SPIN=re.search(r'<span aria-hidden="true" style="width: 16px; height: 16px; flex-shrink: 0;[\s\S]*?</span></span>', g_line('aria-label="Invoice table and empty states, Working"')).group(0)
+G_MONO="font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px"
+G_ICON={
+    'chat': lambda on: g_svg(g_line('aria-label="Client portal login"')).replace('stroke="#8a8f98"','stroke="%s"'%('#d0d6e0' if on else '#8a8f98')),
+    'ask': lambda on: g_svg(g_line('aria-label="invoice-schema, Needs you"')),
+    'spin': lambda on: G_SPIN,
+    'branch': lambda on: g_svg(g_line('>invoice-table<')).replace('stroke="%%wsS%%"','stroke="%s"'%('#d0d6e0' if on else '#8a8f98')),
+    'pr': lambda on: g_svg(g_line('aria-label="org-invites, pull request open"')),
+}
+G_WORD={'chat':'', 'ask':', Needs you', 'spin':', Working'}
+def g_row(label, aria, icon, right, pad, on, hover=False, title=False, href='Workspace.dc.html'):
+    bg='background: #1c1d21; color: #f7f8f8;' if on else 'background: #141518; color: #d0d6e0;' if hover else 'color: #d0d6e0;'
+    return ('<a href="%s"%s class="row" aria-label="%s"%s style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px 0 %dpx; border-radius: 6px; text-decoration: none; %s">%s<span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">%s</span>%s</a>'
+        %(href, ' aria-current="page"' if on else '', aria, ' title="%s"'%label if title else '', pad, bg, icon, label, right))
+def g_ws(w, pad, on):
+    if w.get('pr'): right='<span style="%s; color: #8a8f98">%s</span>'%(G_MONO, w['pr'])
+    else:
+        n,d=w['stat']
+        right='<span style="%s"><span style="color: #4cb782">+%d</span>%s</span>'%(G_MONO, n, ' <span style="color: #eb5757">-%d</span>'%d if d else '')
+    return g_row(w['name'], w['name']+(', pull request open' if w.get('pr') else ''), G_ICON[w['icon']](on), right, pad, on)
+G_W={
+    'renderer':{'name':'invoice-pdf-renderer','icon':'branch','stat':(188,0)},
+    'button':{'name':'invoice-pdf-button','icon':'pr','pr':'#43'},
+    'tests':{'name':'invoice-pdf-tests','icon':'branch','stat':(138,9)},
+    'table':{'name':'invoice-table','icon':'branch','stat':(412,38)},
+    'schema':{'name':'invoice-schema','icon':'branch','stat':(54,6)},
+    'org':{'name':'org-invites','icon':'pr','pr':'#41'},
+}
+G_TABS={'a1':'Export invoices as PDF','a2':"How is Kai's PR going?",'a3':'One PDF per client','b1':'Invoice table and empty states','b2':'Empty state copy','c1':'Client portal login','c2':'Fix the login redirect','d1':'Seed realistic demo data','n2':'Add CSV export','n3':'New tab','q1':"What's the status of T-15? Who is blocked?",'q2':'Which tests cover the PDF fonts?'}
+G_CHATS={'a':('Export invoices as PDF',['renderer','button','tests']),'b':('Invoice table and empty states',['table','schema']),'c':('Client portal login',[]),'d':('Seed realistic demo data',[]),'e':('Add CSV export',[])}
+# One row per chat, then the workspaces its tabs handed off, then the unowned ones. glyph: chat id -> 'spin' | 'ask'. on: a chat id or a workspace key. hover: a chat id.
+def g_rows(chats=('a','b','c','d'), glyph=None, on=None, hover=None, unowned=('org',)):
+    items=[]; ids=[]
+    for c in chats:
+        title,wss=G_CHATS[c]; gl=(glyph or {}).get(c,'chat')
+        items.append(g_row(title, title+G_WORD[gl], G_ICON[gl](on==c), '', 20, on==c, hover==c, True, 'WorkspaceLead.dc.html')); ids.append(c)
+        for k in wss: items.append(g_ws(G_W[k],32,on==k)); ids.append(k)
+    for k in unowned: items.append(g_ws(G_W[k],20,on==k)); ids.append(k)
+    return '\n'.join(g_head+items+g_tail), ids
+# The first row under the Client A header sits 290 + 31px from the top: the same 30px row and 1px gap the template draws.
+def g_top(ids, k): return 290+31*(ids.index(k)+1)
+def g_tab(i, **x): return dict(id=i, kind='chat', title=G_TABS[i], **x)
+G_FILE={'id':'f1','kind':'file','title':'table.tsx'}
+def U(t): return {'kind':'user','parts':[{'t':t}]}
+G_STEPS=['T-15a PDF renderer with embedded fonts · Noor','T-15b Download PDF in the row actions · Kai','T-15c Snapshot tests for three invoice types · Ivy','T-15d Review each PR as it lands · Theo']
+G_PLAN=[U('Add PDF export to invoices. Spec first.'),
+    {'kind':'thinking','text':'Renderer, button, tests and review can run in parallel.'},
+    {'kind':'tool','text':'Read the invoices module','cmd':'cat src/app/invoices/page.tsx'},
+    {'kind':'tool','text':'Write the plan','cmd':'cat > plans/t-15-invoice-pdf.md'},
+    {'kind':'ai','text':'I split PDF export into four tasks that can run in parallel.'},
+    {'kind':'card','title':'Plan for T-15','sub':'Approved by you at 10:12','steps':G_STEPS},
+    {'kind':'ai','text':'Handed off. Noor has the renderer, Kai has the button and Ivy has the tests. Theo reviews each PR as it lands.'}]
+G_ASK1=[U("What's the status of T-15? Who is blocked?"),
+    {'kind':'tool','text':"List this chat's workspaces",'cmd':'kernel workspaces'},
+    {'kind':'ai','text':"Nobody is blocked. Noor is still on the renderer, Kai's PR is open and Ivy waits on the renderer for the fixtures."},
+    {'kind':'meta','text':'6s · 10:49'}]
+G_ASK2=[U('Which tests cover the PDF fonts?'),
+    {'kind':'thinking','text':'Ivy owns the snapshot tests. I should check what they assert.'},
+    {'kind':'tool','text':'Search the tests','cmd':'rg -n "font" tests'},
+    {'kind':'ai','text':"Ivy's snapshot tests in invoice-pdf.spec.ts check the embedded fonts for all three invoice types. Noor's renderer has no unit test of its own yet."},
+    {'kind':'meta','text':'8s · 10:52'}]
+G_SHARED=[U("How is Kai's PR going?"),
+    {'kind':'tool','text':"List this chat's workspaces",'cmd':'kernel workspaces'},
+    {'kind':'tool','text':'Read the approved plan','cmd':'cat plans/t-15-invoice-pdf.md'},
+    {'kind':'ai','text':"Kai's PR is open as #43 on invoice-pdf-button. Checks pass and Theo is reviewing it. Here is where your other workspaces in this chat stand."},
+    {'kind':'card','title':'Your workspaces in this chat','code':['invoice-pdf-renderer  Noor  working','invoice-pdf-button    Kai   PR #43 open','invoice-pdf-tests     Ivy   waiting on the renderer']},
+    {'kind':'card','title':'From the plan you approved in the first tab','steps':G_STEPS[:3]},
+    {'kind':'meta','text':'11s · 10:56'}]
+G_TABLE=[U('Build the invoice table with sorting, plus the empty, loading and error states.'),
+    {'kind':'thinking','text':'The table and the schema change are independent. Kai and Noor can start together.'},
+    {'kind':'tool','text':'Write the plan','cmd':'cat > plans/t-14-invoice-table.md'},
+    {'kind':'ai','text':'Kai has the table and its states. Noor has the schema change the table needs. I will tell you when either opens a PR.'},
+    {'kind':'tool','text':'Check on Kai and Noor','cmd':'kernel workspaces'}]
+G_NEW=[U('Add CSV export next to the PDF one. Spec first.'),
+    {'kind':'thinking','text':'PDF export already lives in the row actions. CSV can sit in the same menu.'},
+    {'kind':'tool','text':'Read the invoices module','cmd':'cat src/app/invoices/page.tsx'}]
+# The workspace is the room's one Lead workspace (D-139), so every Lead screen draws the same header and the same panel.
+G_NO_CHANGES="v.hasChanges = false; v.noChanges = true; v.rtabs[1].count = '';"
+G_ICONS={'plan':'<rect x="3" y="2.5" width="10" height="11" rx="2"></rect><path d="M5.5 6h5M5.5 8.5h5M5.5 11h3"></path>',
+    'team':'<circle cx="6" cy="6" r="2.2"></circle><path d="M2.5 13c.4-2 1.8-3 3.5-3s3.1 1 3.5 3"></path><path d="M10.5 4.2a2 2 0 0 1 0 3.6M11.5 10.2c1 .4 1.7 1.3 2 2.8"></path>',
+    'pr':'<circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path>'}
+# The new tab state is KERNEL-274's NewChat with the word "tab": Rowan's title, subtitle and three suggestions. The centered composer is not built.
+G_SUGGEST=''.join('<button type="button" style="display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border: 1px solid #23252a; border-radius: 8px; background: transparent; color: #d0d6e0; font-family: inherit; font-size: 12.5px; cursor: pointer"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="#8a8f98" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">%s</svg>%s</button>'%(G_ICONS[k],l) for k,l in [('plan','Plan the next issues from Linear'),('team','Who is blocked right now?'),('pr','Review the open pull requests')])
+# The Team update card the way KERNEL-274 draws it (TeamUpdate.png), plus the line that says which tab the update was meant for.
+G_UPDATE='''<sc-if value="{{ m.isUpdate }}" hint-placeholder-val="{{ false }}"><section aria-label="Team update from Kernel" style="border-radius: 10px; border: 1px solid #23252a; overflow: hidden">
+<div style="display: flex; align-items: center; gap: 6px; padding: 9px 16px; border-bottom: 1px solid #1a1b1e; font-size: 12px"><span style="font-weight: 500; color: #8a8f98">Team update</span><span style="color: #62666d">from Kernel</span></div>
+<div style="padding: 10px 16px 0; font-size: 12px; color: #8a8f98">From "Export invoices as PDF", a tab you closed</div>
+<div style="padding: 9px 16px 14px">
+<div style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><span style="flex-shrink: 0; font-size: 13px; font-weight: 500; color: #f7f8f8">Kai</span><span style="flex-shrink: 0; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11.5px; color: #62666d">T-15b</span><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #d0d6e0">Download PDF in the row actions</span><a href="Workspace.dc.html" aria-label="Open Kai's workspace for T-15b" style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #8a8f98; text-decoration: none">Open<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h6v6M12 4l-7 7"></path></svg></a></div>
+<div style="margin-top: 3px; font-size: 12.5px; color: #8a8f98">Finished a turn<span style="margin: 0 6px; color: #62666d">·</span>Opened PR #43</div>
+<p style="margin: 9px 0 0; font-size: 13px; line-height: 1.55; color: #b7bcc4">PR #43 is ready to merge. Checks pass and Theo approved it.</p>
+</div></section></sc-if>
+'''
+def g_patch(t, js):
+    end=t.rindex('</script>')
+    return t[:end]+js+t[end:]
+def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
+    t=gsub(ws.replace('%%SCENARIO%%','lead'), 'width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;', 'position: relative; width: 1440px; height: 900px; box-sizing: border-box; display: flex; overflow: hidden;')
+    # The canvas row never shrinks its tabs, but the app does (workspace.css: .ws-tab has min-width 0 and an ellipsis).
+    t=gsub(t,'height: 40px; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ t.line }};','height: 40px; min-width: 0; max-width: 220px; padding: 0 12px; border: 0; border-bottom: 2px solid {{ t.line }};')
+    t=gsub(t,'<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 4a1.5','<svg style="flex-shrink: 0" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M2.5 4a1.5')
+    t=gsub(t,'style="align-self: center; margin-left: -8px; width: 22px; height: 22px;','style="flex-shrink: 0; align-self: center; margin-left: -8px; width: 22px; height: 22px;')
+    # The + button's menu hangs off the button, as in the app (ChatTabs.tsx), so it follows the tab row whatever the tab titles are.
+    m0=t.index('<sc-if value="{{ newMenu }}"'); m1=t.index('</sc-if>',m0)+len('</sc-if>')
+    menu=t[m0:m1].replace('left: {{ newMenuLeft }}; top: 38px;','left: 0; top: calc(100% + 4px);')
+    t=t[:m0]+t[m1:]
+    b0=t.index('<button type="button" onClick="{{ toggleNewMenu }}"'); b1=t.index('</button>',b0)+len('</button>')
+    btn=t[b0:b1].replace('margin-left: 4px; ','')
+    t=t[:b0]+'<span style="position: relative; flex-shrink: 0; align-self: center; margin-left: 4px; display: flex">'+btn+menu+'</span>'+t[b1:]
+    # KERNEL-335: a tab joins the chat you are in, so the copy says tab.
+    t=gsub(t,'<span style="flex: 1">New chat</span><span style="font-size: 12px; color: #8a8f98">⌘T</span>','<span style="flex: 1">New tab</span><span style="font-size: 12px; color: #8a8f98">⌘T</span>')
+    t=gsub(t,'New chat with {{ ag.name }}','New tab with {{ ag.name }}')
+    t=gsub(t,"label: 'Fork into new chat'","label: 'Fork into new tab'")
+    # The new tab state is KERNEL-274's NewChat with the word "tab": its title, subtitle and three suggestions. The centered composer is not built.
+    t=gsub(t,'<p style="margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.3px">New tab with','<p style="margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.2px">New tab with')
+    t=gsub(t,'<p style="margin: 0; color: #8a8f98">Same worktree and branch, fresh context.</p>','<p style="margin: 0; font-size: 13px; color: #8a8f98">Same worktree and branch, fresh context.</p>')
+    t=gsub(t,'gap: 8px; max-width: 520px; margin-top: 4px','gap: 8px; max-width: 680px; margin-top: 4px')
+    s0=t.index('<sc-for list="{{ suggestions }}"'); s1=t.index('</sc-for>',s0)+len('</sc-for>')
+    t=t[:s0]+G_SUGGEST+t[s1:]
+    if update:
+        t=gsub(t,"isUser: m.kind === 'user',","isUpdate: m.kind === 'update', isUser: m.kind === 'user',")
+        t=gsub(t,'<sc-if value="{{ m.isMeta }}"',G_UPDATE+'<sc-if value="{{ m.isMeta }}"')
+    if extra: t=gsub(t,'</div>\n</x-dc>',extra+'</div>\n</x-dc>')
+    S=dict(agent='rowan', model='opus', effort='high', plan=False, wsName='lead', badge='current branch · main', filesKey='rowan', tabs=tabs, tab=tab, chats=chats, right='changes')
+    S.update(state or {})
+    return g_patch(t, '''
+var __S = %s;
+var __seed = Component.prototype.seed;
+Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, __S); return s; };
+var __rv = Component.prototype.renderVals;
+Component.prototype.renderVals = function () { var v = __rv.call(this); %s return v; };
+'''%(json.dumps(S), post))
+def g_ws_page(name, rows, **kw):
+    emit(name, g_workspace(**kw), None, rows_html=rows[0])
+A3=['a1','a2','a3']
+a_rows=g_rows(on='a', glyph={'b':'spin'})
+def a_tabs(extra=()): return [g_tab(i) for i in A3]+list(extra)
+# 1. ⌘N starts a chat: one new row with one tab, Rowan already working.
+r=g_rows(chats=('a','b','c','d','e'), glyph={'b':'spin','e':'spin'}, on='e')
+g_ws_page('GroupedNewChat', r, tabs=[g_tab('n2')], tab='n2', chats={'n2':G_NEW}, state={'plan':True,'running':True,'secs':9}, post=G_NO_CHANGES)
+# 2. The tab row shows only this chat's tabs.
+g_ws_page('GroupedTabs', a_rows, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN,'a2':G_SHARED,'a3':[]}, post=G_NO_CHANGES)
+# 3. Another chat swaps the tabs. The open file is the room's, not a chat's, so it stays at the end of the row.
+r=g_rows(on='b', glyph={'b':'spin'})
+g_ws_page('GroupedSwitchChat', r, tabs=[g_tab('b1'),g_tab('b2'),G_FILE], tab='b1', chats={'b1':G_TABLE,'b2':[]}, state={'running':True,'secs':38,'right':'files'}, post=G_NO_CHANGES+" v.tree.forEach(function (f) { f.st = ''; f.color = '#d0d6e0'; });")
+# 4. + adds a tab to this chat.
+g_ws_page('GroupedNewTabMenu', a_rows, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN}, state={'newMenu':True}, post=G_NO_CHANGES)
+# 5. A second tab sees the chat's workspaces and plan.
+g_ws_page('GroupedSharedWork', a_rows, tabs=a_tabs(), tab='a2', chats={'a2':G_SHARED}, post=G_NO_CHANGES)
+# 6, 7. The context-full banner adds a tab to the same chat.
+def g_banner(sub): return {'kind':'context','title':'Context is almost full','sub':'Compacting keeps a summary and frees space. '+sub,'actions':[{'id':'newchat','label':'New tab'},{'id':'compact','label':'Compact now','primary':True}]}
+g_ws_page('GroupedContextFull', a_rows, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN}, state={'banner':g_banner('A new tab starts clean in this chat.'),'ctx':92}, post=G_NO_CHANGES)
+g_ws_page('GroupedContextFullAfter', a_rows, tabs=a_tabs([g_tab('n3',empty=True)]), tab='n3', chats={'n3':[]}, post=G_NO_CHANGES)
+# 8. The tab that handed off was closed, so the update lands in another tab of the chat.
+g_ws_page('GroupedUpdateRouted', a_rows, tabs=[g_tab('a2'),g_tab('a3')], tab='a2', update=True, post=G_NO_CHANGES,
+    chats={'a2':[U("How is Kai's PR going?"),{'kind':'ai','text':"Kai's PR is open as #43 on invoice-pdf-button. Checks are still running."},{'kind':'update'}]})
+# 9. A chat row shows its strongest tab status, and its hover card names the tab that needs you.
+r=g_rows(glyph={'b':'spin','c':'ask'}, on='a', hover='c')
+hover='''<div role="tooltip" style="position: absolute; z-index: 60; left: 243px; top: %dpx; width: 300px; box-sizing: border-box; display: flex; flex-direction: column; gap: 4px; padding: 11px 14px 10px; border-radius: 10px; border: 1px solid #2a2b30; background: #18191b">
+<div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: #8a8f98"><span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">Client A · Chat with Rowan</span><span style="flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid rgba(242, 197, 92, 0.3); background: #40330f; color: #f2c55c; font-size: 11.5px; font-weight: 500">%s Needs you</span></div>
+<div style="font-size: 13px; font-weight: 500; color: #f7f8f8">Client portal login</div>
+<div style="font-size: 12px; color: #b7bcc4">Fix the login redirect asks whether to keep Google sign in.</div>
+<div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11.5px; color: #8a8f98"><span style="flex: 1">2 tabs · 1 needs you</span><span>4m</span></div>
+</div>'''%(g_top(r[1],'c')-6, re.sub(r'width="\d+" height="\d+"','width="12" height="12"',G_ICON['ask'](False),count=1).replace('stroke="#f7f8f8"','stroke="currentColor"'))
+g_ws_page('GroupedRowStatus', r, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN}, extra=hover, post=G_NO_CHANGES)
+# 10, 11. Closing the last tab closes the chat. Its workspaces stay as unowned rows.
+r=g_rows(on='b', glyph={'b':'spin'})
+t=rd('Confirm.dc.html').replace('%%KIND%%','archive')
+t=g_patch(t,'''
+var __rv = Component.prototype.renderVals;
+Component.prototype.renderVals = function () { var v = __rv.call(this); v.under = %s; v.title = 'Close this chat?'; v.body = %s; v.facts = %s; v.hasFacts = true; v.hasOption = false; v.hasAlt = false; v.confirmLabel = 'Close chat'; return v; };
+'''%(json.dumps('Invoice table and empty states'), json.dumps('Rowan is still working in this chat. Closing its last tab stops that turn and closes the chat. The 2 workspaces it started stay in the sidebar.'), json.dumps(['Invoice table and empty states','1 tab · Rowan is working'])))
+emit('GroupedCloseLastTab', t, None, rows_html=r[0])
+r=g_rows(chats=('a','c','d'), unowned=('table','schema','org'), on='a')
+g_ws_page('GroupedCloseLastTabAfter', r, tabs=a_tabs(), tab='a1', chats={'a1':G_PLAN}, post=G_NO_CHANGES)
+# 12. Ask Rowan opens its answers as tabs of the chat you are in. The sidebar doesn't change.
+g_ws_page('GroupedAskRowan', a_rows, tabs=a_tabs([g_tab('q1'),g_tab('q2')]), tab='q2', chats={'q1':G_ASK1,'q2':G_ASK2}, post=G_NO_CHANGES)
+# 13. The palette lists the room's chats and says New tab for ⌘T.
+def p_it(glyph,label,keys=(),hint=''): return {'glyph':glyph,'label':label,'href':'Workspace.dc.html','keys':list(keys),'hint':hint,'hasHint':bool(hint)}
+GP=[('Suggested',[p_it('+','New chat in Client A',['⌘','N']),p_it('+','New tab',['⌘','T']),p_it('>','Big terminal tab',['⌘','⇧','T'])]),
+   ('Chats in Client A',[p_it('◇','Export invoices as PDF',hint='3 tabs'),p_it('◇','Invoice table and empty states',hint='2 tabs'),p_it('◇','Client portal login',hint='2 tabs'),p_it('◇','Seed realistic demo data',hint='1 tab')]),
+   ('Go to',[p_it('◇','Inbox',['G','I']),p_it('◇','History')]),
+   ('Rooms',[p_it('A','Client A'),p_it('B','Client B')])]
+pg=[{'title':n,'items':[dict(i,bg='#1f2024' if (n=='Suggested' and k==0) else 'transparent') for k,i in enumerate(its)]} for n,its in GP]
+t=rd('CommandPalette.dc.html').replace('%%SHARED%%','off')
+t=gsub(t,'<h1 style="margin: 0; font-size: 13px; font-weight: 500">invoice-table</h1>','<h1 style="margin: 0; font-size: 13px; font-weight: 500">lead</h1>')
+t=g_patch(t,'''
+var __rv = Component.prototype.renderVals;
+Component.prototype.renderVals = function () { var v = __rv.call(this); v.groups = %s; v.empty = false; return v; };
+'''%json.dumps(pg))
+emit('GroupedPalette', t, 'search', rows_html=a_rows[0])
 print(len(out))
 if P==SANDBOX: open('/home/claude/built.txt','w').write('\n'.join(out))
 p=P+'InboxEmpty.dc.html'; t=open(p).read()
