@@ -8,11 +8,13 @@ import type { Workspace } from './types'
 /** A target's work merged. Only its PR state counts: Continue keeps `mergedAt` from the PR before. */
 export const isMerged = (w: Workspace | undefined) => w?.prState === 'merged'
 
-/** "PR #164 by Noor". Before it has a PR, "KERNEL-12 by Noor", or "Noor's work" with no issue. */
+/** "PR #164 by Noor". Before it has a PR, "KERNEL-12 by Noor", then `"Fix the header" by Noor`, or "Noor's work" with no title. */
 export function waitLabel(target: Workspace, name: string): string {
   if (target.prNumber) return `PR #${target.prNumber} by ${name}`
-  // Two of one teammate's workspaces read the same as "Noor's work", so the issue says which.
-  return target.source?.kind === 'issue' ? `${target.source.id} by ${name}` : `${name}'s work`
+  // Two of one teammate's workspaces read the same as "Noor's work", so the issue or the title says which.
+  if (target.source?.kind === 'issue') return `${target.source.id} by ${name}`
+  const title = target.title?.trim()
+  return title ? `"${title}" by ${name}` : `${name}'s work`
 }
 
 /** Labels joined for a sentence: "PR #164 by Noor and PR #170 by Ivy". */

@@ -325,7 +325,7 @@ export class Lead extends Feature {
    * The Lead's `message_agent` (KERNEL-118). It sends only into an open workspace of this room that has its folder and
    * isn't the Lead's own, opening a chat there when none is open, and says what really happened: sent, waiting for the
    * teammate's turn, for setup, for a paused room, for the connection or for a free slot. A message sent while setup
-   * runs goes after the brief.
+   * runs goes with the brief.
    */
   private async messageWorkspace(roomId: string, workspaceId: string, text: string, leadChatId?: string): Promise<{ ok: boolean; sent: boolean; note: string }> {
     const refuse = (note: string) => ({ ok: false, sent: false, note })
@@ -345,16 +345,16 @@ export class Lead extends Feature {
     if (auto) this.nudges.add(ws.id, turn)
     const parts: ChatPart[] = [{ type: 'text', text }]
     const held = this.k.setup.setups.get(ws.id)
-    if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message waits behind the brief.` } }
+    if (held) { held.later.push(parts); this.k.setup.saveSetups(); return { ok: true, sent: false, note: `${name}'s workspace is still setting up, so the message goes out with the brief.` } }
     let chat = this.chatTabs(ws.id).find((c) => c.kind !== 'terminal')
     const opened = !chat
     if (!chat) chat = this.saveChat(this.newChat(ws.id, NEW_CHAT, { model: agent ? this.k.team.modelFor(agent) : this.settings.models.engineers, effort: agent?.effort ?? this.settings.models.effort, plan: false }))
     const { queued, why } = await this.sessions.send(chat.id, parts, { from: 'lead' })
     if (!queued) return { ok: true, sent: true, note: opened ? `Opened a new chat in ${name}'s workspace and sent it.` : 'Sent.' }
     const note = why === 'running' ? `${name} is mid-turn, so the message goes out when that turn ends.`
-      : why === 'merge' ? `${name} waits for ${this.k.waits.waitLabelOf(this.mustWs(ws.id))} to merge, so this goes out after the brief. To start ${name} now, call wait_for_merge with an empty list.`
-      : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this room's scripts, so the message waits behind the brief.`
-      : why === 'setup' ? (this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message waits behind the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
+      : why === 'merge' ? `${name} waits for ${this.k.waits.waitLabelOf(this.mustWs(ws.id))} to merge, so this goes out with the brief. To start ${name} now, call wait_for_merge with an empty list.`
+      : why === 'setup' && ws.status === 'trust' ? `${name}'s workspace waits for the user to trust this room's scripts, so the message goes out with the brief.`
+      : why === 'setup' ? (this.k.setup.settingUp.has(ws.id) ? `${name}'s workspace is setting up again, so the message goes out with the brief.` : `Setup failed in ${name}'s workspace, so the message waits until the user clicks Run again.`)
       // The same words as create_workspace's brief (KERNEL-272).
       : queuedNote(why, { name }) ?? 'The message waits in the queue.'
     return { ok: true, sent: false, note: opened ? `Opened a new chat in ${name}'s workspace. ${note}` : note }

@@ -306,17 +306,20 @@ describe('message_agent says what really happened (KERNEL-118)', () => {
     expect(sent.at(-1)).toMatchObject({ chatId: open[0].id, text: 'Rebase', from: 'lead' })
   })
 
-  it('sends a message the Lead wrote while setup ran after the brief, and holds both when setup fails', async () => {
+  it('sends a message the Lead wrote while setup ran with the brief, and holds both when setup fails', async () => {
     for (const [script, fails] of [['sleep 0.4', false], ['sleep 0.4 && false', true]] as const) {
-      const { k, room, first, call, sent } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
+      const { k, room, first, call } = await setup({ '.kernel/settings.toml': `[scripts]\nsetup = "${script}"\n` })
+      // The brief and the Lead's message come in one call, as the chat's first turn (KERNEL-393).
+      const sentAll: { chatId: string; messages: (string | undefined)[][] }[] = []
+      k.sessions.sendAll = async (chatId: string, messages: { parts: ChatPart[]; from?: string }[]) => { sentAll.push({ chatId, messages: messages.map((m) => [m.parts.map((p) => (p.type === 'text' ? p.text : '')).join(''), m.from]) }); return { queued: false } }
       const made = k.createWorkspace(room.id, { prompt: 'Build T-14', agentId: 'kai', title: 'Invoice table', leadChatId: first.id })
       const ws = await vi.waitFor(() => { const w = k.store.workspaces(room.id).find((x) => x.title === 'Invoice table'); if (!w) throw new Error('not yet'); return w })
       expect(ws.status).toBe('setup')
-      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Kai's workspace is still setting up, so the message waits behind the brief.")
+      expect(await call(first, 'message_agent', { workspace_id: ws.id, text: 'Use EmptyState' })).toBe("Kai's workspace is still setting up, so the message goes out with the brief.")
       await made
       const chat = k.store.chats(ws.id)[0]
       if (fails) expect(k.sessions.queued(chat.id).map((q) => [(q.parts[0] as { text: string }).text, q.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
-      else expect(sent.filter((x) => x.chatId === chat.id).map((x) => [x.text, x.from])).toEqual([['Build T-14', 'lead'], ['Use EmptyState', 'lead']])
+      else expect(sentAll.filter((x) => x.chatId === chat.id)).toEqual([{ chatId: chat.id, messages: [['Build T-14', 'lead'], ['Use EmptyState', 'lead']] }])
     }
   })
 })

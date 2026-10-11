@@ -11,7 +11,8 @@ export class Checkpoints extends Feature {
   /** Save the worktree after a turn, titled with the prompt that started the turn. */
   async checkpoint(ws: Workspace, chat: Chat) {
     const items = this.store.items(chat.id)
-    const user = [...items].reverse().find((i) => i.kind === 'user')
+    // A first turn that carried several messages is titled for the one that started it, the brief (KERNEL-393).
+    const user = this.sessions.turnRow(chat.id) ?? [...items].reverse().find((i) => i.kind === 'user')
     // A turn Kernel's team update started is titled for what it is, not for the update's first line (KERNEL-116).
     const text = user?.kind !== 'user' ? '' : isKernelUpdate(user) ? 'Team update' : user.parts.map((p) => (p.type === 'text' ? p.text : p.type === 'skill' ? `/${p.name}` : p.name)).join(' ')
     const c = await snapshot(ws, { chatId: chat.id, title: text || chat.title })

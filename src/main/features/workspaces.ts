@@ -154,7 +154,11 @@ export class Workspaces extends Feature {
       // A wait set while the brief was on its way is now a started teammate's (KERNEL-259).
       const late = this.mustWs(ws.id).waitsFor
       if (late?.held) this.updateWs(ws.id, { waitsFor: { ...late, held: false } })
-      await this.sessions.send(chat.id, parts, { from })
+      // The Lead's messages sent before the brief went out go in its first turn, after it (KERNEL-393). One that arrives while
+      // it is sent is still caught by `after`.
+      const later = this.k.setup.setups.get(ws.id)?.later.splice(0) ?? []
+      this.k.setup.saveSetups()
+      await this.sessions.sendAll(chat.id, [{ parts, from }, ...later.map((m) => ({ parts: m, from: 'lead' as const }))])
       await after((m) => this.sessions.send(chat.id, m, { from: 'lead' }))
     })
   }
