@@ -1,5 +1,5 @@
 /// <reference path="../src/preload/index.d.ts" />
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -180,10 +180,11 @@ describe('IPC contract', () => {
 describe('docs/SCREENS.md', () => {
   const rows = readFileSync('docs/SCREENS.md', 'utf8').split('\n')
     .map((l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()))
-    .filter((c) => c.length === 9 && c[0] !== 'Screen' && !c[0].startsWith('---'))
+    .filter((c) => c.length === 8 && c[0] !== 'Screen' && !c[0].startsWith('---'))
 
-  it('lists all 159 screens, each with a route and a component file', () => {
-    expect(rows).toHaveLength(159)
+  it('lists every PNG in design/screens once, each with a route and a component file', () => {
+    const pngs = readdirSync('design/screens').filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4))
+    expect(rows.map((r) => r[0]).sort()).toEqual(pngs.sort())
     for (const [screen, , , , , , route, component] of rows) {
       expect(route, screen).not.toBe('')
       expect(component, screen).toMatch(/^`[\w/.-]+\.(tsx|css)`(, `[\w/.-]+\.tsx`)*$/)
