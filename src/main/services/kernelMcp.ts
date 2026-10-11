@@ -1,6 +1,6 @@
 import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
-import type { AgentDef, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
+import type { AgentDef, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
 import { blockedWhy } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
@@ -35,8 +35,11 @@ export interface KernelToolDeps {
    * now rather than waiting in a queue; `note` says what happened.
    */
   messageWorkspace: (workspaceId: string, text: string) => Promise<{ ok: boolean; sent?: boolean; note: string }>
-  /** `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. */
-  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
+  /**
+   * `steps` and `agentFile` shape plan and hire cards; the hand-off links come from `onWorkspace`. `questions` carries a
+   * question's options with their descriptions, as AskUserQuestion's do (KERNEL-407).
+   */
+  askUser: (o: { kind: 'plan' | 'question' | 'agent'; title: string; detail?: string; options?: string[]; questions?: AskedQuestion[]; steps?: string[]; agentFile?: { path: string; text: string } }) => Promise<Decision | null>
   hireAgent: (o: { id: string; description: string; prompt: string; model?: string; tools?: string[]; role?: string }) => Promise<string>
   /** Archives with the user's Settings for the branch, as the sidebar does (KERNEL-93). */
   archiveWorkspace: (workspaceId: string) => Promise<void>
@@ -221,9 +224,13 @@ export function kernelTools(d: KernelToolDeps) {
       return text(`changes requested: ${decision.behavior === 'deny' ? decision.message ?? 'no details' : decision.text}`)
     }),
     tool('ask_user', 'Ask the user a short question, optionally with options. Waits for the answer.', {
-      question: z.string(), options: z.array(z.string()).optional()
+      question: z.string(),
+      options: z.array(z.union([z.string(), z.object({ label: z.string(), description: z.string().optional() })])).optional()
+        .describe('Each option: label is the answer in a few words, description says what it means or why. Say which one you recommend in its description, not its label')
     }, async ({ question, options }) => {
-      const decision = await d.askUser({ kind: 'question', title: question, options })
+      const asked = options?.map((o) => (typeof o === 'string' ? { label: o } : o))
+      const questions = asked && [{ question, options: asked }]
+      const decision = await d.askUser({ kind: 'question', title: question, options: asked?.map((o) => o.label), questions })
       if (!decision) return text('No answer yet.')
       return text(decision.behavior === 'answer' ? decision.text : decision.behavior)
     }),
