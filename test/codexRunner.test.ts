@@ -9,7 +9,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { HANDOFF_NOW, HANDOFF_REMINDER } from '../src/main/services/handoff'
+import { forProvider, HANDOFF_NOW, HANDOFF_REMINDER, kernelTool, LEAD_RULE, TEAMMATE_RULE } from '../src/main/services/handoff'
 import { SESSION_GONE_NOTE, Sessions } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { codexLimits, PLAN_APPROVED, planChanges, toCodexInput, unwrapShell } from '../src/main/services/providers/codex/runner'
@@ -266,15 +266,30 @@ describe('plan mode on Codex (KERNEL-406)', () => {
     await until(async () => (await t.sent('turn/start')).length === 3)
     await t.idle()
     const inputs = (await t.sent('turn/start')).map((m) => m.params.input[0].text)
-    expect(inputs.slice(1)).toEqual([HANDOFF_NOW, HANDOFF_REMINDER])
+    expect(inputs.slice(1)).toEqual([forProvider(HANDOFF_NOW, 'codex'), forProvider(HANDOFF_REMINDER, 'codex')])
+    expect(inputs[1]).toContain('kernel_create_workspace')
     await new Promise((r) => setTimeout(r, 100))
     expect(await t.sent('turn/start')).toHaveLength(3)
-    // The Lead's tool instructions ride in the thread's developer instructions.
-    expect((await t.sent('thread/start'))[0].params.developerInstructions).toContain('Lead tools.')
+    // The Lead's tool instructions ride in the thread's developer instructions, and Kernel's rules name its tools as Codex does.
+    const instructions = (await t.sent('thread/start'))[0].params.developerInstructions as string
+    expect(instructions).toContain('Lead tools.')
+    expect(instructions).toContain(forProvider(LEAD_RULE, 'codex'))
+    expect(instructions).toContain('kernel_request_plan_approval')
+    expect(instructions).not.toContain('mcp__kernel__')
   })
 })
 
 describe('Codex helpers (KERNEL-406)', () => {
+  it("names Kernel's tools the way each provider calls them, in rules and in tool results", async () => {
+    expect(kernelTool('claude', 'wait_for_merge')).toBe('mcp__kernel__wait_for_merge')
+    expect(kernelTool('codex', 'wait_for_merge')).toBe('kernel_wait_for_merge')
+    expect(forProvider(TEAMMATE_RULE, 'claude')).toBe(TEAMMATE_RULE)
+    expect(forProvider(TEAMMATE_RULE, 'codex')).toContain('call kernel_wait_for_merge and end your turn')
+    const tools = [tool('request_plan_approval', 'Ask, then call mcp__kernel__create_workspace.', {}, async () => ({ content: [{ type: 'text' as const, text: `approved. ${HANDOFF_NOW}` }] }))]
+    expect(toolSpecs(tools)[0].description).toBe('Ask, then call kernel_create_workspace.')
+    expect((await callTool(tools, 'kernel_request_plan_approval', {})).contentItems).toEqual([{ type: 'inputText', text: `approved. ${forProvider(HANDOFF_NOW, 'codex')}` }])
+  })
+
   it("takes Codex's shell wrapper off a command, so Kernel's rules see what the agent ran", () => {
     expect(unwrapShell('/bin/zsh -lc "git push origin main"')).toBe('git push origin main')
     expect(unwrapShell(`/bin/bash -lc 'echo '"'"'hi'"'"''`)).toBe("echo 'hi'")

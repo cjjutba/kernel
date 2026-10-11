@@ -9,9 +9,12 @@ import type { DynamicToolSpec } from './protocol/v2/DynamicToolSpec'
 /** What Codex calls one of Kernel's tools. Claude's name for it is `mcp__kernel__<tool>`. */
 export const CODEX_TOOL_PREFIX = 'kernel_'
 
+/** Text written for Claude names Kernel's tools `mcp__kernel__<tool>`. Codex reads them as `kernel_<tool>`. */
+const codexNames = (text: string) => text.replace(/mcp__kernel__/g, CODEX_TOOL_PREFIX)
+
 /** The dynamic tool specs for Kernel's tools, their input as JSON Schema. */
 export function toolSpecs(tools: SdkMcpToolDefinition<any>[]): DynamicToolSpec[] {
-  return tools.map((t) => ({ type: 'function' as const, name: `${CODEX_TOOL_PREFIX}${t.name}`, description: t.description, inputSchema: z.toJSONSchema(z.object(t.inputSchema)) as never }))
+  return tools.map((t) => ({ type: 'function' as const, name: `${CODEX_TOOL_PREFIX}${t.name}`, description: codexNames(t.description), inputSchema: z.toJSONSchema(z.object(t.inputSchema)) as never }))
 }
 
 /**
@@ -26,7 +29,8 @@ export async function callTool(tools: SdkMcpToolDefinition<any>[], name: string,
   if (!parsed.success) return fail(`The arguments for ${tool.name} are wrong: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`)
   try {
     const result = await tool.handler(parsed.data, {})
-    const items: DynamicToolCallResponse['contentItems'] = (result.content ?? []).flatMap((c: any): DynamicToolCallResponse['contentItems'] => c.type === 'text' ? [{ type: 'inputText', text: String(c.text) }]
+    // A result can name another tool, as request_plan_approval's "hand it off now" does.
+    const items: DynamicToolCallResponse['contentItems'] = (result.content ?? []).flatMap((c: any): DynamicToolCallResponse['contentItems'] => c.type === 'text' ? [{ type: 'inputText', text: codexNames(String(c.text)) }]
       : c.type === 'image' ? [{ type: 'inputImage', imageUrl: `data:${c.mimeType};base64,${c.data}` }]
       : [])
     return { contentItems: items.length ? items : [{ type: 'inputText', text: '' }], success: !result.isError }

@@ -11,7 +11,7 @@ import type { Store } from '../db'
 import { bus } from '../bus'
 import type { Approvals } from './approvals'
 import { blockingLimit, limitedModels, WINDOW_MODEL, type Failure } from './health'
-import { Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
+import { forProvider, Handoffs, HANDOFF_NOW, LEAD_RULE } from './handoff'
 import { missingServers } from './agentTools'
 import { revisedPlanFile, savePlan } from './plans'
 import type { AppSettings } from './settings'
@@ -984,7 +984,8 @@ export class Sessions {
     const prompt = agentPrompt(agent, ws, this.d.rulesFor?.(ws, agent))
     if (chatProvider(chat) === 'codex') {
       const c = this.d.codexFor?.(ws, agent, chat)
-      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: [prompt, c?.instructions].filter(Boolean).join('\n\n'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
+      // Kernel's rules name its tools as Claude sees them, so Codex reads them under its own names.
+      live.runner = new CodexRunner(host, { bin: c?.bin ?? '', home: c?.home, env, prompt: forProvider([prompt, c?.instructions].filter(Boolean).join('\n\n'), 'codex'), tools: c?.tools ?? [], personality: c?.personality ?? 'pragmatic' })
     } else {
       live.runner = new ClaudeRunner(host, { mcpServers: this.d.mcpFor(ws, agent, chat), disabled: this.d.disabledFor?.(ws), prompt, env, root })
     }
@@ -1052,8 +1053,8 @@ export class Sessions {
       get interrupted() { return live.interrupted },
       ask: (a, o) => this.ask(chatId, ws, agent, a, o),
       requestPlan: (plan, o) => this.requestPlan(chatId, ws, agent, plan, o),
-      handoffAfterPlan: () => (this.handoffs.due(chatId) ? HANDOFF_NOW : undefined),
-      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t },
+      handoffAfterPlan: () => (this.handoffs.due(chatId) ? forProvider(HANDOFF_NOW, chatProvider(this.mustChat(chatId))) : undefined),
+      handoffAtStop: () => { const t = this.handoffs.reminder(chatId); if (t) bus.track({ name: 'handoff.reminder' }); return t && forProvider(t, chatProvider(this.mustChat(chatId))) },
       followUp: (text) => { void this.send(chatId, [{ type: 'text', text }], { from: 'kernel' }).catch(() => undefined) }
     }
   }
