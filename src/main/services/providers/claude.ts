@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess } from '@anthropic-ai/claude-agent-sdk'
+import { query, type CanUseTool, type EffortLevel, type HookCallback, type HookCallbackMatcher, type HookEvent, type Options, type PermissionResult, type PreToolUseHookInput, type Query, type SDKControlGetUsageResponse, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage, type SlashCommand, type SpawnedProcess, type SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk'
 import type { AskedQuestion, BuiltinCommand, Chat, ChatItem, ChatPart, Effort } from '@shared/types'
 import { MODELS } from '@shared/types'
 import type { HookPayload } from '@shared/hookSchemas'
@@ -13,7 +13,7 @@ import { IMAGE_DATA_URL } from '../plans'
 import { decide, guardVerdict, NETWORK_OFF, rulesOf, saveAlwaysAllow, type Verdict } from '../permissions'
 import { askedOption } from './questions'
 import { defined, type LimitPatch } from './limits'
-import type { Proc, Runner, RunnerHost } from './types'
+import type { Ask, Proc, Runner, RunnerHost } from './types'
 import { claudeExecutable, packagedClaude } from './binary'
 
 export { packagedClaude }
@@ -293,7 +293,7 @@ export class ClaudeRunner implements Runner {
       const result = toolName === 'ExitPlanMode'
         ? await host.requestPlan(String((input as any).plan ?? ''), { signal, toolName, input: shown, activity: d.title })
         : await host.ask({ kind: isQuestion ? 'question' : 'tool', toolName, input: shown, title: isQuestion ? questions?.[0]?.question ?? 'Question' : d.title, detail: d.detail, options, questions, activity: d.title }, { signal })
-      if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
+      if (!result) return { behavior: 'deny', message: NO_DECISION }
       saveAlwaysAllow(host, step, result, { suggestions, suppressAlwaysAllowRule })
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.
@@ -508,6 +508,28 @@ export const SESSION_GONE = 'No conversation found with session ID: '
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
+
+/** How long a hook that asks the user waits: a minute short of its matcher's timeout, so Kernel denies the call before the CLI stops waiting and lets it go. In milliseconds. */
+export const HOOK_ASK_MS = (HOLD_TIMEOUT_SEC - 60) * 1000
+
+/** What the agent hears when the user didn't answer in time, or the ask ended without an answer. */
+const NO_DECISION = 'No decision was made in time.'
+
+/**
+ * Asks the user from inside a PreToolUse hook and waits, for a call Claude Code would run without asking: Always ask in
+ * Auto, the tools gate in Auto and Bypass (KERNEL-433, KERNEL-446). The card and the agent's needs status are the ones
+ * canUseTool's asks get. Only the user's yes allows the call. An abort, the wait running out and no decision deny it,
+ * because a hook that times out lets the call go. The hook's matcher needs `timeout: HOLD_TIMEOUT_SEC`.
+ */
+export async function awaitDecision(host: Pick<RunnerHost, 'ask'>, req: Ask, signal: AbortSignal, timeoutMs = HOOK_ASK_MS): Promise<SyncHookJSONOutput> {
+  const deny = (reason: string): SyncHookJSONOutput => ({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } })
+  // An abort listener added after the abort never fires, so the card would wait out the whole timeout.
+  if (signal.aborted) return deny(NO_DECISION)
+  const result = await host.ask(req, { signal, timeoutMs })
+  if (result?.behavior === 'allow') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } }
+  if (!result) return deny(NO_DECISION)
+  return deny(result.behavior === 'answer' ? `The user answered: ${result.text}` : result.message ?? 'Denied in Kernel.')
+}
 
 /** Hooks whose exit code 2 stops the agent from going on, which the floor shows as blocked. */
 const BLOCKING_HOOKS = new Set(['TaskCreated', 'TaskCompleted', 'TeammateIdle', 'Stop', 'PreToolUse'])
