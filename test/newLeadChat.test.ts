@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ChatPart } from '../src/shared/types'
-import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabInFront } from '../src/renderer/src/screens/workspace/leadNoChat'
+import { leadHasNoChat, newChatOnScreen, newChatTab, showsNewChat, tabInFront, tabStop } from '../src/renderer/src/screens/workspace/leadNoChat'
 
 // KERNEL-366: a room with no chats opens on New chat with Rowan, and + and ⌘T there start no chat.
 
@@ -100,5 +100,14 @@ describe('focusComposerIn', () => {
     expect(bus.composerFocusWantedIn('ws-lead')).toBe(false)
     bus.focusComposerWhenOpen('chat-1')
     expect(bus.composerFocusWantedIn('ws-lead')).toBe(false)
+  })
+})
+
+describe('the tab order while the New chat box is on screen', () => {
+  it('puts the first tab in it when none is active, and the active tab otherwise', () => {
+    expect(tabStop(['t1', 'file:a.ts'], undefined)).toBe('t1')
+    expect(tabStop(['t1', 'file:a.ts'], 'gone')).toBe('t1')
+    expect(tabStop(['t1', 'file:a.ts'], 'file:a.ts')).toBe('file:a.ts')
+    expect(tabStop([], undefined)).toBeUndefined()
   })
 })

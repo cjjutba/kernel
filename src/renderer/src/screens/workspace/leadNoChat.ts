@@ -28,3 +28,6 @@ export function newChatTab<T>(noChat: boolean, focus: () => void, create: () => 
   focus()
   return Promise.resolve(undefined)
 }
+
+/** The one tab in the tab order: the active one, or the first while none is, as with the New chat box on screen, so Tab lands in the row and the arrow keys work from there. */
+export const tabStop = (ids: string[], active?: string) => (active !== undefined && ids.includes(active) ? active : ids[0])

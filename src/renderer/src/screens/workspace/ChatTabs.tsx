@@ -9,7 +9,7 @@ import { closeChats, closesThread } from './ConfirmCloseChats'
 import { kindIcon, sharedTab } from './shared/shared'
 import { attempt } from './MessageActions'
 import { focusComposerIn, focusComposerWhenOpen } from './composer/bus'
-import { newChatTab } from './leadNoChat'
+import { newChatTab, tabStop } from './leadNoChat'
 
 export const fileTab = (path: string) => `file:${path}`
 /** An empty path is the diff of every changed file. */
@@ -130,6 +130,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
     ...images.map((i) => ({ id: i.id, title: i.name, kind: 'image' as const })),
     ...texts.map((t) => ({ id: t.id, title: t.name, kind: 'text' as const }))
   ]
+  const stop = tabStop(tabs.map((t) => t.id), active)
   return (
     <div className="ws-tabs">
       <div role="tablist" aria-label="Chats and files" className="row" style={{ gap: 2, alignItems: 'flex-end', minWidth: 0 }}>
@@ -145,7 +146,7 @@ export function ChatTabs({ workspaceId, threadId, noChat, onNewChat, chats, file
                   onFocus={(e) => e.currentTarget.select()} onBlur={(e) => rename(t.id, e.currentTarget.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') rename(t.id, e.currentTarget.value); else if (e.key === 'Escape') setRenaming(null) }} />
               ) : (
-                <button type="button" role="tab" aria-selected={on} tabIndex={on ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} onClick={() => onSelect(t.id)}
+                <button type="button" role="tab" aria-selected={on} tabIndex={t.id === stop ? 0 : -1} id={`ws-tab-${t.id}`} className="ws-tab" data-tip={t.title} onClick={() => onSelect(t.id)}
                   aria-label={g?.label ? `${t.title}, ${g.label}` : undefined} aria-haspopup={t.kind === 'chat' ? 'menu' : undefined} aria-expanded={t.kind === 'chat' && on ? menu === 'tab' : undefined}
                   onKeyDown={(e) => { if (t.kind === 'chat' && (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) { e.preventDefault(); openTabMenu(t.id) } else arrow(e, t.id) }}
                   onContextMenu={(e) => { if (t.kind !== 'chat') return; e.preventDefault(); openTabMenu(t.id) }}
