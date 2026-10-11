@@ -141,6 +141,7 @@ WS=[
     ('WorkspacePerm','perm'),
     ('WorkspaceQuestion','question'),
     ('WorkspaceQuestionSteps','questionsteps'),
+    ('WorkspaceQuestionOther','questionother'),
     ('WorkspaceQuestionAnswers','questionanswers'),
     ('WorkspaceInterrupted','interrupted'),
     ('WorkspaceError','error'),
