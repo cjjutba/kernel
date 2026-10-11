@@ -1051,13 +1051,13 @@ export class Kernel {
       let path: string, branch: string, baselineRef: string | undefined
       if (mode === 'worktree') {
         // Kernel names the branch from the issue key and a few words of the title, and the Lead can name it instead, cut to
-        // 60 characters (KERNEL-275). A taken name gets a suffix.
-        const asked = o.branch && !reviewed ? capBranch(o.branch) : undefined
+        // 60 characters (KERNEL-275), for a review too (KERNEL-265). A taken name gets a suffix.
+        const asked = o.branch ? capBranch(o.branch) : undefined
         if (asked && !(await validBranchName(room.path, asked))) throw new Error(`${asked} is not a valid branch name.`)
         const issue = o.source?.kind === 'issue' ? o.source : undefined
         const labels = o.labels ?? (issue && !issue.id.startsWith('#') && !asked && !reviewed ? await this.issueLabels(issue.id) : [])
-        branch = await freeBranch(room.path, reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
-          : asked || taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels)))
+        branch = await freeBranch(room.path, asked || (reviewed ? reviewBranch(reviewed.title ?? reviewed.name, reviewed.source?.kind === 'issue' ? reviewed.source.id : undefined)
+          : taskBranch(repo.workspace.branchPattern ?? s.workspace.branchPattern, issue ? issue.title : title, issue?.id, branchType(labels))))
         path = await createWorktree({ repo: room.path, root: join(s.worktreeRoot, slugify(room.name)), branch, baseRef })
         // Local files are copied later, once the room's text is trusted (KERNEL-209).
         if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
