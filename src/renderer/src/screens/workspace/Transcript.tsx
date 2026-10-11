@@ -4,6 +4,7 @@ import { call } from '../../api'
 import { Icon, Skeleton, Spinner, type IconName } from '../../ui'
 import { getState, loadWorkspace, useStore } from '../../store'
 import { openRoom } from '../../lead'
+import { floorRoomId, noteLinkTarget } from './noteLink'
 import { ApprovalCard } from './cards/ApprovalCard'
 import { waitingPlan } from './cards/steps'
 import { ErrorCard } from './cards/ErrorCard'
@@ -67,11 +68,16 @@ function ReplyMessage({ item, chatId, onFork }: { item: Extract<ChatItem, { kind
   )
 }
 
-/** `kernel://floor/<roomId>` opens that room, its Lead chat now the floor is hidden (D-104). Anything else is a normal link. */
+/**
+ * `kernel://floor/<roomId>` opens that room, its Lead chat now the floor is hidden (D-104). A web link opens in the browser,
+ * never in the app window (KERNEL-294). Any other href shows as plain text.
+ */
 function NoteLink({ link }: { link: { label: string; href: string } }) {
-  const floor = /^kernel:\/\/floor\/(.+)$/.exec(link.href)
-  if (!floor) return <a href={link.href}>{link.label}</a>
-  return <a href={link.href} onClick={(e) => { e.preventDefault(); void openRoom(floor[1]) }}>{link.label}</a>
+  switch (noteLinkTarget(link.href)) {
+    case 'room': return <a href={link.href} onClick={(e) => { e.preventDefault(); void openRoom(floorRoomId(link.href)!) }}>{link.label}</a>
+    case 'external': return <a href={link.href} onClick={(e) => { e.preventDefault(); void attempt('Could not open the link', () => call('system.openExternal', { url: link.href })) }}>{link.label}</a>
+    default: return <span>{link.label}</span>
+  }
 }
 
 type Tool = Extract<ChatItem, { kind: 'tool' }>
