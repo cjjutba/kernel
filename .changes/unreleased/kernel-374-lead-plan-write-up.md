@@ -2,4 +2,4 @@
 type: fixed
 issue: KERNEL-374
 ---
-Fixed Rowan's plan showing only its title and task lines, so it now shows the full write-up above the numbered tasks.
+Fixed Rowan's plans in plan mode showing only a few task lines, so the full write-up now shows above the numbered tasks.
