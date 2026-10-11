@@ -308,6 +308,30 @@ const sidebarChatFolded = (f: Fixture): Partial<Fixture> => {
   }
 }
 
+/**
+ * SidebarTrustHeld (no PNG, KERNEL-342): Client A on Home with no approvals. invoice-table is held in `trust` and invoice-schema is idle beside it,
+ * and a folded chat hides org-invites, which is held too, so the chat row shows the same icon.
+ */
+const sidebarTrustHeld = (f: Fixture): Partial<Fixture> => {
+  const home = homeScene(f)
+  const owner = 'chat-lead-invites'
+  const held = new Set<string>([ids.table, ids.invites])
+  return {
+    ...home,
+    chats: [...f.chats.filter((c) => c.workspaceId !== ids.lead), leadChatRow(owner, 'Org invites and roles', 5), leadChatRow('chat-lead-spare', 'Client portal login', 6)],
+    workspaces: home.workspaces!.map((w) => ({
+      ...w,
+      ...(held.has(w.id) ? { status: 'trust' as const } : {}),
+      ...(w.id === ids.invites ? { leadChatId: owner } : {}),
+      ...(w.id === ids.schema || w.id === ids.table ? { prState: 'none' as const } : {})
+    })),
+    approvals: [],
+    notifications: [],
+    push: [],
+    ui: { route: { name: 'home' }, foldedChats: [owner] }
+  }
+}
+
 // ---------- Issues (KERNEL-160)
 
 const KERNEL = { id: 'team-kernel', key: 'KERNEL', name: 'Kernel' }
@@ -501,6 +525,7 @@ export const teamFixtures: Record<string, Fixture> = {
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
+  SidebarTrustHeld: scene(sidebarTrustHeld),
   SidebarRoomMenu: withMenu(`room:${ids.roomA}`, { name: 'team', roomId: ids.roomA }),
   ConfirmRemoveRoom: scene((f) => ({ ...roomsScene(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'removeRoom', roomId: ids.roomA } } }))
 }

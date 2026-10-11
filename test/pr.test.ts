@@ -250,6 +250,8 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.prs.refreshPr(ws.id)
     gh.pr = info({ state: 'ready' })
     reads = 0
+    // The quick read runs real git before it reaches the stub, so wait for it, then check no second one follows.
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     expect(reads).toBe(1)
     expect(k.store.workspace(ws.id)?.prState).toBe('ready')
@@ -261,6 +263,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('conflict')
     gh.pr = unknown()
     reads = 0
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     // Still unknown after the quick read: the poll takes it from there.
     expect(reads).toBe(1)
@@ -270,11 +273,18 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect(states).toEqual(['ready', 'checks', 'ready', 'conflict', 'ready'])
 
     // Archiving drops a pending quick read.
+    // A quick read that started while the archive was still running lands on its own time, so wait it out before counting.
+    let inflight = 0
+    const refresh = k.refreshPr.bind(k)
+    k.refreshPr = async (...a) => { inflight++; try { return await refresh(...a) } finally { inflight-- } }
     gh.pr = unknown()
     await k.prs.refreshPr(ws.id)
     await k.archive.archiveWorkspace(ws.id)
+    await vi.waitFor(() => expect(inflight).toBe(0))
     reads = 0
     await wait(100)
+    // A read that starts after the archive must still show up, even when it lands late.
+    await vi.waitFor(() => expect(inflight).toBe(0))
     expect(reads).toBe(0)
     bus.off('push', onPush)
     await k.stop()
@@ -312,6 +322,32 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.prs.refreshPr(ws.id)
     gh.pr = info({ state: 'checks', conflictsUnknown: true })
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('checks')
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
+    expect(gh.merged).toEqual([])
+    await k.stop()
+  })
+
+  it('reads GitHub before every merge, and refuses a PR that last read ready while GitHub checks it for conflicts (KERNEL-376)', async () => {
+    const { k, ws, gh } = await setup()
+    gh.pr = info({ state: 'ready' })
+    await k.prs.refreshPr(ws.id)
+    // Another PR merged since the last poll, so GitHub is working out again whether this one conflicts.
+    gh.pr = info({ state: 'checks', conflictsUnknown: true })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
+    expect(gh.merged).toEqual([])
+    expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+    // Once GitHub settles on mergeable, the merge goes ahead.
+    gh.pr = info({ state: 'ready' })
+    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+    expect(gh.merged).toEqual(['squash'])
+    await k.stop()
+  })
+
+  it('reads GitHub before a merge that neither green checks nor a review needs it for (KERNEL-376)', async () => {
+    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+    gh.pr = info({ state: 'ready' })
+    await k.prs.refreshPr(ws.id)
+    gh.pr = info({ state: 'checks', conflictsUnknown: true })
     await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
     expect(gh.merged).toEqual([])
     await k.stop()

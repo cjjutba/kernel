@@ -34,10 +34,24 @@ describe('the PR state', () => {
       expect(mergeBlock(ws({ prState: s }), undefined, { requireGreen: false, requireReviewer: false }), s).toBe(notReady)
     }
   })
+
+  it('refuses a PR that last read ready while GitHub is still checking it for conflicts (KERNEL-376)', () => {
+    for (const rules of [both, { requireGreen: false, requireReviewer: false }]) {
+      expect(mergeBlock(ws({ prState: 'ready' }), info({ state: 'checks', conflictsUnknown: true }), rules)).toBe(notReady)
+      expect(mergeBlock(ws({ prState: 'ready' }), info({ conflictsUnknown: true }), rules)).toBe(notReady)
+    }
+  })
+
+  it('refuses when GitHub now reads the PR as anything but ready or open (KERNEL-376)', () => {
+    const off = { requireGreen: false, requireReviewer: false }
+    for (const s of STATES.filter((s) => s !== 'ready' && s !== 'open')) expect(mergeBlock(ws({ prState: 'ready' }), info({ state: s }), off), s).toBe(notReady)
+    expect(mergeBlock(ws({ prState: 'ready' }), info({ state: 'open' }), off)).toBeUndefined()
+    expect(mergeBlock(ws({ prState: 'open' }), info({ state: 'ready' }), off)).toBeUndefined()
+  })
 })
 
 describe('GitHub and the checks', () => {
-  it('reads GitHub only when green checks are required or a reviewer looked at the PR', () => {
+  it('needs the GitHub read only when green checks are required or a reviewer looked at the PR', () => {
     expect(mergeNeedsPr(ws(), { requireGreen: false, requireReviewer: true })).toBe(false)
     expect(mergeNeedsPr(ws({ reviews: [v('approved', B, 1)] }), reviewer)).toBe(true)
     expect(mergeNeedsPr(ws({ reviews: [v('approved', B, 1)] }), { requireGreen: false, requireReviewer: false })).toBe(false)

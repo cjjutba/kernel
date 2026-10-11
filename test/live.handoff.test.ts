@@ -61,10 +61,11 @@ describe.skipIf(!process.env.KERNEL_LIVE)('live hand-off', () => {
       const plan = await waitFor('plan card', () => k.store.approvals({ roomId: room.id }).find((a) => a.status === 'pending' && a.kind === 'plan'))
       console.log(`[live] plan card from ${plan.toolName ?? 'request_plan_approval'}:\n${(plan.detail ?? '').slice(0, 400)}`)
       k.approvals.decide(plan.id, { behavior: 'allow' })
-      const created = await waitFor('a workspace from the Lead', () => activity.find((a) => a.kind === 'workspace.created' && a.roomId === room.id), 300_000)
+      // createWorkspace's own "started <name>" line comes first; the Lead's pick is the "assigned ... to" line (kernelMcp.ts).
+      const created = await waitFor('a workspace from the Lead', () => activity.find((a) => a.kind === 'workspace.created' && a.roomId === room.id && a.data?.assignee), 300_000)
       const said = k.store.items(chatId).flatMap((i) => (i.kind === 'text' ? [i.text.slice(0, 200)] : []))
       console.log(`[live] ${created.text} ${created.object}. Stop reminders: ${reminders}. Rowan's last words: ${JSON.stringify(said.slice(-2))}`)
-      expect(created.object).toBe('noor')
+      expect(created.data?.assignee).toBe('noor')
     } finally {
       bus.off('activity', onActivity)
       for (const w of k.store.workspaces()) if (w.mode === 'worktree') await k.archiveWorkspace(w.id, true).catch(() => undefined)

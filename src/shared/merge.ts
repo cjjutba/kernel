@@ -18,23 +18,26 @@ export function reviewVerdicts(ws: Pick<Workspace, 'reviews' | 'prNumber' | 'prH
 }
 
 /**
- * Whether the merge has to read the PR from GitHub first: for its checks, or for its head commit when a reviewer looked at
- * it. A PR nobody reviewed, with green checks not required, merges on what Kernel already knows.
+ * Whether the merge can't go ahead without reading the PR from GitHub: for its checks, or for its head commit when a
+ * reviewer looked at it. A merge always reads GitHub first (KERNEL-376); when that read fails and neither rule needs it,
+ * the merge goes ahead on what Kernel already knows.
  */
 export function mergeNeedsPr(ws: Pick<Workspace, 'reviews'>, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>): boolean {
   return rules.requireGreen || (rules.requireReviewer && !!ws.reviews?.length)
 }
 
 /**
- * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now, and its head
- * commit wins over the one the last poll saw. With "require Reviewer approval" on, a PR a reviewer looked at needs an
- * approval of its head commit and no blockers on it; one nobody reviewed merges as before. `name` turns an agent id into
- * the reviewer's name.
+ * Why the workspace's PR can't merge, or undefined when it can. `pr` is the PR as GitHub reports it now: it has to be
+ * ready or open, and settled on whether it conflicts, which GitHub works out again each time the base moves (KERNEL-376).
+ * Its head commit wins over the one the last poll saw. With "require Reviewer approval" on, a PR a reviewer looked at
+ * needs an approval of its head commit and no blockers on it; one nobody reviewed merges as before. `name` turns an agent
+ * id into the reviewer's name.
  */
 export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>, name: (agentId: string) => string = (id) => id): string | undefined {
   if (!mergeableState(ws.prState)) return 'This pull request is not ready to merge.'
   if (mergeNeedsPr(ws, rules) && !pr) return 'Could not read the pull request from GitHub.'
   if (rules.requireGreen && pr && !allGreen(pr.checks)) return 'Checks have not passed yet. Merging needs green checks (Settings, Pull requests).'
+  if (pr && (pr.conflictsUnknown || !mergeableState(pr.state))) return 'This pull request is not ready to merge.'
   if (!rules.requireReviewer) return undefined
   const { verdicts, current } = reviewVerdicts({ ...ws, prHead: pr?.head ?? ws.prHead })
   const latest = (vs: ReviewVerdict[]) => vs.reduce((a, b) => (b.ts > a.ts ? b : a))

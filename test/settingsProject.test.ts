@@ -512,6 +512,22 @@ describe("trusting a room's scripts (KERNEL-209)", () => {
     await k.stop()
   }, 60000)
 
+  // The live tests (test/live.test.ts) call the handler and trust the room first, and only run by hand (KERNEL-363).
+  it('workspaces.create ends in trust for a room with committed scripts, and in ready once rooms.trust runs', async () => {
+    const { k, room, sent, h } = await kernelFor(await clonedRepo())
+    const held = await h['workspaces.create']({ roomId: room.id, agentId: 'kai', prompt: 'Build the table' })
+    expect(held.status).toBe('trust')
+    expect(sent).toEqual([])
+    const trust = await h['rooms.scriptTrust']({ roomId: room.id })
+    expect(trust?.workspaceIds).toEqual([held.id])
+    await h['rooms.trust']({ roomId: room.id, hash: trust!.hash })
+    expect(await h['rooms.scriptTrust']({ roomId: room.id })).toBeNull()
+    await vi.waitFor(() => expect(k.store.workspace(held.id)?.status).toBe('ready'), { timeout: 15000 })
+    const next = await h['workspaces.create']({ roomId: room.id, agentId: 'kai', prompt: 'Next' })
+    expect(next.status).toBe('ready')
+    await k.stop()
+  }, 60000)
+
   it('asks again when the text changes, and remembers trusted text after a restart', async () => {
     const repo = await clonedRepo()
     const first = await kernelFor(repo)

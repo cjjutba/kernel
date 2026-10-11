@@ -28,12 +28,16 @@ const waitingGlyph = (waiting: Approval[]): WorkspaceGlyph =>
     ? { icon: 'plan', tone: 'needs', label: 'Plan to review' }
     : { icon: 'question', tone: 'needs', label: 'Needs you' }
 
+/** A workspace held in `trust` waits on you as much as an approval does, until you trust the room's scripts (KERNEL-209, KERNEL-342). */
+const TRUST_GLYPH: WorkspaceGlyph = { icon: 'question', tone: 'needs', label: 'Trust scripts' }
+
 /**
- * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, or something that needs you), then what is running, then the pull request.
- * Every input is a real signal: a pending approval, a running chat, setup's status, the PR state from GitHub.
+ * The icon in front of a workspace in the sidebar: what waits on you first (a plan to review, something that needs you, or scripts to trust), then what is running, then the pull request.
+ * Every input is a real signal: a pending approval, the workspace's status, a running chat, the PR state from GitHub.
  */
 export function workspaceGlyph(ws: Workspace, o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
+  if (ws.status === 'trust') return TRUST_GLYPH
   if (ws.status === 'failed') return { icon: 'warning', tone: 'del', label: 'Setup failed' }
   if (ws.status === 'setup') return spin('Setting up')
   if (o.running) return spin('Working')
@@ -75,10 +79,12 @@ export function leadGlyph(status: AgentStatus, waiting: Approval[]): WorkspaceGl
 
 /**
  * The icon in front of a chat's tab: what waits on the user first (a plan to review, or something that needs you), then a running turn, then the plain chat icon.
- * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree.
+ * It reads the same signals as `workspaceGlyph`, per chat instead of per workspace, so a tab and its sidebar row agree. `trust` is set when a workspace
+ * the chat started is held for script trust and the row stands in for it, as an approval on that workspace would.
  */
-export function chatGlyph(o: { waiting: Approval[]; running: boolean }): WorkspaceGlyph {
+export function chatGlyph(o: { waiting: Approval[]; running: boolean; trust?: boolean }): WorkspaceGlyph {
   if (o.waiting.length) return waitingGlyph(o.waiting)
+  if (o.trust) return TRUST_GLYPH
   if (o.running) return spin('Working')
   return { icon: 'chat', tone: 'muted', label: '' }
 }

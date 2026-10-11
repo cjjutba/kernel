@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { chatGlyph, leadGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
+import { chatGlyph, leadGlyph, workspaceGlyph } from '../src/renderer/src/components/sidebar/workspaceGlyph'
 import { leadWaiting } from '../src/renderer/src/lead'
-import type { Approval } from '../src/shared/types'
+import type { Approval, Workspace } from '../src/shared/types'
 
 const approval = (kind: Approval['kind'], extra: Partial<Approval> = {}): Approval =>
   ({ id: `a-${kind}`, kind, source: 'sdk', title: kind, status: 'pending', createdAt: 0, ...extra })
@@ -35,5 +35,30 @@ describe('glyphs for pending approvals', () => {
     const loose = approval('question', { id: 'a-loose' })
     expect(leadWaiting([other, mine, done, loose], 'ws-lead')).toEqual([mine])
     expect(leadWaiting([other, mine, done, loose], undefined)).toEqual([])
+  })
+})
+
+describe('glyphs for a workspace held for script trust (KERNEL-342)', () => {
+  const held = (status: Workspace['status']): Workspace =>
+    ({ id: 'w', roomId: 'r', name: 'w', branch: 'feat/w', baseRef: 'main', path: '/w', mode: 'worktree', agentId: 'kai', port: 1, status, prState: 'none', createdAt: 1 })
+  const idle = { waiting: [], running: false }
+
+  it('reads as waiting on you, like an approval', () => {
+    expect(workspaceGlyph(held('trust'), idle)).toEqual({ icon: 'question', tone: 'needs', label: 'Trust scripts' })
+  })
+
+  it('clears when the status moves on, to setup, then ready', () => {
+    expect(workspaceGlyph(held('setup'), idle)).toMatchObject({ icon: 'spin', label: 'Setting up' })
+    expect(workspaceGlyph(held('ready'), idle)).toMatchObject({ icon: 'branch', tone: 'muted' })
+  })
+
+  it('lets a pending approval name the wait when both are there', () => {
+    expect(workspaceGlyph(held('trust'), { waiting: [plan], running: false })).toMatchObject({ icon: 'plan', label: 'Plan to review' })
+  })
+
+  it('shows on a folded chat row only while a workspace it hides is held', () => {
+    expect(chatGlyph({ ...idle, trust: true })).toEqual({ icon: 'question', tone: 'needs', label: 'Trust scripts' })
+    expect(chatGlyph({ ...idle, trust: false })).toMatchObject({ icon: 'chat', tone: 'muted' })
+    expect(chatGlyph({ waiting: [bash], running: true, trust: true })).toMatchObject({ label: 'Needs you' })
   })
 })
