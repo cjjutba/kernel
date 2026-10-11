@@ -2,6 +2,7 @@ import type { AccountProfile, BannerKind, Chat, ClaudeAccount, HookStatus, Model
 import { MODELS, PROVIDERS } from '@shared/types'
 import { chatProvider, limitProvider } from '@shared/providers'
 import { clock, nearLimit, resetPhrase, WEEKLY_WARN } from '@shared/usage'
+import { formatTokens } from '../composer/formatTokens'
 
 export { clock, resetPhrase }
 
@@ -11,7 +12,7 @@ export { clock, resetPhrase }
 export type BannerAction =
   | 'queue' | 'notify' | 'usage' | 'wait' | 'switch'
   | 'newChat' | 'compact' | 'switchModel' | 'retryNow' | 'tryAgain'
-  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers'
+  | 'terminal' | 'signIn' | 'editScript' | 'runAgain' | 'checkHooks' | 'reconnect' | 'review' | 'archive' | 'switchAccount' | 'providers' | 'dismiss'
 
 export type BannerId = 'folder' | 'signedOut' | 'offline' | 'trust' | 'setup' | 'weekly' | 'session' | 'model' | 'nearLimit' | 'weeklyWarn' | 'overloaded' | 'context' | 'long' | 'hooks'
 
@@ -54,6 +55,8 @@ export interface BannerInput {
   accounts?: AccountProfile[]
   /** A role or this chat runs on Codex, so the banners name the provider (KERNEL-406). */
   codexInUse?: boolean
+  /** The user dismissed this chat's long-chat banner (KERNEL-426). It skips only that banner: the next one still shows, and "Context is almost full" cannot be dismissed. */
+  longDismissed?: boolean
   now: number
 }
 
@@ -222,10 +225,12 @@ export function bannerFor(i: BannerInput): BannerView | null {
     actions: [{ id: 'newChat', label: 'New tab' }, { id: 'compact', label: 'Compact now', primary: true }], blocks: false
   }
 
-  // Past 150k tokens a chat costs more with every turn, however empty the window still is (KERNEL-224).
-  if (chat && (chat.contextUsage?.used ?? 0) >= CONTEXT_LONG) return {
-    id: 'long', kind: 'context', title: 'This chat is long', sub: 'Starting a new chat keeps the next turns cheaper.',
-    actions: [{ id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }], blocks: false
+  // Past 150k tokens a chat costs more with every turn, however empty the window still is (KERNEL-224). It names the count and the
+  // reason, since the context popover beside it can show most of the window free. Dismissed, it falls through to the next banner (KERNEL-426).
+  const used = chat?.contextUsage?.used ?? 0
+  if (chat && !i.longDismissed && used >= CONTEXT_LONG) return {
+    id: 'long', kind: 'context', title: 'This chat is long', sub: `${formatTokens(used)} tokens. Each turn reads all of it again, so turns use more of your limit.`,
+    actions: [{ id: 'dismiss', label: 'Dismiss' }, { id: 'compact', label: 'Compact now' }, { id: 'newChat', label: 'New tab', primary: true }], blocks: false
   }
 
   // Out-of-date hooks Kernel couldn't rewrite at start get a 401, so outside sessions are as cut off as with the server down.
