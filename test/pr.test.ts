@@ -333,6 +333,16 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.stop()
   })
 
+  it('reads GitHub before a merge that neither green checks nor a review needs it for (KERNEL-376)', async () => {
+    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+    gh.pr = info({ state: 'ready' })
+    await k.prs.refreshPr(ws.id)
+    gh.pr = info({ state: 'checks', conflictsUnknown: true })
+    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
+    expect(gh.merged).toEqual([])
+    await k.stop()
+  })
+
   it('drops the quick read on stop (KERNEL-283)', async () => {
     const { k, ws, gh } = await setup()
     let reads = 0
