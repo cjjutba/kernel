@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { actions, canBack, getState, launchRoute, resetHistory, setState } from '../src/renderer/src/store'
-import { nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
-import type { AgentDef, Chat, Room, Route, Workspace } from '../src/shared/types'
+import { hasTab, isChatTab, nearest, placeToSave, restorePlace, stillThere, tabOf } from '../src/renderer/src/nav'
+import type { AgentDef, Chat, Room, Route, SharedFile, Workspace } from '../src/shared/types'
 
 const room = (id: string, over: Partial<Room> = {}): Room => ({ id, name: id, path: `/r/${id}`, defaultBranch: 'main', paused: false, createdAt: 1, ...over }) as Room
 const ws = (id: string, roomId: string, over: Partial<Workspace> = {}): Workspace =>
@@ -52,7 +52,7 @@ describe('tabOf', () => {
     actions.ui.openTab('other', 'o1')
     actions.ui.openTab('lead', 'file:a.ts')
     expect(tabOf(getState(), 'other')).toBe('o1')
-    expect(getState().ui.tabs.lead).toEqual({ tab: 'file:a.ts', lastChat: 'c3', files: ['a.ts'], diffs: [] })
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'file:a.ts', lastChat: 'c3', files: ['a.ts'], diffs: [], shared: [] })
   })
 })
 
@@ -62,7 +62,88 @@ describe('openTab', () => {
     actions.ui.openTab('lead', 'diff:src/a.ts')
     actions.ui.openTab('lead', 'diff:src/a.ts')
     actions.ui.openTab('lead', 'image:1')
-    expect(getState().ui.tabs.lead).toEqual({ tab: 'image:1', lastChat: 'c2', files: [], diffs: ['src/a.ts'] })
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'image:1', lastChat: 'c2', files: [], diffs: ['src/a.ts'], shared: [] })
+  })
+})
+
+const sharedFile = (id: string, versions: number[]): SharedFile => ({
+  id, roomId: 'r1', workspaceId: 'lead', agentId: 'noor', source: `.kernel/shared/${id}.html`, title: id, kind: 'html', createdAt: 1, updatedAt: 1,
+  versions: versions.map((n) => ({ n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: `${id}${n}` }))
+})
+
+describe('shared tabs', () => {
+  beforeEach(() => setState({ shared: { s1: sharedFile('s1', [1, 2, 3]), s2: sharedFile('s2', [1]) } }))
+
+  it('lists a shared tab once, selects it and leaves lastChat on the chat', () => {
+    actions.ui.openTab('lead', 'c2')
+    actions.ui.openTab('lead', 'shared:s1')
+    actions.ui.openTab('lead', 'shared:s2')
+    actions.ui.openTab('lead', 'shared:s1')
+    expect(getState().ui.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1', 's2'] })
+  })
+  it('is open only while it is in the list, and falls back to the last chat when it is closed', () => {
+    expect(hasTab(getState(), 'lead', 'shared:s1')).toBe(false)
+    actions.ui.openTab('lead', 'c3')
+    actions.ui.openShared('lead', 's1')
+    expect(hasTab(getState(), 'lead', 'shared:s1')).toBe(true)
+    expect(hasTab(getState(), 'other', 'shared:s1')).toBe(false)
+    expect(tabOf(getState(), 'lead')).toBe('shared:s1')
+    actions.ui.setTabs('lead', { shared: [] })
+    expect(hasTab(getState(), 'lead', 'shared:s1')).toBe(false)
+    expect(tabOf(getState(), 'lead')).toBe('c3')
+  })
+  it('is not a chat tab, so switching to it is not a step', () => {
+    expect(isChatTab('shared:s1')).toBe(false)
+    expect(isChatTab('c1')).toBe(true)
+    resetHistory()
+    actions.ui.go(at('lead'))
+    actions.ui.openTab('lead', 'c2')
+    resetHistory()
+    actions.ui.openShared('lead', 's1')
+    expect(canBack()).toBe(false)
+  })
+  it('opens in any workspace, since the copy is Kernel\'s', () => {
+    actions.ui.openShared('other', 's2')
+    expect(tabOf(getState(), 'other')).toBe('shared:s2')
+    expect(getState().ui.tabs.other.shared).toEqual(['s2'])
+  })
+  it('follows the latest version until an older one is picked, and the latest clears the pick', () => {
+    actions.ui.openShared('lead', 's1')
+    expect(getState().ui.tabs.lead.sharedVersion).toBeUndefined()
+    actions.ui.openShared('lead', 's1', 2)
+    expect(getState().ui.tabs.lead.sharedVersion).toEqual({ s1: 2 })
+    // Opening the tab again from a card keeps the pick.
+    actions.ui.openShared('lead', 's1')
+    expect(getState().ui.tabs.lead.sharedVersion).toEqual({ s1: 2 })
+    actions.ui.openShared('lead', 's1', 3)
+    expect(getState().ui.tabs.lead.sharedVersion).toEqual({})
+  })
+  it('keeps each file\'s pick apart', () => {
+    actions.ui.openShared('lead', 's1', 1)
+    actions.ui.openShared('lead', 's2', 1)
+    expect(getState().ui.tabs.lead.sharedVersion).toEqual({ s1: 1 })
+  })
+  it('is saved and restored with the tabs', () => {
+    actions.ui.go(at('lead'))
+    actions.ui.openShared('lead', 's1', 2)
+    const place = placeToSave(getState())!
+    expect(place.tabs.lead).toMatchObject({ tab: 'shared:s1', shared: ['s1'], sharedVersion: { s1: 2 } })
+    const back = restorePlace(JSON.stringify(place), getState())
+    expect(back?.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: undefined, files: [], diffs: [], shared: ['s1'], sharedVersion: { s1: 2 } })
+  })
+  it('restores only well-formed shared tabs', () => {
+    const tabs = { lead: { tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1', 4, ''], sharedVersion: { s1: 'two', s2: 1 } } }
+    expect(restorePlace(JSON.stringify({ v: 1, route: at('lead'), tabs }), getState())?.tabs.lead).toEqual({ tab: 'shared:s1', lastChat: 'c2', files: [], diffs: [], shared: ['s1'] })
+  })
+})
+
+describe('shared files in the store', () => {
+  it('adds a pushed file and replaces it when a new version arrives', () => {
+    actions.shared.set([sharedFile('s1', [1])])
+    actions.shared.upsert(sharedFile('s2', [1]))
+    actions.shared.upsert(sharedFile('s1', [1, 2]))
+    expect(Object.keys(getState().shared).sort()).toEqual(['s1', 's2'])
+    expect(getState().shared.s1.versions).toHaveLength(2)
   })
 })
 
@@ -215,7 +296,7 @@ describe('placeToSave', () => {
   it('is the route and the tabs', () => {
     actions.ui.go(at('lead'))
     actions.ui.openTab('lead', 'c2')
-    expect(placeToSave(getState())).toEqual({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c2', lastChat: 'c2', files: [], diffs: [] } } })
+    expect(placeToSave(getState())).toEqual({ v: 1, route: at('lead'), tabs: { lead: { tab: 'c2', lastChat: 'c2', files: [], diffs: [], shared: [] } } })
   })
   it('is where Settings was opened from while Settings is open, and nothing without one', () => {
     actions.ui.go({ name: 'settings', page: 'general' })

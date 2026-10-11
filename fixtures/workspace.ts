@@ -1,8 +1,9 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, Skill, TeamUpdateRow, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, SharedFile, SharedVersion, Skill, TeamUpdateRow, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
+import { downloadFlowMarkdown, fontsCheckImage, invoiceLayoutStill, invoicePdfStill, pdfNotesMarkdown } from './sharedStills'
 
 // Workspace lane: the workspace screen (KERNEL-10), PR states (KERNEL-15), agent turns and requests (KERNEL-14).
 
@@ -339,6 +340,113 @@ const termScreen = '\r\n'.repeat(24) + [
   'bypass permissions on · worktree only                    Opus 5.5 · high'
 ].join('\r\n')
 
+// ---------- Shared files (KERNEL-305)
+
+const HOUR = 3_600_000
+const sharedVersion = (n: number, h: number, m: number, mime: string, extra: Partial<SharedVersion> = {}): SharedVersion =>
+  ({ n, at: at(h, m), file: `v${n}`, mime, bytes: 48_000, sha256: `${mime}-${n}`, thumb: true, ...extra })
+const sharedFile = (id: string, agentId: string, workspaceId: string, title: string, kind: SharedFile['kind'], source: string, versions: SharedVersion[], ago: number): SharedFile =>
+  ({ id, roomId: ids.roomA, workspaceId, agentId, source, title, kind, versions, createdAt: versions[0].at, updatedAt: Date.now() - ago })
+
+/**
+ * The five files the canvas shares, newest first. Noor shares four in the PDF renderer's workspace and Kai one in org-invites. `html` is
+ * on v3 unless a shot draws the chat card, which says v2 because that is the newest version the file has there. Times in the
+ * panel are relative to now, so they read 2h to 1d on any day, and the clocks in the tab are fixed.
+ */
+const sharedFiles = (htmlLatest = 3): SharedFile[] => [
+  sharedFile('sh-html', 'noor', ids.table, 'Invoice layout options', 'html', '.kernel/shared/invoice-layout.html', [
+    sharedVersion(1, 13, 12, 'text/html', { outside: 1 }), sharedVersion(2, 13, 58, 'text/html', { note: 'Totals moved under the table', outside: 1 }),
+    sharedVersion(3, 14, 41, 'text/html', { note: 'Added the detailed layout', outside: 1 })
+  ].slice(0, htmlLatest), 2 * HOUR),
+  sharedFile('sh-image', 'noor', ids.table, 'Embedded fonts check', 'image', '.kernel/shared/fonts-check.png', [sharedVersion(1, 13, 20, 'image/png', { width: 616, height: 385 })], 3 * HOUR),
+  sharedFile('sh-pdf', 'noor', ids.table, 'Invoice 009 sample', 'pdf', '.kernel/shared/invoices-009.pdf', [sharedVersion(1, 12, 5, 'application/pdf')], 4 * HOUR),
+  sharedFile('sh-md', 'noor', ids.table, 'PDF renderer notes', 'markdown', '.kernel/shared/notes.md', [
+    sharedVersion(1, 10, 52, 'text/markdown', { thumb: false }), sharedVersion(2, 11, 48, 'text/markdown', { note: 'Added the open questions', thumb: false })
+  ], 5 * HOUR),
+  sharedFile('sh-flow', 'kai', ids.invites, 'Download button flow', 'markdown', '.kernel/shared/download-flow.md', [sharedVersion(1, 9, 12, 'text/markdown', { thumb: false })], 24 * HOUR)
+]
+const sharedStills: NonNullable<Fixture['sharedData']> = {
+  'sh-html': { 1: { text: '', thumb: invoiceLayoutStill }, 2: { text: '', thumb: invoiceLayoutStill }, 3: { text: '', thumb: invoiceLayoutStill } },
+  'sh-image': { 1: { dataUrl: fontsCheckImage, thumb: fontsCheckImage } },
+  'sh-pdf': { 1: { dataUrl: invoicePdfStill, thumb: invoicePdfStill } },
+  'sh-md': { 1: { text: pdfNotesMarkdown }, 2: { text: pdfNotesMarkdown } },
+  'sh-flow': { 1: { text: downloadFlowMarkdown } }
+}
+
+/** Noor's workspace on the canvas: invoice-pdf-renderer, whose chat shared the layout, a sample PDF and the notes. */
+const renderer = (f: Fixture) => ({
+  workspaces: withWorkspace(f, ids.table, { name: 'invoice-pdf-renderer', branch: 'feat/t-15a-pdf-renderer', agentId: 'noor', stat: { files: 2, added: 194, removed: 1 } }),
+  chats: f.chats.map((c) => (c.id === ids.tableChat ? { ...c, title: 'PDF renderer' } : c)),
+  items: { [ids.tableChat]: [
+    userMsg('sh-u', 'Show me the invoice layout as a page I can click through.'),
+    { kind: 'text' as const, id: 'sh-t', ts: at(14, 41), text: 'Here is the layout as a page, with a sample PDF and my notes so far.' },
+    { kind: 'shared' as const, id: 'sh-i1', ts: at(14, 41), sharedId: 'sh-html', version: 2 },
+    { kind: 'shared' as const, id: 'sh-i2', ts: at(14, 42), sharedId: 'sh-pdf', version: 1 },
+    { kind: 'shared' as const, id: 'sh-i3', ts: at(14, 42), sharedId: 'sh-md', version: 2 }
+  ] },
+  changes: { [ids.table]: [{ path: 'src/pdf/render.ts', status: 'A' as const, added: 188, removed: 0 }, { path: 'src/db/schema.ts', status: 'M' as const, added: 6, removed: 1 }] },
+  sharedData: sharedStills
+})
+
+/** The chat card shots show v2 of the page, the tab shots its three versions. `file` is the shared id the tab opens on. */
+const sharedTab = (file?: string, htmlLatest = 3) => scene((f) => ({
+  ...renderer(f),
+  shared: sharedFiles(htmlLatest).filter((x) => x.workspaceId === ids.table),
+  ui: {
+    ...open,
+    workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false },
+    ...(file ? { tabs: { [ids.table]: { tab: `shared:${file}`, lastChat: ids.tableChat, files: [], diffs: [], shared: [file] } } } : {})
+  }
+}))
+
+/** Rowan's workspace with the room's five files, the HTML open in a tab. The Lead's panel lists every file shared in the room. */
+const sharedPanel = (f: Fixture): Partial<Fixture> => {
+  // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
+  const { approvals: _none, ...lead } = scene2(f, { id: ids.lead, name: 'export-invoices-as-pdf', branch: 'feat/export-invoices-as-pdf', mode: 'worktree', agentId: 'rowan', stat: { files: 1, added: 64, removed: 0 } }, 'Export invoices as PDF', [
+    userMsg('sp-u', 'Add PDF export to invoices. Spec first.'),
+    { kind: 'text', id: 'sp-t', ts: at(14, 41), text: 'I split PDF export into four tasks. Noor shared the layout, a sample and the notes in the meantime.' }
+  ], {}, { model: 'claude-opus-5-5' })
+  return {
+    ...lead,
+    changes: { [ids.lead]: [{ path: 'plans/t-15-invoice-pdf.md', status: 'A', added: 64, removed: 0 }] },
+    shared: sharedFiles(),
+    sharedData: sharedStills,
+    ui: {
+      route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'shared', bottom: 'run', checkpoints: false, toolsOpen: false },
+      tabs: { [ids.lead]: { tab: 'shared:sh-html', lastChat: ids.leadChat, files: [], diffs: [], shared: ['sh-html'] } }
+    }
+  }
+}
+
+/** Kernel's Team update in Rowan's chat with a file under each of two teammates (TeamUpdateShared.png). */
+const teamUpdateShared = (f: Fixture): Partial<Fixture> => {
+  const header = 'Team update from Kernel, not from the user.'
+  const noor: TeamUpdateRow = {
+    workspaceId: ids.table, agentId: 'noor', name: 'Noor', task: 'KERNEL-188 PDF renderer with embedded fonts',
+    events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }],
+    reply: "The layout options are ready as a page you can click through, and I rendered a sample PDF from the compact one. I'd go with compact, since the line items stay readable at twelve rows.",
+    shared: [{ sharedId: 'sh-html', version: 3, title: 'Invoice layout options', kind: 'html' }]
+  }
+  const kai: TeamUpdateRow = {
+    workspaceId: ids.invites, agentId: 'kai', name: 'Kai', task: 'KERNEL-189 Download PDF in the row actions',
+    events: [{ kind: 'turn', text: 'Finished a turn', actionable: false }],
+    reply: 'The button flow is written up in a short note, so you can check the states before I build them.',
+    shared: [{ sharedId: 'sh-flow', version: 1, title: 'Download button flow', kind: 'markdown' }]
+  }
+  const rows = [noor, kai]
+  const update: ChatItem = {
+    kind: 'user', id: 'tus-u', ts: at(14, 41), from: 'kernel', update: { rows },
+    parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), ...(r.shared ?? []).map((x) => `- Shared "${x.title}" (v${x.version}).`), '']), 'To do:', '- Look at both files, then tell the user what you found.'].join('\n') }]
+  }
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+    update,
+    { kind: 'text', id: 'tus-r', ts: at(14, 42), text: "Noor shared the invoice layouts and Kai shared a note on the download button. I'll look at both before I pass anything on." },
+    { kind: 'result', id: 'tus-res', ts: at(14, 42), durationMs: 45_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return { ...rest, shared: sharedFiles(), sharedData: sharedStills }
+}
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -501,6 +609,22 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
+  // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
+  // width or version menu, is the shot's: WorkspaceSharedPhone and WorkspaceSharedVersions need a click (scripts/shots.ts).
+  WorkspaceSharedCard: sharedTab(undefined, 2),
+  WorkspaceSharedHtml: sharedTab('sh-html'),
+  WorkspaceSharedPhone: sharedTab('sh-html'),
+  WorkspaceSharedImage: sharedTab('sh-image'),
+  WorkspaceSharedMarkdown: sharedTab('sh-md'),
+  WorkspaceSharedPdf: sharedTab('sh-pdf'),
+  WorkspaceSharedVersions: sharedTab('sh-html'),
+  WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
+  WorkspaceSharedPanelEmpty: scene((f) => ({
+    settings: { ...DEFAULT_SETTINGS('/Users/you'), experimental: { ...DEFAULT_SETTINGS('/Users/you').experimental, sharing: true } },
+    ui: { ...open, workspace: { right: 'shared', bottom: 'run', checkpoints: false, toolsOpen: false } },
+    shared: sharedFiles().filter((x) => x.workspaceId !== ids.table), sharedData: sharedStills
+  })),
+  TeamUpdateShared: scene((f) => teamUpdateShared(f)),
   WorkspaceHire: scene((f) => ({
     ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
       userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
