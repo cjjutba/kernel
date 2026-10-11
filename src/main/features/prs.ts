@@ -236,6 +236,8 @@ export class Prs extends Feature {
     this.polls.set(id, { due: p.due, failures: 0, seen, changedAt: seen === p.seen ? p.changedAt : now })
   }
 
+  private offline() { return this.k.account.network?.online === false }
+
   /** How long until the poll reads this PR again. */
   private waitFor(ws: Workspace, p: { failures: number; changedAt: number }) {
     if (p.failures) return Math.min(this.pollMs * 2 ** p.failures, this.maxBackoffMs)
@@ -253,10 +255,12 @@ export class Prs extends Feature {
 
   private async pollOnce() {
     const start = Date.now()
-    if (this.k.account.network?.online !== false) {
+    if (!this.offline()) {
       for (const ws of this.store.workspaces()) {
         if (ws.status === 'archived' || ['none', 'merged', 'closed'].includes(ws.prState)) { this.polls.delete(ws.id); continue }
         if ((this.polls.get(ws.id)?.due ?? 0) > start) continue
+        // The quick re-check reads it within 15 seconds, after this poll (KERNEL-283).
+        if (this.rechecks.get(ws.id) === 'queued') continue
         await this.k.refreshPr(ws.id).catch(() => {
           const p = this.polls.get(ws.id) ?? { due: 0, failures: 0, changedAt: Date.now() }
           this.polls.set(ws.id, { ...p, failures: p.failures + 1 })
@@ -290,10 +294,16 @@ export class Prs extends Feature {
     this.recheckTimer ??= setTimeout(() => void this.recheck(), this.recheckMs)
   }
 
+  /**
+   * Waits for a poll still running, so the two never read GitHub at once, and reads nothing offline: the poll reads
+   * those PRs once the Mac is back (KERNEL-216).
+   */
   private async recheck() {
     this.recheckTimer = undefined
+    await this.polling
     const ids = [...this.rechecks].flatMap(([id, s]) => (s === 'queued' ? [id] : []))
     for (const id of ids) this.rechecks.set(id, 'ran')
+    if (this.offline()) return
     for (const id of ids) await this.k.refreshPr(id).catch(() => undefined)
   }
 

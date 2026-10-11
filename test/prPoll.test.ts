@@ -106,6 +106,46 @@ describe('the PR poll (KERNEL-216)', () => {
     expect(reads).toEqual([ws[0].id])
   })
 
+  it("leaves a PR GitHub is still checking to the quick re-check, which waits for a running poll and reads nothing offline (KERNEL-283)", async () => {
+    const { k, ws, prs, reads } = await setup(2)
+    const [a, b] = ws.map((w) => w.id)
+    k.prs.recheckMs = 30
+    prs[a] = info(a, 'ready')
+    prs[b] = info(b, 'checks')
+    for (const id of [a, b]) await k.prs.refreshPr(id)
+    // Main moved: GitHub checks A for conflicts again, and A joins the quick re-check.
+    prs[a] = info(a, 'checks', { conflictsUnknown: true })
+    await k.prs.refreshPr(a)
+    prs[a] = info(a, 'ready')
+    let release!: () => void
+    const hung = new Promise<void>((r) => { release = r })
+    const answer = k.github.info
+    k.github = { ...k.github, info: async (...args) => { if (args[2] === b) await hung; return answer(...args) } }
+    reads.length = 0
+    const poll = k.prs.pollPrs()
+    // The poll skips A and hangs on B. The quick re-check's timer fires meanwhile and waits for the poll.
+    await new Promise((r) => setTimeout(r, 120))
+    expect(reads).toEqual([])
+    release()
+    await poll
+    await vi.waitFor(() => expect(reads).toEqual([b, a]))
+    expect(k.store.workspace(a)?.prState).toBe('ready')
+
+    // Offline, the quick re-check reads nothing, and the first poll back online reads the PR.
+    prs[a] = info(a, 'checks', { conflictsUnknown: true })
+    await k.prs.refreshPr(a)
+    prs[a] = info(a, 'ready')
+    k.account.network = new NetworkMonitor({ probe: async () => false, onChange: () => undefined })
+    k.account.network.online = false
+    reads.length = 0
+    await new Promise((r) => setTimeout(r, 120))
+    expect(reads).toEqual([])
+    k.account.network.online = true
+    await k.prs.pollPrs()
+    expect(reads).toContain(a)
+    expect(k.store.workspace(a)?.prState).toBe('ready')
+  })
+
   it('waits twice as long after each failed read, up to 10 minutes, and goes back to every poll once gh answers', async () => {
     const { k, ws, prs, reads } = await setup()
     const id = ws[0].id
