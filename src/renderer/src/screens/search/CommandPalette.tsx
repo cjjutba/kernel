@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Approval } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, go, useStore } from '../../store'
-import { openLead, openRoom } from '../../lead'
+import { actions, getState, go, useStore } from '../../store'
+import { isLeadWorkspace, leadOf, openLead, openRoom } from '../../lead'
+import { currentThread } from '../../nav'
+import { openLeadChats, openRow, openThreads } from '../../components/sidebar/slots'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
 import { focusComposerWhenOpen } from '../workspace/composer/bus'
 import { Icon, Kbd, Modal } from '../../ui'
-import { buildItems, visibleItems, type PaletteItem } from './model'
+import { buildItems, roomInView, visibleItems, type PaletteItem } from './model'
 import './search.css'
 
 const close = () => actions.ui.closeModal()
@@ -15,9 +17,12 @@ const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: c
 /** Allow the one tool request, the same call the Inbox and the floor make. */
 const approve = (a: Approval) => void call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }).then(actions.approvals.upsert).catch(fail('Could not send your answer'))
 
-/** A chat tab opens in the workspace you are in, and takes focus. */
+/** A tab opens in the workspace you are in, and takes focus. In the Lead's workspace a chat tab joins the chat on screen (KERNEL-339), as + does. */
 function newChat(workspaceId: string, kind?: 'terminal') {
-  void call('chats.create', { workspaceId, kind }).then((chat) => {
+  const s = getState()
+  const ws = s.workspaces.find((w) => w.id === workspaceId)
+  const threadId = kind !== 'terminal' && ws && isLeadWorkspace(ws, ws.roomId, leadOf(s.agents, ws.roomId)?.id) ? currentThread(s, workspaceId) : undefined
+  void call('chats.create', { workspaceId, kind, ...(threadId ? { threadId } : {}) }).then((chat) => {
     actions.chats.upsert(chat)
     go({ name: 'workspace', workspaceId })
     if (chat.kind !== 'terminal') focusComposerWhenOpen(chat.id)
@@ -45,6 +50,8 @@ export function CommandPalette() {
   const approvals = useStore((s) => s.approvals)
   const agents = useStore((s) => s.agents)
   const shared = useStore((s) => s.shared)
+  const chats = useStore((s) => s.chats)
+  const threads = useStore((s) => s.threads)
   const terminalSettings = useStore((s) => s.settings?.terminal)
   const presets = useTerminalPresets()
   const terminal = useMemo(() => terminalSettings && { enabled: terminalSettings.enabled, preset: presets ? selectedPreset(presets, terminalSettings)?.name : undefined }, [terminalSettings, presets])
@@ -52,10 +59,15 @@ export function CommandPalette() {
   const [at, setAt] = useState(0)
   const list = useRef<HTMLDivElement>(null)
 
+  // The open chats of the room in view, in the sidebar's order.
+  const roomChats = useMemo(() => {
+    const room = roomInView(route, rooms, workspaces)
+    return room ? openThreads(openLeadChats(room, agents, workspaces, chats), threads, room.id) : []
+  }, [route, rooms, workspaces, agents, chats, threads])
   const { items, more } = useMemo(() => buildItems({
-    route, rooms, workspaces, approvals, agents, terminal, shared: Object.values(shared),
-    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }) }
-  }), [route, rooms, workspaces, approvals, agents, terminal, shared])
+    route, rooms, workspaces, approvals, agents, terminal, chats: roomChats, shared: Object.values(shared),
+    act: { go, newWorkspace: (roomId) => actions.ui.openModal({ name: 'newWorkspace', roomId }), newRoom: () => actions.ui.openModal({ name: 'newRoom' }), whatsNew: () => actions.ui.openModal({ name: 'whatsNew' }), approve, newChat, openChat: (roomId, thread, tabs) => openRow(roomId, { kind: 'chat', thread, tabs, owned: [], folded: false }), openLead: (roomId) => void openLead(roomId), openRoom: (roomId) => void openRoom(roomId), openShared, openSharedInLead: (roomId, sharedId) => void openSharedInLead(roomId, sharedId), toast: (title) => actions.ui.toast({ title }) }
+  }), [route, rooms, workspaces, approvals, agents, terminal, roomChats, shared])
   const groups = useMemo(() => visibleItems(items, more, q), [items, more, q])
   const flat = groups.flatMap((g) => g.list)
   const cur = Math.min(at, Math.max(0, flat.length - 1))
@@ -82,8 +94,8 @@ export function CommandPalette() {
       </div>
       <div id="cp-list" ref={list} role="listbox" aria-label="Results" className="cp-list">
         {groups.map((g) => (
-          <div key={g.section} role="group" aria-label={g.section}>
-            <div className="cp-sec" aria-hidden="true">{g.section}</div>
+          <div key={g.section} role="group" aria-label={g.title}>
+            <div className="cp-sec" aria-hidden="true">{g.title}</div>
             {g.list.map((it) => (
               <div key={it.id} id={`cp-${it.id}`} role="option" aria-selected={flat[cur]?.id === it.id} className="cp-row" onMouseMove={() => setAt(flat.indexOf(it))} onClick={() => run(it)}>
                 <span className="cp-glyph" aria-hidden="true">{it.glyph}</span>

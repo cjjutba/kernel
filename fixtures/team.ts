@@ -1,7 +1,7 @@
 import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
-import { sharedFiles, sharedStills } from './workspace'
+import { grouped, sharedFiles, sharedStills } from './workspace'
 
 // Team lane: Home and Inbox (KERNEL-17), rooms and the sidebar menus (KERNEL-20), Team and agents (KERNEL-19).
 
@@ -418,6 +418,8 @@ export const teamFixtures: Record<string, Fixture> = {
     }
   }),
   CommandPalette: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
+  // KERNEL-339: the palette in Rowan's chat. It lists the room's open chats with their tab counts, and New tab adds a tab to this one.
+  GroupedPalette: scene((f) => { const g = grouped(f); return { ...g, ui: { ...g.ui!, modal: { name: 'search' } } } }),
   // KERNEL-307: the palette in Noor's workspace, with the four files she shared in it. Kai's file is in another workspace, so it only turns up by typing.
   SearchShared: scene((f) => ({ ...homeScene(f), shared: sharedFiles().filter((x) => x.workspaceId === ids.table), sharedData: sharedStills, ui: { route: { name: 'workspace', workspaceId: ids.table }, modal: { name: 'search' } } })),
   AccountMenu: scene((f) => ({ ...homeScene(f), ui: { ...home, menu: 'account' } })),

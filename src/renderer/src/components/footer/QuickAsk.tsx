@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { call, cleanError } from '../../api'
-import { actions, useStore } from '../../store'
+import { actions, getState, useStore } from '../../store'
 import { openLead, openLeadChat } from '../../lead'
 import { Button, Icon, Spinner, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { roomInView } from '../../screens/search/model'
+import { askThreadOf } from './askThread'
 
 /** The Lead's answer to the question just asked: text items after it, until the turn ends. */
 function answerOf(items: { kind: string; ts: number; text?: string }[], since: number): string {
@@ -49,7 +50,9 @@ export function QuickAsk({ onClose, anchorRef }: { onClose: () => void; anchorRe
       actions.quickAsk.setSending(room.id, true)
       const since = Date.now()
       try {
-        const { chatId } = await call('lead.ask', { roomId: room.id, text: question })
+        // From inside a chat the answer is a new tab of it. From anywhere else it opens as a chat of its own (KERNEL-339).
+        const threadId = askThreadOf(getState())
+        const { chatId } = await call('lead.ask', { roomId: room.id, text: question, ...(threadId ? { threadId } : {}) })
         actions.chats.setItems(chatId, await call('chats.items', { chatId }))
         actions.quickAsk.setAsked(room.id, { chatId, since, question })
       } catch (e) { setError(cleanError(e)) }

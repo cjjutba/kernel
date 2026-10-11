@@ -316,8 +316,16 @@ export async function renameBranch(path: string, to: string) { await git(path, '
 export async function snapshotBaseline(repo: string): Promise<{ ref: string; untracked: string[] }> {
   const stash = (await git(repo, 'stash', 'create')).trim()
   const ref = stash || (await git(repo, 'rev-parse', 'HEAD')).trim()
-  const untracked = (await git(repo, 'ls-files', '--others', '--exclude-standard')).split('\n').filter(Boolean)
+  const untracked = await untrackedFiles(repo)
   return { ref, untracked }
+}
+
+/**
+ * Untracked files, leaving out `.claude/worktrees/`, where Claude Code keeps its own worktrees. Repos rarely ignore
+ * that folder, and we don't edit the user's .gitignore (KERNEL-350).
+ */
+async function untrackedFiles(path: string): Promise<string[]> {
+  return (await git(path, 'ls-files', '--others', '--exclude-standard', '--', ':(top,exclude).claude/worktrees')).split('\n').filter(Boolean)
 }
 
 /**
@@ -339,7 +347,7 @@ export async function changedFiles(path: string, since: string, ignoreUntracked:
     if (f) f.status = (st[0] as ChangedFile['status']) ?? 'M'
   }
   const skip = new Set(ignoreUntracked)
-  const untracked = (await git(path, 'ls-files', '--others', '--exclude-standard')).split('\n').filter((f) => f && !skip.has(f))
+  const untracked = (await untrackedFiles(path)).filter((f) => !skip.has(f))
   for (const file of untracked) {
     const lines = (await exec('git', ['-C', path, 'diff', '--no-index', '--numstat', '/dev/null', file])).stdout.split('\t')[0]
     files.set(file, { path: file, status: 'A', added: Number(lines) || 0, removed: 0 })

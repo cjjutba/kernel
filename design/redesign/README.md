@@ -43,6 +43,9 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `ProposedTerminal` | Terminal tab | `Panels.tsx` (bottom panel) |
 | `TeamUpdate` | Team update cards in Rowan's chat | `screens/workspace/cards/TeamUpdateCard.tsx` |
 | `TeamUpdateShared` | Team update with a shared file card under the teammate's row (KERNEL-301) | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| `TeamUpdateMerge` | Team update rows with Merge: ready (`Merge #162`), a reviewer's row, blocked ("Waiting for Theo's approval"), Merging and Merged (KERNEL-351) | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| `LeadPrs` | The Lead's right panel with the PRs tab: "2 ready to merge" in the header, Ready to merge and Still open (KERNEL-354) | `screens/workspace/Panels.tsx` |
+| `LeadPrsEmpty` | The Lead's right panel with no open PRs (KERNEL-354) | `screens/workspace/Panels.tsx` |
 | `AskRowan` | Ask Rowan popover, empty | `components/footer/QuickAsk.tsx` |
 | `NewChat` | New chat empty state | `screens/workspace/Transcript.tsx` |
 | `Composer` | Every composer state: normal, working, plan mode and plan waiting, each empty and typing | `screens/workspace/composer/` |
@@ -53,6 +56,12 @@ Plan mode moves slowly and only the glow loops. `PlanMotion` plays every step on
 | `PrNoChanges` to `PrClosed` | One screen per PR state, in the order a PR moves through them | `pr/model.ts` (`headerView`), `pr/PrHeader.tsx`, `pr/pr.css` |
 
 The PR screens cover No changes yet, No PR yet, Creating PR, Draft, Open, Checks running, Checks failed, Changes requested, Merge conflicts, Resolving, Ready to merge, Merging, Merged and Closed.
+
+## Merge (KERNEL-347)
+
+- **Team update.** The newest row about a ready PR shows `Merge #N` before Open, in the ready band's soft tone (`--pr-ready-soft`, edge and fg). Older rows about the same PR keep Open only. While it merges the button reads Merging, dims and spins, and the row's events say "Merging PR #N". A merged row's event is violet, and its Open becomes In History once the workspace is archived. A PR that can't merge yet shows the reason in muted text in the button's place, such as "Waiting for Theo's approval". On a reviewer's row the button merges the PR under review.
+- **Lead panel.** The header is the ready band with "N ready to merge" and a chevron, and clicking it opens the PRs tab. With nothing open it is the grey band reading "No open PRs", with no chevron. The PRs tab sits first, with the ready count. Ready to merge rows carry Merge and Open. The list scrolls above the Run panel, which keeps its normal height, so `LeadPrs` cuts the last Still open row off. Still open rows are muted, with the state word (Waiting for approval, Checks running, Checks failed, Changes requested, Merge conflicts or Draft) in the band's label tone and Open. A row is the agent, issue key, #N, title, the review line ("Theo approved" green, "Theo found 2 blockers" red, "Not reviewed" faint) and the lines added and removed.
+- **Settings.** `SettingsPRs` is drawn in `design/canvas/`. Merging comes before Instructions on Settings, Pull requests, so its switches show without scrolling, and it gains "Let the Lead merge when you ask", off.
 
 ## Not built
 

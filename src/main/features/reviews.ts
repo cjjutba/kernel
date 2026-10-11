@@ -1,4 +1,5 @@
 import type { ReviewVerdict, Workspace } from '@shared/types'
+import { reviewVerdicts } from '@shared/merge'
 import { bus } from '../bus'
 import type { ReviewState } from '../services/leadUpdates'
 import type { ReviewInput } from '../services/reviewMcp'
@@ -54,9 +55,7 @@ export class Reviews extends Feature {
   /** What Kernel knows about reviews of a workspace's PR, for the Lead's updates. */
   reviewState(ws: Workspace): ReviewState {
     const name = (id: string) => this.agentsSync(ws.roomId).find((a) => a.id === id)?.name ?? id
-    // Verdicts on this PR, and those of them on its head commit, as far as either is known.
-    const verdicts = (ws.reviews ?? []).filter((v) => !v.prNumber || !ws.prNumber || v.prNumber === ws.prNumber)
-    const current = verdicts.filter((v) => !v.sha || !ws.prHead || v.sha === ws.prHead)
+    const { verdicts, current } = reviewVerdicts(ws)
     const blockers = current.some((v) => v.verdict === 'blockers')
     const reviews = this.store.workspaces(ws.roomId).filter((r) => r.reviewOf === ws.id && r.status !== 'archived').sort((a, b) => b.createdAt - a.createdAt)
     // A review runs while its setup runs, or while its reviewer works on it and hasn't sent a verdict on the head commit.

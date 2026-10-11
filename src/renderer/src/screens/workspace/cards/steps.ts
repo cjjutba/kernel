@@ -43,6 +43,16 @@ export function planTitle(a: PlanSource & Pick<Approval, 'title'>): string {
 
 export const isPlanApproval = (a: Pick<Approval, 'kind' | 'toolName'>) => a.kind === 'plan' || a.toolName === 'ExitPlanMode'
 
+/** "Plan for T-15 is ready", or "Plan ready: Export invoices" when the title doesn't start with Plan. The Home list and the chat hover card say it this way. */
+export const planReadyLine = (a: Pick<Approval, 'title'>): string => (/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`)
+
+/** What a tool permission asks, by the agent who asks: "Noor wants to run a command", "wants to edit a file" or "wants to use WebFetch". The approval card and the chat hover card say it this way. */
+export function permissionTitle(a: Pick<Approval, 'toolName' | 'input'>, who: string): string {
+  const input = (a.input ?? {}) as Record<string, unknown>
+  if (a.toolName === 'Bash') return `${who} wants to run a command`
+  return String(input.file_path ?? input.path ?? '') ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`
+}
+
 /** The plan waiting on you in this chat, if any. Its Copy and Approve go on the composer. */
 export function waitingPlan(approvals: Approval[], chat: { id: string; workspaceId: string }): Approval | undefined {
   return approvals.find((a) => a.status === 'pending' && isPlanApproval(a) && (a.chatId ? a.chatId === chat.id : a.workspaceId === chat.workspaceId))
@@ -79,6 +89,18 @@ export const isStepped = (a: Pick<Approval, 'questions'>): boolean => (a.questio
 
 /** Next or Send waits until something is checked, and until Something else has text. */
 export const pickReady = (p: Picked): boolean => (p.sel.length > 0 || p.other) && (!p.other || !!p.text.trim())
+
+/** Every question has an answer, so Send is the next move. */
+export const allAnswered = (picks: Picked[]): boolean => picks.every(pickReady)
+
+/** The next question without an answer after `from`, wrapping to the start. -1 when every other question has one. */
+export function nextUnanswered(picks: Picked[], from: number): number {
+  for (let k = 1; k < picks.length; k++) {
+    const i = (from + k) % picks.length
+    if (!pickReady(picks[i])) return i
+  }
+  return -1
+}
 
 /** One question's answer: the ticked labels in the order asked, then the typed text, joined with ", ". */
 export function pickAnswer(q: AskedQuestion, p: Picked): string {

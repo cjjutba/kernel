@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent } from 'electron'
-import { writeSync } from 'node:fs'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, Notification, powerMonitor, safeStorage, session, shell, type IpcMainInvokeEvent, type RenderProcessGoneDetails } from 'electron'
+import { readFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -10,6 +10,9 @@ import { bus } from './bus'
 import { Kernel } from './kernel'
 import { fixtureHandlers, fixturePush } from './fixtures'
 import { exec } from './services/exec'
+import { hookTokenFile } from './services/hookToken'
+import { diagnostics, Log } from './services/log'
+import { appMenu } from './menu'
 import { Updater } from './updater'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { QuitGuard } from './quit'
@@ -18,7 +21,7 @@ import { refreshPath } from './services/shellPath'
 import { insideRoots, isAppUrl } from './windowGuard'
 import { copiesIn, PreviewHost, previewFixture, registerPreviewScheme, type PreviewHandlers } from './previewHost'
 import type { Channel, KernelApi } from '@shared/ipc'
-import type { Room, Workspace } from '@shared/types'
+import type { Room, Toast, Workspace } from '@shared/types'
 import { isWebUrl } from '@shared/previewUrl'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -71,6 +74,24 @@ const primary = !smokeTest && (!!fixtureName || app.requestSingleInstanceLock())
 if (!primary) app.quit()
 app.on('second-instance', () => focusWindow())
 
+// Kernel's log (KERNEL-288). Fixture runs leave it off, so screenshots and scripted runs never write to the real one. A dev
+// run can point it at another folder, as test/crash.e2e.test.ts does.
+const logDir = !app.isPackaged && process.env.KERNEL_LOG_DIR ? process.env.KERNEL_LOG_DIR : fixtureName ? undefined : join(app.getPath('home'), 'Library', 'Logs', 'Kernel')
+/** The log and Copy diagnostics hide the home folder and the hook token, read from its file so nothing makes one early. */
+const redaction = {
+  home: app.getPath('home'),
+  secrets: () => { try { return [readFileSync(hookTokenFile(app.getPath('userData')), 'utf8').trim()] } catch { return [] } }
+}
+// The smoke test and a second launch, which only hands over and quits, write nothing.
+const log = logDir && primary ? new Log({ dir: logDir, ...redaction }) : undefined
+log?.captureConsole()
+log?.info(`[kernel] Kernel ${app.getVersion()} started on macOS ${process.getSystemVersion()}`)
+// With no listener, Electron shows an error nothing caught in a raw dialog. Kernel logs it and keeps running: the database
+// writes in transactions, and a stuck feature beats a window that quits under the user's agents.
+process.on('uncaughtException', (err) => console.error('[kernel] uncaught exception', err))
+process.on('unhandledRejection', (reason) => console.error('[kernel] unhandled rejection', reason))
+app.on('child-process-gone', (_e, d) => { if (d.reason !== 'clean-exit') console.error(`[kernel] a ${d.type} process is gone (${d.reason}, exit code ${d.exitCode})`) })
+
 /** Brings the window forward, or opens one if it was closed. A headless run stays hidden. */
 function focusWindow() {
   const w = mainWindow()
@@ -80,6 +101,44 @@ function focusWindow() {
   w.show()
   w.focus()
 }
+
+/** Shows a toast in the window, if there is one. */
+const toast = (t: Omit<Toast, 'id'>) => bus.push({ type: 'toast', toast: t })
+/** The hook port for Copy diagnostics. Unknown until the kernel exists, and in fixture runs. */
+let hookPort: () => number | undefined = () => undefined
+
+/** Help, Copy diagnostics: versions, the hook port and the end of the log, ready to paste into a bug report (KERNEL-288). */
+async function copyDiagnostics() {
+  const text = await diagnostics({ app: app.getVersion(), macos: process.getSystemVersion(), arch: process.arch, electron: process.versions.electron, hookPort: hookPort(), log, ...redaction })
+  clipboard.writeText(text)
+  toast({ title: 'Diagnostics copied', sub: 'Paste them into your bug report.' })
+}
+
+/** When the window's page last crashed, so a page that crashes as it loads isn't reloaded forever. */
+let crashes: number[] = []
+
+/** The window's page crashed or was killed. Reload it and say so, rather than leave a blank window (KERNEL-288). */
+async function rendererGone(w: BrowserWindow, d: RenderProcessGoneDetails) {
+  console.error(`[kernel] the window's page is gone (${d.reason}, exit code ${d.exitCode})`)
+  if (d.reason === 'clean-exit' || w.isDestroyed()) return
+  const now = Date.now()
+  crashes = [...crashes.filter((t) => now - t < 60_000), now]
+  if (crashes.length > 3) {
+    console.error('[kernel] the window crashed 4 times in a minute, so Kernel stopped reloading it')
+    if (headless) return
+    const r = await dialog.showMessageBox(w, {
+      type: 'warning', message: 'Kernel\'s window keeps crashing', detail: 'Kernel stopped reloading it. Help, Copy diagnostics copies what a bug report needs.',
+      buttons: ['Reload', 'Quit'], defaultId: 0, cancelId: 0
+    })
+    if (r.response === 1) return app.quit()
+    crashes = []
+  }
+  if (w.isDestroyed()) return
+  w.webContents.once('did-finish-load', () => toast({ title: 'Kernel reloaded', sub: 'The window crashed. Help, Copy diagnostics has the details.' }))
+  load(w)
+}
+
+const load = (w: BrowserWindow) => { if (rendererUrl) void w.loadURL(rendererUrl); else void w.loadFile(join(here, '../renderer/index.html')) }
 
 /** Traffic lights over the sidebar's 42px top strip, or centered in the screen header row (y 9 to 53) while the sidebar is hidden. */
 const LIGHTS = { sidebar: { x: 13, y: 15 }, header: { x: 20, y: 25 } }
@@ -115,8 +174,11 @@ function createWindow() {
   // A link with target="_blank" never opens a window. A web page goes to the browser, and anything else, like a file: link
   // in an agent's message, goes nowhere (KERNEL-246).
   win.webContents.setWindowOpenHandler(({ url }) => { if (isWebUrl(url)) void shell.openExternal(url); return { action: 'deny' } })
-  if (rendererUrl) void win.loadURL(rendererUrl)
-  else void win.loadFile(join(here, '../renderer/index.html'))
+  const w = win
+  w.webContents.on('render-process-gone', (_e, d) => void rendererGone(w, d))
+  // The page's own errors go to the log too: a React error can blank the window with no crash.
+  w.webContents.on('console-message', (e) => { if (e.level === 'error') log?.error('[renderer]', e.message, `(${e.sourceId}:${e.lineNumber})`) })
+  load(w)
 }
 
 /** Every bridge call comes through here. Only the app's own page may call, never a page that got into the window. */
@@ -218,6 +280,7 @@ app.whenReady().then(async () => {
     // Timers run late by however long the Mac slept, so a usage limit that reset meanwhile is checked on wake.
     powerMonitor.on('resume', () => void started.then(() => kernel.checkLimits(), () => undefined))
     handlers = kernel.handlers() as typeof handlers
+    hookPort = () => kernel.settings?.hookPort
   }
   // The page asks for nothing: clipboard writes back the copy buttons, and every other request is refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done, details) => done(permission === 'clipboard-sanitized-write' && isAppUrl(details.requestingUrl, appUrl)))
@@ -252,6 +315,7 @@ app.whenReady().then(async () => {
     return { ok: true }
   })
   bus.on('push', (event) => mainWindow()?.webContents.send('kernel:event', event))
+  Menu.setApplicationMenu(Menu.buildFromTemplate(appMenu({ copyDiagnostics: () => void copyDiagnostics().catch((err: unknown) => console.error('[kernel] could not copy diagnostics', err)) })))
   createWindow()
   app.on('activate', () => { if (!mainWindow()) createWindow() })
 }).catch(bootFailed)

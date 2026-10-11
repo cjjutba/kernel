@@ -36,7 +36,7 @@ export function SharedCard({ sharedId, version }: { sharedId: string; version: n
           <div className="shcard-line"><span className="shcard-title ellipsis">{file.title}</span>{button}</div>
           <span className="shcard-meta ellipsis">{meta}</span>
         </div>
-        <div className="shcard-thumb" aria-hidden="true"><img src={thumb} alt="" /></div>
+        <div className="shcard-thumb" aria-hidden="true" onClick={open}><img src={thumb} alt="" /></div>
       </div>
     )
   }
@@ -63,7 +63,7 @@ export function SharedRow({ sharedId, version, title, kind }: { sharedId: string
   return (
     <div className="shrow">
       {thumb && picture(file?.kind ?? kind)
-        ? <span className="shrow-thumb" aria-hidden="true"><img src={thumb} alt="" /></span>
+        ? <span className="shrow-thumb" aria-hidden="true" onClick={open}><img src={thumb} alt="" /></span>
         : <span className="shrow-tile" aria-hidden="true"><Icon name={kindIcon[file?.kind ?? kind]} size={16} /></span>}
       <div className="shrow-text">
         <span className="shrow-title ellipsis">{name}</span>

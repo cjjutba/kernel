@@ -103,11 +103,11 @@ const PLAN = [
   'Add "Download PDF" to the row actions menu', 'Call /api/invoices/:id/pdf and stream the file', 'Show progress on the item while it downloads', 'Toast on failure with a retry action', 'Playwright test for the download'
 ].map((t, i) => `${i + 1}. ${t}`).join('\n')
 
-/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select with descriptions. */
+/** Three questions in one AskUserQuestion call: a single-select, a multi-select and a single-select. */
 const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
-  { question: 'Should the download keep the invoice number in the file name?', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
+  { question: 'Should the download keep the invoice number in the file name?', header: 'File name', options: [{ label: 'Yes, invoice-009.pdf' }, { label: 'Add the client name, acme-invoice-009.pdf' }] },
   {
-    question: 'Where should the Download PDF action appear?', multiSelect: true,
+    question: 'Where should the Download PDF action appear?', header: 'Placement', multiSelect: true,
     options: [
       { label: 'Row actions menu', description: 'Next to Duplicate and Void on every invoice row.' },
       { label: 'Invoice detail header', description: 'Beside the status badge when an invoice is open.' },
@@ -115,11 +115,8 @@ const DOWNLOAD_QUESTIONS: AskedQuestion[] = [
     ]
   },
   {
-    question: 'What should happen when the download fails?',
-    options: [
-      { label: 'Show a toast with a retry action', description: 'The same toast the invoice table uses.' },
-      { label: 'Show an inline error on the row', description: 'Stays until the next try.' }
-    ]
+    question: 'What should happen when the download fails?', header: 'On failure',
+    options: [{ label: 'Show a toast with a retry action' }, { label: 'Fail quietly and write it to the log' }]
   }
 ]
 
@@ -596,7 +593,7 @@ const exportItems = (): ChatItem[] => [
 ]
 
 /** The Lead's workspace on the sidebar the Grouped PNGs share: four Lead chats, two of them with several tabs, and their workspaces. Each shot picks what is open. */
-function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'changes' | 'files'; running?: string[]; items?: Record<string, ChatItem[]>; chats?: (c: Chat[]) => Chat[]; threads?: (t: Thread[]) => Thread[] } = {}): Partial<Fixture> {
+export function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'changes' | 'files'; running?: string[]; items?: Record<string, ChatItem[]>; chats?: (c: Chat[]) => Chat[]; threads?: (t: Thread[]) => Thread[] } = {}): Partial<Fixture> {
   const T = GROUPED
   const chats = [
     leadTab(ids.leadChat, T.export, 'Export invoices as PDF', 5),
@@ -605,7 +602,7 @@ function grouped(f: Fixture, o: { tab?: string; files?: string[]; right?: 'chang
     leadTab('chat-table', T.table, 'Invoice table and empty states', 8),
     leadTab('chat-table-copy', T.table, 'Empty state copy', 9),
     leadTab('chat-login', T.login, 'Client portal login', 10),
-    leadTab('chat-login-redirect', T.login, 'Login redirect copy', 11),
+    leadTab('chat-login-redirect', T.login, 'Fix the login redirect', 11),
     leadTab('chat-demo', T.demo, 'Seed realistic demo data', 12)
   ]
   const threads = [
@@ -775,6 +772,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   ], {
     approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
   })),
+  // Drawn on question 3 with the first two answered and Something else typed; the step and the typing are local to the card (scripts/shots.ts).
+  WorkspaceQuestionOther: scene((f) => scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
+    userMsg('qo1', 'Build T-15b from the approved plan.', true),
+    ...folded('qo', 6, 0),
+    { kind: 'result', id: 'qo-res', ts: at(10, 29), durationMs: 60_000, ok: true }
+  ], {
+    approvals: [pending('question', 'kai', { title: DOWNLOAD_QUESTIONS[0].question, options: DOWNLOAD_QUESTIONS[0].options.map((o) => o.label), questions: DOWNLOAD_QUESTIONS }), ...f.approvals]
+  })),
   // The card keeps its place in the transcript once answered, and the agent's reply comes after it.
   WorkspaceQuestionAnswers: scene((f) => {
     const s = scene2(f, { name: 'invoice-pdf-button', branch: 'feat/t-15b-invoice-pdf-button', agentId: 'kai' }, 'Download button', [
@@ -875,11 +880,27 @@ export const workspaceFixtures: Record<string, Fixture> = {
       ] }
     })
   }),
-  // Chat rows say what waits on you and what is running: the login chat has a question open in one tab, the table chat is working.
+  // Chat rows say what waits on you and what is running: the login chat has a question open in its second tab, the table chat is working.
+  // Hovering the login row shows its card, which names that tab and the question (KERNEL-339), four minutes into the wait.
   GroupedRowStatus: scene((f) => {
     const g = grouped(f)
-    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: ids.lead, chatId: 'chat-login', title: 'Should the login redirect keep Google sign-in?', options: ['Keep it', 'Drop it'] }) }
+    const ask: Approval = { ...pending('question', 'rowan', { workspaceId: ids.lead, chatId: 'chat-login-redirect', title: 'Should we keep Google sign in?', options: ['Keep it', 'Drop it'] }), createdAt: Date.now() - 4.5 * 60_000 }
     return { ...g, approvals: [ask, ...(g.approvals ?? [])] }
+  }),
+  // Ask Rowan from inside the chat: the answer is a fifth tab of Export invoices as PDF and the sidebar gains no row (KERNEL-339).
+  GroupedAskRowan: scene((f) => {
+    const status = leadTab('chat-status', GROUPED.export, "What's the status of T-15?", 7)
+    const tests = leadTab('chat-tests', GROUPED.export, 'Which tests cover the PDF fonts?', 7)
+    return grouped(f, {
+      tab: tests.id, chats: (c) => [...c.slice(0, 3), status, tests, ...c.slice(3)],
+      items: { [tests.id]: [
+        userMsg('ar', 'Which tests cover the PDF fonts?'),
+        { kind: 'thinking', id: 'ar-th', ts: at(10, 52), text: 'Ivy owns the snapshot tests. I should check what they assert.' },
+        tool('ar-t1', 'Search the tests', 'rg -n "font" tests', { name: 'Grep' }),
+        { kind: 'text', id: 'ar-tx', ts: at(10, 52), text: "Ivy's snapshot tests in invoice-pdf.spec.ts check the embedded fonts for all three invoice types. Noor's renderer has no unit test of its own yet." },
+        { kind: 'result', id: 'ar-res', ts: at(10, 52), durationMs: 8_000, ok: true }
+      ] }
+    })
   }),
   // The last tab of a chat that is still running asks first. Closing it leaves the chat's two workspaces in the sidebar.
   GroupedCloseLastTab: scene((f) => {

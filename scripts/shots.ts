@@ -52,6 +52,16 @@ async function stepToSecondQuestion(page: Page) {
   await page.waitForTimeout(300)
 }
 
+// WorkspaceQuestionOther is drawn on question 3 with the first two answered and a Something else answer typed.
+async function typeOtherAnswer(page: Page) {
+  await stepToSecondQuestion(page)
+  await page.getByRole('button', { name: 'Next' }).click()
+  await page.getByRole('button', { name: 'Something else' }).click()
+  await page.getByRole('textbox', { name: 'Your answer' }).fill('Ask me again after the review')
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
 // WorkspaceSharedPhone is drawn at the Phone width, and WorkspaceSharedVersions with the version picker open. Both are local to the tab.
 async function pickPhone(page: Page) {
   await page.getByRole('radio', { name: 'Phone' }).click()
@@ -99,7 +109,15 @@ async function commentAt(page: Page, spot: { x: number; y: number }, note: strin
   }
 }
 
+// GroupedRowStatus is drawn with the pointer on the Client portal login row, once its card has opened.
+async function hoverRow(page: Page, row: string) {
+  await page.locator('.chat-row', { hasText: row }).hover()
+  await page.locator('.hover-card').waitFor()
+  await page.waitForTimeout(300)
+}
+
 const interactions: Record<string, (page: Page, app: ElectronApplication) => Promise<void>> = {
+  GroupedRowStatus: (page) => hoverRow(page, 'Client portal login'),
   WorkspacePlanModeTyping: focusComposer,
   WorkspacePlanTyping: focusComposer,
   WorkspaceSharedComment: (page) => commentAt(page, { x: 159, y: 162 }, 'Make this button the same blue as the header.', { x: 600, y: 300 }),
@@ -110,6 +128,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
   WorkspaceQuestionSteps: stepToSecondQuestion,
+  WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
   WorkspaceRowsFolded: (page) => openRows(page, ['Thinking', 'Message', 'Edit table.tsx'])
 }
