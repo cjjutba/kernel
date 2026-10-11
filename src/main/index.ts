@@ -14,7 +14,7 @@ import { hookTokenFile } from './services/hookToken'
 import { diagnostics, Log } from './services/log'
 import { errorEvent } from './services/telemetrySend'
 import { appMenu } from './menu'
-import { BOOT_UPDATE_MS, Updater } from './updater'
+import { BOOT_UPDATE_MS, readNotes, Updater } from './updater'
 import { dataDirs, moveToDev, openBy, type DataDirs } from './dataDir'
 import { isInstalledCopy, loginItemSettings } from './loginItem'
 import { lastFolder } from './picker'
@@ -316,6 +316,8 @@ app.whenReady().then(async () => {
         : undefined,
       version: app.getVersion(),
       updater,
+      // A dev run has no updater and no notes in its build, so What's new reads the version's release file in the repo.
+      currentNotes: app.isPackaged ? undefined : readNotes(join(app.getAppPath(), 'site', 'content', 'releases', `${app.getVersion()}.md`)),
       // Only the installed copy touches the login item, so a dev run or a dist/ build never registers or removes it.
       onSettings: (s) => { const login = loginItemSettings(installed, s); if (login) app.setLoginItemSettings(login) },
       showNotification: (n, { silent }) => {
