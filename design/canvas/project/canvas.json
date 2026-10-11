@@ -1270,6 +1270,159 @@
       "w": 1440,
       "x": 7600,
       "y": 3900
+    },
+    "SidebarChatFolded.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Your rooms, a chat folded",
+      "w": 1440,
+      "x": 9120,
+      "y": 3900
+    },
+    "SearchShared.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Search \u00b7 \u2318K with a Shared group",
+      "w": 1440,
+      "x": 21280,
+      "y": 2600
+    },
+    "WorkspaceSharedCard.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared file card in a teammate\u2019s chat",
+      "w": 1440,
+      "x": 0,
+      "y": 23400
+    },
+    "WorkspaceSharedHtml.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared HTML page in a tab",
+      "w": 1440,
+      "x": 1520,
+      "y": 23400
+    },
+    "WorkspaceSharedPhone.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared HTML page at phone width",
+      "w": 1440,
+      "x": 3040,
+      "y": 23400
+    },
+    "WorkspaceSharedImage.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared image in a tab",
+      "w": 1440,
+      "x": 4560,
+      "y": 23400
+    },
+    "WorkspaceSharedMarkdown.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared Markdown in a tab",
+      "w": 1440,
+      "x": 6080,
+      "y": 23400
+    },
+    "WorkspaceSharedPdf.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared PDF in a tab",
+      "w": 1440,
+      "x": 7600,
+      "y": 23400
+    },
+    "WorkspaceSharedVersions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared file, version picker open",
+      "w": 1440,
+      "x": 9120,
+      "y": 23400
+    },
+    "WorkspaceSharedCrashed.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared page stopped responding",
+      "w": 1440,
+      "x": 10640,
+      "y": 23400
+    },
+    "WorkspaceSharedPanel.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Right panel, Shared tab",
+      "w": 1440,
+      "x": 12160,
+      "y": 23400
+    },
+    "WorkspaceSharedPanelEmpty.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Right panel, nothing shared",
+      "w": 1440,
+      "x": 13680,
+      "y": 23400
+    },
+    "WorkspaceSharedComment.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared HTML page in comment mode",
+      "w": 1440,
+      "x": 15200,
+      "y": 23400
+    },
+    "WorkspaceSharedCommentImage.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Shared image in comment mode",
+      "w": 1440,
+      "x": 16720,
+      "y": 23400
+    },
+    "WorkspaceSharedCommentSent.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Comment sent to the sharing agent",
+      "w": 1440,
+      "x": 18240,
+      "y": 23400
+    },
+    "WorkspaceSharedCommentArchived.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Comment popover, sharing workspace archived",
+      "w": 1440,
+      "x": 19760,
+      "y": 23400
+    },
+    "WorkspaceSharedCommentOlder.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Comment popover on an older version",
+      "w": 1440,
+      "x": 21280,
+      "y": 23400
     }
   },
   "createdOnFiles": {
@@ -1361,9 +1514,17 @@
       "x": 0,
       "y": 21800
     },
+    "row18": {
+      "kind": "title1",
+      "maxW": 22720,
+      "text": "19 \u00b7 Shared files",
+      "w": 600,
+      "x": 0,
+      "y": 23100
+    },
     "row2": {
       "kind": "title1",
-      "maxW": 8000,
+      "maxW": 22720,
       "text": "3 \u00b7 Home and navigation",
       "w": 600,
       "x": 0,
@@ -1371,7 +1532,7 @@
     },
     "row3": {
       "kind": "title1",
-      "maxW": 9040,
+      "maxW": 10560,
       "text": "4 \u00b7 Sidebar and footer menus",
       "w": 600,
       "x": 0,
@@ -1449,6 +1610,7 @@
     "IssuesConnect.dc.html",
     "IssuesError.dc.html",
     "CommandPalette.dc.html",
+    "SearchShared.dc.html",
     "Rooms.dc.html",
     "NewRoom.dc.html",
     "History.dc.html",
@@ -1459,6 +1621,7 @@
     "QuickAsk.dc.html",
     "UpdateReady.dc.html",
     "HomeRoomIcon.dc.html",
+    "SidebarChatFolded.dc.html",
     "Board.dc.html",
     "TaskDetail.dc.html",
     "BoardEmpty.dc.html",
@@ -1567,7 +1730,22 @@
     "SettingsBigTerminal.dc.html",
     "SettingsRoomIcon.dc.html",
     "HomeLight.dc.html",
-    "WorkspaceLight.dc.html"
+    "WorkspaceLight.dc.html",
+    "WorkspaceSharedCard.dc.html",
+    "WorkspaceSharedHtml.dc.html",
+    "WorkspaceSharedPhone.dc.html",
+    "WorkspaceSharedImage.dc.html",
+    "WorkspaceSharedMarkdown.dc.html",
+    "WorkspaceSharedPdf.dc.html",
+    "WorkspaceSharedVersions.dc.html",
+    "WorkspaceSharedCrashed.dc.html",
+    "WorkspaceSharedPanel.dc.html",
+    "WorkspaceSharedPanelEmpty.dc.html",
+    "WorkspaceSharedComment.dc.html",
+    "WorkspaceSharedCommentImage.dc.html",
+    "WorkspaceSharedCommentSent.dc.html",
+    "WorkspaceSharedCommentArchived.dc.html",
+    "WorkspaceSharedCommentOlder.dc.html"
   ],
   "pages": [],
   "title": "Kernel"

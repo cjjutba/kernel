@@ -17,7 +17,7 @@ Kernel is a Mac app (Electron) where Claude Code agents work as a team. The user
 
 ## Where things are
 
-- `src/main/` main process: `kernel.ts` (orchestrator and the IPC handler map), `db.ts` (SQLite), `bus.ts` (events), `services/` (sessions, hooks, approvals, worktrees, scripts, github, agents, settings, preflight, kernelMcp)
+- `src/main/` main process: `kernel.ts` (wiring: builds the services and features, starts and stops them, joins their IPC handler maps), `features/` (one file per feature: its state, logic and IPC channels; moving out of `kernel.ts` in KERNEL-324 to KERNEL-331), `db.ts` (SQLite), `bus.ts` (events), `services/` (sessions, hooks, approvals, worktrees, scripts, github, agents, settings, preflight, kernelMcp)
 - `src/preload/` the `window.kernel` bridge
 - `src/shared/` contracts used by every process: `types.ts`, `ipc.ts`, `hookSchemas.ts`
 - `src/renderer/src/` React UI: `store.ts`, `App.tsx`, `screens/`, `components/`, `tokens.css`
@@ -32,11 +32,11 @@ Work is tracked in Linear (team Kernel, project "Kernel v1"). When asked to do a
 1. Fetch the issue with the Linear MCP and move it to In Progress. In a Kernel workspace, stay on the branch Kernel created. Otherwise name the branch `<type>/<key>-<a few words>`, with `fix` for the Bug label and `feat` otherwise, 60 characters at most (`fix/kernel-267-review-cant-start-reviewed-branch`).
 2. Open every PNG listed under Screens. Open the matching `design/canvas/project/<Screen>.dc.html` when you need an exact value.
 3. Plan before editing. Stay inside the files listed under Owns. If you must change a shared contract (`src/shared/*`, `store.ts`, `App.tsx`), do it in a separate first commit and say so in the PR.
-4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds.
+4. Implement. Add or update tests for engine behavior. Add a fixture in `fixtures/<lane>.ts`, keyed by PNG name, for each screen the issue builds, next to its related screens and not at the end of the file.
 5. Verify: `pnpm test:changed`, `pnpm typecheck`, then `pnpm shots <Screen> ...` and `pnpm shots:compare <Screen> ...` for each listed screen. Open the compare images and fix differences that a person would notice. The PR's Test check runs the full suite, so don't run `pnpm test` yourself unless you are reproducing a CI failure or changed the test setup.
 6. Write the release-note fragment (see Release notes below).
 7. Commit with Conventional Commits (`feat(workspace): ...`), open a PR with `gh pr create` that references `KERNEL-N` and lists what changed and what you checked.
-8. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review. Update the status column in `docs/SCREENS.md`.
+8. Comment a short summary on the issue (what changed, screenshots compared, anything left over) and move it to In Review.
 
 ## Release notes
 
@@ -70,8 +70,10 @@ Releases go through `/release` (`docs/RELEASING.md`).
 - A button that waits on the main process spins, says what it is doing ("Archiving") and can't be pressed twice. Use `useBusy` and the `busy` and `busyLabel` props on `Button` (DESIGN.md, Busy buttons).
 - Never commit secrets (Apple credentials, tokens). Read them from environment variables.
 - Check `docs/DECISIONS.md` and `docs/decisions/` before changing a deliberate choice. When you make a new one, add a file in `docs/decisions/` named after the issue (`docs/decisions/README.md`).
+- Don't add code to `src/main/kernel.ts`. A feature's state, logic and IPC channels go in its file under `src/main/features/`, a reaction to a finished turn in `features/sessionDeps.ts`, and a reaction to a push event in `listen` in `features/wiring.ts`. A feature imports `kernel.ts` and other features only as types and reaches them through its `k` (KERNEL-324). Until KERNEL-331 lands, change a feature that is still in `kernel.ts` where it is.
 - The Claude Agent SDK is pinned (see package.json). Check its `sdk.d.ts` before changing any call to it.
 - Before bumping the Claude Agent SDK version, run the live test (`KERNEL_LIVE=1 KERNEL_LIVE_REPO=<path to a side project> pnpm test test/live.test.ts`) and read the SDK changelog. Usage relies on an undocumented `rate_limit_event` field and an experimental usage API (KERNEL-6), so a bump can break the usage meters silently.
+- Lists that several PRs add to (`docs/SCREENS.md` rows, the screen lists in `build.py`, `noCanvas`, fixtures) keep one entry per line. No doc states a count that every PR would have to change, and tests derive counts from the files.
 - Keep PRs to one issue. If you find unrelated bugs, file a Linear issue with the Bug label instead of fixing them in place.
 
 ## Lanes

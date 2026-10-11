@@ -11,4 +11,4 @@ Work Linear issue $ARGUMENTS from start to finish, following CLAUDE.md.
 5. Verify: pnpm test:changed, pnpm typecheck, then the screenshot harness for each listed screen compared with its PNG. Fix what a person would notice. The PR's Test check runs the full suite, so don't run pnpm test yourself unless you are reproducing a CI failure or changed the test setup.
 6. Write the release-note fragment: a file in .changes/unreleased/ named after the change, with `type` and `issue: $ARGUMENTS`, and one sentence about what a user will notice. Follow the rules in .changes/README.md. Use `type: internal` when users won't notice.
 7. Commit (Conventional Commits), push, and open a PR with gh that references $ARGUMENTS, lists the acceptance criteria with checkmarks, links the compare images, and fills the Release note line of the PR template.
-8. Comment a short summary on $ARGUMENTS in Linear, move it to In Review, and update its rows in docs/SCREENS.md.
+8. Comment a short summary on $ARGUMENTS in Linear and move it to In Review.

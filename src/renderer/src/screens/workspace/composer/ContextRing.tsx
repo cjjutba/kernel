@@ -3,6 +3,7 @@ import type { Chat } from '@shared/types'
 import { call } from '../../../api'
 import { Button, Meter, Popover, useBusy } from '../../../ui'
 import { attempt } from '../MessageActions'
+import { CONTEXT_WARN } from '../banners/model'
 
 /** 14230 -> "14k", 1500 -> "1.5k", 1200000 -> "1.2M". Under 1,000 as is. */
 export function formatTokens(n: number): string {
@@ -14,6 +15,11 @@ export function formatTokens(n: number): string {
 
 const R = 6
 const C = 2 * Math.PI * R
+/** From this much context use the ring turns amber. Claude Code auto compacts near 83% (KERNEL-226), so amber means a compact is coming. */
+const CONTEXT_NEAR = 75
+
+/** The class that colors the ring and the popover's top meter: red from the banner's threshold, amber from `CONTEXT_NEAR`. */
+const contextLevel = (pct: number) => pct >= CONTEXT_WARN ? 'ctx-full' : pct >= CONTEXT_NEAR ? 'ctx-near' : undefined
 
 /**
  * How full the context window is: a small ring in the composer's footer. Hover shows the token counts, click opens the breakdown
@@ -27,6 +33,7 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
   const [busy, run] = useBusy()
   const pct = Math.max(0, Math.min(100, chat.context ?? 0))
   const usage = chat.contextUsage
+  const level = contextLevel(pct)
 
   // Focus moves to Compact now on open, and back to the ring on close unless a press elsewhere already took it.
   useEffect(() => {
@@ -42,15 +49,15 @@ export function ContextRing({ chat, blocked, open, onOpen }: { chat: Chat; block
 
   return (
     <span ref={anchor} style={{ position: 'relative' }}>
-      <button ref={ring} type="button" className="icon-btn ctx-ring" aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
+      <button ref={ring} type="button" className={['icon-btn ctx-ring', level].filter(Boolean).join(' ')} aria-label={`Context, ${pct}% used`} aria-haspopup="dialog" aria-expanded={open}
         data-tip={usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens used` : `${pct}% of context used`}
         onClick={() => onOpen(!open)}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
           <circle cx="8" cy="8" r={R} fill="none" stroke="var(--line-4)" strokeWidth="2" />
-          <circle cx="8" cy="8" r={R} fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="butt" strokeDasharray={`${(C * pct) / 100} ${C}`} transform="rotate(-90 8 8)" />
+          <circle cx="8" cy="8" r={R} className="ctx-arc" fill="none" strokeWidth="2" strokeLinecap="butt" strokeDasharray={`${(C * pct) / 100} ${C}`} transform="rotate(-90 8 8)" />
         </svg>
       </button>
-      <Popover open={open} onClose={() => onOpen(false)} label="Context" side="top" align="right" className="ctx-pop" anchorRef={anchor as RefObject<HTMLElement | null>}>
+      <Popover open={open} onClose={() => onOpen(false)} label="Context" side="top" align="right" className={['ctx-pop', level].filter(Boolean).join(' ')} anchorRef={anchor as RefObject<HTMLElement | null>}>
         <div className="ctx-head">
           <span className="ctx-title">Context</span>
           <span className="muted">{usage ? `${formatTokens(usage.used)} of ${formatTokens(usage.max)} tokens` : `${pct}% used`}</span>

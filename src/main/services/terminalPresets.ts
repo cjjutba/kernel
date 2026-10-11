@@ -1,26 +1,18 @@
 import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
+import { skipsPermissions, withoutSkip } from '@shared/skipFlag'
 import { KNOWN_CLIS, SKIP_FLAG, type AppSettings, type Chat, type TerminalPreset, type WorkspaceMode } from '@shared/types'
 
 type TerminalSettings = AppSettings['terminal']
 
 export { KNOWN_CLIS, SKIP_FLAG }
-/**
- * The flag as the shell hands it to `claude`: quoted, after a backslash, with `=value`, or next to `;`, `|`, `&`, `<` and `>`.
- * `--dangerously-skip-permissions-x` is another word and is left alone. A variable or an alias can't be caught (KERNEL-248).
- */
-const SKIP_WORD = /(^|[\s;&|(])\\?(["']?)--dangerously-skip-permissions(?:=[^\s;&|()<>"']*)?\2(?=$|[\s;&|)<>])/g
 
 export const BUILTIN_PRESETS: readonly TerminalPreset[] = [
   { id: 'claude', name: 'Claude', command: 'claude', builtin: true, skipsPermissions: false },
   { id: 'claude-skip', name: 'Claude without permission prompts', command: `claude ${SKIP_FLAG}`, builtin: true, skipsPermissions: true },
   { id: 'shell', name: 'Shell', command: null, builtin: true, skipsPermissions: false }
 ]
-
-export const skipsPermissions = (command: string) => new RegExp(SKIP_WORD.source).test(command)
-/** Removes every form of the flag. The space before it goes with it, a `;` or `(` before it stays. */
-const withoutSkip = (command: string) => command.replace(SKIP_WORD, (_, before: string) => (/\s/.test(before) ? '' : before)).trim()
 
 /** An executable file named `bin` in one of PATH's folders. Nothing is run. */
 async function onPath(bin: string, path: string): Promise<boolean> {

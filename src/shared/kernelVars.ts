@@ -24,6 +24,6 @@ export const isKernelVar = (name: string): name is KernelVar => Object.hasOwn(KE
 
 /**
  * A name Kernel drops from app and room variables for chats and terminals, because it picks Claude Code's endpoint, account or
- * billing (KERNEL-247). Scripts still get it. The engine keeps its own copy of the rule, `CLAUDE_NAME` in src/main/services/env.ts.
+ * billing (KERNEL-247). Scripts still get it. The engine strips these names with this rule too, so the Environment page and what agents get agree.
  */
 export const isClaudeVar = (name: string) => /^(ANTHROPIC_|CLAUDE_CODE_)/.test(name)

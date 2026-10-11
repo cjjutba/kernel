@@ -35,14 +35,14 @@ const AGENT = (id: string, extra = '') => `---\nname: ${id}\ndescription: ${id}.
 const PNG = Buffer.from('89504e470d0a1a0a0000000d494844520000000300000002080600000000000000', 'hex')
 const HTML = '<!doctype html><html><head><title>Checkout mockup</title><style>body{margin:0}</style></head><body><h1>Pay</h1></body></html>'
 
-async function setup(o: { sharing?: boolean; capture?: (f: SharedFile, v: number) => Promise<Buffer | null> } = {}) {
+async function setup(o: { sharing?: boolean; opened?: string[]; capture?: (f: SharedFile, v: number) => Promise<Buffer | null> } = {}) {
   const repo = await tempRepo({ 'README.md': '# client\n', '.claude/agents/rowan.md': AGENT('rowan', 'lead: true\n'), '.claude/agents/kai.md': AGENT('kai'), '.claude/agents/theo.md': AGENT('theo', 'role: Reviewer\n') })
   const dataDir = await mkdtemp(join(tmpdir(), 'kernel-data-'))
   const home = await mkdtemp(join(tmpdir(), 'kernel-home-'))
   await writeFile(join(dataDir, 'settings.json'), JSON.stringify({ hookPort: 18000 + Math.floor(Math.random() * 900), worktreeRoot: join(home, 'wt'), workspace: { baseRef: 'main' }, experimental: { sharing: o.sharing ?? true } }))
   const revealed: string[] = []
   const make = async () => {
-    const k = new Kernel({ dataDir, home, reveal: (p) => revealed.push(p), ...(o.capture ? { capture: { thumbnail: o.capture } } : {}) })
+    const k = new Kernel({ dataDir, home, reveal: (p) => revealed.push(p), ...(o.opened ? { openFile: async (p: string) => { o.opened!.push(p) } } : {}), ...(o.capture ? { capture: { thumbnail: o.capture } } : {}) })
     await k.start()
     k.sessions.send = async () => ({ queued: false })
     return k
@@ -268,6 +268,21 @@ describe('share_file (KERNEL-302)', () => {
     await expect(k().handlers()['shared.read']({ sharedId: f.id, version: 9 })).rejects.toThrow('That shared file or version is gone.')
     expect(k().sharedFile(f.id, 1)?.path).toBe(join(dataDir, 'shared', f.id, 'v1', 'logo.png'))
     expect(k().sharedFile(f.id, 2)).toBeUndefined()
+  })
+
+  it("opens Kernel's copy of a PDF in the default app, and nothing else", async () => {
+    const opened: string[] = []
+    const { k, kai, put, share, dataDir } = await setup({ opened })
+    await put(kai, 'sample.pdf', Buffer.from('%PDF-1.7\n'))
+    await put(kai, 'logo.png', PNG)
+    await share(kai, { path: 'sample.pdf' })
+    await share(kai, { path: 'logo.png' })
+    const [pdf, png] = [k().store.sharedFiles({}).find((f) => f.kind === 'pdf')!, k().store.sharedFiles({}).find((f) => f.kind === 'image')!]
+    await k().handlers()['shared.open']({ sharedId: pdf.id, version: 1 })
+    expect(opened).toEqual([join(dataDir, 'shared', pdf.id, 'v1', 'sample.pdf')])
+    await expect(k().handlers()['shared.open']({ sharedId: png.id, version: 1 })).rejects.toThrow('Only a PDF opens in Preview.')
+    await expect(k().handlers()['shared.open']({ sharedId: pdf.id, version: 9 })).rejects.toThrow('That shared file or version is gone.')
+    expect(opened).toHaveLength(1)
   })
 
   it('saves the thumbnail a capture draws, and has none without one', async () => {

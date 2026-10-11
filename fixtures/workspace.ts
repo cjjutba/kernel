@@ -192,20 +192,28 @@ const toolCalls: ChatItem[] = [
 const composing = (composer: { parts: import('@shared/types').ChatPart[]; draft: string }, extra: Partial<Fixture> = {}) =>
   scene(() => ({ ...extra, ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, composer } } }))
 
-/** A chat 34% full, with the rows Claude Code's /context lists, adding up to the 200k window. */
-const contextChat = (f: Fixture) => f.chats.map((c) => c.id === ids.tableChat ? {
-  ...c,
-  context: 34,
-  contextUsage: { used: 68_000, max: 200_000, rows: [
-    { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
-    { name: 'System tools', tokens: 11_800, kind: 'used' as const },
-    { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
-    { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
-    { name: 'Messages', tokens: 44_000, kind: 'used' as const },
-    { name: 'Free space', tokens: 99_000, kind: 'free' as const },
-    { name: 'Autocompact buffer', tokens: 33_000, kind: 'buffer' as const }
-  ] }
-} : c)
+/**
+ * A chat with the rows Claude Code's /context lists, adding up to the 200k window. `messages` sets how full it is: 44k is 34%, 132k is 78%, 160k is 92%.
+ * Past the 167k auto compact line there is no free space left and the buffer shrinks to what remains.
+ */
+const contextChat = (f: Fixture, messages = 44_000) => {
+  const max = 200_000
+  const used = 3_200 + 11_800 + 6_400 + 2_600 + messages
+  const free = Math.max(0, max - used - 33_000)
+  return f.chats.map((c) => c.id === ids.tableChat ? {
+    ...c,
+    context: Math.round((used / max) * 100),
+    contextUsage: { used, max, rows: [
+      { name: 'System prompt', tokens: 3_200, kind: 'used' as const },
+      { name: 'System tools', tokens: 11_800, kind: 'used' as const },
+      { name: 'MCP tools', tokens: 6_400, kind: 'used' as const },
+      { name: 'Memory files', tokens: 2_600, kind: 'used' as const },
+      { name: 'Messages', tokens: messages, kind: 'used' as const },
+      { name: 'Free space', tokens: free, kind: 'free' as const },
+      { name: 'Autocompact buffer', tokens: max - used - free, kind: 'buffer' as const }
+    ] }
+  } : c)
+}
 
 const file = (path: string): FileEntry => ({ path, dir: false })
 /** A stand-in for a pasted screenshot, so hovering the image chip in WorkspacePaste shows a preview. */
@@ -379,7 +387,7 @@ const sharedFile = (id: string, agentId: string, workspaceId: string, title: str
  * on v3 unless a shot draws the chat card, which says v2 because that is the newest version the file has there. Times in the
  * panel are relative to now, so they read 2h to 1d on any day, and the clocks in the tab are fixed.
  */
-const sharedFiles = (htmlLatest = 3): SharedFile[] => [
+export const sharedFiles = (htmlLatest = 3): SharedFile[] => [
   sharedFile('sh-html', 'noor', ids.table, 'Invoice layout options', 'html', '.kernel/shared/invoice-layout.html', [
     sharedVersion(1, 13, 12, 'text/html', { outside: 1 }), sharedVersion(2, 13, 58, 'text/html', { note: 'Totals moved under the table', outside: 1 }),
     sharedVersion(3, 14, 41, 'text/html', { note: 'Added the detailed layout', outside: 1 })
@@ -391,7 +399,7 @@ const sharedFiles = (htmlLatest = 3): SharedFile[] => [
   ], 5 * HOUR),
   sharedFile('sh-flow', 'kai', ids.invites, 'Download button flow', 'markdown', '.kernel/shared/download-flow.md', [sharedVersion(1, 9, 12, 'text/markdown', { thumb: false })], 24 * HOUR)
 ]
-const sharedStills: NonNullable<Fixture['sharedData']> = {
+export const sharedStills: NonNullable<Fixture['sharedData']> = {
   'sh-html': { 1: { text: '', thumb: invoiceLayoutStill }, 2: { text: '', thumb: invoiceLayoutStill }, 3: { text: '', thumb: invoiceLayoutStill } },
   'sh-image': { 1: { dataUrl: fontsCheckImage, thumb: fontsCheckImage } },
   'sh-pdf': { 1: { dataUrl: invoicePdfStill, thumb: invoicePdfStill } },
@@ -633,13 +641,14 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   // Shared files (KERNEL-305). The canvas draws them in Noor's invoice-pdf-renderer and in Rowan's chat. Which file a shot opens, and the
-  // width or version menu, is the shot's: WorkspaceSharedPhone and WorkspaceSharedVersions need a click (scripts/shots.ts).
+  // width, version menu or crash, is the shot's: WorkspaceSharedPhone, WorkspaceSharedVersions and WorkspaceSharedCrashed need a step (scripts/shots.ts).
   WorkspaceSharedCard: sharedTab(undefined, 2),
   WorkspaceSharedHtml: sharedTab('sh-html'),
   WorkspaceSharedPhone: sharedTab('sh-html'),
   WorkspaceSharedImage: sharedTab('sh-image'),
   WorkspaceSharedMarkdown: sharedTab('sh-md'),
   WorkspaceSharedPdf: sharedTab('sh-pdf'),
+  WorkspaceSharedCrashed: sharedTab('sh-html'),
   WorkspaceSharedVersions: sharedTab('sh-html'),
   WorkspaceSharedPanel: scene((f) => sharedPanel(f)),
   WorkspaceSharedPanelEmpty: scene((f) => ({
@@ -726,6 +735,10 @@ export const workspaceFixtures: Record<string, Fixture> = {
   }),
   WorkspaceContextRing: scene((f) => ({ chats: contextChat(f), ui: open })),
   WorkspaceContextPopover: scene((f) => ({ chats: contextChat(f), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
+  /** KERNEL-334: the ring from 75% is amber. Not on the canvas, see docs/decisions/KERNEL-334.md. */
+  WorkspaceContextRingNear: scene((f) => ({ chats: contextChat(f, 132_000), ui: open })),
+  /** KERNEL-334: from 90% the ring and the popover's top meter are red. */
+  WorkspaceContextPopoverFull: scene((f) => ({ chats: contextChat(f, 160_000), ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false, contextOpen: true } } })),
   WorkspaceMention: composing({ parts: [], draft: '@inv' }, { tree: { [ids.table]: mentionTree } }),
   WorkspaceSlash: composing({ parts: [], draft: '/' }, { skills }),
   WorkspaceQueued: scene((f) => ({

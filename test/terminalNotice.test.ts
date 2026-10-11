@@ -16,6 +16,11 @@ describe('the skip notice on a big terminal tab', () => {
     expect(skipWasDropped({ preset: 'claude-skip', command: `claude ${SKIP_FLAG}` }, list)).toBe(false)
   })
 
+  it('shows when the command that ran only has another word that starts with the flag (KERNEL-317)', () => {
+    // The engine's matcher says `--dangerously-skip-permissions-x` is not the flag, so the notice agrees.
+    expect(skipWasDropped({ preset: 'custom-dev', command: `my-claude ${SKIP_FLAG}-x` }, list)).toBe(true)
+  })
+
   it('stays off for a preset that never had the flag, a plain shell, a preset that is gone and a tab with no preset', () => {
     expect(skipWasDropped({ preset: 'claude', command: 'claude' }, list)).toBe(false)
     expect(skipWasDropped({ preset: 'shell', command: null }, list)).toBe(false)

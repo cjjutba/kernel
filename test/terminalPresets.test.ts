@@ -127,7 +127,11 @@ describe('terminal presets', () => {
       ['claude\t--dangerously-skip-permissions --dangerously-skip-permissions', 'claude'],
       ['cd app;--dangerously-skip-permissions', 'cd app;'],
       ['claude --dangerously-skip-permissions|tee log', 'claude|tee log'],
-      ['claude --dangerously-skip-permissions&&echo done', 'claude&&echo done']
+      ['claude --dangerously-skip-permissions&&echo done', 'claude&&echo done'],
+      ['`claude --dangerously-skip-permissions`', '`claude`'],
+      ['`claude --dangerously-skip-permissions --verbose`', '`claude --verbose`'],
+      ['`claude --dangerously-skip-permissions=true`', '`claude`'],
+      ['claude `--dangerously-skip-permissions`', 'claude ``']
     ]
     const custom = rows.map(([command], i) => ({ id: `c${i}`, name: `C${i}`, command }))
     const { k, h, room, run } = await kernel({ terminal: { custom: [...custom, { id: 'other', name: 'Other', command: 'claude --dangerously-skip-permissions-x' }] } })
