@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { Chat, ScriptLine, Workspace } from '@shared/types'
 import { isLeadChatWorkspace } from '@shared/leadWorkspace'
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
-import { actions, getState, go, loadWorkspace, useStore } from '../../../store'
+import { actions, getState, go, isFixture, loadWorkspace, useStore } from '../../../store'
 import { archiveChatFromSidebar } from '../archiveChat'
 import { archiveByHand } from '../byHand'
 import { Banner, Button, useBusy } from '../../../ui'
@@ -19,6 +19,35 @@ const BUSY_LABEL: Partial<Record<BannerAction, string>> = {
   notify: 'Setting up', usage: 'Opening', switch: 'Switching', newChat: 'Starting', compact: 'Compacting', retryNow: 'Retrying',
   tryAgain: 'Checking', terminal: 'Opening', signIn: 'Signing in', runAgain: 'Starting', reconnect: 'Reconnecting', archive: 'Archiving'
 }
+
+/**
+ * Chats whose long-chat banner was dismissed, by chat id (KERNEL-426). Renderer only: localStorage keeps them across launches and may be
+ * missing or blocked. Fixture mode keeps them in memory, since it must neither read nor write what a real launch saved.
+ */
+const LONG_DISMISSED = 'kernel.longChatDismissed'
+let dismissedLong: ReadonlySet<string> | undefined
+const dismissedListeners = new Set<() => void>()
+
+function dismissedLongChats(): ReadonlySet<string> {
+  if (dismissedLong) return dismissedLong
+  const ids = new Set<string>()
+  if (!isFixture()) {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(LONG_DISMISSED) ?? '[]')
+      if (Array.isArray(saved)) for (const id of saved) if (typeof id === 'string') ids.add(id)
+    } catch { /* nothing restored */ }
+  }
+  return (dismissedLong = ids)
+}
+
+function dismissLong(chatId: string) {
+  const ids = new Set(dismissedLongChats()).add(chatId)
+  dismissedLong = ids
+  if (!isFixture()) try { localStorage.setItem(LONG_DISMISSED, JSON.stringify([...ids])) } catch { /* not remembered */ }
+  dismissedListeners.forEach((l) => l())
+}
+
+const subscribeDismissed = (l: () => void) => { dismissedListeners.add(l); return () => { dismissedListeners.delete(l) } }
 
 /** The banner this workspace shows right now, from the store. Ticks once a second while a retry counts down. */
 export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, agentName: string, running: boolean): BannerView | null {
@@ -39,6 +68,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
   const leadName = useStore((s) => (ws ? leadOf(s.agents, ws.roomId)?.name : undefined))
   const pauseNearLimit = useStore((s) => s.settings?.usage.pauseNearLimit)
   const warnBeforeWeekly = useStore((s) => s.settings?.usage.warnBeforeWeekly)
+  const longDismissed = useSyncExternalStore(subscribeDismissed, () => !!chat && dismissedLongChats().has(chat.id))
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!retry) return
@@ -47,7 +77,7 @@ export function useBanner(ws: Workspace | undefined, chat: Chat | undefined, age
     return () => clearInterval(t)
   }, [retry])
   if (!ws) return null
-  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
+  return bannerFor({ ws, chat, agentName, running, usage, account, accounts, codexInUse, longDismissed, online, hooks, retry, scripts, setupCode, isLead, leadName, usageSettings: { pauseNearLimit, warnBeforeWeekly }, now: retry ? now : Date.now() })
 }
 
 /**
@@ -92,6 +122,7 @@ export function WorkspaceBanner({ view, ws, chat }: { view: BannerView; ws: Work
         actions.ui.openTab(ws.id, c.id)
       })
       case 'compact': return chat && run(id, 'Could not compact', () => call('chats.compact', { chatId: chat.id }))
+      case 'dismiss': return chat && dismissLong(chat.id)
       case 'switchModel': return commandComposer('model')
       case 'retryNow': return chat && run(id, 'Could not retry', () => retryNow(chat.id))
       case 'tryAgain': return run(id, 'Could not check the network', async () => {
