@@ -81,7 +81,7 @@ export interface Toast {
 export interface WorkspaceView {
   /** The right panel's tab. `prs` is the Lead's own, so a teammate's workspace shows Changes in its place (KERNEL-354). */
   right: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
-  /** The tab the Lead's workspace shows, kept apart from `right` so opening a teammate's workspace and coming back finds the PRs tab again. The store starts it at `prs`; a fixture can leave it out. */
+  /** The tab the Lead's workspace shows. The store starts it at `prs` and sets it back on entering a workspace, as it does `right` to `changes`; a fixture can leave it out. */
   leadRight?: 'prs' | 'files' | 'changes' | 'checks' | 'shared'
   bottom: 'setup' | 'run' | 'terminal'
   checkpoints: boolean

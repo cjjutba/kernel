@@ -342,10 +342,12 @@ let toastSeq = 0
 /** Typed writes, one group per slice. Screens call these instead of reshaping state themselves. */
 export const actions = {
   ui: {
-    /** Navigate. Closes any modal and menu. */
+    /** Navigate. Closes any modal and menu. Entering a workspace opens its right panel on Changes, or on PRs for the Lead's. */
     go: (route: Route, opts?: { history?: HistoryMode }) => {
       const from = leaving()
-      setUi({ route, modal: null, menu: null })
+      const now = state.ui.route
+      const entering = route.name === 'workspace' && !(now.name === 'workspace' && now.workspaceId === route.workspaceId)
+      setUi({ route, modal: null, menu: null, ...(entering && { workspace: { ...state.ui.workspace, right: workspaceView.right, leadRight: workspaceView.leadRight } }) })
       rememberRoom(route)
       moved(from, placeNow(), opts?.history)
     },
