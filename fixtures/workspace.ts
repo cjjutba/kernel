@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { AgentReach, Approval, AskedQuestion, ChangedFile, Chat, ChatItem, Checkpoint, Effort, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -920,6 +920,24 @@ export const scriptTrust: ScriptTrust = {
   installScripts: [{ name: 'postinstall', command: 'node scripts/postinstall.js' }, { name: 'prepare', command: 'husky install' }]
 }
 
+/** Lumi's tools line, naming each MCP server in `servers` the way an agent file does (`mcp__figma__*`). */
+const hireTools = (servers: string[]) => ['tools: Read, Grep, Glob, Bash(pnpm screenshot:*),', `  ${servers.map((n) => `mcp__${n}__*`).join(', ')}`]
+
+/** Rowan's chat with the hire card for lumi.md waiting (WorkspaceHire.png), with the servers its file reaches when `servers` is set (WorkspaceHireServers.png). */
+const hireScene = (tools: string[], servers?: AgentReach) => scene((f) => ({
+  ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
+    userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
+    { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
+    tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
+    { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
+  ], {
+    approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', ...(servers ? { servers } : {}), text: [
+      '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', ...tools, '---'
+    ].join('\n') } }), ...f.approvals]
+  }, { plan: false, model: 'claude-opus-5-5' }),
+  changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
+}))
+
 export const workspaceFixtures: Record<string, Fixture> = {
   NewWorkspace: newWorkspace(),
   NewWorkspaceBranch: newWorkspace('branch'),
@@ -1263,19 +1281,19 @@ export const workspaceFixtures: Record<string, Fixture> = {
     shared: sharedFiles().filter((x) => x.workspaceId !== ids.table), sharedData: sharedStills
   })),
   TeamUpdateShared: scene((f) => teamUpdateShared(f)),
-  WorkspaceHire: scene((f) => ({
-    ...scene2(f, { id: ids.lead, name: 'hire-a-designer', branch: 'main', baseRef: 'main', mode: 'current', agentId: 'rowan', stat: { files: 1, added: 28, removed: 0 } }, 'Hire a designer', [
-      userMsg('h0', 'We need a designer on the team who checks every screen against DESIGN.md before review.'),
-      { kind: 'thinking', id: 'h-th', ts: at(10, 28), text: 'This fits as a subagent with read access and the screenshot skill.' },
-      tool('h-t1', 'Read DESIGN.md', 'cat DESIGN.md', { name: 'Read' }),
-      { kind: 'text', id: 'h-tx', ts: at(10, 29), text: 'Here is the agent file. Once you approve, I will save it and Lumi joins the team.' }
-    ], {
-      approvals: [pending('agent', 'rowan', { workspaceId: ids.lead, title: 'Add lumi to the team', agentFile: { path: '.claude/agents/lumi.md', text: [
-        '---', 'name: lumi', 'description: Designer. Checks every screen against DESIGN.md', '  before Theo reviews it. Flags spacing, type and color drift.', 'model: sonnet', 'tools: Read, Grep, Glob, Bash(pnpm screenshot:*)', '---'
-      ].join('\n') } }), ...f.approvals]
-    }, { plan: false, model: 'claude-opus-5-5' }),
-    changes: { [ids.lead]: [{ path: '.claude/agents/lumi.md', status: 'A', added: 28, removed: 0 }] }
-  })),
+  WorkspaceHire: hireScene(['tools: Read, Grep, Glob, Bash(pnpm screenshot:*)']),
+  // The servers row on the hire card (KERNEL-484). The PNG draws Lumi with Figma reached and Linear needing sign-in. The other states are
+  // the ones the engine reports (`AgentReach.blocked`), one fixture each, for screenshots only.
+  WorkspaceHireServers: hireScene(hireTools(['figma', 'linear']), { reach: ['figma'], blocked: [{ name: 'linear', why: 'needs-auth' }] }),
+  WorkspaceHireServersReached: hireScene(hireTools(['figma', 'linear']), { reach: ['figma', 'linear'], blocked: [] }),
+  WorkspaceHireServersFailed: hireScene(hireTools(['figma', 'neon']), { reach: ['figma'], blocked: [{ name: 'neon', why: 'failed' }] }),
+  WorkspaceHireServersOff: hireScene(hireTools(['figma', 'playwright']), { reach: ['figma'], blocked: [{ name: 'playwright', why: 'off' }] }),
+  WorkspaceHireServersDisabled: hireScene(hireTools(['figma', 'sentry']), { reach: ['figma'], blocked: [{ name: 'sentry', why: 'disabled' }] }),
+  WorkspaceHireServersMissing: hireScene(hireTools(['linear', 'figma']), { reach: ['linear'], blocked: [{ name: 'figma', why: 'missing', suggestion: 'figma-dev' }] }),
+  WorkspaceHireServersMany: hireScene(hireTools(['figma', 'claude_ai_Linear', 'neon', 'playwright']), {
+    reach: ['figma', 'github', 'notion', 'sentry', 'claude_ai_Slack'],
+    blocked: [{ name: 'claude_ai_Linear', why: 'needs-auth' }, { name: 'neon', why: 'failed' }, { name: 'playwright', why: 'off' }]
+  }),
   WorkspacePRMenu: scene(() => ({ ui: { ...open, menu: 'pr' } })),
   WorkspaceDraftPR: prScene('draft', prTurn('d', ['# Create a pull request', 'Open as draft'], 5, 'Opened draft PR #42. Mark it ready when you want Theo to review.'), { prs: prInfo('draft') }),
   WorkspaceCIFailed: prScene('cifail', [
