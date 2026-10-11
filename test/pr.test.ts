@@ -250,6 +250,8 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.prs.refreshPr(ws.id)
     gh.pr = info({ state: 'ready' })
     reads = 0
+    // The quick read runs real git before it reaches the stub, so wait for it, then check no second one follows.
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     expect(reads).toBe(1)
     expect(k.store.workspace(ws.id)?.prState).toBe('ready')
@@ -261,6 +263,7 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     expect((await k.prs.refreshPr(ws.id)).prState).toBe('conflict')
     gh.pr = unknown()
     reads = 0
+    await vi.waitFor(() => expect(reads).toBe(1))
     await wait(100)
     // Still unknown after the quick read: the poll takes it from there.
     expect(reads).toBe(1)
