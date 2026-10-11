@@ -107,6 +107,7 @@ export function describeTool(toolName: string, input: unknown): { title: string;
     case 'Bash': return { title: `Run ${String(i.command ?? '').split('\n')[0].slice(0, 80)}`, detail: i.description }
     case 'Edit': case 'Write': case 'MultiEdit': return { title: `${toolName} ${i.file_path ?? ''}` }
     case 'WebFetch': return { title: `Fetch ${i.url ?? ''}` }
+    case 'mcp__kernel__share_file': return { title: `Share ${String(i.path ?? '').split('/').pop()}` }
     default: return { title: toolName.startsWith('mcp__') ? toolName.split('__').slice(1).join(' · ') : toolName }
   }
 }

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { AgentDef, Chat, PrState, ReviewVerdict, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
+import type { AgentDef, Chat, PrState, ReviewVerdict, SharedFile, SharedVersion, TeamEventKind, TeamUpdate, Workspace } from '../src/shared/types'
 import { Store } from '../src/main/db'
 import { bus } from '../src/main/bus'
 import { decide, LeadUpdates, type ReviewState, type TeamEvent, type WakeContext } from '../src/main/services/leadUpdates'
@@ -967,5 +967,51 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     expect(lines.filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])).toEqual(['Own 3', 'Own 4', 'Own 5', 'Own 6', 'Closed 1', 'Closed 2', 'Closed 3', 'Closed 4'])
     expect(lines).toContain('From "Composer unit tests", a Lead chat that is now closed. This work is yours now.')
     expect(lines).toContain('Kernel left out updates on 2 more workspaces. Call list_workspaces to see where they stand.')
+  })
+})
+
+describe('shared files in Team updates (KERNEL-302)', () => {
+  const file = (id: string, workspaceId: string, title: string, n: number, kind: SharedFile['kind'] = 'html'): [SharedFile, SharedVersion] => {
+    const v: SharedVersion = { n, at: n, file: `${id}.html`, mime: 'text/html', bytes: 10, sha256: String(n) }
+    return [{ id, roomId: 'r', workspaceId, agentId: 'noor', source: `.kernel/shared/${id}.html`, title, kind, versions: [v], createdAt: 1, updatedAt: n }, v]
+  }
+  const SHARED = (title: string, n: number, source: string, kind = 'HTML') => `- Shared "${title}" v${n} (${kind}, ${source}). The user can open it from this update.`
+
+  it('never wakes the Lead on its own, and goes out with the next update that does, in row.shared rather than events', async () => {
+    const { u, s, store, w1, nc } = await setup()
+    u.shared(w1, ...file('f1', 'w1', 'Checkout mockup', 1))
+    await wait()
+    expect(s.posts).toEqual([])
+    expect(store.meta<{ pending: [string, { events: TeamEvent[] }][] }>('leadUpdates')?.pending[0][1].events.map((e) => e.kind)).toEqual(['shared'])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.posts).toHaveLength(1)
+    expect(parts(s.posts[0]).body).toEqual([NOOR, SHARED('Checkout mockup', 1, '.kernel/shared/f1.html'), ...QUOTED])
+    const [row] = s.updates[0].rows
+    expect(row.shared).toEqual([{ sharedId: 'f1', version: 1, title: 'Checkout mockup', kind: 'html' }])
+    expect(row.events.map((e) => e.kind)).toEqual(['turn'])
+  })
+
+  it('keeps the newest version of each file', async () => {
+    const { u, s, w1, nc } = await setup()
+    u.shared(w1, ...file('f1', 'w1', 'Checkout mockup', 1))
+    u.shared(w1, ...file('f2', 'w1', 'Logo', 1, 'image'))
+    u.shared(w1, ...file('f1', 'w1', 'Checkout, take two', 2))
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.updates[0].rows[0].shared).toEqual([
+      { sharedId: 'f2', version: 1, title: 'Logo', kind: 'image' },
+      { sharedId: 'f1', version: 2, title: 'Checkout, take two', kind: 'html' }
+    ])
+    expect(parts(s.posts[0]).body.filter((l) => l.startsWith('- Shared'))).toEqual([SHARED('Logo', 1, '.kernel/shared/f2.html', 'image'), SHARED('Checkout, take two', 2, '.kernel/shared/f1.html')])
+  })
+
+  it("adds nothing for the Lead's own workspace", async () => {
+    const { u, s, store, lead, w1, nc } = await setup()
+    u.shared(lead, ...file('f1', 'lead', 'Plan diagram', 1))
+    expect(store.meta<{ pending: unknown[] }>('leadUpdates')?.pending ?? []).toEqual([])
+    u.turnDone(w1, nc, done)
+    await wait()
+    expect(s.updates[0].rows.map((r) => r.shared)).toEqual([undefined])
   })
 })
