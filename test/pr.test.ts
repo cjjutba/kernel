@@ -10,6 +10,7 @@ import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '.
 import { Kernel } from '../src/main/kernel'
 import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
 import { LEAD_REVIEW_RULE, LEAD_RULE } from '../src/main/services/handoff'
+import { mergeBlock, reviewVerdicts } from '@shared/merge'
 
 describe('checks from statusCheckRollup', () => {
   it('maps check runs and status contexts, with durations', () => {
@@ -148,6 +149,39 @@ describe('PR header and toasts', () => {
     expect(instructionOf(user([{ type: 'file', name: 'create-pr.md', text: '# Create' }]))?.name).toBe('create-pr.md')
     expect(instructionOf(user([{ type: 'file', name: 'pasted_text_1.txt', text: 'log' }]))).toBeUndefined()
     expect(instructionOf(user([{ type: 'text', text: 'hi' }, { type: 'file', name: 'create-pr.md', text: 'x' }]))).toBeUndefined()
+  })
+})
+
+describe('whether a PR may merge (KERNEL-115)', () => {
+  const A = 'a'.repeat(40), B = 'b'.repeat(40)
+  const v = (verdict: 'approved' | 'blockers', sha: string, ts: number, o: Partial<NonNullable<Workspace['reviews']>[number]> = {}) => ({ workspaceId: 'rev', agentId: 'theo', verdict, summary: '', sha, prNumber: 42, ts, ...o })
+  const ws = (o: Partial<Workspace> = {}) => ({ id: 'w', prState: 'ready', prNumber: 42, prHead: B, ...o }) as Workspace
+  const both = { requireGreen: true, requireReviewer: true }
+  const name = (id: string) => (id === 'theo' ? 'Theo' : id)
+  const held = "Theo hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests)."
+
+  it('keeps the verdicts on this PR, and marks those on its head commit current', () => {
+    const out = reviewVerdicts(ws({ reviews: [v('approved', A, 1), v('approved', B, 2, { workspaceId: 'r2' }), v('approved', B, 3, { prNumber: 7 })] }))
+    expect(out.verdicts.map((x) => x.ts)).toEqual([1, 2])
+    expect(out.current.map((x) => x.ts)).toEqual([2])
+  })
+
+  it('says why a PR cannot merge, in order: its state, GitHub, checks, then the review', () => {
+    expect(mergeBlock(ws({ prState: 'checks' }), info(), both)).toBe('This pull request is not ready to merge.')
+    expect(mergeBlock(ws(), null, both)).toBe('Could not read the pull request from GitHub.')
+    expect(mergeBlock(ws(), info({ checks: [{ name: 'e2e', state: 'running' }] }), both)).toContain('Checks have not passed yet')
+    expect(mergeBlock(ws(), info({ checks: [{ name: 'e2e', state: 'skipped' }] }), both)).toBeUndefined()
+    expect(mergeBlock(ws(), undefined, { requireGreen: false, requireReviewer: true })).toBeUndefined()
+  })
+
+  it('holds a reviewed PR until the reviewer approves its head commit', () => {
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info({ head: B }), both, name)).toBe(held)
+    expect(mergeBlock(ws({ reviews: [v('approved', A, 1)] }), info({ head: B }), both, name)).toBe(held)
+    // GitHub's head wins over the one the last poll saw.
+    expect(mergeBlock(ws({ prHead: A, reviews: [v('approved', A, 1)] }), info({ head: B }), both, name)).toBe(held)
+    expect(mergeBlock(ws({ reviews: [v('blockers', A, 1), v('approved', B, 2, { workspaceId: 'r2' })] }), info({ head: B }), both, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info({ head: B }), { requireGreen: true, requireReviewer: false }, name)).toBeUndefined()
+    expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info({ head: B }), both)).toContain("theo hasn't approved")
   })
 })
 
