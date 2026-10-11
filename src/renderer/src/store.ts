@@ -574,6 +574,7 @@ export function apply(e: PushEvent) {
     case 'update': return actions.system.setUpdate(e.update)
     case 'account': return actions.account.set(e.account)
     case 'online': return actions.system.setOnline(e.online)
+    case 'toast': return void actions.ui.toast(e.toast)
   }
 }
 
