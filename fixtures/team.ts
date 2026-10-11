@@ -1,5 +1,6 @@
-import type { ActivityEvent, AgentDef, AgentDraft, Approval, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
+import type { ActivityEvent, AgentDef, AgentDraft, Approval, GithubIssueDetail, Integration, LinearIssueDetail, LinearScope, Notification, Room, RoomSetupStep, Skill, Task, Workspace } from '@shared/types'
 import type { Fixture } from './types'
+import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { agent, at, ids, invaderIcon, scene, team, withWorkspace } from './base'
 import { grouped, sharedFiles, sharedStills } from './workspace'
 
@@ -477,6 +478,46 @@ const issuesScene = (f: Fixture, opts: { issueId?: string; working?: boolean; li
   }
 }
 
+/** IssuesGitHub.png: Client B's open issues. Nine, three of them CJ's, so the pills read Mine 3 and All 9. Times are relative. */
+const githubIssues = (): GithubIssueDetail[] => {
+  const gh = (n: number, title: string, labels: string[], assignees: string[], age: number, extra: Partial<GithubIssueDetail> = {}): GithubIssueDetail => ({
+    number: n, id: `#${n}`, title, url: `https://github.com/cjjutba/client-b/issues/${n}`, labels, assignees, author: 'maya-chen', updatedAt: new Date(Date.now() - age).toISOString(),
+    mine: assignees.includes('cjjutba'), body: '', comments: [], ...extra
+  })
+  return [
+    gh(24, 'Invoice table with sorting and empty states', ['feature', 'frontend'], ['cjjutba'], 5 * HOUR, { milestone: 'Invoices v1' }),
+    gh(27, 'Rate limit the invite endpoint', ['security', 'backend'], ['maya-chen'], DAY),
+    gh(31, 'Export invoices as PDF', ['feature', 'billing'], ['cjjutba'], 2 * DAY, {
+      milestone: 'Invoices v1',
+      body: 'Clients want a PDF copy of any invoice they can send to their accountant.\n\n## Acceptance criteria\n\n- A Download PDF action on every invoice row\n- The PDF matches the on-screen layout, on one page\n- Fonts are embedded, so it looks the same on every device',
+      comments: [comment('c31a', 'maya-chen', 'Billing asked for this twice this week. One page per invoice is fine, no custom templates yet.', 3 * DAY), comment('c31b', 'cjjutba', 'Use the on-screen design as the layout. Rowan can split it once we agree on the scope.', DAY)]
+    }),
+    gh(33, 'Send a reminder for overdue invoices', ['feature', 'billing'], [], 3 * DAY),
+    gh(35, 'Show the invoice total in the page title', ['bug'], ['kai-okoye'], 4 * DAY),
+    gh(36, 'Invoice emails send twice', ['bug', 'billing'], ['maya-chen'], 4 * DAY + 2 * HOUR),
+    gh(40, 'Dark mode for the invoice PDF', ['enhancement'], [], 7 * DAY),
+    gh(42, 'Import clients from a CSV file', ['feature', 'accounts'], [], 7 * DAY + 3 * HOUR),
+    gh(44, 'Add a tax breakdown to invoices', ['billing', 'feature', 'tax'], ['cjjutba'], 14 * DAY, { milestone: 'Invoices v2' })
+  ]
+}
+
+/** Client B reads GitHub Issues and Portfolio has no tracker. The other rooms read Linear, as every fixture before KERNEL-438 drew them. */
+const trackerRooms = { trackers: { [ids.roomB]: { kind: 'github' as const, where: 'cjjutba/client-b' }, [ids.roomPortfolio]: { kind: 'none' as const } } }
+
+/** The Issues page on Client B (GitHub) or Portfolio (no tracker). */
+const issuesTrackerScene = (f: Fixture, route: { issueId?: string; roomId: string }): Partial<Fixture> => ({
+  ...homeScene(f), integrations: linearIntegrations, ...trackerRooms, githubIssues: { [ids.roomB]: githubIssues() },
+  ui: { route: { name: 'issues', ...route } }
+})
+
+/** The New workspace modal with the From popover open on its Issues tab. The tab is local to the modal, so scripts/shots.ts clicks it. */
+const newWorkspaceFromIssues = (f: Fixture, roomId: string, issues: GithubIssueDetail[]): Partial<Fixture> => ({
+  ...homeScene(f), ...trackerRooms, githubIssues: { [ids.roomB]: issues },
+  branches: ['origin/main', 'origin/dev', 'main'],
+  settings: { ...DEFAULT_SETTINGS('/Users/you'), models: { ...DEFAULT_SETTINGS('/Users/you').models, leadPlanMode: false } },
+  ui: { route: { name: 'team', roomId }, modal: { name: 'newWorkspace', roomId }, menu: 'from' }
+})
+
 export const teamFixtures: Record<string, Fixture> = {
   Home: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'home' } } })),
   // KERNEL-253: Client B has its GitHub avatar, in grayscale, in the sidebar and on its card in the Rooms list.
@@ -535,6 +576,11 @@ export const teamFixtures: Record<string, Fixture> = {
   NewAgentDraft: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'draft', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   NewAgentDone: scene((f) => ({ ...beforeLumi(f), ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'newAgent', roomId: ids.roomA, step: 'done', prefill: { ...lumiPrefill, draft: lumiDraft } } } })),
   ConfirmRetire: scene((f) => ({ ...teamScene(f), ui: { route: { name: 'agent', roomId: ids.roomA, agentId: 'kai' }, modal: { name: 'confirm', kind: 'retire', roomId: ids.roomA, agentId: 'kai' } } })),
+  // KERNEL-438: someone else may be on the issue. Nothing opens it in the app until KERNEL-479, so only this fixture does.
+  ConfirmIssueTaken: scene((f) => ({
+    ...teamScene(f),
+    ui: { route: { name: 'team', roomId: ids.roomA }, modal: { name: 'confirm', kind: 'issueTaken', issue: 'KERNEL-31', findings: [{ kind: 'branch', ref: 'origin/feat/kernel-31-export-pdf' }, { kind: 'pr', number: 41, title: 'Export invoices as PDF' }, { kind: 'assignee', name: 'Maya Chen' }] } }
+  })),
   UpdateReady: scene((f) => ({ ...homeScene(f), update: { status: 'ready', current: '0.1.0', version: '0.2.0' }, ui: home })),
   HomeEmpty: scene(() => ({ ...empty, ui: { route: { name: 'home' } } })),
   Inbox: scene((f) => ({ ...homeScene(f), ui: { route: { name: 'inbox' } } })),
@@ -588,6 +634,13 @@ export const teamFixtures: Record<string, Fixture> = {
   IssuesConnect: scene((f) => ({ ...issuesScene(f), integrations: linearIntegrations.map((i) => (i.id === 'linear' ? { ...i, connected: false, detail: 'Create workspaces from issues' } : i)) })),
   // Offline: the screen says Linear can't be reached whatever the last answer was.
   IssuesError: scene((f) => ({ ...issuesScene(f), push: [{ type: 'online', online: false }] })),
+  // KERNEL-438: a room on GitHub Issues lists its own issues, with the room in the header. Linear's list is the account's and has no room.
+  IssuesGitHub: scene((f) => issuesTrackerScene(f, { issueId: '#31', roomId: ids.roomB })),
+  // A room with no tracker says so and points at its settings, where the tracker is chosen.
+  IssuesNoTracker: scene((f) => issuesTrackerScene(f, { roomId: ids.roomPortfolio })),
+  // The From popover's Issues tab for each: the room's GitHub issues with their assignees, and the line for a room with none.
+  NewWorkspaceFromGitHub: scene((f) => newWorkspaceFromIssues(f, ids.roomB, githubIssues().filter((i) => [31, 33, 35, 36].includes(i.number)))),
+  NewWorkspaceFromNone: scene((f) => newWorkspaceFromIssues(f, ids.roomPortfolio, [])),
   SidebarRoomsMenu: withMenu('rooms', { name: 'home' }),
   SidebarLeadChats: scene(sidebarLeadChats),
   SidebarChatFolded: scene(sidebarChatFolded),
