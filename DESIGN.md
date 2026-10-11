@@ -93,6 +93,7 @@ The terminal palette (`--term-*`) and the floor art (`floor/floor-light.svg`, ma
 - Sidebar hover cards: a workspace or Lead row shows a card after a short hover or on keyboard focus. Surface-2, 1px line-3 border, 10px radius, no shadow. The status word sits on a pill filled with its `--tint-*` token, at 4.5:1 or better, the one place status takes color beyond the diff and merged colors (D-084).
 - Banners for failures and for work held on you: neutral surface (#141517) with an icon per type (limit/clock, offline/wifi, auth/key, setup/x-circle, hooks/plug, retry/spinner, trust/shield: the room's scripts wait for you to trust them). Never red backgrounds.
 - Toasts: bottom right, auto-dismiss after 2.6s.
+- Icon buttons: hover brightens the icon to `--ink` with no fill behind it, because a fill around a small glyph reads louder than the glyph. A fill means the button is on or its menu is open (`aria-pressed`, `aria-expanded`), never hover. Buttons with a label, menu items, rows, and the filled send and stop circles keep their hover fills.
 - Tooltips: an icon button's `aria-label` is its tooltip, so give every icon button one and no `title`. Other elements opt in with `data-tip`, `data-tip-kbd` adds the shortcut, and `data-tip=""` opts out.
 - Danger: red only on the final confirm button, never on the trigger.
 - Merged is the only purple: the PR link, the Merged label, the merged PR band, the merged History row.

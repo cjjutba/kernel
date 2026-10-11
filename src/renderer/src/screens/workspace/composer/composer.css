@@ -105,7 +105,7 @@
 .queue-text:hover { color: var(--ink); }
 .queue-now { height: 24px; padding: 0 8px; font-size: 12px; }
 .queue-x { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--muted); }
-.queue-x:hover { background: var(--hover); color: var(--ink); }
+.queue-x:hover { color: var(--ink); }
 
 .hunk-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 10px; border: 1px solid var(--card-line); background: var(--card-bg); font-size: 13px; }
 .hunk-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); cursor: pointer; }
