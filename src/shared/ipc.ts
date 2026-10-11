@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -253,6 +253,19 @@ export interface KernelApi {
   /** Open in Preview: Kernel's copy of a PDF version in the Mac's default PDF app. Refused for any other kind, which Kernel never hands to the system to open. */
   'shared.open': { req: { sharedId: string; version: number }; res: Ok }
 
+  // comments on shared files (KERNEL-310)
+  /**
+   * Sends a comment to the agent that shared the file, as a plain message naming the file, version and spot, with `image`
+   * (the crop around it) attached. Goes to the version's chat, else the workspace's first open chat, else a new one.
+   * `queued` and `why` say a busy chat or setup holds it. Refused for an archived workspace and for PDFs.
+   */
+  'shared.comment': {
+    req: { sharedId: string; version: number; note: string; anchor: SharedAnchor; image?: { dataUrl: string; width: number; height: number } }
+    res: { chatId: string; workspaceId: string; queued: boolean; why?: QueueReason }
+  }
+  /** Every comment on a shared file, every version, oldest first. */
+  'shared.comments': { req: { sharedId: string }; res: SharedComment[] }
+
   // handled in src/main/index.ts, not by the kernel
   'system.pickFolder': { req: void; res: string | null }
   /** An open dialog limited to PNG and JPEG, for a room icon. Null when cancelled. */
@@ -278,6 +291,20 @@ export interface KernelApi {
   'system.preview.reload': { req: { viewId: string }; res: Ok }
   'system.preview.focus': { req: { viewId: string }; res: Ok }
   'system.preview.close': { req: { viewId: string }; res: Ok }
+
+  // pinning comments in a preview (KERNEL-310). Each runs in a world the page's own scripts can't see. Points and rects
+  // in a request or in `locate`'s answer are Kernel's CSS pixels from the view's top-left corner, as `place` takes them.
+  /**
+   * The element under a point: its selector, tag, text and rect, with the window it sits in. The anchor is in the page's own
+   * CSS pixels, which the comment's message names. Null when the view is gone.
+   */
+  'system.preview.hit': { req: { viewId: string; x: number; y: number }; res: SharedAnchor | null }
+  /** A PNG of the view around `rect`, padded by 24 px, from 320x200 to 1200x800. Null when the view is gone. */
+  'system.preview.crop': { req: { viewId: string; rect: { x: number; y: number; width: number; height: number } }; res: { dataUrl: string; width: number; height: number } | null }
+  /** Scrolls the page by `dx`, `dy`, or to `y`, in the page's pixels. Returns where it ended up, null when the view is gone. */
+  'system.preview.scroll': { req: { viewId: string; dx?: number; dy?: number; y?: number }; res: { scrollY: number } | null }
+  /** Where each selector's element is now, null for one that matches nothing. Places pins again after a scroll or reload. */
+  'system.preview.locate': { req: { viewId: string; selectors: string[] }; res: ({ x: number; y: number; width: number; height: number } | null)[] }
 }
 
 export type Channel = keyof KernelApi
@@ -346,6 +373,8 @@ export type PushEvent =
   | { type: 'preview'; viewId: string; state: 'loading' | 'ready' | 'settled' | 'crashed' | 'unresponsive' }
   /** An app shortcut typed inside a preview, or F6 (code `F6`), which only asks the tab to focus its frame. Main has moved focus back to the app, which runs the shortcut. */
   | { type: 'preview.key'; key: string; code: string; meta: boolean; shift: boolean; alt: boolean; ctrl: boolean }
+  /** A comment on a shared file was stored (KERNEL-310). */
+  | { type: 'shared.comment'; comment: SharedComment }
 
 /** The message an unbuilt channel rejects with. Errors cross IPC as plain messages, so the renderer matches on the prefix. */
 export const NOT_IMPLEMENTED = 'Not built yet'

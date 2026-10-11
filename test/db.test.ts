@@ -54,7 +54,7 @@ describe('kernel.db versions', () => {
 
     const store = new Store(file)
     expect(store.db.pragma('user_version', { simple: true })).toBe(LATEST)
-    expect(LATEST).toBe(4)
+    expect(LATEST).toBe(5)
     for (const t of TABLES) {
       // Approvals gain two columns; the rest of each row stays as it was.
       const now = rows(store.db, t).map(({ settled_at: _s, pruned: _p, ...r }) => r)
@@ -155,7 +155,7 @@ describe('kernel.db versions', () => {
     const d = dir()
     const file = join(d, 'kernel.db')
     const db = new Database(file)
-    migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 3))
+    migrate(db, file, Date.now(), migrations.filter((m) => m.version <= 4))
     const put = (table: string, id: string, parent: string, data: object, at: number) => db.prepare(`insert into ${table} values (?, ?, ?, ?)`).run(id, parent, JSON.stringify({ id, ...data }), at)
     db.prepare('insert into rooms values (?, ?, ?)').run('r1', JSON.stringify({ id: 'r1', name: 'Invoices', createdAt: 1 }), 1)
     put('workspaces', 'lead', 'r1', { roomId: 'r1', name: 'lead', mode: 'current' }, 1)

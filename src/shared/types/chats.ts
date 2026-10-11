@@ -89,6 +89,24 @@ export interface SharedVersion { n: number; at: number; file: string; mime: stri
 /** A file an agent shared, one per workspace and source path, with every version Kernel kept (KERNEL-302). `source` is relative to the workspace. */
 export interface SharedFile { id: string; roomId: string; workspaceId: string; agentId: string; source: string; title: string; kind: SharedKind; versions: SharedVersion[]; createdAt: number; updatedAt: number }
 
+// comments on shared files (KERNEL-310)
+/**
+ * Where a comment is pinned. HTML: `x`, `y` in the view's CSS pixels, the window it was seen in and the element under the
+ * point. Image: `x`, `y` in the image's natural pixels, with `viewport.width` its natural width. Markdown: the block. PDFs
+ * take no comments.
+ */
+export interface SharedAnchor {
+  x: number
+  y: number
+  viewport?: { width: number; height: number; scrollY: number }
+  /** `selector` is the element's id when unique, else a `tag:nth-of-type` chain. `rect` is in the view's CSS pixels. */
+  element?: { selector: string; tag: string; text?: string; rect: { x: number; y: number; width: number; height: number } }
+  block?: { index: number; text: string }
+}
+
+/** A comment on one version of a shared file. `chatId` is the chat it went to, `itemId` its message there, empty when the message was queued. */
+export interface SharedComment { id: string; sharedId: string; version: number; at: number; note: string; anchor: SharedAnchor; chatId: string; itemId: string }
+
 /** Composer parts. Pasted long text becomes a file part carrying its text; images carry a data URL. */
 export type ChatPart =
   | { type: 'text'; text: string }

@@ -292,6 +292,15 @@ export function fixtureHandlers(f: Fixture): Handlers {
     'shared.thumb': async ({ sharedId, version }) => f.sharedData?.[sharedId]?.[version]?.thumb ?? null,
     'shared.reveal': async () => ok,
     'shared.open': async () => ok,
+    // Nothing is sent: the answer names the chat it would go to, the version's or the workspace's first (KERNEL-310).
+    'shared.comment': async ({ sharedId, version }) => {
+      const file = f.shared?.find((x) => x.id === sharedId)
+      if (!file?.versions.some((x) => x.n === version)) throw new Error('That shared file or version is gone.')
+      if (file.kind === 'pdf') throw new Error('PDFs take no comments.')
+      const chatId = file.versions.find((x) => x.n === version)?.chatId ?? f.chats.find((c) => c.workspaceId === file.workspaceId && c.kind !== 'terminal')?.id ?? ''
+      return { chatId, workspaceId: file.workspaceId, queued: false }
+    },
+    'shared.comments': async ({ sharedId }) => (f.sharedComments ?? []).filter((c) => c.sharedId === sharedId).sort((a, b) => a.at - b.at),
     // Names only: a fixture holds no values, so there is nothing to reveal (KERNEL-247).
     'env.get': async ({ roomId }) => {
       const scope = roomId ? f.env?.rooms?.[roomId] : { names: f.env?.app }

@@ -53,10 +53,18 @@ export const migrations: Migration[] = [
     `)
   },
   {
+    // comments on shared files, per version (KERNEL-310)
+    version: 4,
+    up: (db) => db.exec(`
+      create table if not exists shared_comments (id text primary key, shared_id text not null, version integer not null, data text not null, created_at integer not null);
+      create index if not exists shared_comments_by_version on shared_comments (shared_id, version);
+    `)
+  },
+  {
     // Lead chats that hold several tabs (KERNEL-337). Every Lead tab there is, open or closed, becomes the only tab of its own
     // thread, titled like the tab and closed with it, so nothing moves on upgrade. The Lead's workspace is the room's
     // `current` workspace named "lead"; a chat with no kind predates terminals and is a chat.
-    version: 4,
+    version: 5,
     up: (db, now) => {
       db.exec(`
         create table if not exists threads (id text primary key, room_id text not null, data text not null, created_at integer not null);

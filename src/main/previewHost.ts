@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { BrowserWindow, protocol, session, WebContentsView, type Session, type WebContents, type WebPreferences } from 'electron'
 import type { Channel, KernelApi, PushEvent } from '@shared/ipc'
-import type { SharedFile, SharedKind, SharedVersion } from '@shared/types'
+import type { SharedAnchor, SharedFile, SharedKind, SharedVersion } from '@shared/types'
 import type { Fixture } from '../../fixtures/types'
 import { claimOf } from './services/sharedFiles'
 
@@ -118,6 +118,92 @@ export function scaleRect(r: Rect, zoom: number): Rect {
   return { x, y, width: Math.max(0, Math.round((r.x + r.width) * zoom) - x), height: Math.max(0, Math.round((r.y + r.height) * zoom) - y) }
 }
 
+// Pinning comments (KERNEL-310). The scripts run in an isolated world: they share the page's DOM but not its globals, so
+// the page's own scripts can't see them, patch what they call or fake what they return.
+export const PIN_WORLD = 999
+/** The space a crop keeps around what was pinned, and the smallest and largest crop, in the page's CSS pixels. */
+export const CROP = { pad: 24, min: { width: 320, height: 200 }, max: { width: 1200, height: 800 } }
+/** The deepest selector chain `hit` builds. */
+export const SELECTOR_DEPTH = 8
+
+/**
+ * `selectorOf(el)`, as page code: the element's id when the document has no other with it, else a chain of at most 8
+ * steps up to an ancestor with such an id or to `body`. A step is the tag, up to two plain class names, and
+ * `:nth-of-type(n)` when a sibling shares the tag. A string, so the build can't rename or wrap anything inside it.
+ */
+export const SELECTOR_JS = `function selectorOf(el) {
+  var esc = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape : function (s) {
+    return String(s).replace(/[^\\w-]/g, function (c) { return '\\\\' + c }).replace(/^-?\\d/, function (c) { return c.slice(0, -1) + '\\\\3' + c.slice(-1) + ' ' })
+  }
+  var doc = el.ownerDocument
+  var unique = function (n) { return !!n.id && doc.querySelectorAll('#' + esc(n.id)).length === 1 }
+  if (unique(el)) return '#' + esc(el.id)
+  var steps = []
+  for (var n = el; n && n.tagName && steps.length < ${SELECTOR_DEPTH}; n = n.parentElement) {
+    var tag = n.tagName.toLowerCase()
+    if (tag === 'body' || tag === 'html') break
+    if (steps.length && unique(n)) { steps.unshift('#' + esc(n.id)); break }
+    var step = tag
+    var classes = (typeof n.className === 'string' ? n.className : '').split(/\\s+/).filter(function (c) { return /^[A-Za-z_][\\w-]*$/.test(c) }).slice(0, 2)
+    for (var i = 0; i < classes.length; i++) step += '.' + classes[i]
+    var p = n.parentElement
+    if (p) {
+      var same = Array.prototype.filter.call(p.children, function (c) { return c.tagName === n.tagName })
+      if (same.length > 1) step += ':nth-of-type(' + (same.indexOf(n) + 1) + ')'
+    }
+    steps.unshift(step)
+  }
+  return steps.join(' > ')
+}`
+
+/** Page code: what is under a point in the page's CSS pixels, as an anchor. Over the page itself, the point alone. */
+export function hitJs(x: number, y: number) {
+  return `(() => {
+  ${SELECTOR_JS}
+  var x = ${Number(x)}, y = ${Number(y)}
+  var viewport = { width: innerWidth, height: innerHeight, scrollY: Math.round(scrollY) }
+  var el = document.elementFromPoint(x, y)
+  if (!el || el === document.documentElement || el === document.body) return { x: x, y: y, viewport: viewport }
+  var r = el.getBoundingClientRect()
+  var text = (el.getAttribute('aria-label') || el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 120)
+  var element = { selector: selectorOf(el), tag: el.tagName.toLowerCase(), rect: { x: r.x, y: r.y, width: r.width, height: r.height } }
+  if (text) element.text = text
+  return { x: x, y: y, viewport: viewport, element: element }
+})()`
+}
+
+/** Page code: each selector's element rect in the page's CSS pixels, null for one that matches nothing or isn't drawn. */
+export function locateJs(selectors: string[]) {
+  return `(() => ${JSON.stringify(selectors)}.map(function (s) {
+  var el = null
+  try { el = document.querySelector(s) } catch (e) { return null }
+  if (!el) return null
+  var r = el.getBoundingClientRect()
+  return r.width || r.height ? { x: r.x, y: r.y, width: r.width, height: r.height } : null
+}))()`
+}
+
+/** Page code: scrolls by `dx`, `dy` or to `y`, then says where the page is. */
+export function scrollJs(o: { dx?: number; dy?: number; y?: number }) {
+  const to = Number.isFinite(o.y) ? `scrollTo(scrollX, ${Number(o.y)})` : `scrollBy(${Number(o.dx) || 0}, ${Number(o.dy) || 0})`
+  return `(() => { ${to}; return { scrollY: Math.round(scrollY) } })()`
+}
+
+/**
+ * The part of a view a crop takes around `r`, all in the page's CSS pixels: `r` padded by 24, grown to 320x200 or cut to
+ * 1200x800 about its center, then moved inside the view. Never larger than the view.
+ */
+export function cropRect(r: Rect, view: { width: number; height: number }): Rect {
+  const fit = (start: number, size: number, min: number, max: number, room: number) => {
+    const want = Math.min(Math.max(size + CROP.pad * 2, min), max, room)
+    const at = Math.round(start + size / 2 - want / 2)
+    return [Math.max(0, Math.min(at, room - Math.round(want))), Math.round(want)]
+  }
+  const [x, width] = fit(r.x, r.width, CROP.min.width, CROP.max.width, Math.max(0, Math.round(view.width)))
+  const [y, height] = fit(r.y, r.height, CROP.min.height, CROP.max.height, Math.max(0, Math.round(view.height)))
+  return { x, y, width, height }
+}
+
 /** The same locks for every preview and thumbnail. `plugins` stays off: PDFs get no live view (see the decision file). */
 const prefs = (dev: boolean, offscreen = false): WebPreferences => ({
   sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false, nodeIntegrationInWorker: false,
@@ -153,7 +239,11 @@ export function previewFixture(f: Fixture): PreviewHandlers {
     'system.preview.still': async () => null,
     'system.preview.reload': async () => ok,
     'system.preview.focus': async () => ok,
-    'system.preview.close': async () => ok
+    'system.preview.close': async () => ok,
+    'system.preview.hit': async () => null,
+    'system.preview.crop': async () => null,
+    'system.preview.scroll': async () => null,
+    'system.preview.locate': async ({ selectors }) => selectors.map(() => null)
   }
 }
 
@@ -227,9 +317,61 @@ export class PreviewHost {
       'system.preview.still': ({ viewId }) => this.still(viewId),
       'system.preview.reload': async ({ viewId }) => { this.live(viewId)?.view.webContents.reload(); return ok },
       'system.preview.focus': async ({ viewId }) => { this.live(viewId)?.view.webContents.focus(); return ok },
-      'system.preview.close': async ({ viewId }) => { const v = this.views.get(viewId); if (v) this.drop(v); return ok }
+      'system.preview.close': async ({ viewId }) => { const v = this.views.get(viewId); if (v) this.drop(v); return ok },
+      'system.preview.hit': ({ viewId, x, y }) => this.hit(viewId, x, y),
+      'system.preview.crop': ({ viewId, rect }) => this.crop(viewId, rect),
+      'system.preview.scroll': ({ viewId, ...o }) => this.scroll(viewId, o),
+      'system.preview.locate': ({ viewId, selectors }) => this.locate(viewId, selectors)
     }
   }
+
+  /** The anchor under a point in Kernel's CSS pixels from the view's corner. The anchor itself is in the page's pixels. */
+  async hit(viewId: string, x: number, y: number): Promise<SharedAnchor | null> {
+    const z = this.zoom()
+    return this.pin<SharedAnchor>(viewId, hitJs(Math.round(x * z), Math.round(y * z)))
+  }
+
+  /** A PNG of the view around `rect`, which is in Kernel's CSS pixels. Width and height are the image's. */
+  async crop(viewId: string, rect: Rect): Promise<{ dataUrl: string; width: number; height: number } | null> {
+    const v = this.live(viewId)
+    if (!v || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return null
+    const z = this.zoom()
+    const b = v.view.getBounds()
+    const area = cropRect({ x: rect.x * z, y: rect.y * z, width: rect.width * z, height: rect.height * z }, b)
+    if (!area.width || !area.height) return null
+    const img = await v.view.webContents.capturePage(area, { stayHidden: true }).catch(() => null)
+    if (!img || img.isEmpty()) return null
+    const size = img.getSize()
+    return { dataUrl: `data:image/png;base64,${img.toPNG().toString('base64')}`, width: size.width, height: size.height }
+  }
+
+  /** Scrolls the page, in its own pixels, and says where it ended up. A still is worth taking once it settles. */
+  async scroll(viewId: string, o: { dx?: number; dy?: number; y?: number }): Promise<{ scrollY: number } | null> {
+    const v = this.live(viewId)
+    const r = await this.pin<{ scrollY: number }>(viewId, scrollJs(o))
+    if (v && r) this.settleSoon(v)
+    return r
+  }
+
+  /** Where each pinned element is now, in Kernel's CSS pixels from the view's corner. */
+  async locate(viewId: string, selectors: string[]): Promise<(Rect | null)[]> {
+    const rects = await this.pin<(Rect | null)[]>(viewId, locateJs(selectors))
+    const z = this.zoom()
+    return selectors.map((_s, i) => {
+      const r = rects?.[i]
+      return r ? { x: r.x / z, y: r.y / z, width: r.width / z, height: r.height / z } : null
+    })
+  }
+
+  /** Runs page code in the pin world. Null when the view is gone or the page doesn't answer. */
+  private async pin<T>(viewId: string, code: string): Promise<T | null> {
+    const v = this.live(viewId)
+    if (!v) return null
+    return ((await v.view.webContents.executeJavaScriptInIsolatedWorld(PIN_WORLD, [{ code }]).catch(() => null)) ?? null) as T | null
+  }
+
+  /** Kernel's page zoom: its CSS pixels times this are the view's. */
+  private zoom() { return this.o.window()?.webContents.getZoomFactor() ?? 1 }
 
   async open({ sharedId, version, key }: KernelApi['system.preview.open']['req']): Promise<KernelApi['system.preview.open']['res']> {
     const got = this.o.file(sharedId, version)
