@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { AppUpdate } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { exec } from '../services/exec'
 import { terminalScript } from '../services/health'
@@ -23,10 +24,15 @@ export class App extends Feature {
     if (r.code !== 0) throw new Error(`Could not open Terminal: ${r.stderr.trim() || 'osascript failed'}`)
   }
 
+  /** What Kernel reports with no updater: no update, and the notes it was given for What's new. */
+  private noUpdate(): AppUpdate {
+    return { status: 'idle', current: this.o.version ?? '0.0.0', currentNotes: this.o.currentNotes }
+  }
+
   handlers() {
     return {
-      'update.get': async () => this.o.updater?.get() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
-      'update.check': async () => this.o.updater?.check() ?? { status: 'idle', current: this.o.version ?? '0.0.0' },
+      'update.get': async () => this.o.updater?.get() ?? this.noUpdate(),
+      'update.check': async () => this.o.updater?.check() ?? this.noUpdate(),
       // Electron closes the windows before before-quit on this path, so the shell asks here, before quitAndInstall (KERNEL-214).
       'update.install': async () => {
         if (!this.o.updater) throw new Error('No update to install')

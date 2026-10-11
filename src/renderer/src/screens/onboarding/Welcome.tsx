@@ -1,5 +1,6 @@
 import { Button, Icon } from '../../ui'
 import { go, useStore } from '../../store'
+import { short } from '../update/whatsNewView'
 import './onboarding.css'
 
 /** Welcome.png: the first screen on a fresh install. Get started leads into the checks. */
@@ -14,7 +15,7 @@ export function Welcome() {
         <Button variant="primary" className="ob-cta" autoFocus onClick={() => go({ name: 'onboarding', step: 'checks' })}>Get started</Button>
       </main>
       <footer className="ob-foot">
-        <span>Kernel {version.replace(/^(\d+\.\d+).*/, '$1')}</span>
+        <span>Kernel {short(version)}</span>
         <button type="button" className="ob-link" onClick={() => go({ name: 'home' })}>Skip setup</button>
       </footer>
     </div>

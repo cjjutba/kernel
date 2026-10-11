@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { AppUpdate } from '@shared/types'
 import { call, cleanError } from '../../api'
-import { actions, getState } from '../../store'
+import { actions, getState, useStore } from '../../store'
 import { Button, Modal } from '../../ui'
 import { whatsNewView } from './whatsNewView'
 import './update.css'
@@ -14,7 +14,10 @@ import './update.css'
 export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
   // What the modal opened with: the install it was given at boot, or the live state from the pill, the sidebar,
   // the account menu or the palette. A check that starts while it's open replaces the live state and its notes.
-  const [update] = useState(() => opened ?? getState().system.update)
+  const [update, hold] = useState(() => opened ?? getState().system.update)
+  // Opened before Kernel answered `update.get` (a fixture opens it at boot), it holds the first state that arrives.
+  const live = useStore((s) => s.system.update)
+  if (!update && live) hold(live)
   const [busy, setBusy] = useState(false)
   const close = () => actions.ui.closeModal()
   const { ready, title, notes } = whatsNewView(update)

@@ -15,6 +15,8 @@ export interface KernelOptions {
   onSettings?: (s: AppSettings) => void
   /** Auto-update (src/main/updater.ts). Only a packaged app has one; without it Kernel reports no update. */
   updater?: { get(): AppUpdate; check(): Promise<AppUpdate>; install(): void }
+  /** The running version's notes for What's new when there's no updater. A dev run reads them from the repo. */
+  currentNotes?: AppUpdate['currentNotes']
   /** What Linear calls and the GitHub avatar download go through. Tests pass a stub; the app leaves it out. */
   fetch?: typeof fetch
   /**

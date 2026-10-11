@@ -128,9 +128,7 @@ export class Updater {
    * A build without them falls back to update.json, which has them when Kernel updated itself to this version.
    */
   private currentNotes(): Note[] | undefined {
-    let raw = ''
-    try { if (this.o.notesFile) raw = readFileSync(this.o.notesFile, 'utf8') } catch { /* not in this build */ }
-    const notes = parseNotes(raw)
+    const notes = readNotes(this.o.notesFile)
     if (notes.length) return notes
     return this.saved?.version === this.o.current && this.saved.notes.length ? this.saved.notes : undefined
   }
@@ -145,6 +143,11 @@ export class Updater {
     this.saved = s
     void writeFile(this.file, JSON.stringify(s)).catch((err) => console.warn('[kernel] could not save update.json', err))
   }
+}
+
+/** A notes file as What's new items, or none when the file isn't there. */
+export function readNotes(file: string | undefined): Note[] {
+  try { return file ? parseNotes(readFileSync(file, 'utf8')) : [] } catch { return [] }
 }
 
 function readSaved(file: string): Saved | null {
