@@ -304,10 +304,13 @@ export class Sessions {
     this.drainWaiting()
   }
 
-  /** Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. */
-  hold(chatId: string, parts: ChatPart[], o: Sender = {}) {
+  /**
+   * Put a message in the chat's queue without sending it, until `release`. Used for the first prompt while setup fails. With no
+   * message the chat only waits, as a forked workspace's does through its setup (KERNEL-346).
+   */
+  hold(chatId: string, parts?: ChatPart[], o: Sender = {}) {
     this.waiting.add(chatId)
-    this.setQueue(chatId, [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }])
+    this.setQueue(chatId, parts ? [...this.queued(chatId), { id: randomUUID(), chatId, parts, ts: Date.now(), ...sender(o) }] : this.queued(chatId))
   }
 
   release(chatId: string) {

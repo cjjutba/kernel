@@ -1,9 +1,10 @@
 import { join } from 'node:path'
-import type { ChatPart, Effort, ModelId, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
+import type { Chat, ChatPart, Effort, ModelId, Room, ScriptTrust, Workspace, WorkspaceMode, WorkspaceSource } from '@shared/types'
 import { newId } from '../db'
 import { bus } from '../bus'
-import { loadRepoSettings } from '../services/settings'
-import { branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, fetchOrigin, freeBranch, mergeBase, onRemote, resolveBaseRef, reviewBranch, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
+import { loadRepoSettings, type RepoSettings } from '../services/settings'
+import { clock, worktreeTree, writeTree } from '../services/checkpoints'
+import { branchType, capBranch, changedFiles, createWorktree, currentBranch, diffText, fetchOrigin, freeBranch, mergeBase, onRemote, removeWorktree, resolveBaseRef, reviewBranch, slugify, snapshotBaseline, taskBranch, validBranchName } from '../services/worktrees'
 import { linkNodeModules, portBlock } from '../services/scripts'
 import { exec } from '../services/exec'
 import { listTree, readWorkspaceFile, searchFiles } from '../services/files'
@@ -74,10 +75,12 @@ export class Workspaces extends Feature {
         if (s.workspace.baselineCurrentBranch) baselineRef = (await snapshotBaseline(room.path)).ref
       }
 
-      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105). A review
-      // the Lead started with base_ref keeps the Lead's base and branch, and is only linked (KERNEL-299).
+      // The Lead chat goes in the first record, so it's there before the teammate's first turn can end (KERNEL-105), with the Lead
+      // chat that tab belongs to, which outlasts the tab (KERNEL-337). A review the Lead started with base_ref keeps the Lead's
+      // base and branch, and is only linked (KERNEL-299).
       const reviewOf = reviewed?.id ?? (mode === 'worktree' ? o.linkReviewOf : undefined)
-      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
+      const threadId = o.leadChatId ? this.store.chat(o.leadChatId)?.threadId : undefined
+      const w: Workspace = { id: newId(), roomId, name: slugify(title), branch, baseRef, ...(stale ? { fetchFailed: `Fetching ${remote} failed (${stale.error}), so it started from ${baseRef} as of ${stale.when ?? 'its last fetch'}.` } : {}), path, mode, agentId: agent.id, port, status: 'setup', baselineRef, source: o.source, title, leadChatId: o.leadChatId, ...(threadId ? { threadId } : {}), ...(reviewOf ? { reviewOf } : {}), ...(o.waitFor?.length ? { waitsFor: { on: o.waitFor, held: true } } : {}), prState: 'none', createdAt: Date.now() }
       this.store.saveWorkspace(w)
       return w
     })
@@ -156,6 +159,86 @@ export class Workspaces extends Feature {
     })
   }
 
+  /**
+   * Fork into new workspace (KERNEL-346). A worktree on a new branch from the chat's workspace's HEAD, holding that workspace's
+   * files as they are now, uncommitted and untracked ones too, with the same agent and base. The chat is forked into it up to
+   * `itemId`, the way Fork into new chat does it. Kernel sends nothing: setup runs as for any new workspace, then the user
+   * writes the next message. Answers once the workspace and its chat exist, so the window can open it while setup runs.
+   */
+  async forkWorkspace(chatId: string, itemId?: string): Promise<Workspace> {
+    const chat = this.mustChat(chatId)
+    if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
+    const src = this.mustWs(chat.workspaceId)
+    // The Lead and current-branch workspaces share the main checkout, whose changes aren't only the agent's.
+    if (src.mode !== 'worktree') throw new Error('Only a workspace with its own worktree can fork into a new workspace.')
+    if (src.status === 'archived') throw new Error('Restore the workspace from History to fork it.')
+    const room = this.mustRoom(src.roomId)
+    const repo = await loadRepoSettings(room.path)
+    const from = await head(src.path)
+    if (!from) throw new Error(`${src.name} has no commit to fork from.`)
+    // Read before anything else changes, so the files are the ones the source had when Fork was pressed.
+    const files = await worktreeTree(src.path)
+    let ws!: Workspace
+    const fork = await this.k.chats.forkChat(chatId, itemId, async () => (ws = await this.forkTree(src, room, repo, from, files)).id)
+    this.k.setup.setSetup(ws.id, { chatId: fork.id, later: this.k.setup['setups'].get(ws.id)?.later ?? [] })
+    // Nothing goes out before setup passes, a message typed while the room waits for trust included.
+    this.sessions.hold(fork.id)
+    this.note(ws.id, `Forked from ${src.name}, with its files as they were at ${clock(Date.now())}.`)
+    void this.setUpFork(ws, room, repo, fork).catch((e) => {
+      // A Kernel that stopped meanwhile has closed its database. The next launch finds the workspace in setup and fails it.
+      if (this.stopped) return
+      console.warn(`[fork] setting up ${ws.name} failed`, e)
+      if (this.store.workspace(ws.id)?.status === 'setup') this.updateWs(ws.id, { status: 'failed' })
+    })
+    return ws
+  }
+
+  /** The fork's worktree and record: a branch at `from` whose files are made to match `files`, and the workspace in setup. */
+  private async forkTree(src: Workspace, room: Room, repo: RepoSettings, from: string, files: string): Promise<Workspace> {
+    const ws = await this.withPort(async (port) => {
+      const branch = await freeBranch(room.path, `${capBranch(src.branch, 55)}-fork`)
+      const path = await createWorktree({ repo: room.path, root: join(this.settings.worktreeRoot, slugify(room.name)), branch, baseRef: from })
+      try {
+        await writeTree(path, `${from}^{tree}`, files)
+        if (repo.files.symlinkNodeModules) await linkNodeModules(room.path, path)
+      } catch (e) {
+        await removeWorktree(room.path, path, { deleteBranch: branch, force: true }).catch(() => undefined)
+        throw e
+      }
+      // The sidebar shows the name, so the fork's says what it is and takes the branch's number: kernel-155-home-fork-2.
+      const name = `${slugify(src.name, 40)}-fork${/-fork(-\d+)$/.exec(branch)?.[1] ?? ''}`
+      const w: Workspace = { id: newId(), roomId: room.id, name, title: src.title ?? src.name, branch, baseRef: src.baseRef, path, mode: 'worktree', agentId: src.agentId, port, status: 'setup', prState: 'none', createdAt: Date.now() }
+      this.store.saveWorkspace(w)
+      return w
+    })
+    // The Lead's messages that arrive during setup wait here, as for a hand-off's workspace (KERNEL-118).
+    this.k.setup.setSetup(ws.id, { later: [] })
+    bus.push({ type: 'workspace', workspace: ws })
+    bus.activity({ kind: 'workspace.created', actor: 'you', roomId: room.id, workspaceId: ws.id, agentId: ws.agentId, text: `forked ${src.name} into`, object: ws.name })
+    return ws
+  }
+
+  /**
+   * A fork's setup, the way a new workspace's goes, with no brief: trust first, then files.copy and setup, then ready. The chat
+   * is held until then, and what waits in it, the Lead's messages from setup included, goes out when setup passes, or after Run
+   * again or trusting the room.
+   */
+  private async setUpFork(ws: Workspace, room: Room, repo: RepoSettings, chat: Chat) {
+    const untrusted = !!(await this.k.trust.untrusted(room, repo))
+    const ready = !untrusted && await this.k.setup['prepare'](ws, room, repo)
+    for (const m of this.k.setup['setups'].get(ws.id)?.later ?? []) this.sessions.hold(chat.id, m, { from: 'lead' })
+    this.k.setup.setSetup(ws.id, undefined)
+    if (untrusted) { await this.k.trust.holdForTrust(ws.id); return }
+    if (this.mustWs(ws.id).status === 'archived') return
+    if (!ready) {
+      const failed = this.updateWs(ws.id, { status: 'failed' })
+      const code = this.k.setup['setupFailures'].get(ws.id)
+      if (code !== null && failed.status !== 'archived') this.k.leadUpdates.setup(failed, false, { code })
+      return
+    }
+    await this.k.setup['setupDone'](ws, room, chat, chat.title, async () => this.sessions.release(chat.id))
+  }
+
   /** The first port of every open workspace's block. */
   openPorts() { return this.store.workspaces().filter((w) => w.status !== 'archived').map((w) => w.port) }
 
@@ -202,6 +285,7 @@ export class Workspaces extends Feature {
       'workspaces.list': async ({ roomId }) => this.store.workspaces(roomId),
       // Workspaces you start yourself follow "Start new workspaces in plan mode". The Lead's hand-offs call createWorkspace directly (KERNEL-74).
       'workspaces.create': async ({ roomId, ...o }) => this.createWorkspace(roomId, { ...o, plan: o.plan ?? this.settings.models.workspacePlanMode }),
+      'workspaces.fork': async ({ chatId, itemId }) => this.forkWorkspace(chatId, itemId),
       'workspaces.changes': async ({ workspaceId }) => this.changes(workspaceId),
       'workspaces.diff': async ({ workspaceId, file }) => this.diff(workspaceId, file),
       'workspaces.tree': async ({ workspaceId }) => listTree(this.mustWs(workspaceId).path, await this.changes(workspaceId).catch(() => [])),

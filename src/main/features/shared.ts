@@ -10,6 +10,8 @@ import { exec } from '../services/exec'
 export const NEW_CHAT = 'New chat'
 /** The Lead's first tab before anyone writes in it. Like "New chat", it gives way to a real name. */
 export const LEAD_CHAT = 'Lead'
+/** A Lead tab opened after the first, which belongs to a Lead chat that holds several (KERNEL-337). Named like "New chat". */
+export const NEW_TAB = 'New tab'
 
 /** A composer message: `parts` in order when they carry text (chips sit inline), else `text` first and the parts after it. */
 export const messageOf = (text: string, parts: ChatPart[] = []): ChatPart[] =>

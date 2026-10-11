@@ -632,6 +632,8 @@ export const workspaceFixtures: Record<string, Fixture> = {
     items: { 'chat-copy': [userMsg('c1', 'Shorten the empty state copy.'), tool('c-t1', 'Read the empty state', 'cat src/app/invoices/empty-state.tsx', { name: 'Read' }), tool('c-t2', 'Edit the copy', 'sed -i empty-state.tsx'), { kind: 'text', id: 'c-reply:0', ts: at(10, 31), text: 'Changed it to "No invoices yet. Create your first one."' }, { kind: 'result', id: 'c-res', ts: at(10, 31), durationMs: 20_000, ok: true }] },
     ui: { ...tabsView('chat-copy'), menu: 'tab' }
   })),
+  // The "..." menu under Kai's summary, open: both forks (KERNEL-346). The time and the actions share the summary's last line.
+  WorkspaceReplyMenu: scene(() => ({ ui: { ...open, menu: 'reply:x1' } })),
   // No PNG draws a tab's state icon (D-098). One chat waits on a question, one runs and one is idle, all with titles long enough to truncate.
   WorkspaceTabStates: scene((f) => ({
     chats: [

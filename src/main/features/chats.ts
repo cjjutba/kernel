@@ -5,7 +5,7 @@ import type { PushEvent } from '@shared/ipc'
 import { sessionEnv } from '../services/sessions'
 import { titleText } from '../services/titles'
 import { resolvePreset, terminalCommand, terminalPresets, terminalTitle } from '../services/terminalPresets'
-import { LEAD_CHAT, NEW_CHAT } from './shared'
+import { LEAD_CHAT, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -64,8 +64,14 @@ export class Chats extends Feature {
 
   /** Kernel picks this chat's name. A chat still called "New chat" from before KERNEL-202 counts too. */
   private autoNamed(c: Chat) { return c.kind !== 'terminal' && (!!c.autoTitle || c.title === NEW_CHAT) }
-  /** An auto-named chat that has no real name yet. */
-  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && c.title === LEAD_CHAT) }
+  /** An auto-named chat that has no real name yet: "New chat", a Lead tab's "New tab" (KERNEL-337), or the Lead's first "Lead". */
+  private unnamed(c: Chat) { return c.title === NEW_CHAT || (!!c.autoTitle && (c.title === NEW_TAB || c.title === LEAD_CHAT)) }
+
+  /** Saves a name Kernel picked. The first tab of a Lead chat names the chat too (KERNEL-337). */
+  private autoName(chat: Chat) {
+    this.saveChat(chat)
+    this.k.lead.tabNamed(chat)
+  }
 
   /**
    * Names an auto-named chat (KERNEL-202, amends D-089). Until it has a name, it takes the title Claude Code writes into its
@@ -89,7 +95,7 @@ export class Chats extends Feature {
         if (title && now && this.autoNamed(now) && this.unnamed(now)) {
           this.titleChecked.delete(chat.id)
           this.nameMisses.delete(chat.id)
-          this.saveChat({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
+          this.autoName({ ...now, title, autoTitle: now.autoTitle ?? { turns: 0 } })
         }
       }
     }
@@ -111,7 +117,7 @@ export class Chats extends Feature {
       if (!now || !this.autoNamed(now) || now.title !== before.title) return
       if (title) {
         this.nameMisses.delete(chat.id)
-        this.saveChat({ ...now, title, autoTitle: { turns } })
+        this.autoName({ ...now, title, autoTitle: { turns } })
         return
       }
       const misses = (this.nameMisses.get(chat.id) ?? 0) + 1
@@ -124,7 +130,10 @@ export class Chats extends Feature {
     }
   }
 
-  /** /clear starts a new conversation, so an auto name goes back to "New chat" and the schedule starts over. Other resets keep it. */
+  /**
+   * /clear starts a new conversation, so an auto name goes back to "New chat", or "New tab" for a Lead tab, and the schedule
+   * starts over. The Lead chat keeps its name (KERNEL-337). Other resets keep it.
+   */
   resetName(chat: Chat, trigger?: string) {
     if (trigger && trigger !== 'clear') return
     const now = this.store.chat(chat.id)
@@ -133,28 +142,35 @@ export class Chats extends Feature {
     this.nameResets.set(chat.id, (this.nameResets.get(chat.id) ?? 0) + 1)
     this.nameMisses.delete(chat.id)
     this.titleChecked.delete(chat.id)
-    this.saveChat({ ...now, title: NEW_CHAT, autoTitle: { turns: 0 } })
+    this.saveChat({ ...now, title: now.threadId ? NEW_TAB : NEW_CHAT, autoTitle: { turns: 0 } })
   }
 
-  /** Open chats still called "New chat" after a finished turn, as /clear left them before KERNEL-202. Named one at a time. */
+  /** Open chats still called "New chat" or "New tab" after a finished turn, as /clear left them before KERNEL-202. Named one at a time. */
   async nameStuckChats() {
     for (const ws of this.store.workspaces().filter((w) => w.status !== 'archived')) {
       for (const chat of this.chatTabs(ws.id)) {
         if (this.stopped) return
-        if (chat.kind === 'terminal' || chat.title !== NEW_CHAT || !chat.sessionId) continue
+        if (chat.kind === 'terminal' || (chat.title !== NEW_CHAT && chat.title !== NEW_TAB) || !chat.sessionId) continue
         if (!this.store.items(chat.id).some((i) => i.kind === 'result')) continue
         await this.nameChat(ws, chat, true).catch(() => undefined)
       }
     }
   }
 
-  /** The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab is replaced by a fresh chat. */
+  /**
+   * The tab leaves the strip, its transcript stays. A big terminal's process ends. The last open tab of a Lead chat closes
+   * the chat (KERNEL-337). The last open tab is replaced by a fresh chat, which in the Lead's workspace starts a new Lead chat.
+   */
   closeChat(chatId: string) {
     const chat = this.mustChat(chatId)
     this.sessions.stop(chatId)
     this.ptys.kill(chatId)
     this.saveChat({ ...chat, closed: true })
-    if (!this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) this.saveChat(this.newChat(chat.workspaceId, NEW_CHAT, { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }))
+    this.k.lead.tabClosed(chat)
+    if (this.chatTabs(chat.workspaceId).some((c) => c.kind !== 'terminal')) return
+    const pick = { model: chat.model, effort: this.openedEffort(chat.workspaceId, chat.model), plan: false }
+    const ws = this.mustWs(chat.workspaceId)
+    this.saveChat(this.isLeadWorkspace(ws) ? this.k.lead.leadTab(ws, NEW_TAB, pick) : this.newChat(chat.workspaceId, NEW_CHAT, pick))
   }
 
   /**
@@ -169,9 +185,12 @@ export class Chats extends Feature {
 
   /**
    * A new chat that resumes from this one with the SDK's session fork. With `itemId` the fork ends at the nearest assistant message
-   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there.
+   * at or before it (user messages carry no SDK uuid), and the transcript is copied up to there. `into` makes the workspace the new
+   * chat goes in, for Fork into new workspace (KERNEL-346). It runs once the session has forked, so a fork that can't happen leaves
+   * no workspace behind, and the forked session goes if it throws. The forked session stays in the source worktree's project
+   * folder, where Claude Code finds it from the new worktree too, even once the source's folder is gone.
    */
-  private async forkChat(chatId: string, itemId?: string): Promise<Chat> {
+  async forkChat(chatId: string, itemId?: string, into?: () => Promise<string>): Promise<Chat> {
     const chat = this.mustChat(chatId)
     if (chat.kind === 'terminal') throw new Error('A big terminal cannot be forked.')
     const ws = this.mustWs(chat.workspaceId)
@@ -187,7 +206,9 @@ export class Chats extends Feature {
     }
     let sessionId: string | undefined
     if (chat.sessionId && (!itemId || upTo)) sessionId = (await this.k.forkSession(chat.sessionId, { dir: ws.path, upToMessageId: upTo, title: `Fork of ${chat.title}` })).sessionId
-    const fork = this.saveChat({ ...this.newChat(chat.workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
+    const workspaceId = into ? await into().catch(async (e) => { if (sessionId) await this.k.deleteSession(sessionId, { dir: ws.path }).catch(() => undefined); throw e }) : chat.workspaceId
+    // A fork of a Lead tab is another tab of its Lead chat (KERNEL-337). Fork into new workspace refuses the Lead's workspace.
+    const fork = this.saveChat({ ...this.newChat(workspaceId, `Fork of ${chat.title}`, { model: chat.model, effort: chat.effort, plan: chat.plan, threadId: chat.threadId }), sessionId, forkOf: { chatId, itemId: items[items.length - 1]?.id ?? '' } })
     for (const i of items) this.store.saveItem(fork.id, { ...i, id: `${COPY}${fork.id}:${i.id}` } as ChatItem)
     return fork
   }
@@ -234,13 +255,16 @@ export class Chats extends Feature {
       'terminal.write': async ({ chatId, data }) => { this.ensurePty(chatId); this.ptys.write(chatId, data); return { ok: true } },
       'terminal.resize': async ({ chatId, cols, rows }) => { this.ensurePty(chatId, { cols, rows }); this.ptys.resize(chatId, cols, rows); return { ok: true } },
       'terminal.replay': async ({ chatId }) => { this.ptys.replay(chatId); return { ok: true } },
-      'chats.create': async ({ workspaceId, kind, preset }) => {
+      'chats.create': async ({ workspaceId, kind, preset, threadId }) => {
         const ws = this.mustWs(workspaceId)
         const term = kind === 'terminal' ? await this.terminalFor(ws, preset) : undefined
         // Right after a restart nothing may have read the team yet, and the agent's effort is the fallback.
         if (!this.k.team.agentCache.has(ws.roomId)) await this.k.team.agents(ws.roomId)
         const model = this.store.chats(workspaceId)[0]?.model ?? this.settings.models.engineers
-        return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { model, effort: this.openedEffort(workspaceId, model), plan: false, kind, terminal: term?.terminal })
+        const pick = { model, effort: this.openedEffort(workspaceId, model), plan: false }
+        // A Lead tab joins the Lead chat `threadId`, or starts one (KERNEL-337). A big terminal belongs to no Lead chat.
+        if (!term && this.isLeadWorkspace(ws)) return this.k.lead.leadTab(ws, NEW_TAB, pick, threadId)
+        return this.newChat(workspaceId, term ? terminalTitle(term.preset) : NEW_CHAT, { ...pick, kind, terminal: term?.terminal })
       },
       'terminal.presets': async () => terminalPresets(this.settings.terminal),
       'chats.items': async ({ chatId }) => this.store.items(chatId),

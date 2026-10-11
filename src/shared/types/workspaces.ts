@@ -45,6 +45,8 @@ export interface Workspace {
   taskId?: string
   /** The Lead chat that handed this workspace off. Kernel's teammate updates about it go there (D-101). */
   leadChatId?: string
+  /** The Lead chat that `leadChatId` belongs to, kept so the workspace stays with it after that tab closes (KERNEL-337). */
+  threadId?: string
   /** On a review workspace: the workspace whose work it reviews. */
   reviewOf?: string
   /** Reviewers' verdicts on this workspace's PR, one per review workspace. */

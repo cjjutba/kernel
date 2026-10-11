@@ -2,7 +2,7 @@ import type {
   ActivityEvent, AgentDef, AgentDraft, AgentEdit, AgentStatus, AppSettings, AppUpdate, Approval, BuiltinCommand, ChangedFile, Chat, ChatItem,
   ChatPart, Checkpoint, ClaudeAccount, Decision, DeepPartial, DeletePreview, DeleteResult, Effort, FileEntry, FileToCopy, FolderInfo, ForcedUi, HookStatus, Hunk,
   Integration, IssueSummary, LinearFilter, LinearIssue, LinearIssueDetail, LinearScope, McpServer, ModelId, NewRoomRequest, Notification, Overlap, PreflightCheck, PrInfo, PrState,
-  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset,
+  PrSummary, QueuedMessage, QueueReason, RateLimit, RepoSummary, Room, RoomSettings, RoomSettingsPatch, RoomSetupStep, ScriptKind, ScriptLine, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedKind, Skill, Task, TeamTemplate, TerminalPreset, Thread,
   Workspace, WorkspaceGitStatus, WorkspaceMode, WorkspaceSource
 } from './types'
 
@@ -73,6 +73,11 @@ export interface KernelApi {
   'workspaces.list': { req: { roomId?: string }; res: Workspace[] }
   /** `prompt` names the workspace and its first checkpoint. `parts` is the first message in order when it has chips inline; without text in it, `prompt` goes first. */
   'workspaces.create': { req: { roomId: string; prompt: string; parts?: ChatPart[]; agentId?: string; mode?: WorkspaceMode; baseRef?: string; source?: WorkspaceSource; model?: ModelId; effort?: Effort; plan?: boolean }; res: Workspace }
+  /**
+   * Fork into new workspace (KERNEL-346): a new worktree workspace on a branch from the chat's workspace's HEAD, with its files as
+   * they are now, and the chat up to `itemId` (the whole chat when unset). Answers once the workspace and its chat exist; setup goes on.
+   */
+  'workspaces.fork': { req: { chatId: string; itemId?: string }; res: Workspace }
   'workspaces.archive': { req: { workspaceId: string; deleteBranch?: boolean; push?: boolean }; res: Ok }
   /** History > Restore: a fresh worktree on the archived branch, chats kept. */
   'workspaces.restore': { req: { workspaceId: string }; res: Workspace }
@@ -108,8 +113,11 @@ export interface KernelApi {
 
   // chats (KERNEL-10, 11, 12, 28)
   'chats.list': { req: { workspaceId: string }; res: Chat[] }
-  /** `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). */
-  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string }; res: Chat }
+  /**
+   * `preset` picks what a terminal tab runs, the settings' preset when unset (KERNEL-248). In the Lead's workspace a chat tab
+   * joins `threadId`, or starts a new thread when it is unset (KERNEL-337).
+   */
+  'chats.create': { req: { workspaceId: string; kind?: 'chat' | 'terminal'; preset?: string; threadId?: string }; res: Chat }
   'chats.items': { req: { chatId: string }; res: ChatItem[] }
   'chats.send': { req: { chatId: string; parts: ChatPart[] }; res: { queued: boolean } }
   'chats.interrupt': { req: { chatId: string }; res: Ok }
@@ -162,11 +170,15 @@ export interface KernelApi {
   'notifications.list': { req: void; res: Notification[] }
   'notifications.read': { req: { ids: string[] | 'all' }; res: Notification[] }
   /** Ask Rowan from anywhere (QuickAsk.png). The answer streams into the returned chat. */
-  'lead.ask': { req: { roomId: string; text: string }; res: { chatId: string } }
+  'lead.ask': { req: { roomId: string; text: string; threadId?: string }; res: { chatId: string } }
   /** The Lead's workspace, for the sidebar row, Cmd+K, Cmd+Shift+L and Ask Rowan. Created on the main checkout the first time. */
   'lead.open': { req: { roomId: string }; res: Workspace }
   /** The new workspace modal: the prompt goes to the Lead in a new chat, which takes its title from the first message (KERNEL-148). */
   'lead.start': { req: { roomId: string; prompt: string; parts?: ChatPart[]; model?: ModelId; effort?: Effort; plan?: boolean }; res: Chat }
+  /** The Lead chats, each holding one or more Lead tabs, in every room or in `roomId`, oldest first (KERNEL-337). */
+  'threads.list': { req: { roomId?: string }; res: Thread[] }
+  /** Names a Lead chat. Kernel stops naming it after its first tab from then on. */
+  'threads.rename': { req: { threadId: string; title: string }; res: Thread }
 
   // pull requests (KERNEL-15)
   'pr.get': { req: { workspaceId: string }; res: PrInfo | null }
@@ -306,6 +318,8 @@ export type Channel = keyof KernelApi
 export type PushEvent =
   | { type: 'activity'; event: ActivityEvent }
   | { type: 'chat'; chat: Chat }
+  /** A Lead chat was created, renamed, retitled or closed (KERNEL-337). */
+  | { type: 'thread'; thread: Thread }
   | { type: 'chat.item'; chatId: string; item: ChatItem }
   /** /clear started a fresh conversation, so the transcript starts over. */
   | { type: 'chat.cleared'; chatId: string }

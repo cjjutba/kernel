@@ -35,11 +35,14 @@ async function setup(o: { leadChat?: boolean; delayMs?: number } = {}) {
   const s = { enabled: true, hasLead: o.leadChat ?? true, accept: true, busy: new Set<string>(), posts: [] as string[], updates: [] as TeamUpdate[], to: [] as string[], delivered: [] as TeamUpdate[], reviewer: undefined as AgentDef | undefined, review: undefined as ReviewState | undefined }
   const deps: ConstructorParameters<typeof LeadUpdates>[0] = {
     store, enabled: () => s.enabled,
-    // Kernel's rule in small: the owner while it's open, else the first Lead chat ("lc"), flagged as closed.
+    // Kernel's rule in small: the owner while it's open, else the first Lead chat ("lc"), saying where the work came from:
+    // a closed tab of the same Lead chat (KERNEL-337), or another Lead chat.
     target: (_r, owner) => {
       if (!s.hasLead) return undefined
       const was = owner ? store.chat(owner) : undefined
-      return was && !was.closed ? { chat: was } : { chat: store.chat('lc')!, closed: was }
+      if (was && !was.closed) return { chat: was }
+      const lc = store.chat('lc')!
+      return { chat: lc, ...(was ? { from: { title: was.title, ...(was.threadId && was.threadId === lc.threadId ? { tab: true } : {}) } } : {}) }
     },
     isLead: (w) => w.agentId === 'rowan',
     agentName: (_r, a) => NAMES[a],
@@ -984,6 +987,39 @@ describe('teammate updates with several Lead chats (KERNEL-105)', () => {
     expect(lines.filter((l) => / · workspace /.test(l)).map((l) => l.split(' · ')[1])).toEqual(['Own 3', 'Own 4', 'Own 5', 'Own 6', 'Closed 1', 'Closed 2', 'Closed 3', 'Closed 4'])
     expect(lines).toContain('From "Composer unit tests", a Lead chat that is now closed. This work is yours now.')
     expect(lines).toContain('Kernel left out updates on 2 more workspaces. Call list_workspaces to see where they stand.')
+  })
+
+  it("names a closed tab of the same Lead chat apart from a closed Lead chat, in the text and on the card (KERNEL-337)", async () => {
+    const { store, s, pr, own, chat } = await setup()
+    store.saveChat({ ...store.chat('lc')!, threadId: 't1' })
+    store.saveChat({ ...store.chat('lc2')!, title: 'Icons tab', threadId: 't1', closed: true })
+    chat('lc3', 'lead')
+    store.saveChat({ ...store.chat('lc3')!, title: 'Composer unit tests', threadId: 't2', closed: true })
+    own('w1', 'lc2'); own('w2', 'lc3')
+    pr('w1', 'ready')
+    pr('w2', 'conflict', 60)
+    await wait()
+    expect(s.to).toEqual(['lc'])
+    const lines = s.posts[0].split('\n')
+    expect(lines).toContain('From "Icons tab", a tab you closed. This work is yours now.')
+    expect(lines).toContain('From "Composer unit tests", a Lead chat that is now closed. This work is yours now.')
+    expect(s.updates[0].rows.map((r) => [r.fromChat, r.fromTab])).toEqual([['Icons tab', true], ['Composer unit tests', undefined]])
+  })
+
+  it("counts every tab's tasks before saying all of a Lead chat's work merged (KERNEL-337)", async () => {
+    const ALL = 'Every task you handed off in this chat has merged.'
+    const { store, s, pr, own } = await setup()
+    own('w1', 'lc'); own('w2', 'lc2')
+    store.saveChat({ ...store.chat('lc')!, threadId: 't1' })
+    store.saveChat({ ...store.chat('lc2')!, threadId: 't1' })
+    // Alone, "lc" would hear that its only task merged. Its other tab's task is still open.
+    pr('w1', 'merged')
+    await wait()
+    expect(s.posts).toEqual([])
+    pr('w2', 'merged', 60)
+    await wait()
+    expect(s.to).toContain('lc2')
+    expect(s.posts[s.to.indexOf('lc2')]).toContain(ALL)
   })
 })
 
