@@ -922,7 +922,7 @@ export interface AppSettings {
   hooks: { requireTestOutput: boolean; keepTeammatesWorking: boolean }
   /** The big terminal tab (KERNEL-248). `preset` is what a new tab runs. `onlyInWorktrees` drops the skip-permissions flag on a current-branch workspace. */
   terminal: { enabled: boolean; preset: string; onlyInWorktrees: boolean; custom: { id: string; name: string; command: string }[] }
-  /** `sharing` gives agents share_file. No page shows it; KERNEL-308 turns it on (KERNEL-302). */
+  /** `sharing` gives agents share_file (KERNEL-302). On by default since KERNEL-308. No page shows it; `false` in settings.json turns it off. */
   experimental: { walking: boolean; floor3d: boolean; voice: boolean; sharing?: boolean }
 }
 
