@@ -8,6 +8,11 @@ import type { ChatPart } from '@shared/types'
 interface Draft { workspaceId: string; parts: ChatPart[] }
 const saved = new Map<string, Draft>()
 
+/** The New chat box's draft. It belongs to no chat or workspace, so it is never pruned, and it goes to disk like a chat's. */
+export const NEW_CHAT_DRAFT = 'new-chat'
+/** Whether a draft can be written to disk: it names its workspace, or it is the New chat box's. */
+const lasting = (key: string, workspaceId: string) => !!workspaceId || key === NEW_CHAT_DRAFT
+
 const KEY = 'kernel.drafts'
 /** The write waits this long after the last change, so typing is one write and not one per key. */
 const DELAY_MS = 500
@@ -31,7 +36,7 @@ function load() {
     const drafts = (file as { v?: unknown; drafts?: unknown } | null)?.v === 1 ? (file as { drafts: unknown }).drafts : undefined
     if (!drafts || typeof drafts !== 'object') return
     for (const [chatId, d] of Object.entries(drafts as Record<string, Partial<Draft>>)) {
-      if (!d || typeof d.workspaceId !== 'string' || !d.workspaceId || !Array.isArray(d.parts)) continue
+      if (!d || typeof d.workspaceId !== 'string' || !lasting(chatId, d.workspaceId) || !Array.isArray(d.parts)) continue
       const parts = d.parts.filter((p): p is ChatPart => !!p && typeof p === 'object' && typeof p.type === 'string' && p.type !== 'image')
       if (parts.length && !saved.has(chatId)) saved.set(chatId, { workspaceId: d.workspaceId, parts })
     }
@@ -47,7 +52,7 @@ function flush() {
   const drafts: Record<string, Draft> = {}
   for (const [chatId, d] of saved) {
     const parts = d.parts.filter((p) => p.type !== 'image')
-    if (!d.workspaceId || !parts.length) continue
+    if (!lasting(chatId, d.workspaceId) || !parts.length) continue
     const draft = { workspaceId: d.workspaceId, parts }
     if (JSON.stringify(draft).length > MAX_DRAFT_BYTES) continue
     drafts[chatId] = draft
@@ -98,6 +103,7 @@ export function pruneDrafts(s: { workspaces: { id: string; status: string }[]; c
   load()
   let changed = false
   for (const [chatId, d] of [...saved]) {
+    if (chatId === NEW_CHAT_DRAFT) continue
     const ws = s.workspaces.find((w) => w.id === d.workspaceId)
     const gone = !ws || ws.status === 'archived' || (chatsLoaded(d.workspaceId) && !(s.chats[d.workspaceId] ?? []).some((c) => c.id === chatId))
     if (gone) { saved.delete(chatId); changed = true }

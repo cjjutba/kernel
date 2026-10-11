@@ -7,6 +7,7 @@ import { leadOf, openLeadChat } from '../../lead'
 import { Button, Icon, Menu, Modal, useBusy } from '../../ui'
 import { useLayer } from '../../ui/hooks'
 import { DraftInput, useDraft } from '../workspace/composer/draft'
+import { NEW_CHAT_DRAFT, saveDraft } from '../workspace/composer/draftStore'
 import { ModelPicker } from '../workspace/composer/ModelPicker'
 import { effortFor } from '@shared/effort'
 import { effortLabel as labelOf, rememberEffort, useDefaultEffort, useEffortMemory } from '../workspace/composer/modelPrefs'
@@ -29,6 +30,7 @@ const MODES: { id: WorkspaceMode; label: string; hint: string }[] = [
 /**
  * "What do you want to work on?" (NewWorkspace.png and its four popovers). Create opens a new chat with the room's Lead
  * and sends the prompt there, so the Lead plans and hands off (D-131). Enter and Cmd+Enter create, Shift+Enter breaks the line.
+ * The box keeps its draft while the modal is closed, until a create sends it.
  */
 export function NewWorkspace({ roomId, source: initial }: { roomId?: string; source?: WorkspaceSource }) {
   const rooms = useStore((s) => s.rooms)
@@ -50,7 +52,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
   // The picker shows each model at its remembered effort, so the modal starts there too.
   const [effort, setEffort] = useState<Effort>(() => effortFor(model, memory, defaultEffort))
   const [plan, setPlan] = useState(settings?.models.leadPlanMode ?? false)
-  const d = useDraft()
+  const d = useDraft(undefined, NEW_CHAT_DRAFT)
   const [branches, setBranches] = useState<string[]>([])
   const [tab, setTab] = useState<FromTab>('prs')
   const [creating, run] = useBusy()
@@ -114,6 +116,7 @@ export function NewWorkspace({ roomId, source: initial }: { roomId?: string; sou
     let chat
     try { chat = await call('lead.start', { roomId: room, ...leadMessage(parts), model, effort, plan }) }
     catch (e) { setError({ message: cleanError(e) }); return }
+    saveDraft(NEW_CHAT_DRAFT, [], '')
     // The message is sent. Landing on it is best effort, since the engine pushes the same workspace and chat.
     try {
       const ws = (await call('workspaces.list', { roomId: room })).find((w) => w.id === chat.workspaceId)
