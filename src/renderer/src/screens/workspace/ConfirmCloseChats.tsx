@@ -11,7 +11,8 @@ const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remo
 
 /**
  * Close chat tabs. Main stops each chat's session, which ends a running turn and drops its queued messages, and opens a
- * new chat when no chat tab is left. When the open tab is one of them, the tab to its left opens.
+ * new chat when no chat tab is left. When the open tab is one of them, the next tab to its right opens, or to its left when
+ * none is left on the right, like closing a browser tab.
  */
 export async function closeChats(workspaceId: string, ids: string[], active: string | undefined, select: (id: string) => void) {
   const before = getState().chats[workspaceId] ?? []
@@ -23,7 +24,8 @@ export async function closeChats(workspaceId: string, ids: string[], active: str
   if (!active || !ids.includes(active)) return
   const left = getState().chats[workspaceId] ?? []
   const was = before.findIndex((c) => c.id === active)
-  const next = left[Math.min(Math.max(was - 1, 0), left.length - 1)]
+  const kept = new Set(left.map((c) => c.id))
+  const next = [...before.slice(was + 1), ...before.slice(0, was).reverse()].find((c) => kept.has(c.id)) ?? left[0]
   if (next) select(next.id)
 }
 
