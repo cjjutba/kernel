@@ -399,7 +399,7 @@ export class CodexRunner implements Runner {
     const verdict = command ? bashVerdict(command, perms, this.host.roomAllow()) : undefined
     if (verdict === 'deny') return this.declined(`Kernel blocks "${command}" in every room.`)
     if (verdict === 'allow') return { decision: 'accept' }
-    if (verdict !== 'ask' && !leaves && perms.mode !== 'ask') return { decision: 'accept' }
+    if (verdict !== 'ask' && !leaves && perms.mode !== 'default') return { decision: 'accept' }
     const d = describeTool('Bash', { command })
     const detail = [p.reason, leaves ? OUTSIDE_SANDBOX : undefined].filter(Boolean).join('. ')
     const result = await this.host.ask({ kind: 'tool', toolName: 'Bash', input: { command }, title: d.title, ...(detail ? { detail } : {}), activity: d.title }, {})
@@ -419,7 +419,7 @@ export class CodexRunner implements Runner {
   private async approveFiles(p: FileChangeRequestApprovalParams): Promise<FileChangeRequestApprovalResponse> {
     await this.held()
     const perms = this.host.settings().permissions
-    if (perms.mode !== 'ask' && !p.grantRoot) return { decision: 'accept' }
+    if (perms.mode !== 'default' && !p.grantRoot) return { decision: 'accept' }
     const change = this.changes.get(p.itemId)
     const path = change?.changes[0]?.path ?? p.grantRoot ?? ''
     const name = change && change.changes.length === 1 && change.changes[0].kind.type === 'add' ? 'Write' : 'Edit'

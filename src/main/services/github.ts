@@ -327,8 +327,11 @@ export async function prMerge(cwd: string, method: 'squash' | 'merge' | 'rebase'
   await run('gh', ['pr', 'merge', ...(o.ref ? [o.ref] : []), `--${method}`, ...(o.deleteBranch ? ['--delete-branch'] : [])], { cwd, timeoutMs: 60000 })
 }
 
-/** The GitHub calls Kernel makes for a workspace's PR. Tests swap it for a stub. */
-export interface GitHub {
+/**
+ * The calls Kernel makes for a workspace's PR, wherever the room's code is hosted. `gh` is GitHub's, the only one so far
+ * (KERNEL-432). Tests swap it for a stub.
+ */
+export interface CodeHost {
   /** The full read of one PR. Null when there is none; rejects with GhReadError when GitHub couldn't be read. */
   info: (cwd: string, ref: string, workspaceId: string, o?: { conflicts?: boolean; remote?: string; optional?: string[] }) => Promise<PrInfo | null>
   /**
@@ -343,7 +346,10 @@ export interface GitHub {
   reopen: (cwd: string, ref: string) => Promise<void>
 }
 
-export const gh: GitHub = {
+/** The name `CodeHost` had while GitHub was the only host. */
+export type GitHub = CodeHost
+
+export const gh: CodeHost = {
   info: prInfo,
   prs: async (cwd, numbers, o = {}) => {
     const { views, rate } = await prBatch(cwd, numbers)

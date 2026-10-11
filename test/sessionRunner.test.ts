@@ -91,7 +91,7 @@ async function setup(mode = 'acceptEdits', hooks: { mcpFor?: (ws: Workspace, age
 
 describe('questions to the user', () => {
   it('sends ExitPlanMode to the user as a plan card even when worktrees bypass permissions, and keeps the card in the chat', async () => {
-    const { options, approvals, store, kinds } = await setup('bypassInWorktrees')
+    const { options, approvals, store, kinds } = await setup('bypassPermissions')
     const answer = (options.canUseTool as CanUseTool)('ExitPlanMode', { plan: '1. Add the column\n2. Backfill it' }, { signal: new AbortController().signal, toolUseID: 'p1', requestId: 'r1' })
     await flush()
     const pending = store.approvals({ pendingOnly: true })[0]
@@ -150,7 +150,7 @@ describe('questions to the user', () => {
   const ask = (options: Options, id: string) => (options.canUseTool as CanUseTool)('AskUserQuestion', asked, { signal: new AbortController().signal, toolUseID: id, requestId: `r-${id}` })
 
   it('keeps every question of an AskUserQuestion call on one approval, titled with the first', async () => {
-    const { options, store } = await setup('bypassInWorktrees')
+    const { options, store } = await setup('bypassPermissions')
     void ask(options, 'q1')
     await flush()
     const pending = store.approvals({ pendingOnly: true })
@@ -200,7 +200,7 @@ describe('questions to the user', () => {
   })
 
   it('still lets bypass answer an ordinary tool', async () => {
-    const { options } = await setup('bypassInWorktrees')
+    const { options } = await setup('bypassPermissions')
     expect(await (options.canUseTool as CanUseTool)('Edit', { file_path: 'a.ts' }, { signal: new AbortController().signal, toolUseID: 'e1', requestId: 'r2' })).toMatchObject({ behavior: 'allow' })
   })
 })

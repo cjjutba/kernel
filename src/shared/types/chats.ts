@@ -1,3 +1,5 @@
+import type { PermissionMode } from './settings'
+import type { TrackerKind } from './trackers'
 import type { ChangedFile } from './workspaces'
 
 /** The agent CLI a chat runs on: Claude Code through the Agent SDK, or Codex through `codex app-server` (KERNEL-406). */
@@ -56,6 +58,8 @@ export interface Chat {
   model: string
   effort: Effort
   plan: boolean
+  /** The chat's own permission mode, picked in the composer. Unset follows the room's, then the app's. Plan mode stays `plan` (KERNEL-432). */
+  mode?: PermissionMode
   /** Set on a fork: the chat and the transcript item it was forked after. */
   forkOf?: { chatId: string; itemId: string }
   /** Context window use, 0 to 100 (WorkspaceContext.png). */
@@ -158,7 +162,7 @@ export type ChatPart =
   | { type: 'image'; name: string; dataUrl?: string; width?: number; height?: number }
   | { type: 'skill'; name: string }
   /** + > Link issue. `name` is the key, "KERNEL-83" or "#41". */
-  | { type: 'issue'; name: string; title: string; url?: string; source: 'linear' | 'github' }
+  | { type: 'issue'; name: string; title: string; url?: string; source: TrackerKind }
   /** + > Link workspaces: another workspace the agent can read and diff. */
   | { type: 'workspace'; name: string; workspaceId: string; branch: string; path: string; prNumber?: number; prUrl?: string }
 
