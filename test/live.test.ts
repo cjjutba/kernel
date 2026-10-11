@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ActivityEvent, Approval, ChatItem, RateLimit } from '@shared/types'
+import type { ActivityEvent, Approval, Chat, ChatItem, RateLimit, Workspace } from '@shared/types'
 import type { PushEvent } from '@shared/ipc'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
 import { exec } from '../src/main/services/exec'
 import { askTitle } from '../src/main/services/titles'
 import { Store } from '../src/main/db'
-import { QUIT_NOTE, RELAUNCH_NUDGE, TOOL_STOPPED } from '../src/main/services/sessions'
+import { Approvals } from '../src/main/services/approvals'
+import { QUIT_NOTE, RELAUNCH_NUDGE, SESSION_GONE_NOTE, Sessions, TOOL_STOPPED } from '../src/main/services/sessions'
+import type { AppSettings } from '../src/main/services/settings'
 
 // The KERNEL-6 round trip against real Claude Code. It spends a few short Sonnet turns on the Claude plan, so it
 // only runs when asked:
@@ -296,3 +299,40 @@ async function waitFor<T>(what: string, check: () => T | undefined | false, time
     await new Promise((r) => setTimeout(r, 200))
   }
 }
+
+// KERNEL-286: a chat whose Claude Code session is gone starts a fresh one. Kernel matches the CLI's own words for a
+// missing session, which no typed field carries, so run this before an SDK bump: a new wording fails it. One short Haiku
+// turn in a temp folder, nothing in KERNEL_LIVE_REPO. `-t "live session gone"`.
+describe.skipIf(!process.env.KERNEL_LIVE)('live session gone', () => {
+  it('starts a fresh session that replies when the saved one is gone', { timeout: 180_000 }, async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kernel-live-gone-'))
+    const store = new Store(join(dir, 'kernel.db'))
+    const ws = { id: 'ws', roomId: 'room', name: 'gone', branch: 'main', baseRef: 'main', path: dir, mode: 'current', agentId: 'noor', port: 4311, status: 'ready', prState: 'none', createdAt: 1 } as Workspace
+    const missing = randomUUID()
+    const chat: Chat = { id: 'chat', workspaceId: 'ws', title: 'Gone', kind: 'chat', model: 'claude-haiku-4-5-20251001', effort: 'low', plan: false, createdAt: 1, sessionId: missing }
+    store.saveWorkspace(ws)
+    store.saveChat(chat)
+    const settings = { permissions: { mode: 'acceptEdits', alwaysAsk: [], neverAllow: [], protectedBranches: [], approvalTimeoutSec: 300 }, models: { agentLimit: 0 } } as unknown as AppSettings
+    let done!: (ok: boolean) => void
+    const turn = new Promise<boolean>((resolve) => { done = resolve })
+    const sessions = new Sessions({
+      store, approvals: new Approvals(store), settings: () => settings, agentFor: () => undefined, mcpFor: () => undefined,
+      roomAllow: () => [], allowInRoom: () => {}, onTurnDone: (_ws, _chat, t) => done(t.ok)
+    })
+    try {
+      await sessions.send('chat', [{ type: 'text', text: 'Reply with the single word ok and nothing else.' }])
+      expect(await turn).toBe(true)
+      const items = store.items('chat')
+      console.log(`[live] session gone: ${JSON.stringify(items.map((i) => i.kind))}`)
+      expect(items.map((i) => i.kind).slice(0, 2)).toEqual(['user', 'note'])
+      expect(items[1]).toMatchObject({ text: SESSION_GONE_NOTE })
+      expect(items.some((i) => i.kind === 'text')).toBe(true)
+      expect(store.chat('chat')?.sessionId).toBeTruthy()
+      expect(store.chat('chat')?.sessionId).not.toBe(missing)
+    } finally {
+      sessions.stopAll()
+      store.db.close()
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

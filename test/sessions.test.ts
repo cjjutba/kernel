@@ -8,7 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Store } from '../src/main/db'
 import { Approvals } from '../src/main/services/approvals'
-import { bashVerdict, IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, Sessions, type CutOffReason, type SessionDeps } from '../src/main/services/sessions'
+import { bashVerdict, IDLE_STOP_MS, limitsFromEvent, limitsFromUsage, matchesRoomRule, mergeLimit, roomRule, sessionEnv, SESSION_GONE_NOTE, Sessions, type CutOffReason, type SessionDeps } from '../src/main/services/sessions'
 import type { AppSettings } from '../src/main/services/settings'
 import { Kernel } from '../src/main/kernel'
 import { tempRepo } from './helpers'
@@ -247,6 +247,37 @@ describe('idle stop (KERNEL-183)', () => {
     sdk.calls.at(-1)!.feed({ type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { content: [{ type: 'text', text: 'Indexed it.' }] } })
     await flush()
     expect(store.items('chat').at(-1)).toMatchObject({ kind: 'text', text: 'Indexed it.' })
+  })
+
+  it('starts a fresh session when the conversation an idle stop left is gone by the next message (KERNEL-286)', async () => {
+    const { sessions, turn, stopped, store, sid, exits } = await setup()
+    await turn()
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    await sessions.configure('chat', { model: 'claude-opus-5-5', effort: 'high', plan: true })
+    await sessions.send('chat', [{ type: 'text', text: 'And an index' }])
+    const resumed = sdk.calls.at(-1)!
+    expect(resumed.options.resume).toBe(sid)
+    // What Claude Code 2.1.292 answers when the transcript was pruned or ~/.claude/projects deleted.
+    resumed.feed({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, duration_ms: 0, uuid: 'gone', errors: [`No conversation found with session ID: ${sid}`] })
+    await flush()
+    const fresh = sdk.calls.at(-1)!
+    expect(fresh).not.toBe(resumed)
+    expect(stopped(resumed)).toBe(true)
+    expect(fresh.options).toMatchObject({ model: 'claude-opus-5-5', effort: 'high', permissionMode: 'plan' })
+    expect(fresh.options.resume).toBeUndefined()
+    expect(store.chat('chat')?.sessionId).toBeUndefined()
+    expect(sessions.isRunning('chat')).toBe(true)
+    expect(store.items('chat').at(-1)).toMatchObject({ kind: 'note', text: SESSION_GONE_NOTE })
+    expect(exits).toEqual([])
+    // The fresh session's own id is what the next idle stop resumes.
+    fresh.feed({ type: 'system', subtype: 'init', session_id: 'session-3', apiKeySource: 'none' })
+    fresh.feed({ type: 'result', subtype: 'success', uuid: 'r-fresh', duration_ms: 5 })
+    await flush()
+    expect(store.chat('chat')?.sessionId).toBe('session-3')
+    await vi.advanceTimersByTimeAsync(IDLE_STOP_MS)
+    expect(stopped(fresh)).toBe(true)
+    await sessions.send('chat', [{ type: 'text', text: 'And a test' }])
+    expect(sdk.calls.at(-1)!.options.resume).toBe('session-3')
   })
 
   it('counts the idle time from the last turn, and never stops a turn that is running', async () => {

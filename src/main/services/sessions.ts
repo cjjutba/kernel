@@ -72,6 +72,11 @@ interface Live {
   carrying?: boolean
   /** This turn hit a sign-out or a dropped connection. */
   failed?: 'auth' | 'network'
+  /** The session id this process resumed, until its first init shows Claude Code found it (KERNEL-286). */
+  resume?: string
+  /** The message that started the running turn, and its row, which a fresh session sends again when the resumed one is gone. */
+  sent?: SDKUserMessage
+  sentItem?: ChatItem & { kind: 'user' }
 }
 
 interface Proc { child?: ChildProcess; stderr: string }
@@ -187,6 +192,8 @@ export class Sessions {
   private pids = new Map<number, Spawned>()
   /** Chats whose session died mid-turn. `post` leaves them alone until the user sends or restarts (KERNEL-124). */
   private crashed = new Set<string>()
+  /** Chats Kernel gave a fresh session because the old one was gone, until a turn there ends well (KERNEL-286). */
+  private renewed = new Set<string>()
   /** Claude Code's own slash commands. They come with the CLI, so one read lasts the whole run. */
   private builtins?: Promise<BuiltinCommand[]>
   constructor(private d: SessionDeps) {}
@@ -532,15 +539,18 @@ export class Sessions {
     const carrying = this.cutOff.get(chat.id) === 'quit'
     // Whatever goes out next picks the chat up again, so it no longer waits for the limit.
     this.setCutOff(chat.id, false)
-    this.item(chat, { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) })
+    const row: ChatItem & { kind: 'user' } = { kind: 'user', id: randomUUID(), ts: Date.now(), parts, ...sender(o) }
+    this.item(chat, row)
     const live = this.live.get(chat.id) ?? this.start(chat, ws)
+    live.sentItem = row
     live.carrying = carrying
     live.failed = undefined
     const turns = this.turnsOf(chat.id)
     turns.from = by
     // A new message takes the agent past whatever a hook refused.
     turns.blocked = undefined
-    live.input.push(toUserMessage(parts))
+    live.sent = toUserMessage(parts)
+    live.input.push(live.sent)
     this.setRunning(chat, ws, live, true)
   }
 
@@ -908,7 +918,7 @@ export class Sessions {
       spawnClaudeCodeProcess: (o) => this.spawn(o, proc)
     }
     const q = query({ prompt: input, options })
-    const live: Live = { query: q, input, abort, running: false, interrupted: false, tasks: new Set(), toolItems: new Map(), agentModels: new Set(), commands, proc }
+    const live: Live = { query: q, input, abort, running: false, interrupted: false, tasks: new Set(), toolItems: new Map(), agentModels: new Set(), commands, proc, resume: chat.sessionId }
     this.live.set(chat.id, live)
     void this.consume(chat.id, ws, live)
     return live
@@ -944,6 +954,53 @@ export class Sessions {
     }
   }
 
+  /**
+   * Claude Code no longer has the conversation this process resumed: it pruned the transcript, or the user deleted
+   * ~/.claude/projects (KERNEL-286). The chat forgets the id, so no later send resumes it. The running turn moves to a fresh
+   * session with the chat's model, effort and plan mode, which gets the same message; the queue follows when it ends, as
+   * usual. One of Kernel's nudges becomes the fresh-session nudge, in the transcript too, since the agent has nothing to
+   * pick up. The turn never ends in between, so the journal, `turns` and a carry-on after a quit stay as they were, and
+   * nobody hears of the old process. Returns false, and the turn ends the usual way, while Kernel quits (the next launch
+   * tries again), when the fresh session this chat already got never finished a turn, so a broken setup can't loop, and
+   * after a Stop or a Send now: Stop drops the queue, and Send now's message starts the fresh session itself.
+   */
+  private renew(chat: Chat, ws: Workspace, live: Live): boolean {
+    if (this.closing || !live.sent) return false
+    const fresh: Chat = { ...chat, sessionId: undefined }
+    this.d.store.saveChat(fresh)
+    if (this.renewed.has(chat.id)) return false
+    this.renewed.add(chat.id)
+    this.item(fresh, { kind: 'note', id: randomUUID(), ts: Date.now(), text: SESSION_GONE_NOTE })
+    this.end(chat.id, live)
+    if (live.interrupted) return false
+    let sent = live.sent
+    const row = live.sentItem
+    const nudged = (m: { from?: MessageFrom; parts: ChatPart[] }) => m.from === 'kernel' && isNudge(m.parts)
+    const parts: ChatPart[] = [{ type: 'text', text: freshNudge(this.brief(chat.id)) }]
+    // The row keeps its place: the store saves it again where it was, before the note.
+    if (row && nudged(row)) {
+      this.item(fresh, { ...row, parts })
+      sent = toUserMessage(parts)
+    }
+    // A nudge still waiting, as the one after a quit, would tell the agent to pick up where it left off too.
+    const queue = this.queued(chat.id)
+    if (queue.some(nudged)) this.setQueue(chat.id, queue.map((q) => (nudged(q) ? { ...q, parts } : q)))
+    const next = this.start(fresh, ws)
+    next.carrying = live.carrying
+    next.sent = sent
+    next.sentItem = row
+    next.input.push(sent)
+    this.setRunning(fresh, ws, next, true)
+    return true
+  }
+
+  /** The text of the chat's first message that isn't one of Kernel's nudges: the brief a fresh session starts from. */
+  private brief(chatId: string): string | undefined {
+    const first = this.d.store.items(chatId).find((i): i is ChatItem & { kind: 'user' } => i.kind === 'user' && !(i.from === 'kernel' && isNudge(i.parts)))
+    const text = first?.parts.flatMap((p) => (p.type === 'text' ? [p.text] : p.type === 'issue' || p.type === 'workspace' ? [linkText(p)] : [])).join('\n').trim()
+    return text || undefined
+  }
+
   /** True once a send right after stop() has started a newer session under this chat. */
   private replaced(chatId: string, live: Live) {
     const current = this.live.get(chatId)
@@ -957,6 +1014,7 @@ export class Sessions {
       case 'system': {
         // The CLI sends init at the start of every turn, including queued follow-ups after an interrupt.
         if (msg.subtype === 'init') {
+          live.resume = undefined
           this.managedIds.add(msg.session_id)
           if (chat.sessionId !== msg.session_id) { chat = { ...chat, sessionId: msg.session_id }; this.d.store.saveChat(chat) }
           if (!this.billing.has(chatId) && msg.apiKeySource !== 'none') {
@@ -1037,6 +1095,7 @@ export class Sessions {
       }
       case 'result': {
         const ok = msg.subtype === 'success'
+        if (msg.subtype !== 'success' && live.resume && msg.errors?.includes(`${SESSION_GONE}${live.resume}`) && this.renew(chat, ws, live)) return
         // An interrupted turn ends with error_during_execution; the interrupted row already says what happened.
         if ((ok || !live.interrupted) && !live.cleared) this.item(chat, { kind: 'result', id: msg.uuid, ts: now, durationMs: msg.duration_ms, ok, error: ok ? undefined : msg.subtype })
         this.clearRetry(chatId, live)
@@ -1056,7 +1115,7 @@ export class Sessions {
         const turns = this.turnsOf(chatId)
         if (ok && turns.blocked !== 'PreToolUse') turns.blocked = undefined
         // A session that just finished a turn isn't broken, whoever sent it, as after Retry on a Kernel update (KERNEL-124).
-        if (ok) this.crashed.delete(chatId)
+        if (ok) { this.crashed.delete(chatId); this.renewed.delete(chatId) }
         live.limited = false
         live.cleared = false
         this.setRunning(chat, ws, live, false)
@@ -1424,6 +1483,27 @@ export const CRASH_REASON = 'Kernel closed unexpectedly'
 export const QUIT_NOTE = 'Kernel quit while this agent was working.'
 export const CRASH_NOTE = 'Kernel closed unexpectedly while this agent was working.'
 
+/**
+ * What Claude Code 2.1.292 answers a resume of a session it has no transcript for, followed by the id, as the only entry
+ * of an error_during_execution result's `errors` that comes before any init (KERNEL-286). It prints the same on stderr.
+ */
+export const SESSION_GONE = 'No conversation found with session ID: '
+
+/** The note in a chat whose session was gone, so Kernel started a new one. */
+export const SESSION_GONE_NOTE = "Kernel started a new session because the old one is gone. The agent doesn't remember earlier turns in this chat."
+
+/** How the nudge a fresh session gets in place of a restart, limit or relaunch nudge starts (KERNEL-286). */
+export const FRESH_NUDGE = "Your earlier session in this chat is gone, so you don't remember anything from it."
+
+/** The fresh-session nudge: what the agent lost, the chat's brief when there is one, and where to look before carrying on. */
+export function freshNudge(brief?: string): string {
+  return [
+    FRESH_NUDGE,
+    ...(brief ? [`The chat started with this message:\n\n${brief}`] : []),
+    'Before you carry on, check the worktree to see what you already did: git status, git log and any open PR.'
+  ].join('\n\n')
+}
+
 /** What a tool row still marked running says once Kernel opens again. */
 export const TOOL_STOPPED = 'Stopped when Kernel quit'
 
@@ -1438,8 +1518,8 @@ const PIDS = 'claudePids'
 /** How much of a process's stderr Kernel keeps for the error note. */
 const STDERR_KEPT = 4000
 
-/** Kernel's restart, limit and relaunch nudges, which carry on a turn rather than start one. */
-export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED || parts[0].text === RELAUNCH_NUDGE)
+/** Kernel's restart, limit, relaunch and fresh-session nudges, which carry on a turn rather than start one. */
+export const isNudge = (parts: ChatPart[]) => parts.length === 1 && parts[0].type === 'text' && (parts[0].text === RESTART_NUDGE || parts[0].text === LIMIT_LIFTED || parts[0].text === RELAUNCH_NUDGE || parts[0].text.startsWith(FRESH_NUDGE))
 
 /** How long a paused room's tool call may wait. The CLI gives a callback hook 600 seconds unless told otherwise, and a timed-out PreToolUse hook lets the call go. In seconds. */
 export const HOLD_TIMEOUT_SEC = 7 * 24 * 3600
