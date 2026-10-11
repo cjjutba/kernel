@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import type { AgentDef, Approval, Decision } from '@shared/types'
+import type { AgentDef, Approval, AskedQuestion, Decision } from '@shared/types'
 import { call } from '../../../api'
 import { FileLabel } from '../../../components/FileIcon'
 import { go, useStore } from '../../../store'
@@ -8,7 +8,7 @@ import { Markdown } from '../markdown'
 import { leadingTitle, parseBlocks } from '../mdParse'
 import { attempt, useCopy } from '../MessageActions'
 import { PlanInline, PlanTasks, planCopyText, stepLine } from './plan'
-import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, isStepped, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
+import { allAnswered, answerDecision, answeredList, emptyPick, isPlanApproval, isStepList, nextUnanswered, outcome, permissionTitle, pickReady, planSteps, planText, type Picked } from './steps'
 import './cards.css'
 
 const EMPTY: AgentDef[] = []
@@ -84,49 +84,14 @@ function AnswerRow({ mark, value, disabled, onChange, onEnter, onEscape }: { mar
   )
 }
 
-/** One single-select question: one click on a row sends the answer (WorkspaceQuestion.png). Something else types its answer in its own row. */
-function OneQuestion({ a, who }: { a: Approval; who: string }) {
-  const [other, setOther] = useState(false)
-  const [text, setText] = useState('')
-  const [busy, run] = useBusy()
-  const rows = useRef<HTMLDivElement>(null)
-  const focusNext = useFocusNext()
-  const answer = (key: string, reply: string) => void run(key, () => decide(a, { behavior: 'answer', text: reply }))
-  const send = () => text.trim() && answer('text', text.trim())
-  const n = (a.options?.length ?? 0) + 1
-  const open = () => {
-    setOther(true)
-    focusNext(() => rows.current?.querySelector('textarea'))
-  }
-  const close = () => {
-    setOther(false)
-    focusNext(() => rows.current?.querySelector('[data-other]'))
-  }
+/** One question that is no longer waiting: what was asked, and what you said or how it ended. */
+function AnsweredQuestion({ a, who }: { a: Approval; who: string }) {
+  const title = `${who} has a question`
   return (
-    <section aria-label={`${who} has a question`} className="card tcard">
-      <h3>{`${who} has a question`}</h3>
+    <section aria-label={title} className="card tcard">
+      <h3>{title}</h3>
       <span className="sub">{a.title}</span>
-      {a.status === 'pending' ? (
-        <div ref={rows} className="opts">
-          {(a.options ?? []).map((o, i) => {
-            const desc = a.questions?.[0]?.options[i]?.description
-            return (
-              <button key={o} type="button" className="opt" data-desc={!!desc} disabled={busy !== null} aria-busy={busy === String(i) || undefined} onClick={() => answer(String(i), o)}>
-                {busy === String(i) ? <span className="spin" aria-hidden="true" /> : <span className="n mono">{i + 1}</span>}
-                <span className="qtext"><span>{o}</span>{desc && <span className="qdesc">{desc}</span>}</span>
-              </button>
-            )
-          })}
-          {other ? (
-            <div className="qother-line">
-              <AnswerRow mark={<span className="n mono">{n}</span>} value={text} disabled={busy !== null} onChange={setText} onEnter={send} onEscape={close} />
-              <Button variant="primary" busy={busy === 'text'} busyLabel="Sending" disabled={!text.trim() || busy !== null} onClick={send}>Send</Button>
-            </div>
-          ) : (
-            <button type="button" className="opt" data-other aria-expanded={false} disabled={busy !== null} onClick={open}><span className="n mono">{n}</span>Something else</button>
-          )}
-        </div>
-      ) : <Result a={a} />}
+      <Result a={a} />
     </section>
   )
 }
@@ -149,13 +114,17 @@ function AnsweredQuestions({ who, list }: { who: string; list: { question: strin
   )
 }
 
+/** An approval from before questions were kept has only a title and its options: one single-select question. */
+const askedQuestions = (a: Approval): AskedQuestion[] => a.questions?.length ? a.questions : [{ question: a.title, options: (a.options ?? []).map((label) => ({ label })) }]
+
 /**
- * Several questions, or one that takes more than one answer (WorkspaceQuestionSteps.png). A tab per question jumps
- * between them with the answers kept. A single-select row records its answer and moves to the next question without
- * one; a multi-select one ticks rows. Nothing is sent until every question has an answer and Send is pressed.
+ * Every pending question (WorkspaceQuestion.png, WorkspaceQuestionLong.png, WorkspaceQuestionSteps.png). One question has no
+ * tabs and no Back: you pick a row, then press Send. Several get a tab per question, which jumps between them with the answers
+ * kept; a single-select row records its answer and moves to the next question without one, and a multi-select one ticks rows.
+ * Nothing is sent until every question has an answer and Send is pressed. Number keys pick a row and Enter sends.
  */
 function QuestionSteps({ a, who }: { a: Approval; who: string }) {
-  const qs = a.questions ?? []
+  const qs = useMemo(() => askedQuestions(a), [a])
   const [step, setStep] = useState(0)
   const [picks, setPicks] = useState<Picked[]>(() => qs.map(emptyPick))
   const [busy, run] = useBusy()
@@ -185,12 +154,15 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
     const to = nextUnanswered(picks, step)
     if (to >= 0) move(to)
   }
-  const choose = (label: string) => {
+  const row = (i: number) => group.current?.querySelectorAll<HTMLElement>('.qrow')[i]
+  const choose = (label: string, i: number) => {
     if (multi) return setPicks(change({ sel: p.sel.includes(label) ? p.sel.filter((l) => l !== label) : [...p.sel, label] }))
     const ps = change({ sel: [label], other: false })
     setPicks(ps)
     const to = nextUnanswered(ps, step)
+    // With nothing left to answer, focus stays on the picked row so Enter sends it.
     if (to >= 0) move(to)
+    else focusNext(() => row(i))
   }
   const openOther = () => {
     setPicks(change(multi ? { other: true } : { other: true, sel: [] }))
@@ -206,11 +178,32 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
     e.preventDefault()
     jump(to, true)
   }
+  // Number keys pick the row with that number. Enter sends once an answer is picked, from the picked row or from anywhere in the card
+  // that is not another button. A button keeps its own Enter, and the Something else box handles its own keys.
+  const keys = (e: KeyboardEvent<HTMLElement>) => {
+    const el = e.target as HTMLElement
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || el.closest('textarea, input') || busy !== null) return
+    if (e.key === 'Enter') {
+      const sendable = !el.closest('button') || (!multi && el.getAttribute('aria-checked') === 'true')
+      if (!sendable || !pickReady(p)) return
+      e.preventDefault()
+      return primary()
+    }
+    if (multi || !/^[1-9]$/.test(e.key)) return
+    const i = Number(e.key) - 1
+    if (i < q.options.length) {
+      e.preventDefault()
+      choose(q.options[i].label, i)
+    } else if (i === q.options.length && !p.other) {
+      e.preventDefault()
+      openOther()
+    }
+  }
   const title = many ? `${who} has ${qs.length} questions` : `${who} has a question`
   const rows = q.options.length
 
   return (
-    <section aria-label={title} className="card tcard">
+    <section aria-label={title} className="card tcard" onKeyDown={keys}>
       <h3>{title}</h3>
       {many && (
         <div ref={tabs} className="qtabs" role="group" aria-label="Questions" onKeyDown={arrows}>
@@ -226,18 +219,21 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
         </div>
       )}
       <span className="sub">{q.question}{multi ? ' Choose all that apply.' : ''}</span>
-      <div ref={group} role="group" aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
+      <div ref={group} role={multi ? 'group' : 'radiogroup'} aria-label={many ? `Question ${step + 1} of ${qs.length}: ${q.question}` : q.question} className="qrows">
         {q.options.map((o, i) => {
           const on = p.sel.includes(o.label)
           const body = (
-            <span className="qtext"><span>{o.label}</span>{o.description && <span className="qdesc">{o.description}</span>}</span>
+            <span className="qtext">
+              <span className="qlabel">{o.label}{o.recommended && <span className="qtag">Recommended</span>}</span>
+              {o.description && <span className="qdesc">{o.description}</span>}
+            </span>
           )
           return multi ? (
-            <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label)}>
+            <button key={o.label} type="button" role="checkbox" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
               <span className="qbox" aria-hidden="true">{on && <Icon name="check" size={11} />}</span>{body}
             </button>
           ) : (
-            <button key={o.label} type="button" aria-pressed={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label)}>
+            <button key={o.label} type="button" role="radio" aria-checked={on} className="qrow" data-desc={!!o.description} disabled={busy !== null} onClick={() => choose(o.label, i)}>
               <span className="n mono">{i + 1}</span>{body}
             </button>
           )
@@ -252,14 +248,14 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
             <span className="qbox" aria-hidden="true" /><span className="qtext"><span>Something else</span></span>
           </button>
         ) : (
-          <button type="button" aria-expanded={false} className="qrow" data-other disabled={busy !== null} onClick={openOther}>
+          <button type="button" role="radio" aria-checked={false} className="qrow" data-other disabled={busy !== null} onClick={openOther}>
             <span className="n mono">{rows + 1}</span><span className="qtext"><span>Something else</span></span>
           </button>
         )}
       </div>
       <div className="acts">
         {step > 0 && <Button disabled={busy !== null} onClick={() => move(step - 1)}>Back</Button>}
-        <Button variant="primary" busy={busy === 'send'} busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{done ? 'Send' : 'Next'}</Button>
+        <Button variant="primary" busy={busy === 'send'} busyLabel="Sending" disabled={!pickReady(p) || busy !== null} onClick={primary}>{many && !done ? 'Next' : 'Send'}</Button>
       </div>
     </section>
   )
@@ -268,7 +264,7 @@ function QuestionSteps({ a, who }: { a: Approval; who: string }) {
 function QuestionCard({ a, who }: { a: Approval; who: string }) {
   const list = answeredList(a)
   if (a.status !== 'pending' && list) return <AnsweredQuestions who={who} list={list} />
-  return a.status === 'pending' && isStepped(a) ? <QuestionSteps a={a} who={who} /> : <OneQuestion a={a} who={who} />
+  return a.status === 'pending' ? <QuestionSteps a={a} who={who} /> : <AnsweredQuestion a={a} who={who} />
 }
 
 /** Approve with one click. "Request changes" opens a note and sends it back as the reason. */

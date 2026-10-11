@@ -47,9 +47,16 @@ async function openRows(page: Page, rows: string[]) {
 
 // WorkspaceQuestionSteps is drawn on question 2 of 3 with two rows ticked; the step is local to the card.
 async function stepToSecondQuestion(page: Page) {
-  await page.getByRole('button', { name: 'Yes, invoice-009.pdf' }).click()
+  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
   await page.getByRole('checkbox', { name: 'Row actions menu' }).click()
   await page.getByRole('checkbox', { name: 'Invoice detail header' }).click()
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(300)
+}
+
+// WorkspaceQuestion is drawn with option 1 picked, which is local to the card, so Send is ready.
+async function pickFirstOption(page: Page) {
+  await page.getByRole('radio', { name: 'Yes, invoice-009.pdf' }).click()
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
 }
@@ -58,7 +65,7 @@ async function stepToSecondQuestion(page: Page) {
 async function typeOtherAnswer(page: Page) {
   await stepToSecondQuestion(page)
   await page.getByRole('button', { name: 'Next' }).click()
-  await page.getByRole('button', { name: 'Something else' }).click()
+  await page.getByRole('radio', { name: 'Something else' }).click()
   await page.getByRole('textbox', { name: 'Your answer' }).fill('Ask me again after the review')
   await page.mouse.move(0, 0)
   await page.waitForTimeout(300)
@@ -136,6 +143,7 @@ const interactions: Record<string, (page: Page, app: ElectronApplication) => Pro
   WorkspaceSharedCrashed: crashPage,
   WorkspaceSharedPhone: pickPhone,
   WorkspaceSharedVersions: openVersions,
+  WorkspaceQuestion: pickFirstOption,
   WorkspaceQuestionSteps: stepToSecondQuestion,
   WorkspaceQuestionOther: typeOtherAnswer,
   WorkspaceRowsOpen: (page) => openRows(page, ['Thinking', 'Run unit tests', 'Edit table.tsx']),
