@@ -1,5 +1,5 @@
 import type { Approval, Chat, Workspace } from '@shared/types'
-import { isPlanApproval } from '../../screens/workspace/cards/steps'
+import { isPlanApproval, permissionTitle, planReadyLine } from '../../screens/workspace/cards/steps'
 
 /** What a chat row's hover card needs from the store, so the copy can be tested without a window (KERNEL-339). */
 export interface ChatCardInput {
@@ -43,11 +43,8 @@ function questionText(title: string): string {
  */
 export function waitLine({ approval: a, name }: Wait, who: string): string {
   if (a.kind === 'question') return `${name} asks ${questionText(a.title)}.`
-  if (isPlanApproval(a)) return `${name}: ${/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`}`
-  const input = (a.input ?? {}) as Record<string, unknown>
-  const bash = a.toolName === 'Bash'
-  const path = typeof input.file_path === 'string' || typeof input.path === 'string'
-  return `${name}: ${bash ? `${who} wants to run a command` : path ? `${who} wants to edit a file` : `${who} wants to use ${a.toolName ?? 'a tool'}`}`
+  if (isPlanApproval(a)) return `${name}: ${planReadyLine(a)}`
+  return `${name}: ${permissionTitle(a, who)}`
 }
 
 const tabCount = (n: number) => `${n} tab${n === 1 ? '' : 's'}`
