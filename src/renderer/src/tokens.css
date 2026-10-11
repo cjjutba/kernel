@@ -1,7 +1,8 @@
 @import './ui/ui.css';
 /* Kernel design tokens. Source of truth: DESIGN.md. Monochrome; color only carries meaning. `--working` and the `--tint-*`
    pill fills color status words in the sidebar's hover cards (D-084); `--needs` also marks what waits on you in the sidebar.
-   `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). */
+   `--plan` is plan mode, and the `--pr-*` sets are the PR header's bands per state (KERNEL-274). `--claude` is Claude's own
+   orange, on the Claude mark in the model picker and nowhere else. */
 /* Dark is the default. Light values come from the lighten map in design/canvas/source/build.py (HomeLight, WorkspaceLight).
    Scoped by attribute so any subtree can opt into a theme; `data-theme` on <html> sets it for the app (ui/theme.ts). */
 :root, [data-theme='dark'] {
@@ -36,6 +37,7 @@
   --aside: #0c0d0e;
   --plan: #5aa2ff;
   --on-plan: #06101e;
+  --claude: #d97757;
   --pr-merged-band: #2a2140;
   --pr-merged-line: #3c2f5c;
   --pr-merged-soft: #372b55;
@@ -112,6 +114,7 @@
   --aside: #f7f7f8;
   --plan: #1f5fbf;
   --on-plan: #ffffff;
+  --claude: #d97757;
   --pr-merged-band: #f3effd;
   --pr-merged-line: #e2d9fa;
   --pr-merged-soft: #ebe4fc;
