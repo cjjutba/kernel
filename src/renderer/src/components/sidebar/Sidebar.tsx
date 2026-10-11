@@ -224,7 +224,7 @@ function RoomItem({ room, current, expanded, numbered, hints, onToggle }: { room
   const foldedChats = useStore((s) => s.ui.foldedChats)
   const rows = useMemo(() => sidebarRows(room, agents, workspaces, chats, threads, foldedChats), [room, agents, workspaces, chats, threads, foldedChats])
   // Only the room in view is numbered. Its keys come from the same slots the shortcut reads.
-  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads, foldedChats).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads, foldedChats])
+  const order = useMemo(() => (numbered ? slotsFor(room, agents, workspaces, chats, threads).map(slotKey) : NO_KEYS), [numbered, room, agents, workspaces, chats, threads])
   const slotOf = (row: Slot): RowKey | undefined => { const i = order.indexOf(slotKey(row)); return i < 0 ? undefined : { n: i + 1, hint: hints } }
   const menuOpen = useStore((s) => s.ui.menu === `room:${room.id}`)
   const anchor = useRef<HTMLDivElement>(null)

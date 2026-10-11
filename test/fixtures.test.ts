@@ -21,6 +21,7 @@ const noCanvas = [
   'WorkspaceContextPopover',
   'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
+  'WorkspaceQueuedMerge', // a brief held until another PR merges, with Send now (KERNEL-361)
   'InboxOverlap',
   'LoadingError', // boot failed: the error and Try again (KERNEL-217)
   'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
