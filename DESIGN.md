@@ -27,7 +27,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | del | #eb5757 | diff deletions, errors, the context ring from 90% |
 | merged | #b9a3f5 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #7cb2ff | status word in sidebar hover cards: work running |
-| needs | #f2c55c | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75% |
+| needs | #f2c55c | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #e5484d | destructive confirm buttons |
 | aside | #0c0d0e | the workspace's right panel, one step below panel |
 | plan | #5aa2ff (on-plan #06101e) | plan mode: composer border and glow, caret, send, Approve |
@@ -35,7 +35,7 @@ Linear-inspired, dark first, quiet. Monochrome surfaces; color only carries mean
 | pr-ready-* | band #15281f, line #22432f, soft #1d3b2c, edge #33704f, fg #a3e8c3, text #62d69d, solid #1b7f50 | PR header band: open, ready, merging |
 | pr-fail-* | band #2c1719, line #472428, soft #3e2125, edge #70353c, fg #ffbdbd, text #ff8a8a | PR header band: checks failed, changes requested, conflicts |
 
-There is no brand accent. Primary buttons are ink on canvas. `working` colors the status word on the sidebar hover cards and nowhere else (D-084). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, and the context ring in the composer from 75% (red `del` from 90%, KERNEL-334). `plan` is plan mode only, and the `pr-*` sets are the PR header only (KERNEL-274).
+There is no brand accent. Primary buttons are ink on canvas. `working` colors the status word on the sidebar hover cards and nowhere else (D-084). `needs` also marks what waits on you: the waiting icon on a sidebar row or a chat tab, the Inbox count, the context ring in the composer from 75% (red `del` from 90%, KERNEL-334), and the non-blocking warning icon on a Checks row (KERNEL-217). `plan` is plan mode only, and the `pr-*` sets are the PR header only (KERNEL-274).
 
 ## Color (light)
 
@@ -60,7 +60,7 @@ Light values start from the lighten map in `design/canvas/source/build.py` (Home
 | del | #b32e2e | diff deletions, errors, the context ring from 90% |
 | merged | #6b4bd0 (text), #7c5ce0 (fill) | merged PRs only |
 | working | #1a56b0 | status word in sidebar hover cards: work running |
-| needs | #7a4f00 | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75% |
+| needs | #7a4f00 | waiting on you: hover card status word, the waiting icon on sidebar rows and chat tabs, the Inbox count, the context ring from 75%, the non-blocking warning icon on a Checks row (KERNEL-217) |
 | danger | #bd2b2b | destructive confirm buttons |
 | aside | #f7f7f8 | the workspace's right panel |
 | plan | #1f5fbf (on-plan #ffffff) | plan mode |

@@ -15,7 +15,8 @@ describe('appShortcut', () => {
       key('KeyK', meta), key('KeyN', meta), key('KeyN', { meta: true, shift: true }), key('KeyT', meta), key('KeyT', { meta: true, shift: true }),
       key('KeyW', meta), key('KeyB', meta), key('KeyB', { meta: true, alt: true }), key('Backslash', meta), key('Comma', meta),
       key('BracketLeft', meta), key('BracketRight', meta), key('KeyL', { meta: true, shift: true }), key('KeyP', { meta: true, shift: true }),
-      key('KeyL', meta), key('Slash', { meta: true, shift: true }),
+      key('KeyL', meta), key('Slash', { meta: true, shift: true }), key('KeyM', { meta: true, shift: true }), key('KeyF', { meta: true, shift: true }),
+      key('KeyA', { meta: true, shift: true }),
       ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => key(`Digit${n}`, meta)),
       ...[1, 2, 3, 4].map((n) => key(`Digit${n}`, { meta: true, control: true }))
     ]
