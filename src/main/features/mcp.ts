@@ -1,7 +1,7 @@
-import type { AgentDef, AgentWarning, McpServer, Provider } from '@shared/types'
+import type { AgentDef, AgentReach, AgentWarning, McpServer, Provider } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { bus } from '../bus'
-import { mcpWarnings } from '../services/agentTools'
+import { mcpWarnings, serverReach } from '../services/agentTools'
 import { buildEnv, withoutClaudeNames } from '../services/env'
 import { discoverMcp, withStatus, type McpReport } from '../services/mcp'
 import { claudeExecutable } from '../services/providers/binary'
@@ -66,9 +66,30 @@ export class Mcp extends Feature {
    * is its config. Claude's is only whole once a probe listed it, since claude.ai's connectors are in no file.
    */
   async warnings(roomId: string, agent: AgentDef): Promise<AgentWarning[]> {
+    const { servers, aliases, complete } = await this.forAgent(roomId, agent)
+    return mcpWarnings(agent.tools, servers, { aliases, complete })
+  }
+
+  /**
+   * The servers an agent can reach in the room and the ones its tools line names that it can't use, for the hire card and
+   * hire_agent's result (KERNEL-476). For a Claude agent in a room no probe has listed yet, it starts one, so a server no
+   * file names can be told apart from a claude.ai connector. `wait` waits for that probe, and without it the answer is
+   * what the room knows now.
+   */
+  async reach(roomId: string, agent: AgentDef, o: { wait?: boolean } = {}): Promise<AgentReach> {
+    if (this.k.team.pickFor(agent).provider === 'claude' && !this.probed.has(roomId)) {
+      const checked = this.probe(roomId).catch(() => undefined)
+      if (o.wait) await checked
+    }
+    const { servers, aliases, complete } = await this.forAgent(roomId, agent)
+    return serverReach(agent.tools, servers, { disallowed: agent.disallowedTools, aliases, complete })
+  }
+
+  /** The room's servers on the provider an agent runs on, with the room's aliases and whether the list is whole. */
+  private async forAgent(roomId: string, agent: AgentDef) {
     const provider = this.k.team.pickFor(agent).provider
     const servers = await this.servers(roomId, provider)
-    return mcpWarnings(agent.tools, servers, { aliases: aliasesInRoom(this.mustRoom(roomId).path), complete: provider === 'codex' || this.probed.has(roomId) })
+    return { servers, aliases: aliasesInRoom(this.mustRoom(roomId).path), complete: provider === 'codex' || this.probed.has(roomId) }
   }
 
   private discover(root: string, off: string[]) {

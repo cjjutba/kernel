@@ -532,7 +532,9 @@ export class Lead extends Feature {
         const file = await saveAgent(this.mustRoom(roomId).path, a)
         this.k.team.announceTeam(roomId, await this.k.team.agents(roomId), was)
         return file
-      }
+      },
+      // For the hire card and hire_agent's result (KERNEL-476).
+      reach: (agent, o) => this.k.mcp.reach(roomId, agent, o)
     }
   }
 
