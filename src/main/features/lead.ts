@@ -34,10 +34,12 @@ export class Lead extends Feature {
     if (!o) throw new Error('That overlap is gone already.')
     const agents = await this.k.team.agents(o.roomId)
     const parts = o.parties.map((p) => `${agents.find((a) => a.id === p.agentId)?.name ?? p.agentId} in ${this.store.workspace(p.workspaceId)?.name ?? p.workspaceId} (${p.lines})`)
-    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other chats are involved.
+    // The Lead chat that handed off the newest of the workspaces hears about it (KERNEL-105), and learns which other Lead chats are
+    // involved, by their titles. Other tabs of its own Lead chat aren't another chat (KERNEL-337).
     const owners = o.parties.map((p) => this.store.workspace(p.workspaceId)).filter((w): w is Workspace => !!w).sort((a, b) => b.createdAt - a.createdAt)
     const chat = (owners.length ? this.leadUpdateTarget(o.roomId, owners[0].leadChatId)?.chat : undefined) ?? await this.leadChat(o.roomId)
-    const others = [...new Set(owners.map((w) => w.leadChatId).filter((id): id is string => !!id && id !== chat.id))].map((id) => this.store.chat(id)?.title).filter(Boolean)
+    const threadOf = (w: Workspace) => w.threadId ?? (w.leadChatId ? this.store.chat(w.leadChatId)?.threadId : undefined)
+    const others = [...new Set(owners.map(threadOf).filter((id): id is string => !!id && id !== chat.threadId))].map((id) => this.store.thread(id)?.title).filter(Boolean)
     const elsewhere = others.length ? ` Part of this work was handed off in another Lead chat: ${others.map((t) => `"${t}"`).join(', ')}.` : ''
     const text = `${parts.join(' and ')} both changed ${o.path} in different worktrees, so merging both will conflict. Decide who keeps the change, tell the others, and sort it out before either merges.${elsewhere}`
     await this.sessions.send(chat.id, [{ type: 'text', text }])
@@ -309,7 +311,7 @@ export class Lead extends Feature {
           if (item.kind !== 'tool' || item.name !== 'mcp__kernel__create_workspace' || item.status !== 'done') continue
           const id = /^Created (\S+) on /.exec(item.output ?? '')?.[1]
           const ws = id ? this.store.workspace(id) : undefined
-          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id })
+          if (ws && ws.roomId === lead.roomId && !ws.leadChatId) this.store.saveWorkspace({ ...ws, leadChatId: chat.id, ...(chat.threadId ? { threadId: chat.threadId } : {}) })
         }
       }
     }

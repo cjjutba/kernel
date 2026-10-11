@@ -85,6 +85,12 @@ export const migrations: Migration[] = [
         thread.run(id, t.room_id, JSON.stringify({ id, roomId: t.room_id, title: c.title ?? '', createdAt, ...(c.closed ? { closedAt: now } : {}) }), createdAt)
         chat.run(JSON.stringify({ ...c, threadId: id }), t.id)
       }
+      // A handed-off workspace keeps the Lead chat of the tab that handed it off. One with no Lead tab gets none.
+      db.exec(`
+        update workspaces set data = json_set(data, '$.threadId', (select json_extract(c.data, '$.threadId') from chats c where c.id = json_extract(workspaces.data, '$.leadChatId')))
+        where json_extract(data, '$.threadId') is null
+          and (select json_extract(c.data, '$.threadId') from chats c where c.id = json_extract(workspaces.data, '$.leadChatId')) is not null
+      `)
     }
   }
 ]

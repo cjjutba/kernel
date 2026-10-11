@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { KEEP_ACTIVITY_MS, KEEP_APPROVAL_INPUT_MS, Store } from '../src/main/db'
 import { LATEST, migrate, migrations, NEWER_DATA, type Migration } from '../src/main/migrations'
-import type { Approval, Chat, SharedFile, Workspace } from '@shared/types'
+import type { Approval, Chat, Room, SharedFile, Workspace } from '@shared/types'
 
 const DAY = 24 * 60 * 60 * 1000
 const dir = () => mkdtempSync(join(tmpdir(), 'kernel-db-'))
@@ -165,6 +165,10 @@ describe('kernel.db versions', () => {
     put('chats', 'old', 'lead', { workspaceId: 'lead', title: 'Lead', createdAt: 5 }, 5)
     put('chats', 'term', 'lead', { workspaceId: 'lead', title: 'Terminal (claude)', kind: 'terminal', createdAt: 30 }, 30)
     put('chats', 'mate', 'w1', { workspaceId: 'w1', title: 'Tabs', kind: 'chat', createdAt: 40 }, 40)
+    // Handed off from a closed Lead tab, from a teammate's chat, and by hand.
+    put('workspaces', 'w2', 'r1', { roomId: 'r1', name: 'icons', mode: 'worktree', leadChatId: 'closed' }, 2)
+    put('workspaces', 'w3', 'r1', { roomId: 'r1', name: 'odd', mode: 'worktree', leadChatId: 'mate' }, 3)
+    put('workspaces', 'w4', 'r1', { roomId: 'r1', name: 'manual', mode: 'worktree' }, 4)
     db.close()
 
     const store = new Store(file)
@@ -175,12 +179,26 @@ describe('kernel.db versions', () => {
     }
     expect(store.chat('term')!.threadId).toBeUndefined()
     expect(store.chat('mate')!.threadId).toBeUndefined()
+    expect(store.workspace('w2')!.threadId).toBe(store.chat('closed')!.threadId)
+    expect(store.workspace('w3')!.threadId).toBeUndefined()
+    expect(store.workspace('w4')!.threadId).toBeUndefined()
     store.db.close()
 
     // Opening again keeps the same Lead chats.
     const again = new Store(file)
     expect(again.threads('r1').map((t) => t.id)).toEqual(threads.map((t) => t.id))
     again.db.close()
+  })
+
+  it("forgets a room's Lead chats with the room, and keeps another room's (KERNEL-337)", () => {
+    const store = new Store(join(dir(), 'kernel.db'))
+    for (const roomId of ['r1', 'r2']) {
+      store.saveRoom({ id: roomId, name: roomId, createdAt: 1 } as Room)
+      store.saveThread({ id: `t-${roomId}`, roomId, title: 'Release plan', createdAt: 1 })
+    }
+    store.deleteRoom('r1')
+    expect(store.threads().map((t) => t.id)).toEqual(['t-r2'])
+    store.db.close()
   })
 
   it('keeps the order of tabs made in the same millisecond when the older one is saved again (KERNEL-337)', () => {
