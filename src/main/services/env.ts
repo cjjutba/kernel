@@ -198,12 +198,20 @@ function localHost(host: string): boolean {
   return !h.includes('.')
 }
 
-/** The hosts a database URL names, or null when the value isn't one. `mongodb://a:1,b:2/db` names two. */
+/** The hosts in a URL's authority, after any user and password: `a:1,b:2` names two. */
+const hostsOf = (authority: string) => authority.slice(authority.lastIndexOf('@') + 1).split(',').map((h) => (h.startsWith('[') ? h.slice(1, h.indexOf(']')) : h.replace(/:\d*$/, '')))
+
+/**
+ * The hosts a database URL names, or null when the value isn't one. A password may hold `/`, `?` or `#` unescaped, so the
+ * host is read both ways, up to the first of those and after the last `@`, and each counts.
+ */
 function databaseHosts(value: string): string[] | null {
-  const m = /^(?:jdbc:)?([a-z][a-z0-9+.-]*):\/\/([^/?#]*)/i.exec(value.trim())
+  const m = /^(?:jdbc:)?([a-z][a-z0-9+.-]*):\/\/(.*)$/is.exec(value.trim())
   if (!m || !DB_SCHEMES.has(m[1].toLowerCase())) return null
-  const authority = m[2].slice(m[2].lastIndexOf('@') + 1)
-  return authority.split(',').map((h) => (h.startsWith('[') ? h.slice(1, h.indexOf(']')) : h.replace(/:\d*$/, '')))
+  const rest = m[2]
+  const plain = rest.split(/[/?#]/)[0]
+  const afterAt = rest.slice(rest.lastIndexOf('@') + 1).split(/[/?#]/)[0]
+  return [...new Set([...hostsOf(plain), ...hostsOf(afterAt)])]
 }
 
 /** Why a variable looks like production, or nothing. Reads the value and never returns it (KERNEL-449). */

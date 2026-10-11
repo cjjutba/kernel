@@ -150,7 +150,12 @@ export class Config extends Feature {
       'files.production': async ({ roomId }) => this.production(this.mustRoom(roomId)),
       'files.keepCopying': async ({ roomId, hints }) => {
         const room = this.mustRoom(roomId)
-        const next = this.store.saveRoom({ ...room, keepCopying: [...new Set([...(room.keepCopying ?? []), ...hints.map(keepKey)])] })
+        // Each file is kept whole: every variable in it that looks like production now, not only the one the banner names.
+        // A variable added later warns again.
+        const paths = new Set(hints.map((h) => h.path))
+        const { files } = await loadRepoSettings(room.path)
+        const now = (await productionInCopy(room.path, files.copy, files.exclude)).filter((h) => paths.has(h.path))
+        const next = this.store.saveRoom({ ...room, keepCopying: [...new Set([...(room.keepCopying ?? []), ...hints.map(keepKey), ...now.map(keepKey)])] })
         bus.push({ type: 'room', room: next })
         return next
       },

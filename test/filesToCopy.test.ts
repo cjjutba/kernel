@@ -194,12 +194,16 @@ describe('Files to copy exclusions and the production warning (KERNEL-449)', () 
       { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
       { path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }
     ])
-    // Keep copying remembers the variable it showed. The file's next one still warns.
+    // One Keep copying covers the whole file, though the banner names one variable of the three.
+    await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\n')
     await h['files.keepCopying']({ roomId: room.id, hints: [{ path: '.env.production', name: 'STRIPE_SECRET_KEY', why: 'live-key' }] })
-    expect(k.store.room(room.id)?.keepCopying).toEqual(['.env.production:STRIPE_SECRET_KEY'])
+    expect(k.store.room(room.id)?.keepCopying).toEqual(['.env.production:STRIPE_SECRET_KEY', '.env.production:DATABASE_URL', '.env.production:NODE_ENV'])
+    expect(await h['files.production']({ roomId: room.id })).toEqual([{ path: '.env', name: 'DATABASE_URL', why: 'remote-database' }])
+    // A variable added to a kept file warns again.
+    await writeFile(join(repo, '.env.production'), 'NODE_ENV=production\nDATABASE_URL=postgres://db.prod.example.com/app\nSTRIPE_SECRET_KEY=sk_live_abc123\nSTRIPE_RESTRICTED_KEY=rk_live_def456\n')
     expect(await h['files.production']({ roomId: room.id })).toEqual([
       { path: '.env', name: 'DATABASE_URL', why: 'remote-database' },
-      { path: '.env.production', name: 'NODE_ENV', why: 'production' }
+      { path: '.env.production', name: 'STRIPE_RESTRICTED_KEY', why: 'live-key' }
     ])
     // Don't copy these files saves them to the room's exclusions, so neither the preview nor a new worktree gets them.
     await h['settings.setRoom']({ roomId: room.id, patch: { files: { exclude: ['.env', '.env.production'] } } })

@@ -3,11 +3,11 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 import { tempRepo, trustRoom } from './helpers'
 import { Kernel } from '../src/main/kernel'
 import { bus } from '../src/main/bus'
-import { buildEnv, envFileReadable, EnvStore, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
+import { buildEnv, envFileReadable, EnvStore, kernelVars, MAX_ENV_FILE, productionHints, productionWhy, readEnvFiles, withoutClaudeNames, type Cipher } from '../src/main/services/env'
 import { isClaudeVar, workspaceSlug } from '../src/shared/kernelVars'
 import { sessionEnv } from '../src/main/services/sessions'
 import { loadRepoSettings, scriptsToTrust } from '../src/main/services/settings'
@@ -450,13 +450,14 @@ describe('Kernel variables in values (KERNEL-449)', () => {
     expect(buildEnv({ base: {}, defaults, setup: { COMPOSE_PROJECT_NAME: 'setup' }, kernel: {} }).COMPOSE_PROJECT_NAME).toBe('setup')
   })
 
-  it('names a database or a Compose project after the folder and the id, the same through a rename', () => {
-    const id = '3F2A91C4-1111-2222-3333-444455556666'
-    expect(workspaceSlug({ id, path: '/Users/me/kernel/worktrees/client-a/feat-kernel-449-separate-db' })).toBe('feat_kernel_449_separate_db_3f2a91')
-    expect(workspaceSlug({ id, path: '/Users/me/Projects/2024 App!/' })).toBe('ws_2024_app_3f2a91')
-    expect(workspaceSlug({ id, path: `/wt/${'x'.repeat(39)}-yy` })).toBe(`${'x'.repeat(39)}_3f2a91`)
-    expect(workspaceSlug({ id: '--', path: '/' })).toBe('workspace')
-    for (const path of ['/a/Ünïcode folder', '/a/___', '/a/UPPER_case-9', '/a/9']) expect(workspaceSlug({ id, path })).toMatch(/^[a-z][a-z0-9_]{0,62}$/)
+  it('names a database or a Compose project after the workspace id, so a rename or a folder move keeps it', () => {
+    const ws = { id: '3F2A91C4-1111-2222-3333-444455556666', name: 'in-setup-script', path: '/wt/rowan-in-setup-script', port: 4100, branch: 'rowan/in-setup-script', baseRef: 'origin/main' }
+    const slug = kernelVars(ws, undefined).KERNEL_WORKSPACE_SLUG
+    expect(slug).toBe('kernel_3f2a91c41111')
+    expect(kernelVars({ ...ws, name: 'setup-script-tab', path: '/wt/rowan-setup-script-tab', branch: 'rowan/setup-script-tab' }, undefined).KERNEL_WORKSPACE_SLUG).toBe(slug)
+    expect(workspaceSlug({ id: 'ws-1' })).toBe('kernel_ws1')
+    expect(workspaceSlug({ id: '--' })).toBe('kernel_workspace')
+    for (const id of ['3F2A91C4-1111-2222-3333-444455556666', 'ws-1', 'Ünïcode', '9']) expect(workspaceSlug({ id })).toMatch(/^kernel_[a-z0-9]{1,12}$/)
   })
 })
 
@@ -471,6 +472,9 @@ describe('Production values (KERNEL-449)', () => {
       ['DATABASE_URL', 'postgresql://app@ep-cool-123.us-east-2.aws.neon.tech/neondb?sslmode=require', 'remote-database'],
       ['MONGO_URI', 'mongodb://a.example.com:27017,localhost:27017/app', 'remote-database'],
       ['DB', 'jdbc:mysql://10.0.0.5:3306/app', undefined],
+      ['DATABASE_URL', 'postgres://app:pa/ss@db.prod.example.com:5432/app', 'remote-database'],
+      ['DATABASE_URL', 'postgres://app:p?w#d@db.prod.example.com/app', 'remote-database'],
+      ['DATABASE_URL', 'postgres://localhost:5432/app?user=me@corp', undefined],
       ['DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/app', undefined],
       ['DATABASE_URL', 'postgres://127.0.0.1/app', undefined],
       ['DATABASE_URL', 'postgres://[::1]:5432/app', undefined],
@@ -529,6 +533,10 @@ describe('Per-workspace names and .env.kernel (KERNEL-449)', () => {
     // Scripts get the same, and the Environment page lists the file it read.
     expect(k.env.envFor(a, { script: true }).DATABASE_URL).toBe(envA.DATABASE_URL)
     expect((await h['env.get']({ roomId: r.id })).files).toEqual([{ path: '.env.kernel', missing: false }])
+
+    // A rename and a folder move, as a chat with Rowan makes after setup, keep the names setup made the database with.
+    const moved = k.store.saveWorkspace({ ...a, name: 'renamed', branch: 'rowan/renamed', path: join(dirname(a.path), 'rowan-renamed') })
+    expect(k.env.envFor(moved)).toMatchObject({ KERNEL_WORKSPACE_SLUG: envA.KERNEL_WORKSPACE_SLUG, COMPOSE_PROJECT_NAME: envA.COMPOSE_PROJECT_NAME, DATABASE_URL: envA.DATABASE_URL })
 
     // An edit counts for the next process, and the user's own Compose project name wins over Kernel's.
     await writeFile(join(repo, '.env.kernel'), 'DATABASE_URL=postgres://localhost:5432/other\nCOMPOSE_PROJECT_NAME=mine\n')
