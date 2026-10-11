@@ -265,6 +265,18 @@ const planWaiting = (f: Fixture): Partial<Fixture> => scene2(f, { name: 'invoice
   approvals: [pending('plan', 'kai', { toolName: 'ExitPlanMode', input: { plan: PLAN }, title: 'Plan for invoice-pdf-button', detail: PLAN }), ...f.approvals]
 }, { plan: true, model: 'claude-opus-5-5' })
 
+/** The same plan once approved: it keeps its place with its Plan approved line, plan mode is off and Kai starts building. */
+const planApproved = (f: Fixture): Partial<Fixture> => {
+  const s = planWaiting(f)
+  const reply: ChatItem = { kind: 'text', id: 'pl-go', ts: at(10, 31), text: 'Starting on step 1: Download PDF goes into the row actions menu, next to Duplicate.' }
+  return {
+    ...s,
+    chats: s.chats?.map((c) => (c.id === ids.tableChat ? { ...c, plan: false } : c)),
+    approvals: s.approvals?.map((a, i) => (i === 0 ? { ...a, status: 'allowed' as const } : a)),
+    items: { [ids.tableChat]: [...(s.items?.[ids.tableChat] ?? []), reply] }
+  }
+}
+
 /** The same chat in plan mode with nothing waiting: Kai answered and the box waits for the next message. */
 const planMode = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals from the ones a scene passes. This one passes none and keeps the seed's.
@@ -593,6 +605,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
     approvals: [pending('tool', 'noor', { toolName: 'Bash', input: { command: 'pnpm drizzle-kit push' }, title: 'Run pnpm drizzle-kit push', detail: 'Dev database from .env.local. Adds invoices.pdf_url.' }), ...f.approvals]
   })),
   WorkspacePlan: scene(planWaiting),
+  WorkspacePlanApproved: scene(planApproved),
   // The other plan mode states (KERNEL-322, design/redesign/PlanStates.png). The typing shots also focus the box (scripts/shots.ts).
   WorkspacePlanMode: scene((f) => planMode(f)),
   WorkspacePlanModeTyping: scene((f) => withDraft(planMode(f), 'Plan the Download PDF action for the row menu. Do not edit anything yet.')),

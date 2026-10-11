@@ -39,6 +39,7 @@ const noCanvas = [
   'WorkspacePlanMode',
   'WorkspacePlanModeTyping',
   'WorkspacePlanTyping',
+  'WorkspacePlanApproved', // a plan once approved, with its Plan approved line in the chat
 ]
 
 describe('fixtures', () => {

@@ -141,6 +141,8 @@ button.msg-chip:hover { border-color: var(--line-4); }
 .note.inline[data-pr='merged'] > svg { color: var(--pr-merged-text); }
 .note.inline[data-pr='cifail'] > svg { color: var(--pr-fail-text); }
 .note.inline[data-pr='closed'] > svg { color: var(--ink-3); }
+/* A decided plan's line keeps its icon grey whatever the outcome. */
+.note.inline[data-plan] > svg { color: var(--ink-3); }
 .note.inline .note-rule { flex: 1; min-width: 24px; height: 1px; background: var(--line); }
 
 /* right panel */

@@ -85,7 +85,18 @@ export function PlanInline({ a, agents }: { a: Approval; agents: AgentDef[] }) {
         <IconButton icon={copied ? 'check' : 'copy'} size={13} className="plan-copy" label={copied ? 'Copied' : 'Copy plan'} onClick={copy} />
       </div>
       {text ? <Markdown blocks={blocks} className="md-doc" /> : <StepsDoc a={a} agents={agents} />}
-      {a.status !== 'pending' && <span className="meta">{a.status === 'allowed' ? 'Plan approved' : outcome(a)}</span>}
+      {a.status !== 'pending' && <PlanOutcome a={a} />}
+    </div>
+  )
+}
+
+/** How the plan was decided, drawn like a PR note in the chat: the plan glyph, the outcome and a hairline (KERNEL-313). */
+function PlanOutcome({ a }: { a: Approval }) {
+  return (
+    <div className="note inline" data-plan={a.status}>
+      <Icon name="plan" size={14} />
+      <span className="note-text">{a.status === 'allowed' ? 'Plan approved' : outcome(a)}</span>
+      <span className="note-rule" aria-hidden="true" />
     </div>
   )
 }
