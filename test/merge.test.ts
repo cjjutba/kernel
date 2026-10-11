@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { PrInfo, PrState, Workspace } from '@shared/types'
-import { mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
+import { blockedText, gatingChecks, mergeBlock, mergeNeedsPr, reviewVerdicts } from '@shared/merge'
 
 // The one rule every Merge button and the Lead use for whether a PR can merge (KERNEL-115, KERNEL-349).
 
@@ -63,6 +63,31 @@ describe('GitHub and the checks', () => {
     expect(mergeBlock(ws(), null, both)).toBe('Could not read the pull request from GitHub.')
     expect(mergeBlock(ws({ reviews: [v('blockers', B, 1)] }), info({ checks: [{ name: 'e2e', state: 'running' }] }), both)).toContain('Checks have not passed yet')
     expect(mergeBlock(ws(), info({ checks: [{ name: 'e2e', state: 'skipped' }] }), both)).toBeUndefined()
+  })
+})
+
+describe("the repo's own rules (KERNEL-388)", () => {
+  const green = { requireGreen: true, requireReviewer: false }
+
+  it("counts only the checks that decide the PR, so a failing optional check doesn't hold the merge", () => {
+    const checks: PrInfo['checks'] = [{ name: 'Release note', state: 'pass' }, { name: 'Test', state: 'fail', optional: true }, { name: 'Vercel', state: 'running', optional: true }]
+    expect(gatingChecks(checks)).toEqual([{ name: 'Release note', state: 'pass' }])
+    expect(mergeBlock(ws(), info({ checks }), green)).toBeUndefined()
+    expect(mergeBlock(ws(), info({ checks: [{ name: 'Release note', state: 'running' }, ...checks.slice(1)] }), green)).toContain('Checks have not passed yet')
+  })
+
+  it("refuses a PR GitHub won't merge yet with GitHub's reason, after the checks", () => {
+    expect(mergeBlock(ws(), info({ blocked: 'review' }), green)).toBe('GitHub needs an approving review before this pull request can merge.')
+    expect(mergeBlock(ws(), info({ blocked: 'behind' }), green)).toBe('This branch is behind main, and GitHub needs it up to date before it can merge.')
+    expect(mergeBlock(ws(), info({ blocked: 'rules' }), green)).toBe("GitHub's branch rules block this merge.")
+    expect(mergeBlock(ws(), info({ blocked: 'review', checks: [{ name: 'e2e', state: 'fail' }] }), green)).toContain('Checks have not passed yet')
+  })
+
+  it('goes by the last poll when the merge read nothing, and by the read when it did', () => {
+    const off = { requireGreen: false, requireReviewer: false }
+    expect(mergeBlock(ws({ prBlocked: 'behind' }), undefined, off)).toBe(blockedText('behind', ''))
+    expect(blockedText('behind', '')).toContain('behind its base')
+    expect(mergeBlock(ws({ prBlocked: 'behind' }), info(), off)).toBeUndefined()
   })
 })
 
