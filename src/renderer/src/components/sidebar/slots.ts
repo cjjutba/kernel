@@ -5,7 +5,7 @@ import { threadIdOf } from '../../nav'
 import { roomInView } from '../../screens/search/model'
 import { focusComposerIn, focusComposerWhenOpen } from '../../screens/workspace/composer/bus'
 
-/** The ⌘1 to ⌘9 shortcuts reach this many rows. */
+/** The ⌘1 to ⌘9 shortcuts reach this many Lead chats. */
 const MAX_SLOTS = 9
 
 /**
@@ -98,19 +98,22 @@ export function mergeChatList(fetched: Chat[], current: Chat[] | undefined): Cha
   return [...fetched.map((c) => pushed.get(c.id) ?? c), ...current.filter((c) => !known.has(c.id))]
 }
 
-/** The rows the ⌘1 to ⌘9 shortcuts reach. */
+/**
+ * The rows the ⌘1 to ⌘9 shortcuts reach: the Lead's open chats in sidebar order, or the Lead row while it has no open chat (KERNEL-357).
+ * Workspace rows get no number, so a chat's number doesn't move when workspaces come and go or a chat is folded. A room with no Lead has none.
+ */
 export const slotsFor = (
-  room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread> = {}, folded: string[] = []
-): Slot[] => sidebarRows(room, agents, workspaces, chats, threads, folded).slice(0, MAX_SLOTS)
+  room: Room, agents: Record<string, AgentDef[]>, workspaces: Workspace[], chats: Record<string, Chat[]>, threads: Record<string, Thread> = {}
+): Slot[] => sidebarRows(room, agents, workspaces, chats, threads).filter((r) => r.kind !== 'workspace').slice(0, MAX_SLOTS)
 
 /**
- * Opens the n-th row (1 to 9) of the room in view, which falls back to the first room on Home, Inbox and History.
- * A number past the last row does nothing.
+ * Opens the n-th Lead chat (1 to 9) of the room in view, which falls back to the first room on Home, Inbox and History.
+ * A number past the last chat does nothing.
  */
 export function openSlot(n: number): void {
   const s = getState()
   const room = roomInView(s.ui.route, s.rooms, s.workspaces)
-  const slot = room && slotsFor(room, s.agents, s.workspaces, s.chats, s.threads, s.ui.foldedChats)[n - 1]
+  const slot = room && slotsFor(room, s.agents, s.workspaces, s.chats, s.threads)[n - 1]
   if (!room || !slot) return
   openRow(room.id, slot)
 }

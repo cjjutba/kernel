@@ -174,7 +174,7 @@ export function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.metaKey) return
-      // ⌘1 to ⌘9 open the room in view's Team, Lead and workspaces. Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
+      // ⌘1 to ⌘9 open the room in view's Lead chats, not its workspaces (KERNEL-357). Ctrl is left out because ^⌘1 to 4 pick a model in the composer.
       const digit = /^Digit([1-9])$/.exec(e.code)
       if (digit && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         const s = getState()
