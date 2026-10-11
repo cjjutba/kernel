@@ -1423,6 +1423,123 @@
       "w": 1440,
       "x": 21280,
       "y": 23400
+    },
+    "GroupedNewChat.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 new chat with \u2318N",
+      "w": 1440,
+      "x": 0,
+      "y": 24700
+    },
+    "GroupedTabs.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 tabs of this chat",
+      "w": 1440,
+      "x": 1520,
+      "y": 24700
+    },
+    "GroupedSwitchChat.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 switch chat, file tab stays",
+      "w": 1440,
+      "x": 3040,
+      "y": 24700
+    },
+    "GroupedNewTabMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 new tab menu",
+      "w": 1440,
+      "x": 4560,
+      "y": 24700
+    },
+    "GroupedSharedWork.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 tabs share the work",
+      "w": 1440,
+      "x": 6080,
+      "y": 24700
+    },
+    "GroupedContextFull.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 context almost full",
+      "w": 1440,
+      "x": 7600,
+      "y": 24700
+    },
+    "GroupedContextFullAfter.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 new tab after context full",
+      "w": 1440,
+      "x": 9120,
+      "y": 24700
+    },
+    "GroupedUpdateRouted.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 team update in another tab",
+      "w": 1440,
+      "x": 10640,
+      "y": 24700
+    },
+    "GroupedRowStatus.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 row status and hover card",
+      "w": 1440,
+      "x": 12160,
+      "y": 24700
+    },
+    "GroupedCloseLastTab.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 close the last tab",
+      "w": 1440,
+      "x": 13680,
+      "y": 24700
+    },
+    "GroupedCloseLastTabAfter.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 after closing the chat",
+      "w": 1440,
+      "x": 15200,
+      "y": 24700
+    },
+    "GroupedAskRowan.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 Ask Rowan opens a tab",
+      "w": 1440,
+      "x": 16720,
+      "y": 24700
+    },
+    "GroupedPalette.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Grouped chats \u00b7 search with chats and tabs",
+      "w": 1440,
+      "x": 18240,
+      "y": 24700
     }
   },
   "createdOnFiles": {
@@ -1521,6 +1638,14 @@
       "w": 600,
       "x": 0,
       "y": 23100
+    },
+    "row19": {
+      "kind": "title1",
+      "maxW": 19680,
+      "text": "20 \u00b7 Grouped chats",
+      "w": 600,
+      "x": 0,
+      "y": 24400
     },
     "row2": {
       "kind": "title1",
@@ -1745,7 +1870,20 @@
     "WorkspaceSharedCommentImage.dc.html",
     "WorkspaceSharedCommentSent.dc.html",
     "WorkspaceSharedCommentArchived.dc.html",
-    "WorkspaceSharedCommentOlder.dc.html"
+    "WorkspaceSharedCommentOlder.dc.html",
+    "GroupedNewChat.dc.html",
+    "GroupedTabs.dc.html",
+    "GroupedSwitchChat.dc.html",
+    "GroupedNewTabMenu.dc.html",
+    "GroupedSharedWork.dc.html",
+    "GroupedContextFull.dc.html",
+    "GroupedContextFullAfter.dc.html",
+    "GroupedUpdateRouted.dc.html",
+    "GroupedRowStatus.dc.html",
+    "GroupedCloseLastTab.dc.html",
+    "GroupedCloseLastTabAfter.dc.html",
+    "GroupedAskRowan.dc.html",
+    "GroupedPalette.dc.html"
   ],
   "pages": [],
   "title": "Kernel"
