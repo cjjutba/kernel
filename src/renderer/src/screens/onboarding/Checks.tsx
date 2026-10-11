@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { PreflightCheck } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, launchRoute, useStore } from '../../store'
 import { Button, CodeBlock, Icon, Spinner, useBusy } from '../../ui'
 import { FirstRoom } from './FirstRoom'
@@ -47,14 +47,16 @@ export function Checks() {
 
   const run = (key: string, fn: () => Promise<PreflightCheck[]>) => track(key, async () => {
     setError(null)
-    try { actions.system.setPreflight(await fn()) } catch (e) { setError((e as Error).message) }
+    try { actions.system.setPreflight(await fn()) } catch (e) { setError(cleanError(e)) }
   })
   const recheck = (key = 'open') => run(key, () => call('preflight.run', undefined))
   useEffect(() => { void recheck() }, [])
 
   if (ready) return <FirstRoom />
 
+  // Only a blocking failure keeps Continue off. A non-blocking one is a warning with its fix beside it (KERNEL-213).
   const failing = checks?.filter((c) => !c.ok).length ?? 0
+  const blocked = checks?.some((c) => !c.ok && c.blocking) ?? false
   const next = async () => {
     // A first run with no hooks installed goes through Check hooks before the first room.
     const hooks = await call('hooks.status', undefined).catch(() => null)
@@ -71,8 +73,8 @@ export function Checks() {
           <p className="ob-sub">Kernel checks your Mac before it starts any agents.</p>
           <div className="ob-list" aria-busy={busy !== null}>
             {(checks ?? []).map((c) => (
-              <div key={c.id} className="ob-check" data-ok={c.ok}>
-                <span className="ob-ico"><Icon name={c.ok ? 'check' : 'x'} size={15} stroke={c.ok ? 1.7 : 1.4} /></span>
+              <div key={c.id} className="ob-check" data-ok={c.ok} data-blocking={c.blocking}>
+                <span className="ob-ico"><Icon name={c.ok ? 'check' : c.blocking ? 'x' : 'warning'} size={15} stroke={c.ok ? 1.7 : 1.4} /></span>
                 <div className="ob-body">
                   <span className="ob-name">{c.title}</span>
                   <span className="ob-detail">{c.detail}</span>
@@ -85,7 +87,7 @@ export function Checks() {
           </div>
           <div className="ob-bar">
             <span role="status">{error ?? (!checks ? '' : failing ? `${failing} ${failing === 1 ? 'thing needs' : 'things need'} your attention.` : 'Everything is ready.')}</span>
-            <Button variant="primary" size="lg" disabled={!checks || failing > 0} onClick={() => void next()}>Continue</Button>
+            <Button variant="primary" size="lg" disabled={!checks || blocked} onClick={() => void next()}>Continue</Button>
           </div>
         </div>
       </div>

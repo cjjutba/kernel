@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useState } from 'react'
 import type { NewRoomPrefill, RoomKind } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go } from '../../store'
 import { Button, Icon, Modal, Toggle, useBusy, type IconName } from '../../ui'
 import { patchDraft, resetDraft, STARTER_TEAM, tilde, useDraft } from './draft'
@@ -34,7 +34,7 @@ export function NewRoom({ prefill }: { prefill?: NewRoomPrefill }) {
       })
       actions.rooms.upsert(room)
       go({ name: 'onboarding', step: 'room', roomId: room.id })
-    } catch (e) { setError((e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   const field = d.source === 'repo'

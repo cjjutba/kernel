@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { isRunName, type AppSettings, type DeepPartial, type RoomSettings, type RoomSettingsPatch } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { remoteOf } from './remote'
 
@@ -28,7 +28,7 @@ export async function patchSettings(patch: DeepPartial<AppSettings>) {
     actions.settings.set(await call('settings.set', { patch }))
   } catch (e) {
     actions.settings.set(before)
-    actions.ui.toast({ title: 'Could not save the setting', sub: (e as Error).message })
+    actions.ui.toast({ title: 'Could not save the setting', sub: cleanError(e) })
   }
 }
 
@@ -121,7 +121,7 @@ export async function patchRoomSettings(roomId: string, patch: RoomSettingsPatch
     actions.settings.setRoom(roomId, await call('settings.setRoom', { roomId, patch }))
   } catch (e) {
     if (before) actions.settings.setRoom(roomId, before)
-    actions.ui.toast({ title: 'Could not save the setting', sub: (e as Error).message })
+    actions.ui.toast({ title: 'Could not save the setting', sub: cleanError(e) })
   }
 }
 

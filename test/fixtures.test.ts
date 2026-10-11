@@ -21,6 +21,8 @@ const noCanvas = [
   'WorkspaceContextPopoverFull',
   'WorkspaceQueuedCapacity',
   'InboxOverlap',
+  'LoadingError', // boot failed: the error and Try again (KERNEL-217)
+  'SetupGhWarning', // gh signed out as a warning, with Continue on (KERNEL-217)
   'TeamEmpty',
   'QuickAskAnswered', // Ask Rowan reopened after a question, with the answer in (KERNEL-146)
   'QuickAskOpenChat',

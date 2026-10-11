@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import type { DeletePreview } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { sizeLabel } from './model'
 import './history.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /**
  * Delete from History (KERNEL-333). Kernel forgets archived workspaces for good: their rows, checkpoints, Claude Code
@@ -22,7 +21,7 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
     let live = true
-    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) setPreview(p) }, (e) => { if (live) setError(clean(e)) })
+    void call('workspaces.deletePreview', { workspaceIds }).then((p) => { if (live) setPreview(p) }, (e) => { if (live) setError(cleanError(e)) })
     return () => { live = false }
   }, [workspaceIds])
 
@@ -48,7 +47,7 @@ export function ConfirmDeleteHistory({ workspaceIds }: { workspaceIds: string[] 
           'The database shrinks the next time Kernel starts.'
         ].filter(Boolean).join(' ')
       })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   const what = one ? 'it' : 'them'

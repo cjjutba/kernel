@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import type { AgentDef, AgentLook, AgentStatus, Room, TeamTemplate } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, useBusy } from '../../ui'
 import { clearOverlaps } from '../../floor/clear'
@@ -147,7 +147,7 @@ function PauseBanner({ room, onResume }: { room: Room; onResume: () => void }) {
     )
   }
   const limit = limitBanner(usage)
-  const notify = () => run('notify', () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: e.message })))
+  const notify = () => run('notify', () => call('usage.notifyOnReset', { type: limit.type }).then(() => setNotified(true)).catch((e: Error) => actions.ui.toast({ title: 'Could not set that up', sub: cleanError(e) })))
   return (
     <div role="status" className="floor-banner">
       <span>{notified && !done ? 'You will get a notification when the limit resets.' : limit.text}</span>
@@ -172,7 +172,7 @@ function Templates({ room }: { room: Room }) {
   const [busy, run] = useBusy()
   const seed = (name: string, template: TeamTemplate) => run(name, async () => {
     try { await call('agents.seed', { roomId: room.id, template }); await loadRoom(room.id) } catch (e) {
-      actions.ui.toast({ title: 'Could not seat that team', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not seat that team', sub: cleanError(e) })
     }
   })
   return (

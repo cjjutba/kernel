@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { WorkspaceGitStatus } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
 import { refreshChanges } from './changesBus'
 import './confirm.css'
 
-const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /** Throw away every uncommitted change in the worktree (ConfirmDiscard.png). Main takes a checkpoint first. */
 export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
@@ -15,7 +14,7 @@ export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
   const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch((e) => setError(clean(e)))
+    void call('workspaces.gitStatus', { workspaceId }).then(setGit).catch((e) => setError(cleanError(e)))
   }, [workspaceId])
   if (!ws) return null
 
@@ -26,7 +25,7 @@ export function ConfirmDiscard({ workspaceId }: { workspaceId: string }) {
       refreshChanges(workspaceId)
       actions.ui.closeModal()
       actions.ui.toast({ title: 'Discarded. The worktree matches the last commit.' })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
   const d = git?.dirty
 

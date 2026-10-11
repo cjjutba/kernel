@@ -1,8 +1,9 @@
 import { actions } from '../../store'
+import { cleanError } from '../../api'
 
 /** What a failed action says. A channel that no lane has built yet rejects with "Not built yet: ...", which is fine to show as it is. */
 export async function attempt(title: string, fn: () => Promise<unknown>) {
-  try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
+  try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
 }
 
 export async function copyText(text: string) {

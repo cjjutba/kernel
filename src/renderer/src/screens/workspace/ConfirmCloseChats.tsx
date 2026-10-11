@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { tabOf } from '../../nav'
 import { actions, getState, loadWorkspace, useStore } from '../../store'
 import { ConfirmDialog, useBusy } from '../../ui'
@@ -7,7 +7,6 @@ import { dropDrafts } from './composer/draftStore'
 import './confirm.css'
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`
-const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /**
  * Close chat tabs. Main stops each chat's session, which ends a running turn and drops its queued messages, and opens a
@@ -45,7 +44,7 @@ export function ConfirmCloseChats({ workspaceId, chatIds }: { workspaceId: strin
     try {
       await closeChats(workspaceId, chatIds, tabOf(getState(), workspaceId), (tab) => actions.ui.openTab(workspaceId, tab))
       actions.ui.closeModal()
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   const one = chatIds.length === 1

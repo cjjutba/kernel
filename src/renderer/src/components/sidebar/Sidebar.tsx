@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Chat, Room, Workspace } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { Icon } from '../../icons'
 import { IconButton, useBusy } from '../../ui'
 import { actions, getState, go, useStore, type Route } from '../../store'
@@ -153,7 +153,7 @@ async function archiveFromSidebar(ws: Workspace) {
   try {
     await archiveByHand({ workspaceId: ws.id })
     actions.ui.toast({ title: `Archived ${ws.name}.`, sub: 'Find it in History.' })
-  } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: (e as Error).message }) }
+  } catch (e) { actions.ui.toast({ title: `Could not archive ${ws.name}`, sub: cleanError(e) }) }
 }
 
 /**

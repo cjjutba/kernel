@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { Workspace } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
 import { actionKey, afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
@@ -39,7 +39,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const view = headerView(ws.prState, changed)
 
   const act = (label: string, title: string, fn: () => Promise<unknown>) => run(label, async () => {
-    try { await fn() } catch (e) { actions.ui.toast({ title, sub: (e as Error).message }) }
+    try { await fn() } catch (e) { actions.ui.toast({ title, sub: cleanError(e) }) }
   })
   const start = (a: PrAction) => void act(busyLabel[a], failTitle[a], () => request[a](id))
   const createDraft = () => void act(busyLabel.create, failTitle.create, () => call('pr.create', { workspaceId: id, draft: true }))

@@ -1,5 +1,5 @@
 import type { Room, TeamTemplate } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, loadRoom, useStore } from '../../store'
 import { useBusy } from '../../ui'
 
@@ -22,7 +22,7 @@ export function TeamTemplates({ room }: { room: Room }) {
   const [busy, run] = useBusy()
   const seed = (name: string, template: TeamTemplate) => run(name, async () => {
     try { await call('agents.seed', { roomId: room.id, template }); await loadRoom(room.id) } catch (e) {
-      actions.ui.toast({ title: 'Could not add that team', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not add that team', sub: cleanError(e) })
     }
   })
   return (

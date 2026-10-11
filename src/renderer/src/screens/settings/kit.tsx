@@ -1,7 +1,7 @@
 import './settings.css'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Room, RoomSettings } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, useStore } from '../../store'
 import { Button, Icon, Kbd, Menu, useBusy } from '../../ui'
 import { useRoomSettings } from './useSettings'
@@ -127,7 +127,7 @@ function OpenSettingsFiles({ room, rs }: { room: Room; rs: RoomSettings | null }
   if (!files.length) return null
   const [first, ...more] = files
   const edit = (file: string) => run('open', async () => {
-    try { await call('system.openInEditor', { path: `${room.path}/.kernel/${file}` }) } catch (e) { actions.ui.toast({ title: `Could not open ${file}`, sub: (e as Error).message }) }
+    try { await call('system.openInEditor', { path: `${room.path}/.kernel/${file}` }) } catch (e) { actions.ui.toast({ title: `Could not open ${file}`, sub: cleanError(e) }) }
   })
   return (
     <div className="set-files" ref={anchor}>

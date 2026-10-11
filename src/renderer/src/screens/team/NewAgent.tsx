@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AgentDraft, NewAgentPrefill } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState, useStore } from '../../store'
 import { Button, Modal, Pill, SegmentedControl, useBusy } from '../../ui'
 import { shirtOf, shortFile } from './model'
@@ -15,7 +15,6 @@ const PRESETS: { label: string; description: string }[] = [
   { label: 'Data engineer', description: 'A data engineer who writes schema changes and migrations and checks them against real data.' }
 ]
 const MODEL_CHOICES = [{ value: 'sonnet', label: 'Sonnet 5.5' }, { value: 'opus', label: 'Opus 5.5' }, { value: 'haiku', label: 'Haiku 4.5' }]
-const clean = (e: unknown) => (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 
 /**
  * New agent in three steps (NewAgent.png, NewAgentDraft.png, NewAgentDone.png): describe it, review and edit the file Rowan drafted,
@@ -41,7 +40,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
       const d = await call('agents.draft', { roomId, description: description.trim(), name: name.trim() || undefined, model })
       setDraft(d); setText(d.text)
       to('draft', { name, description, model, draft: d })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   const create = () => draft && run('create', async () => {
@@ -52,7 +51,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
       const done = { ...draft, id: def.id, name: def.name, file: def.file.includes('.claude/') ? `.claude/${def.file.split('.claude/')[1]}` : draft.file, text }
       setDraft(done)
       to('done', { name, description, model, draft: done })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   // Hand the draft to Rowan to improve in his own chat. He proposes the final file with hire_agent, and it comes back as an approval card.
@@ -62,7 +61,7 @@ export function NewAgent({ roomId, step, prefill }: { roomId: string; step: Step
       await call('lead.ask', { roomId, text: `I am adding a new agent. Here is the draft of ${draft.file}. Improve it with me, then propose the final file with hire_agent.\n\n${text}` })
       const home = getState().workspaces.find((w) => w.roomId === roomId && w.name === 'lead' && w.status !== 'archived')
       actions.ui.go(home ? { name: 'workspace', workspaceId: home.id } : { name: 'team', roomId })
-    } catch (e) { setError(clean(e)) }
+    } catch (e) { setError(cleanError(e)) }
   })
 
   if (step === 'describe') {

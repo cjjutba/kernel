@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentDef } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, loadRoom, useStore } from '../../store'
 import { Button, EmptyState, Icon, useBusy } from '../../ui'
 import { TeamTemplates } from './Templates'
@@ -39,7 +39,7 @@ export function Team({ roomId }: { roomId: string }) {
       actions.agents.set(roomId, [...team.filter((x) => x.id !== def.id), def])
       setRetired((r) => r.filter((x) => x.id !== a.id))
       actions.ui.toast({ title: `${def.name} is back on the team` })
-    } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: (e as Error).message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') }) }
+    } catch (e) { actions.ui.toast({ title: 'Could not restore', sub: cleanError(e) }) }
   })
 
   return (

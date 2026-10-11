@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { AppUpdate } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, getState } from '../../store'
 import { Button, Modal } from '../../ui'
 import { whatsNewView } from './whatsNewView'
@@ -23,7 +23,7 @@ export function WhatsNew({ update: opened }: { update?: AppUpdate }) {
     // Cancel in Kernel's "agents are working" dialog keeps it running, so the button is usable again.
     void call('update.install', undefined).then((r) => { if (r.canceled) setBusy(false) }, (e: unknown) => {
       setBusy(false)
-      actions.ui.toast({ title: 'Could not restart to update', sub: (e as Error).message })
+      actions.ui.toast({ title: 'Could not restart to update', sub: cleanError(e) })
     })
   }
   const footer = ready

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Approval } from '@shared/types'
-import { call } from '../../api'
+import { call, cleanError } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { openLead, openRoom } from '../../lead'
 import { selectedPreset, useTerminalPresets } from '../../terminalPresets'
@@ -10,7 +10,7 @@ import { buildItems, visibleItems, type PaletteItem } from './model'
 import './search.css'
 
 const close = () => actions.ui.closeModal()
-const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: (e as Error).message })
+const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 
 /** Allow the one tool request, the same call the Inbox and the floor make. */
 const approve = (a: Approval) => void call('approvals.decide', { id: a.id, decision: { behavior: 'allow' } }).then(actions.approvals.upsert).catch(fail('Could not send your answer'))

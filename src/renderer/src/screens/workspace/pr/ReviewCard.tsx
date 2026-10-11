@@ -1,5 +1,5 @@
 import type { PrInfo, Workspace } from '@shared/types'
-import { call } from '../../../api'
+import { call, cleanError } from '../../../api'
 import { actions } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { openComments, reviewLines } from './model'
@@ -15,7 +15,7 @@ export function ReviewCard({ ws, pr, agentName }: { ws: Workspace; pr: PrInfo; a
   if (!comments.length) return null
   const reviewer = comments[0].author || 'A reviewer'
   const send = () => run('send', async () => {
-    try { await call('pr.resolve', { workspaceId: ws.id }) } catch (e) { actions.ui.toast({ title: 'Could not send to the agent', sub: (e as Error).message }) }
+    try { await call('pr.resolve', { workspaceId: ws.id }) } catch (e) { actions.ui.toast({ title: 'Could not send to the agent', sub: cleanError(e) }) }
   })
   return (
     <section aria-label="Review comments" className="card tcard">
