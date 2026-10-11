@@ -286,7 +286,6 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
     ) : (
       <div className="script-empty">
         <span className="script-empty-icon"><Icon name="play" size={30} stroke={1.2} /></span>
-        <Button busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>{names.length > 1 ? `Start ${selected}` : 'Start run script'}</Button>
         <span>Runs on port {ws.port}. Output shows here.</span>
       </div>
     )
@@ -309,10 +308,10 @@ export function BottomPanel({ ws }: { ws: Workspace }) {
         <Tabs label="Scripts" value={bottom} onChange={(id) => actions.ui.setWorkspaceView({ bottom: id as typeof bottom })} tabs={[{ id: 'setup', label: 'Setup' }, { id: 'run', label: 'Run' }, { id: 'terminal', label: 'Terminal' }]} />
         <span className="grow" />
         {bottom === 'setup' && !noSetup && lines.length > 0 && <Button className="small" busy={busy === 'setup'} busyLabel="Starting" disabled={setupBusy || busy !== null} onClick={() => void start('setup')}>Run setup</Button>}
-        {/* Run and Stop are about the script picked on the Run tab. Off it, Stop names the script, so it can't read as stopping setup. */}
-        {selectedRunning
+        {/* Run and Stop are the one action for the script picked on the Run tab, so its empty state has no button of its own. Setup has its own Run setup, so it shows neither. Off the Run tab, Stop names the script, so it can't read as stopping setup. */}
+        {bottom !== 'setup' && (selectedRunning
           ? <Button className="small" busy={busy === 'stop'} busyLabel="Stopping" disabled={busy !== null} onClick={() => void stop()}>{bottom === 'run' ? 'Stop' : names.length > 1 ? `Stop ${selected}` : 'Stop run'}</Button>
-          : !noRun && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>}
+          : !noRun && <Button className="small" icon="play" busy={busy === 'run'} busyLabel="Starting" disabled={busy !== null} onClick={() => void start('run')}>Run</Button>)}
       </div>
       {bottom === 'run' && names.length > 1 && (
         <div className="run-picker">

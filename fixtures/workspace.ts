@@ -1316,6 +1316,12 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspacePRCreating: prScene('creating', []),
   WorkspacePROpen: prScene('open', [], { prs: prInfo('open') }),
   WorkspaceRunScripts: runScripts(),
+  // The Run tab before the script has run: the header's Run is the only button (KERNEL-423).
+  WorkspaceRunEmpty: scene((f) => ({
+    roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
+    push: f.push.filter((e) => e.type !== 'script.output' || e.kind !== 'run'),
+    ui: { ...open, workspace: { right: 'changes', bottom: 'run', checkpoints: false, toolsOpen: false } }
+  })),
   WorkspaceTerminalPresets: terminalPresets(),
   WorkspacePreview: preview(),
   WorkspacePRChecks: prScene('checks', [], { prs: prInfo('checks') }),
