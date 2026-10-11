@@ -343,7 +343,7 @@ class Component extends DCLogic {
         ] },
         { title: 'Cleanup', rows: [
           seg('rg-delbranch', 'Delete branch on archive', ['Use default', 'On', 'Off'], 0, 'The app default is Off'),
-          over(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2))
+          Object.assign(seg('rg-archmerge', 'Archive on merge', ['Use default', 'On', 'Off'], 2), { source: 'Overriding settings.toml' })
         ] }
       ]),
       'r-scripts': roomPage('Scripts', 'Scripts for Client A. A change here is saved in settings.local.toml, so it stays on your Mac.', [
