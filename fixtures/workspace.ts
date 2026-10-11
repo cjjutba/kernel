@@ -1,5 +1,5 @@
 import type { PushEvent } from '@shared/ipc'
-import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamUpdateRow, Thread, Workspace } from '@shared/types'
+import type { Approval, AskedQuestion, Chat, ChatItem, Checkpoint, FileEntry, Hunk, PrInfo, ReviewVerdict, ScriptTrust, SharedAnchor, SharedComment, SharedFile, SharedVersion, Skill, TeamEventKind, TeamUpdateRow, Thread, Workspace } from '@shared/types'
 import type { Fixture } from './types'
 import { DEFAULT_SETTINGS } from '../src/main/services/settings'
 import { at, ids, scene, tableItems, withWorkspace } from './base'
@@ -335,6 +335,53 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   // scene2 sets approvals only when it is given some; an undefined one would hide the seed's.
   const { approvals: _none, ...rest } = s
   return { ...rest, workspaces: [...(s.workspaces ?? f.workspaces), review] }
+}
+
+/**
+ * Team updates with Merge (TeamUpdateMerge.png, KERNEL-351): an older card about PR #162 that no longer offers it, then a card where #162 and
+ * a reviewer's row (#161) can merge, #158 waits for Theo's approval of its latest commit, #155 is merging and #150 merged and sits in History.
+ */
+const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
+  const header = 'Team update from Kernel, not from the user.'
+  const row = (workspaceId: string, agentId: string, name: string, task: string, events: TeamUpdateRow['events']): TeamUpdateRow => ({ workspaceId, agentId, name, task, events })
+  const ev = (kind: TeamEventKind, text: string, actionable = false) => ({ kind, text, actionable })
+  const card = (id: string, m: number, rows: TeamUpdateRow[]): ChatItem => ({
+    kind: 'user', id, ts: at(20, m), from: 'kernel', update: { rows },
+    parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), '']), 'To do:', '- Tell the user what is ready to merge.'].join('\n') }]
+  })
+  const rows = [
+    row('ws-182', 'kai', 'Kai', 'KERNEL-182 New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true)]),
+    row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Rowan asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
+    row('ws-172', 'noor', 'Noor', 'KERNEL-172 Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
+    row('ws-160', 'kai', 'Kai', 'KERNEL-160 Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
+    row('ws-163', 'noor', 'Noor', "KERNEL-163 Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])
+  ]
+  const work = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
+    ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
+  const verdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
+  const checks: PrInfo['checks'] = [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
+  const info = (workspaceId: string, number: number, head: string): PrInfo => ({ workspaceId, number, url: `https://github.com/samrivera/client-a/pull/${number}`, title: '', state: 'ready', baseRef: 'main', checks, comments: [], conflicts: [], head })
+  const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
+    { kind: 'result', id: 'tum-res0', ts: at(20, 11), durationMs: 24 * 60_000 + 6_000, ok: true },
+    card('tum-1', 11, [row('ws-182', 'kai', 'Kai', rows[0].task, [ev('turn', 'Finished a turn'), ev('pr.opened', 'Opened PR #162'), ev('pr.cifail', 'Checks failed', true)])]),
+    { kind: 'result', id: 'tum-res1', ts: at(20, 15), durationMs: 10_000, ok: true },
+    card('tum-2', 15, rows),
+    { kind: 'result', id: 'tum-res2', ts: at(20, 16), durationMs: 55_000, ok: true }
+  ], {}, { model: 'claude-opus-5-5' })
+  const { approvals: _none, ...rest } = s
+  return {
+    ...rest,
+    workspaces: [
+      ...(s.workspaces ?? f.workspaces),
+      work('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162' }),
+      work('ws-176', 'kai', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')] }),
+      work('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
+      work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')] }),
+      work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging' }),
+      work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9) })
+    ],
+    prs: { 'ws-182': info('ws-182', 162, 'h162'), 'ws-176': info('ws-176', 161, 'h161'), 'ws-172': info('ws-172', 158, 'h158b') }
+  }
 }
 
 /** Rowan's plan waiting in the Lead's workspace. `ws` retitles that workspace. */
@@ -854,6 +901,7 @@ export const workspaceFixtures: Record<string, Fixture> = {
   WorkspaceLeadPlan: scene((f) => leadPlan(f, { agentId: 'rowan' })),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
+  TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
   // Lead chats that hold several tabs (KERNEL-338). The sidebar lists one row per chat, and the tab row shows that chat's tabs.
   GroupedNewChat: scene((f) => {
     const csv = leadTab('chat-csv', GROUPED.csv, 'Add CSV export', 13, { plan: true })

@@ -4,22 +4,29 @@ import { go, useStore } from '../../../store'
 import { KernelNote } from '../KernelNote'
 import { MessageActions } from '../MessageActions'
 import { SharedRow } from './SharedCard'
-import { cardData, eventTone, sections, taskParts, textOf } from './teamUpdate'
+import { MergeButton } from '../pr/MergeButton'
+import { cardData, eventTone, mergeTargetOf, newestRows, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
 /** One workspace by id, so a row redraws only when its own workspace changes, not when any workspace does. */
 const useWorkspaceById = (id: string) => useStore((s) => s.workspaces.find((w) => w.id === id))
 
+type WorkspaceOf = (id: string) => Workspace | undefined
+/** Whether this item holds the newest row in the chat about the PR of `target`, a workspace id. May be a hook. */
+type UseNewest = (target: string, itemId: string) => boolean
+
 /**
  * Kernel's team update in a Lead chat (KERNEL-127): one row per teammate, with what happened and the reply it sent, so it
  * no longer reads as a message the user typed. The Lead reads the item's text; this draws the data saved with it.
  */
-export function TeamUpdateCard({ item }: { item: Extract<ChatItem, { kind: 'user' }> }) {
-  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} />
+export function TeamUpdateCard({ item, chatId }: { item: Extract<ChatItem, { kind: 'user' }>; chatId: string }) {
+  // Only the newest row about a PR in this chat offers Merge (KERNEL-351). One boolean per row, so a row redraws only when its answer changes.
+  const useNewest = (target: string, itemId: string) => useStore((s) => newestRows(s.items[chatId], s.workspaces).get(target) === itemId)
+  return <TeamUpdateView item={item} workspaceOf={useWorkspaceById} useNewest={useNewest} />
 }
 
 /** The card itself, given how to find a row's workspace: a store hook in the app, a stub in tests. Each row calls it, so it may be a hook. */
-export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: (id: string) => Workspace | undefined }) {
+export function TeamUpdateView({ item, workspaceOf, useNewest }: { item: Extract<ChatItem, { kind: 'user' }>; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
   const data = cardData(item)
   // An older update whose lines no longer read as rows still shows, as Kernel's note.
   if (!data.rows.length && !data.omitted) return <KernelNote item={item} />
@@ -32,7 +39,7 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
         {sections(data.rows).map((s, i) => (
           <div key={i} className="tucard-section">
             {s.fromChat && <div className="tucard-from">From "{s.fromChat}", {s.fromTab ? 'a tab you closed' : 'a Lead chat that is now closed'}</div>}
-            {s.rows.map((row) => <Row key={row.workspaceId} row={row} workspaceOf={workspaceOf} />)}
+            {s.rows.map((row) => <Row key={row.workspaceId} row={row} itemId={item.id} workspaceOf={workspaceOf} useNewest={useNewest} />)}
           </div>
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
@@ -42,8 +49,12 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
   )
 }
 
-function Row({ row, workspaceOf }: { row: TeamUpdateRow; workspaceOf: (id: string) => Workspace | undefined }) {
+function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; itemId: string; workspaceOf: WorkspaceOf; useNewest: UseNewest }) {
   const ws = workspaceOf(row.workspaceId)
+  // A reviewer's row merges the PR it reviewed. Once that workspace is archived the PR is over, and the row says In History.
+  const targetId = ws ? mergeTargetOf(ws) : row.workspaceId
+  const target = workspaceOf(targetId)
+  const merge = useNewest(targetId, itemId) && target && target.status !== 'archived' ? target : undefined
   const archived = ws?.status === 'archived'
   const { key, title } = taskParts(row.task)
   return (
@@ -53,10 +64,13 @@ function Row({ row, workspaceOf }: { row: TeamUpdateRow; workspaceOf: (id: strin
         {key && <span className="tucard-key">{key}</span>}
         <span className="tucard-task ellipsis">{title}</span>
         {ws && (
-          <button type="button" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
-            onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
-            {archived ? 'In History' : 'Open'}
-          </button>
+          <span className="tucard-act">
+            {merge && <MergeButton ws={merge} />}
+            <button type="button" className="tucard-open" data-to={archived ? 'history' : 'workspace'} aria-label={archived ? `Find ${row.name}'s workspace for ${row.task} in History` : `Open ${row.name}'s workspace for ${row.task}`}
+              onClick={() => (archived ? go({ name: 'history' }) : go({ name: 'workspace', workspaceId: ws.id }))}>
+              {archived ? 'In History' : 'Open'}
+            </button>
+          </span>
         )}
       </div>
       {/* The events as one line of text between dots, colored only for what failed, merged or passed (KERNEL-274). */}
