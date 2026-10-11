@@ -71,3 +71,40 @@ describe('the PR poll cadence', () => {
     expect(c.choresDue()).toBe(true)
   })
 })
+
+describe('the pause the footer shows (KERNEL-401)', () => {
+  it('says nothing while Kernel reads, and until when once a limit holds it off', () => {
+    const { c, at } = clock()
+    expect(c.status()).toEqual({})
+    c.rated(rate(3000, 600_000, at()))
+    expect(c.status()).toEqual({})
+    c.rated(rate(100, 20 * 60_000, at()))
+    expect(c.status()).toEqual({ pausedUntil: at() + 20 * 60_000 })
+  })
+
+  it("tells GitHub's slow-down limit from its rate limit, and keeps the longer pause's reason", () => {
+    const { c, at, pass } = clock()
+    c.limited({ secondary: true })
+    expect(c.status()).toEqual({ pausedUntil: at() + 60_000, slowDown: true })
+    // The rate limit runs out meanwhile, for longer: the pause is the rate limit's now.
+    c.limited({ resetAt: at() + 30 * 60_000 })
+    expect(c.status()).toEqual({ pausedUntil: at() + 30 * 60_000 })
+    // A shorter slow-down inside it changes nothing.
+    c.limited({ secondary: true })
+    expect(c.status()).toEqual({ pausedUntil: at() + 30 * 60_000 })
+    // A primary limit with no known reset backs off, doubling on from the last refusal, and is still the rate limit.
+    pass(30 * 60_000)
+    c.limited({})
+    expect(c.status()).toEqual({ pausedUntil: at() + 240_000 })
+  })
+
+  it('ends with the pause, and on a restart', () => {
+    const { c, at, pass } = clock()
+    c.limited({ secondary: true })
+    pass(60_000)
+    expect(c.status()).toEqual({})
+    c.limited({ resetAt: at() + 600_000 })
+    c.started()
+    expect(c.status()).toEqual({})
+  })
+})

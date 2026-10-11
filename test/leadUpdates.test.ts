@@ -461,6 +461,14 @@ describe('what wakes the Lead, rule by rule (KERNEL-121)', () => {
     ['an approval of work with no PR yet', [ev('review', { review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', current: true } })], 'none', {}, ["Noor approved Kai's work. Ask Kai to open a pull request with message_agent (workspace w2)."]],
     ['a turn Rowan started, with no PR', [ev('turn', { by: 'lead', pr: undefined })], 'none', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn Kernel started', [ev('turn', { by: 'kernel' })], 'ready', {}, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
+    ['a ready PR GitHub starts blocking for a review (KERNEL-401)', [ev('pr.blocked', { blocked: 'review' })], 'ready', {}, ["PR #54 can't merge until someone approves it on GitHub. Tell the user."]],
+    ['a ready PR that falls behind its base (KERNEL-401)', [ev('pr.blocked', { blocked: 'behind' })], 'ready', { reviewer: THEO }, [BEHIND]],
+    ["a ready PR GitHub's branch rules block (KERNEL-401)", [ev('pr.blocked', { blocked: 'rules' })], 'ready', {}, ["GitHub's branch rules block PR #54. Tell the user."]],
+    ['a PR GitHub stops blocking, approved (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: { approvedBy: ['Theo'], blockers: false, inProgress: false } }, ['PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.']],
+    ['a PR GitHub stops blocking, with auto review off (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, autoReview: false, review: { approvedBy: [], blockers: false, inProgress: false } }, ['GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.']],
+    ['a PR GitHub stops blocking while its review runs (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO, review: { approvedBy: [], blockers: false, inProgress: true } }, []],
+    ['a PR GitHub stops blocking with a review still to come (KERNEL-401)', [ev('pr.unblocked')], 'ready', { reviewer: THEO }, []],
+    ['a turn an unblock rides along with (KERNEL-401)', [ev('turn', { by: 'lead' }), ev('pr.unblocked', { n: 2 })], 'ready', { reviewer: THEO }, [`Read Noor's reply and decide the next step: answer a question from the plan or ask the user, or pass on what is needed ${at}.`]],
     ['a turn the user started', [ev('turn', { by: 'user' })], 'none', {}, []],
     ['a turn while the PR is being created', [ev('turn', { by: 'lead' })], 'creating', {}, []],
     ['a turn while checks run', [ev('turn', { by: 'lead' })], 'checks', {}, []],
@@ -1134,5 +1142,76 @@ describe('shared files in Team updates (KERNEL-302)', () => {
     u.turnDone(w1, nc, done)
     await wait()
     expect(s.updates[0].rows.map((r) => r.shared)).toEqual([undefined])
+  })
+})
+
+describe("GitHub's merge block on a ready PR (KERNEL-401)", () => {
+  const BEHIND_LINE = "- GitHub won't merge PR #54 yet: the branch is behind its base."
+  const BEHIND_TODO = "- Ask Noor to update PR #54: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w1). GitHub won't merge it while its branch is behind."
+  const UNBLOCKED_TODO = '- GitHub no longer blocks PR #54, so it is ready to merge. Tell the user.'
+  const blocked = (store: Store, id: string, prBlocked?: Workspace['prBlocked']) => {
+    store.saveWorkspace({ ...store.workspace(id)!, prBlocked })
+    bus.push({ type: 'pr.blocked', workspaceId: id, ...(prBlocked ? { blocked: prBlocked } : {}) })
+  }
+  /** Noor's PR passed checks on h1, and the Lead heard it. */
+  const told = async () => {
+    const x = await setup()
+    x.store.saveWorkspace({ ...x.store.workspace('w1')!, prHead: 'h1' })
+    x.pr('w1', 'checks')
+    x.pr('w1', 'ready')
+    await wait()
+    expect(x.s.posts).toHaveLength(1)
+    return x
+  }
+
+  it('tells the Lead when GitHub starts blocking a ready PR, and asks the agent to update a branch behind its base', async () => {
+    const { store, s } = await told()
+    blocked(store, 'w1', 'behind')
+    await wait()
+    expect(s.posts).toHaveLength(2)
+    expect(parts(s.posts[1])).toMatchObject({ body: [NOOR, BEHIND_LINE], todo: [BEHIND_TODO] })
+    expect(s.updates[1].rows[0].events).toEqual([{ kind: 'pr.blocked', text: 'Blocked on GitHub: the branch is behind its base', actionable: true }])
+  })
+
+  it('hears a PR fall behind as it comes back ready on the same head after main moved (KERNEL-283)', async () => {
+    const { store, s, pr } = await told()
+    pr('w1', 'checks')
+    store.saveWorkspace({ ...store.workspace('w1')!, prBlocked: 'behind' })
+    pr('w1', 'ready')
+    await wait()
+    expect(s.posts).toHaveLength(2)
+    expect(parts(s.posts[1]).todo).toEqual([BEHIND_TODO])
+    // Ready again on the same head, still behind, is no news.
+    pr('w1', 'checks')
+    pr('w1', 'ready')
+    await wait()
+    expect(s.posts).toHaveLength(2)
+  })
+
+  it('tells the Lead when a block it heard about lifts, also after a restart, and says nothing of one it never heard', async () => {
+    const { store, s, restart } = await told()
+    blocked(store, 'w1', 'review')
+    await wait()
+    expect(parts(s.posts[1]).todo).toEqual(["- PR #54 can't merge until someone approves it on GitHub. Tell the user."])
+    restart()
+    blocked(store, 'w1', undefined)
+    await wait()
+    expect(s.posts).toHaveLength(3)
+    expect(parts(s.posts[2])).toMatchObject({ body: [NOOR, '- GitHub no longer blocks PR #54.'], todo: [UNBLOCKED_TODO] })
+    expect(s.updates[2].rows[0].events).toEqual([{ kind: 'pr.unblocked', text: 'GitHub no longer blocks it', actionable: true }])
+    // A block that starts and lifts before the Lead hears it says nothing at all.
+    blocked(store, 'w1', 'rules')
+    blocked(store, 'w1', undefined)
+    await wait()
+    expect(s.posts).toHaveLength(3)
+  })
+
+  it("asks the author, not the reviewer, to update a PR that fell behind, in one line with the author's own news", () => {
+    const of = { id: 'w2', roomId: 'r', name: 'w2', branch: 'b', baseRef: 'main', path: '/x', mode: 'worktree', agentId: 'kai', port: 1, status: 'ready', prState: 'ready', prNumber: 60, prBlocked: 'behind', createdAt: 1 } as Workspace
+    const approval: TeamEvent = { n: 1, workspaceId: 'rv', kind: 'review', review: { verdict: 'approved', summary: 'Good.', of: 'w2', ofName: 'Kai', ofPr: 60, current: true } }
+    const fromReview = decide({ ws: { ...of, id: 'rv', agentId: 'theo', prState: 'none', prBlocked: undefined }, name: 'Theo', events: [approval] }, { allMerged: () => false, workspace: () => of }).todo
+    const fromAuthor = decide({ ws: of, name: 'Kai', events: [{ n: 2, workspaceId: 'w2', kind: 'pr.blocked', pr: 60, blocked: 'behind' }] }, { allMerged: () => false }).todo
+    expect(fromReview).toEqual(fromAuthor)
+    expect(fromAuthor).toEqual(["Ask Kai to update PR #60: fetch, rebase onto main, re-run the tests and force push, with message_agent (workspace w2). GitHub won't merge it while its branch is behind."])
   })
 })

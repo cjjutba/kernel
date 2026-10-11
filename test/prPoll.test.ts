@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -420,5 +420,72 @@ describe('the batch read (KERNEL-388)', () => {
     await k.prs.pollPrs()
     expect(k.store.workspace(id)).toMatchObject({ branch: 'feat/other', prState: 'none' })
     expect(k.store.workspace(id)?.prNumber).toBeUndefined()
+  })
+})
+
+describe("the GitHub pause and GitHub's merge block, as main pushes them (KERNEL-401)", () => {
+  const listen = () => {
+    const pushed: PushEvent[] = []
+    const on = (e: PushEvent) => { if (e.type === 'github' || e.type === 'pr.blocked') pushed.push(e) }
+    bus.on('push', on)
+    onTestFinished(() => { bus.off('push', on) })
+    return pushed
+  }
+
+  it('pushes the pause when a read starts it, when a refused read moves it, and its end from the poll after', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    const { rate } = batched(k, prs)
+    await k.prs.refreshPr(id)
+    const pushed = listen()
+    const resetAt = Date.now() + 300
+    rate.value = { remaining: 100, limit: 5000, resetAt }
+    await k.prs.pollPrs()
+    expect(pushed).toEqual([{ type: 'github', status: { pausedUntil: resetAt } }])
+    expect(await k.handlers()['github.status']()).toEqual({ pausedUntil: resetAt })
+    // GitHub's slow-down limit refuses a read past that: the pause moves, and says which limit.
+    k.prs.cadence.c = { ...k.prs.cadence.c, backoffMs: 10_000 }
+    k.prs['cadence'].limited({ secondary: true })
+    k.prs['syncGitHub']()
+    expect(pushed.at(-1)).toMatchObject({ type: 'github', status: { slowDown: true } })
+    // Once it has passed, and GitHub has points to spare again, the next poll says so.
+    rate.value = { remaining: 4900, limit: 5000, resetAt }
+    k.prs.cadence.started()
+    await k.prs.pollPrs()
+    expect(pushed.at(-1)).toEqual({ type: 'github', status: {} })
+    await k.prs.pollPrs()
+    expect(pushed.filter((e) => e.type === 'github')).toHaveLength(3)
+  })
+
+  it('pushes pr.blocked when GitHub starts or stops blocking a PR that stays ready, and not when it becomes ready blocked', async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    prs[id] = info(id, 'checks', { number: 42 })
+    await k.prs.refreshPr(id)
+    const pushed = listen()
+    prs[id] = info(id, 'ready', { number: 42, blocked: 'behind' })
+    await k.prs.refreshPr(id)
+    expect(pushed).toEqual([])
+    prs[id] = info(id, 'ready', { number: 42, blocked: 'review' })
+    await k.prs.refreshPr(id)
+    prs[id] = info(id, 'ready', { number: 42 })
+    await k.prs.refreshPr(id)
+    expect(pushed).toEqual([{ type: 'pr.blocked', workspaceId: id, blocked: 'review' }, { type: 'pr.blocked', workspaceId: id }])
+  })
+
+  it("keeps the loop guard while a ready PR is still behind, and starts it over once it catches up", async () => {
+    const { k, ws, prs } = await setup()
+    const id = ws[0].id
+    const resets = vi.spyOn(k.nudges, 'reset')
+    prs[id] = info(id, 'checks', { number: 42, head: 'h1', checks: [{ name: 'Test', state: 'running' }] })
+    await k.prs.refreshPr(id)
+    // The agent updated onto a stale base: a new head, still behind.
+    prs[id] = info(id, 'ready', { number: 42, head: 'h2', blocked: 'behind', checks: [{ name: 'Test', state: 'pass' }] })
+    await k.prs.refreshPr(id)
+    expect(resets).not.toHaveBeenCalled()
+    prs[id] = info(id, 'ready', { number: 42, head: 'h2', checks: [{ name: 'Test', state: 'pass' }] })
+    await k.prs.refreshPr(id)
+    expect(resets).toHaveBeenCalledTimes(1)
   })
 })
