@@ -96,3 +96,9 @@
   .is-facts { grid-template-columns: 72px minmax(0, 1fr); }
   .is-search input { width: 160px; }
 }
+
+/* ConfirmIssueTaken.png: what Kernel found, one row each */
+.is-taken { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: baseline; gap: 8px 12px; margin: 0; padding: 12px; border-radius: var(--r); background: var(--panel); font-size: 12px; }
+.is-taken-row { display: contents; }
+.is-taken dt { color: var(--muted); }
+.is-taken dd { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }

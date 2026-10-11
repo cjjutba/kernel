@@ -52,7 +52,7 @@ function FilterChip({ label, value, options, onChange }: { label: string; value:
 const typing = (t: HTMLElement | null) => !!t?.closest('input, textarea, select, [contenteditable="true"]')
 
 /** Issues.png and its states: your open Linear issues in a list, the selected one on the right (KERNEL-160). The route's `issueId` opens with that issue selected. */
-export function Issues({ issueId }: { issueId?: string }) {
+export function Issues({ issueId }: { issueId?: string; roomId?: string }) {
   const online = useStore((s) => s.system.online)
   const workspaces = useStore((s) => s.workspaces)
   const agents = useStore((s) => s.agents)

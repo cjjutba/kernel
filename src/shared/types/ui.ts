@@ -23,7 +23,8 @@ export type Route =
   /** New chat with Rowan in a room with no open chat (KERNEL-366). No workspace exists until the first message (KERNEL-405). */
   | { name: 'leadNew'; roomId: string }
   /** Linear issues. `issueId` is the identifier of the open issue. */
-  | { name: 'issues'; issueId?: string }
+  /** `roomId` is the room whose tracker the screen lists. Without it the screen opens on the room used last (KERNEL-471). */
+  | { name: 'issues'; issueId?: string; roomId?: string }
   /** `section` is for `page: 'room'`, and none means General. */
   /** `tab` picks Settings, Providers' tab (KERNEL-406). Without it the page opens on Claude Code. */
   | { name: 'settings'; page: SettingsPage; roomId?: string; section?: RoomSettingsSection; tab?: Provider }
@@ -56,6 +57,11 @@ export type Modal =
   | { name: 'confirm'; kind: 'archiveChat'; threadId: string }
   /** Closing chats that are still running: the X on a chat tab, Close tab, Close other tabs or Cmd+W. */
   | { name: 'confirm'; kind: 'closeChats'; workspaceId: string; chatIds: string[] }
+  /**
+   * Someone else may already be on the issue a workspace is about to start from: the findings Kernel made, each set only when
+   * found (ConfirmIssueTaken.png, KERNEL-471). KERNEL-479 opens it from `create_workspace`'s warning.
+   */
+  | { name: 'confirm'; kind: 'issueTaken'; issue: string; found: { branch?: string; pr?: { number: number; title: string }; assignee?: string } }
   /** The one-time question about usage data, after the first room (KERNEL-397). */
   | { name: 'telemetryAsk' }
 
