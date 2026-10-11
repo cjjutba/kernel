@@ -379,8 +379,8 @@ def g_patch(t, js):
 # "latest main", the Create PR button is gone, and the right panel opens on a PRs tab under the ready band from LeadPrs.
 LEAD_BADGE='latest main'
 L_OPEN='<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h6v6M12 4l-7 7"></path></svg>'
-L_PRS=[('Kai','T-15b','#43','Download PDF in the row actions'),('Noor','T-9','#41','Invite teammates by email')]
-def lead_pr(name,key,n,title):
+L_PRS=[('Kai','T-15b','#43','Download PDF in the row actions',96,12),('Noor','T-09','#41','Org invites',212,34)]
+def lead_pr(name,key,n,title,add,dele):
     return ('<li style="padding: 5px 14px 7px; border-top: 1px solid #1a1b1e">'
       '<div style="display: flex; align-items: center; gap: 8px; height: 24px"><span style="font-size: 13px; font-weight: 500; color: #f7f8f8">%s</span>'
       '<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px; color: #62666d">%s</span>'
@@ -389,16 +389,19 @@ def lead_pr(name,key,n,title):
       '<button type="button" aria-label="Merge PR %s" style="display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; border: 1px solid #33704f; background: #1d3b2c; color: #a3e8c3; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer">Merge</button>'
       '<button type="button" aria-label="Open %s\'s workspace for %s" style="display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: #8a8f98; font-family: inherit; font-size: 12px; cursor: pointer">Open%s</button></span></div>'
       '<div style="font-size: 13px; line-height: 18px; color: #d0d6e0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">%s</div>'
-      '<div style="font-size: 12px; line-height: 16px; color: #4cb782">Theo approved</div></li>')%(name,key,n,n,name,key,L_OPEN,title)
-L_LIST=('<sc-if value="{{ rt.prs }}" hint-placeholder-val="{{ true }}">\n<div aria-label="Pull requests" style="flex: 1; min-height: 0; overflow: hidden">\n'
-  '<div style="display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: #62666d"><h3 style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Ready to merge</h3><span style="font-family: \'Geist Mono\', ui-monospace, monospace">2</span></div>\n'
-  '<ul style="list-style: none; margin: 0; padding: 0">'+''.join(lead_pr(a,b,c,d) for a,b,c,d in L_PRS)+'</ul>\n</div>\n</sc-if>\n')
-L_BAND=('<button type="button" aria-label="2 ready to merge, open the PRs tab" style="width: 100%; height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 12px; border: 0; border-bottom: 1px solid #22432f; background: #15281f; color: #62d69d; font-family: inherit; text-align: left; cursor: pointer">'
+      '<div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; line-height: 16px; color: #8a8f98"><span style="color: #4cb782">Theo approved</span>'
+      '<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11px; font-variant-numeric: tabular-nums"><span style="color: #4cb782">+%d</span> <span style="color: #eb5757">-%d</span></span></div></li>')%(name,key,n,n,name,key,L_OPEN,title,add,dele)
+def lead_list(rows):
+    return ('<sc-if value="{{ rt.prs }}" hint-placeholder-val="{{ true }}">\n<div aria-label="Pull requests" style="flex: 1; min-height: 0; overflow: hidden">\n'
+      '<div style="display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: #62666d"><h3 style="margin: 0; font-size: 12px; font-weight: 500; color: #8a8f98">Ready to merge</h3><span style="font-family: \'Geist Mono\', ui-monospace, monospace">%d</span></div>\n'
+      '<ul style="list-style: none; margin: 0; padding: 0">'%len(rows)+''.join(lead_pr(*r) for r in rows)+'</ul>\n</div>\n</sc-if>\n')
+def lead_band(n):
+    return ('<button type="button" aria-label="%d ready to merge, open the PRs tab" style="width: 100%%; height: 44px; flex-shrink: 0; box-sizing: border-box; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 12px; border: 0; border-bottom: 1px solid #22432f; background: #15281f; color: #62d69d; font-family: inherit; text-align: left; cursor: pointer">'
   '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="4" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle><circle cx="11" cy="12" r="1.5"></circle><path d="M5 5.5v5M11 10.5V6.5a2 2 0 0 0-2-2H7.5"></path><path d="M8.8 3.2 7.5 4.5l1.3 1.3"></path></svg>'
-  '<span style="font-size: 12.5px; font-weight: 500">2 ready to merge</span>'
-  '<span style="margin-left: auto; display: inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"></path></svg></span></button>\n')
+  '<span style="font-size: 12.5px; font-weight: 500">%d ready to merge</span>'
+  '<span style="margin-left: auto; display: inline-flex"><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"></path></svg></span></button>\n')%(n,n)
 L_HIDE='<button type="button" aria-label="Hide panel" style="width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 7px; background: none; color: #8a8f98; cursor: pointer"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="2"></rect><path d="M10 3v10"></path></svg></button>\n'
-def lead_workspace(t):
+def lead_workspace(t, rows=L_PRS):
     # The header spans the chat column only, as in LeadPrs; the right panel runs the full height and starts with the band.
     h0=t.index('<header '); h1=t.index('</header>',h0)+len('</header>')
     h=t[h0:h1]
@@ -409,9 +412,9 @@ def lead_workspace(t):
     t=gsub(t,sec,sec+'\n'+h)
     t=gsub(t,'<aside aria-label="Workspace panels" style="width: 400px;','<aside aria-label="Workspace panels" style="width: 360px;')
     a0='<div style="flex: 1; min-height: 0; display: flex; flex-direction: column">\n<div role="tablist" style="height: 44px;'
-    t=gsub(t,a0,L_BAND+a0)
-    t=gsub(t,'<sc-if value="{{ rt.files }}"',L_LIST+'<sc-if value="{{ rt.files }}"')
-    t=gsub(t,"var rtabs = [['files', 'All files', ''],","var rtabs = [['prs', 'PRs', '2'], ['files', 'All files', ''],")
+    t=gsub(t,a0,lead_band(len(rows))+a0)
+    t=gsub(t,'<sc-if value="{{ rt.files }}"',lead_list(rows)+'<sc-if value="{{ rt.files }}"')
+    t=gsub(t,"var rtabs = [['files', 'All files', ''],","var rtabs = [['prs', 'PRs', '%d'], ['files', 'All files', ''],"%len(rows))
     t=gsub(t,"rt: { files: s.right === 'files',","rt: { prs: s.right === 'prs', files: s.right === 'files',")
     return t
 def g_workspace(tabs, tab, chats, state=None, post='', extra='', update=False):
@@ -506,14 +509,15 @@ pg=[{'title':n,'items':[dict(i,bg='#1f2024' if (n=='Suggested' and k==0) else 't
 t=rd('CommandPalette.dc.html').replace('%%SHARED%%','off')
 t=gsub(t,'<h1 style="margin: 0; font-size: 13px; font-weight: 500">invoice-table</h1>','<h1 style="margin: 0; font-size: 13px; font-weight: 500">lead</h1><span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 12px; color: #8a8f98">%s</span>'%LEAD_BADGE)
 # KERNEL-356: behind the scrim the page is the Lead's workspace, so its right panel opens on the PRs tab under the ready band.
-t=gsub(t,'<div aria-hidden="true" style="flex: 1"></div>','<div aria-hidden="true" style="flex: 1; min-height: 0; display: flex"><div style="flex: 1"></div><div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #1a1b1e">'+L_BAND+'<div style="height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px; font-size: 13px; font-weight: 500; color: #8a8f98"><span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; background: #1c1d21; color: #f7f8f8">PRs<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px">2</span></span><span style="padding: 0 10px">All files</span><span style="padding: 0 10px">Changes</span><span style="padding: 0 10px">Checks</span></div></div></div>')
+t=gsub(t,'<div aria-hidden="true" style="flex: 1"></div>','<div aria-hidden="true" style="flex: 1; min-height: 0; display: flex"><div style="flex: 1"></div><div style="width: 360px; flex-shrink: 0; display: flex; flex-direction: column; border-left: 1px solid #1a1b1e">'+lead_band(len(L_PRS))+'<div style="height: 44px; display: flex; align-items: center; gap: 4px; padding: 0 10px; font-size: 13px; font-weight: 500; color: #8a8f98"><span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 7px; background: #1c1d21; color: #f7f8f8">PRs<span style="font-family: \'Geist Mono\', ui-monospace, monospace; font-size: 11.5px">'+str(len(L_PRS))+'</span></span><span style="padding: 0 10px">All files</span><span style="padding: 0 10px">Changes</span><span style="padding: 0 10px">Checks</span></div></div></div>')
 t=g_patch(t,'''
 var __rv = Component.prototype.renderVals;
 Component.prototype.renderVals = function () { var v = __rv.call(this); v.groups = %s; v.empty = false; return v; };
 '''%json.dumps(pg))
 emit('GroupedPalette', t, 'search', rows_html=a_rows[0])
 # KERNEL-356: WorkspaceLead is the Lead's workspace like the Grouped set, with its plan file under Changes.
-t=lead_workspace(ws.replace('%%SCENARIO%%','lead'))
+# Its plan still waits for approval and Kai has no workspace yet, so only org-invites (#41) is ready.
+t=lead_workspace(ws.replace('%%SCENARIO%%','lead'), L_PRS[1:])
 t=g_patch(t,'''
 var __seed = Component.prototype.seed;
 Component.prototype.seed = function (sc) { var s = __seed.call(this, sc); Object.assign(s, %s); return s; };
