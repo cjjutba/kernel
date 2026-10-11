@@ -1028,6 +1028,15 @@
       "x": 12160,
       "y": 15600
     },
+    "WorkspaceQuestionLong.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Long options read as label plus description",
+      "w": 1440,
+      "x": 13680,
+      "y": 15600
+    },
     "WorkspaceQueued.dc.html": {
       "h": 900,
       "is_interactive": true,
@@ -1868,6 +1877,7 @@
     "WorkspaceQuestion.dc.html",
     "WorkspaceQuestionSteps.dc.html",
     "WorkspaceQuestionOther.dc.html",
+    "WorkspaceQuestionLong.dc.html",
     "WorkspaceQuestionAnswers.dc.html",
     "WorkspaceInterrupted.dc.html",
     "WorkspaceError.dc.html",
