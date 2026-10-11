@@ -364,7 +364,7 @@ const leadUpdate = (f: Fixture): Partial<Fixture> => {
   const header = 'Team update from Kernel, not from the user.'
   const kai: TeamUpdateRow = {
     workspaceId: ids.table, agentId: 'kai', name: 'Kai', task: 'Remove the Try section from the sidebar', prNumber: 108,
-    events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Passed checks, no conflicts. Nobody has reviewed it yet', actionable: true }],
+    events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Ready to merge', actionable: true }, { kind: 'pr.review', text: 'Not reviewed', actionable: false }],
     reply: 'Removed the Try section from the sidebar. Connect a repo and Open a folder stay in the rooms plus menu and on Home\'s empty state, and Check hooks stays in the footer.\n\nOpened https://github.com/samrivera/client-a/pull/108'
   }
   const theo: TeamUpdateRow = {
@@ -406,13 +406,17 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
     kind: 'user', id, ts: at(20, m), from: 'kernel', update: { rows },
     parts: [{ type: 'text', text: [header, '', ...rows.flatMap((r) => [`${r.name} (${r.agentId}) · ${r.task} · workspace ${r.workspaceId}`, ...r.events.map((e) => `- ${e.text}.`), '']), 'To do:', '- Tell the user what is ready to merge.'].join('\n') }]
   })
+  // Tasks come as the engine sends them, the workspace title with no key: the card reads the key from the issue the
+  // workspace started on (KERNEL-411). A reviewer's workspace started on no issue, so Theo's task carries it.
   const rows = [
-    row('ws-182', 'kai', 'Kai', 'KERNEL-182 New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true)]),
+    { ...row('ws-182', 'kai', 'Kai', 'New chats focus the composer, and ⌘L focuses it', [ev('turn', 'Finished a turn'), ev('pr.opened', 'Pushed a fix'), ev('pr.ready', 'Ready to merge', true), ev('pr.review', 'Theo approved')]),
+      reply: 'Fixed the focus race: `useLayoutEffect` now focuses the composer after the tab mounts. `pnpm test:changed` and `pnpm typecheck` pass.' },
     row('ws-review-161', 'theo', 'Theo', 'KERNEL-176 Rowan asks when a brief is unclear', [ev('turn', 'Reviewed PR #161'), ev('review', 'Approved', true)]),
-    row('ws-172', 'noor', 'Noor', 'KERNEL-172 Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
-    row('ws-160', 'kai', 'Kai', 'KERNEL-160 Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
-    row('ws-163', 'noor', 'Noor', "KERNEL-163 Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])
+    row('ws-172', 'noor', 'Noor', 'Duplicates show once in Issues', [ev('pr.opened', 'Opened PR #158'), ev('setup.passed', 'Checks passed')]),
+    row('ws-160', 'kai', 'Kai', 'Issues screen with search', [ev('turn', 'Finished a turn'), ev('turn', 'Merging PR #155')]),
+    row('ws-163', 'noor', 'Noor', "Linear service, contracts and Rowan's issue link", [ev('pr.merged', 'Merged PR #150')])
   ]
+  const issue = (key: string, i: number): Partial<Workspace> => ({ title: rows[i].task, source: { kind: 'issue', id: key, title: rows[i].task } })
   const work = (id: string, agentId: string, name: string, n: number, over: Partial<Workspace>): Workspace =>
     ({ id, roomId: ids.roomA, name, branch: `feat/${name}`, baseRef: 'origin/main', path: `/Users/you/kernel/worktrees/client-a/${name}`, mode: 'worktree', agentId, port: 4330 + n % 50, status: 'ready', prState: 'ready', prNumber: n, prUrl: `https://github.com/samrivera/client-a/pull/${n}`, createdAt: at(19, 40), ...over })
   const verdict = (workspaceId: string, prNumber: number, sha: string): ReviewVerdict => ({ workspaceId, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha, prNumber, ts: at(20, 12) })
@@ -430,12 +434,13 @@ const teamUpdateMerge = (f: Fixture): Partial<Fixture> => {
     ...rest,
     workspaces: [
       ...(s.workspaces ?? f.workspaces),
-      work('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162' }),
-      work('ws-176', 'kai', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')] }),
+      work('ws-182', 'kai', 'kernel-182-new-chats-focus', 162, { prHead: 'h162', ...issue('KERNEL-182', 0) }),
+      work('ws-176', 'kai', 'kernel-176-rowan-asks', 161, { prHead: 'h161', reviews: [verdict('ws-review-161', 161, 'h161')], title: 'Rowan asks when a brief is unclear', source: { kind: 'issue', id: 'KERNEL-176', title: 'Rowan asks when a brief is unclear' } }),
       work('ws-review-161', 'theo', 'review-pr-161-kernel-176', 0, { prState: 'none', prNumber: undefined, prUrl: undefined, reviewOf: 'ws-176' }),
-      work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')] }),
-      work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging' }),
-      work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9) })
+      work('ws-172', 'noor', 'kernel-172-duplicates', 158, { prHead: 'h158b', reviews: [verdict('ws-review-158', 158, 'h158a')], ...issue('KERNEL-172', 2) }),
+      // Rowan started this merge, so the row's Merging is muted, with no spinner (KERNEL-411).
+      work('ws-160', 'kai', 'kernel-160-issues-screen', 155, { prState: 'merging', ...issue('KERNEL-160', 3) }),
+      work('ws-163', 'noor', 'kernel-163-linear-service', 150, { prState: 'merged', status: 'archived', mergedAt: at(20, 9), ...issue('KERNEL-163', 4) })
     ],
     prs: { 'ws-182': info('ws-182', 162, 'h162'), 'ws-176': info('ws-176', 161, 'h161'), 'ws-172': info('ws-172', 158, 'h158b') }
   }
@@ -462,12 +467,18 @@ interface OpenPr {
   review?: 'approved' | 'stale' | 'blockers'
 }
 
+/**
+ * A PR title as agents write them: a Conventional Commits prefix and the issue key on the end, which the PRs tab strips
+ * (KERNEL-411). "Rowan asks when a brief is unclear" becomes "feat(workspace): rowan asks when a brief is unclear (KERNEL-176)".
+ */
+const commitTitle = (title: string, key: string) => `feat(workspace): ${title.charAt(0).toLowerCase()}${title.slice(1)} (${key})`
+
 /** The fields of a workspace that has `p` open: the PR, the issue it builds, its changes and Theo's review. */
 const prFields = (p: OpenPr): Partial<Workspace> => {
   const verdict = (o: Partial<ReviewVerdict>): ReviewVerdict => ({ workspaceId: `${p.id}-review`, agentId: 'theo', verdict: 'approved', summary: 'No blockers.', sha: `h${p.n}`, prNumber: p.n, ts: at(20, 12), ...o })
   const reviews = p.review === 'approved' ? [verdict({})] : p.review === 'stale' ? [verdict({ sha: `h${p.n}-old` })] : p.review === 'blockers' ? [verdict({ verdict: 'blockers', blockers: [{ text: 'The download never retries.' }, { text: 'No test covers the failure toast.' }] })] : undefined
   return {
-    prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: p.title, prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
+    title: p.title, prState: p.state, prNumber: p.n, prUrl: `https://github.com/samrivera/client-a/pull/${p.n}`, prTitle: commitTitle(p.title, p.key), prHead: `h${p.n}`, source: { kind: 'issue', id: p.key, title: p.title },
     stat: { files: 3, added: p.stat[0], removed: p.stat[1] }, reviews
   }
 }
@@ -479,7 +490,7 @@ const openPrWorkspace = (p: OpenPr): Workspace => {
 
 /** GitHub's read of each PR: its checks follow its state, and the head commit is the one the workspace saw. */
 const openPrInfo = (p: OpenPr): PrInfo => ({
-  workspaceId: p.id, number: p.n, url: `https://github.com/samrivera/client-a/pull/${p.n}`, title: p.title, state: p.state, baseRef: 'main', comments: [], conflicts: [], head: `h${p.n}`,
+  workspaceId: p.id, number: p.n, url: `https://github.com/samrivera/client-a/pull/${p.n}`, title: commitTitle(p.title, p.key), state: p.state, baseRef: 'main', comments: [], conflicts: [], head: `h${p.n}`,
   checks: p.state === 'checks' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'running' }] : p.state === 'cifail' ? [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'fail', meta: '48s' }] : [{ name: 'lint', state: 'pass', meta: '12s' }, { name: 'vitest', state: 'pass', meta: '48s' }]
 })
 
@@ -493,7 +504,7 @@ const openPrs = (f: Fixture, list: OpenPr[]): Pick<Fixture, 'workspaces' | 'prs'
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354) over a chat with Rowan: the two ready PRs first, then six that wait
  * on something. #158 holds an approval of an earlier commit, so the reviewer rule keeps it back.
  */
-const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string): Partial<Fixture> => {
+const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string, push: PushEvent[] = []): Partial<Fixture> => {
   const s = scene2(f, { id: ids.lead, agentId: 'rowan' }, 'Composer focus', [
     { ...userMsg('lp-u', ask), ts: at(20, 31) },
     { kind: 'text', id: 'lp-tx', ts: at(20, 31), text: reply },
@@ -502,6 +513,7 @@ const leadPrsScene = (f: Fixture, list: OpenPr[], ask: string, reply: string): P
   const { approvals: _none, ...rest } = s
   return {
     ...rest, ...openPrs(f, list),
+    ...(push.length ? { push: [...(rest.push ?? f.push), ...push] } : {}),
     roomSettings: { [ids.roomA]: { scripts: { run: 'pnpm dev --port $KERNEL_PORT', runMode: 'concurrent' }, runScripts: [{ name: 'run', command: 'pnpm dev --port $KERNEL_PORT' }], files: { copy: [] }, workspace: {} } },
     ui: { route: { name: 'workspace', workspaceId: ids.lead }, workspace: { right: 'changes', leadRight: 'prs', bottom: 'run', checkpoints: false, toolsOpen: false } }
   }
@@ -523,6 +535,11 @@ const LEAD_PRS: OpenPr[] = [
   { id: 'ws-188', agentId: 'noor', key: 'KERNEL-188', n: 168, title: 'PDF renderer with embedded fonts', state: 'conflict', stat: [1050, 8] },
   { id: 'ws-173', agentId: 'ivy', key: 'KERNEL-173', n: 169, title: 'Screen list test', state: 'draft', stat: [4, 4] }
 ]
+
+/** Merge all's PRs (KERNEL-411): two ready, approved by Theo, and one still running checks. */
+const MERGE_A: OpenPr = { id: 'ws-395', agentId: 'kai', key: 'KERNEL-395', n: 331, title: 'Home and Inbox count a workspace waiting for script trust', state: 'ready', stat: [99, 16], review: 'approved' }
+const MERGE_B: OpenPr = { id: 'ws-398', agentId: 'noor', key: 'KERNEL-398', n: 330, title: 'Lead worktree tests call the features, not Kernel', state: 'ready', stat: [2, 2], review: 'approved' }
+const MERGE_C: OpenPr = { id: 'ws-400', agentId: 'noor', key: 'KERNEL-400', n: 333, title: "New workspaces start from the room's default branch", state: 'checks', stat: [125, 4], review: 'stale' }
 
 /**
  * The new chat modal over Client A's Team (NewWorkspace.png and its four popovers). It starts from the Lead's model, so the label
@@ -1069,6 +1086,16 @@ export const workspaceFixtures: Record<string, Fixture> = {
   // The Lead's PRs tab: two ready PRs with Merge, six that wait, and the same panel with nothing open (KERNEL-354).
   LeadPrs: scene((f) => leadPrsScene(f, LEAD_PRS, 'What can I merge?', "Two PRs are ready. #162 from Kai and #161 from Noor both have Theo's approval. #158 is waiting for it, and #166 is still running checks. Merge them from the PRs tab, or tell me which one and I will.")),
   LeadPrsEmpty: scene((f) => leadPrsScene(f, [], 'What can I merge?', 'Nothing is open right now. Every PR your agents opened has merged.')),
+  // A PR merging keeps its row in Ready to merge, Merging muted since this tab didn't start it (KERNEL-411).
+  LeadPrsMerging: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'Merge #331.', 'Merging #331 now. #330 is ready too, and #333 is still running checks.')),
+  // Open PRs, none of them ready: the band counts them instead of saying there are none (KERNEL-411).
+  LeadPrsNoneReady: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'cifail' }, MERGE_C], 'What can I merge?', 'Nothing yet. #330 failed its checks and #333 is still running them.')),
+  // Merge all on the Ready to merge heading, its run one PR at a time, and a run that stopped at a conflict (KERNEL-411).
+  LeadPrsMergeAll: scene((f) => leadPrsScene(f, [MERGE_A, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. #331 from Kai and #330 from Noor both have Theo\'s approval, and #333 is still running checks. Merge them from the PRs tab, or tell me which one and I will.')),
+  LeadPrsMergeAllRunning: scene((f) => leadPrsScene(f, [{ ...MERGE_A, state: 'merging' }, MERGE_B, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
+    [{ type: 'pr.queue', roomId: ids.roomA, queue: { ids: [MERGE_A.id, MERGE_B.id], current: MERGE_A.id } }])),
+  LeadPrsMergeAllStopped: scene((f) => leadPrsScene(f, [{ ...MERGE_B, state: 'conflict' }, MERGE_C], 'What can I merge?', 'Two PRs are ready. Merge them from the PRs tab, or tell me which one and I will.',
+    [{ type: 'pr.queue', roomId: ids.roomA, result: { merged: [331], stopped: { workspaceId: MERGE_B.id, prNumber: 330, reason: 'It has merge conflicts.' } } }])),
   // Kernel's team updates in Rowan's chat (KERNEL-127). No PNG: the card follows the canvas card and note values.
   WorkspaceLeadUpdate: scene((f) => leadUpdate(f)),
   TeamUpdateMerge: scene((f) => teamUpdateMerge(f)),
