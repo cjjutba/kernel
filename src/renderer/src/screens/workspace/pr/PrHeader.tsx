@@ -1,9 +1,9 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { Workspace } from '@shared/types'
 import { call } from '../../../api'
-import { actions, go, useStore } from '../../../store'
+import { actions, getState, go, useStore } from '../../../store'
 import { Button, Icon, Menu, useBusy } from '../../../ui'
-import { afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
+import { actionKey, afterArchive, busyLabel, failTitle, hasChanges, headerView, type PrAction } from './model'
 import { openRoom } from '../../../lead'
 import { archivedByHand } from '../byHand'
 import './pr.css'
@@ -68,23 +68,31 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
     void openRoom(ws.roomId)
   }, [id, ws.status])
 
-  // ⌘⇧P creates the PR, as the menu says.
-  const canCreate = ws.prState === 'none' && changed && !busy
+  const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
+
+  // ⌘⇧ and the action's letter press the main button, and ⌘⇧A presses Archive, only while that button shows (KERNEL-341).
+  // A busy button has no action, so it has no key, and an open modal turns them all off.
+  const action = view.button?.action
+  const key = action && actionKey[action]
+  const canArchive = view.merged || view.archive
+  const listen = !busy && (!!key || canArchive)
   useEffect(() => {
-    if (!canCreate) return
+    if (!listen) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); start('create') }
+      if (!e.metaKey || !e.shiftKey || e.altKey || e.ctrlKey || getState().ui.modal) return
+      const k = e.key.toLowerCase()
+      if (action && k === key) { e.preventDefault(); start(action) }
+      else if (canArchive && k === 'a') { e.preventDefault(); archive() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [canCreate, id])
+  }, [listen, action, canArchive, id])
 
   const link = view.link && ws.prNumber && ws.prUrl
     ? <a className="pr-link" href={ws.prUrl} target="_blank" rel="noreferrer" aria-label={`Open PR ${ws.prNumber} on GitHub`}><span className="pr-num">#{ws.prNumber}</span><span className="pr-ext"><Icon name="ext" size={11} stroke={1.8} /></span></a>
     : null
   // The state always shows, busy or not: only the busy button spins (KERNEL-274).
   const state = <span className="pr-state"><Icon name={view.state.glyph} size={14} /><span className="pr-label">{view.state.label}</span></span>
-  const archive = () => actions.ui.openModal({ name: 'confirm', kind: 'archive', workspaceId: id })
   const spinner = (label: string) => <Button busy>{label}</Button>
   const gap = spread ? <span className="grow" /> : null
   // The band's tone, in the right panel. In the chat header (panel hidden) there's no band, so the header stays neutral,
@@ -101,7 +109,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
       {state}
       {gap}
       <Button className="continue pr-soft" aria-label="Continue" onClick={() => void act('Continuing', 'Could not continue', () => call('pr.continue', { workspaceId: id }))}><Icon name="forward" size={12} stroke={1.6} /><span className="pr-btn-label">Continue</span></Button>
-      <Button className="pr-solid" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
+      <Button className="pr-solid" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>
     </>
   )
 
@@ -111,7 +119,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
   const ink = b?.kind === 'primary' && band === 'idle'
   const main = !b ? null
     : b.kind === 'busy' ? spinner(b.label)
-      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} onClick={() => b.action && start(b.action)}>{b.label}</Button>
+      : <Button variant={ink ? 'primary' : 'secondary'} className={[view.caret && 'split-main', solid ? 'pr-solid' : !ink && 'pr-soft'].filter(Boolean).join(' ') || undefined} data-tip={key && b.label} data-tip-kbd={key && `⌘⇧${key.toUpperCase()}`} onClick={() => b.action && start(b.action)}>{b.label}</Button>
 
   return tone(
     <>
@@ -135,7 +143,7 @@ export function PrHeader({ ws, spread }: { ws: Workspace; spread?: boolean }) {
           </span>
         </span>
       ) : main}
-      {view.archive && <Button className="pr-soft" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
+      {view.archive && <Button className="pr-soft" data-tip="Archive" data-tip-kbd="⌘⇧A" onClick={archive}><Icon name="archive" size={12} stroke={1.5} />Archive</Button>}
     </>
   )
 }

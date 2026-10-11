@@ -52,7 +52,7 @@ const combo = (i: Pick<KeyInput, 'code' | 'meta' | 'shift' | 'alt' | 'control'>)
 const FORWARD = new Set([
   'meta+KeyK', 'meta+KeyN', 'meta+shift+KeyN', 'meta+KeyT', 'meta+shift+KeyT', 'meta+KeyW', 'meta+KeyB', 'meta+alt+KeyB',
   'meta+Backslash', 'meta+Comma', 'meta+BracketLeft', 'meta+BracketRight', 'meta+shift+KeyL', 'meta+shift+KeyP', 'meta+KeyL',
-  'meta+shift+Slash',
+  'meta+shift+Slash', 'meta+shift+KeyM', 'meta+shift+KeyF', 'meta+shift+KeyA',
   ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `meta+Digit${n}`),
   ...[1, 2, 3, 4].map((n) => `ctrl+meta+Digit${n}`)
 ])
