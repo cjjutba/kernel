@@ -2,6 +2,7 @@ import { createConnection } from 'node:net'
 import { exec } from './exec'
 import { ghAuth } from './github'
 import { bundledClaude } from './providers/binary'
+import { rcFile, type ShellRead } from './shellPath'
 import type { PreflightCheck } from '@shared/types'
 
 export const MIN_CLAUDE = '2.1.80'
@@ -65,11 +66,14 @@ export const MIN_GIT = '2.38'
 /**
  * The checks behind the "Getting Kernel ready" screens, in canvas order with git before the GitHub CLI. Only Claude sign-in,
  * the hook port, a missing git and a broken bundled Claude block (KERNEL-213). Everything else is a warning.
- * `run` and `claude` are for tests: a stubbed command runner and the session binary's path.
+ * `shell` is what `refreshPath` just read, and `env` the environment it left. `run`, `claude` and `env` are for tests: a
+ * stubbed command runner, the session binary's path and the variables Bedrock and Vertex are read from.
  */
-export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string } }): Promise<PreflightCheck[]> {
+export async function runPreflight(o: { hookPort: number; hookServerUp: boolean; run?: typeof exec; claude?: string | null; nextPort?: (from: number) => Promise<number>; codex?: { bin?: string }; shell?: ShellRead; env?: NodeJS.ProcessEnv }): Promise<PreflightCheck[]> {
   const run = o.run ?? exec
   const checks: PreflightCheck[] = []
+  // First, since it explains anything below that's missing.
+  if (o.shell?.timedOut) checks.push(shellCheck(o.shell))
   const bin = o.claude === undefined ? sessionClaude() : o.claude
   // A first run of a freshly installed binary can be slow while macOS scans it, hence the long timeout.
   const v = bin ? await run(bin, ['--version'], { timeoutMs: 60000 }) : null
@@ -86,7 +90,9 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   }
 
   // Signing in is checked with the same binary, so a broken one shows one failure, not two.
-  if (bin && version) {
+  const cloud = cloudCheck(o.env ?? process.env)
+  if (bin && version && cloud) checks.push(cloud)
+  else if (bin && version) {
     const a = await run(bin, ['auth', 'status'], { timeoutMs: 15000 })
     let status: { loggedIn?: boolean; subscriptionType?: unknown } = {}
     try { status = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
@@ -98,7 +104,7 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
   // Only while a role in Settings, Models and effort runs on Codex, so a Claude-only setup sees the checks it always did.
   if (o.codex) checks.push(await codexCheck(o.codex.bin, run))
   checks.push(await gitCheck(run))
-  checks.push(await ghCheck(run))
+  checks.push(await ghCheck(run, o.shell))
 
   if (o.hookServerUp) checks.push({ id: 'hooks', ok: true, blocking: true, title: 'Hook server', detail: 'Listening for events', meta: `localhost:${o.hookPort}` })
   else {
@@ -108,6 +114,31 @@ export async function runPreflight(o: { hookPort: number; hookServerUp: boolean;
     checks.push({ id: 'hooks', ok: false, blocking: true, title: `Port ${o.hookPort} is taken`, detail: `${who} is using it. Kernel can listen on ${next} and update your hooks.`, fix: { action: 'use-next-port' } })
   }
   return checks
+}
+
+/** A warning, since Kernel still has the launch PATH and the usual install folders. The note is where to look (KERNEL-448). */
+function shellCheck(shell: ShellRead): PreflightCheck {
+  const rc = rcFile(shell.shell)
+  const s = Math.max(1, Math.round(shell.timeoutMs / 1000))
+  return {
+    id: 'shell', ok: false, blocking: false, title: 'Reading your shell timed out',
+    detail: `Kernel reads PATH and proxy settings from your login shell and gave up after ${s} second${s === 1 ? '' : 's'}. Tools from nvm, or a proxy set in \`${rc}\`, may be missing until it can.`,
+    note: `Look in \`${rc}\` for a slow command, or one that waits for an answer, like an update prompt.`,
+    fix: { action: 'recheck' }
+  }
+}
+
+/** Claude Code's own test for a switch like CLAUDE_CODE_USE_BEDROCK. */
+const switchedOn = (v: string | undefined) => /^(1|true|yes|on)$/i.test(v?.trim() ?? '')
+
+/**
+ * Claude Code on Bedrock or Vertex bills the cloud account and skips the Claude sign-in, so this row takes Signed in's
+ * place. Only the Mac's environment can switch it on (KERNEL-247), and the shell read is how a Finder launch gets it.
+ */
+function cloudCheck(env: NodeJS.ProcessEnv): PreflightCheck | null {
+  if (switchedOn(env.CLAUDE_CODE_USE_BEDROCK)) return { id: 'auth', ok: true, blocking: true, title: 'Using Bedrock from your shell', detail: 'Agents bill your AWS account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_BEDROCK` is set in your shell.', ...(env.AWS_REGION ? { meta: env.AWS_REGION } : {}) }
+  if (switchedOn(env.CLAUDE_CODE_USE_VERTEX)) return { id: 'auth', ok: true, blocking: true, title: 'Using Vertex AI from your shell', detail: 'Agents bill your Google Cloud account. No Claude sign-in needed.', note: '`CLAUDE_CODE_USE_VERTEX` is set in your shell.', ...(env.CLOUD_ML_REGION ? { meta: env.CLOUD_ML_REGION } : {}) }
+  return null
 }
 
 /** Codex runs only the roles set to it, so a missing or signed-out Codex is a warning, never a block (KERNEL-406). */
@@ -131,8 +162,16 @@ async function gitCheck(run: typeof exec): Promise<PreflightCheck> {
   return { id: 'git', ok: true, blocking: false, title: 'Git', detail: 'Found on your PATH', meta: `git ${version}` }
 }
 
+/** "the keyring", "`GH_TOKEN` in your shell" or "gh's config file", from gh's `tokenSource`. */
+function ghSource(source: string | undefined): string | undefined {
+  if (source === 'keyring') return 'the keyring'
+  if (source === 'GH_TOKEN' || source === 'GITHUB_TOKEN') return `\`${source}\` in your shell`
+  if (source?.includes('/')) return 'gh\'s config file'
+  return undefined
+}
+
 /** gh only matters for pull requests, so every failure here is a warning. */
-async function ghCheck(run: typeof exec): Promise<PreflightCheck> {
+async function ghCheck(run: typeof exec, shell?: ShellRead): Promise<PreflightCheck> {
   const auth = await ghAuth(run)
   if (auth.state === 'missing') return { id: 'gh', ok: false, blocking: false, title: 'GitHub CLI not found', detail: 'Pull requests need gh. Everything else works without it.', fix: { command: 'brew install gh' } }
   if (auth.state === 'signed-out') return { id: 'gh', ok: false, blocking: false, title: 'GitHub CLI is not signed in', detail: 'Kernel uses gh to open and merge pull requests. Everything else works without it.', fix: { command: 'gh auth login' } }
@@ -140,5 +179,12 @@ async function ghCheck(run: typeof exec): Promise<PreflightCheck> {
   const meta = /gh version (\d+\.\d+(?:\.\d+)?)/.exec(gh.stdout)?.[1]
   if (auth.state === 'offline') return { id: 'gh', ok: false, blocking: false, title: 'Can\'t reach GitHub', detail: 'gh is signed in, but GitHub didn\'t answer. Pull requests need it, so check again once you\'re online.', fix: { command: 'gh auth status' }, meta: meta && `gh ${meta}` }
   // ConnectRepo reads the login back out of "Signed in as <login>".
-  return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail: auth.login ? `Signed in as ${auth.login}` : 'Signed in', meta: meta && `gh ${meta}` }
+  const from = ghSource(auth.source)
+  const detail = auth.login ? `Signed in as ${auth.login}${from ? `, from ${from}` : ''}` : 'Signed in'
+  // A token gh uses is one Kernel passed on (shellPath.ts). One Kernel left out is still worth saying, since the terminal's gh uses it.
+  const left = shell?.ghToken && !shell.ghToken.passed ? shell.ghToken.name : undefined
+  const note = auth.source === 'GH_TOKEN' || auth.source === 'GITHUB_TOKEN'
+    ? 'Kernel passes it on because gh has no stored login.'
+    : left ? `\`${left}\` is set in your shell. Kernel leaves it out, because gh would use it instead of this login.` : undefined
+  return { id: 'gh', ok: true, blocking: false, title: 'GitHub CLI', detail, ...(note ? { note } : {}), meta: meta && `gh ${meta}` }
 }
