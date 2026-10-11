@@ -7,7 +7,7 @@ import { Kernel } from '../src/main/kernel'
 import { installHooks, uninstallHooks, withKernelHooks } from '../src/main/services/hooksInstaller'
 import { discoverSkills } from '../src/main/services/files'
 import { discoverMcp, saveLinearToken, storedLinearToken } from '../src/main/services/integrations'
-import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
+import { disabledInRoom, loadRepoSettings, localSettingsOwn, remoteOf, saveRepoSettings, saveTeamSettings, scriptsToTrust, ScriptTrustStore, trustHash } from '../src/main/services/settings'
 import { exec, git, run } from '../src/main/services/exec'
 import { bus } from '../src/main/bus'
 import type { PushEvent } from '../src/shared/ipc'
@@ -109,6 +109,53 @@ describe('repo settings files', () => {
     expect(rs.workspace).toEqual({ baseRef: 'origin/dev' })
     expect(rs.pr).toEqual({ resolveInstructions: '# Shared' })
     expect(rs.sources).toEqual({ 'workspace.baseRef': 'shared', 'pr.resolveInstructions': 'shared' })
+  })
+
+  it('reads and writes the tracker, the merge method, MCP aliases and what each agent may use, name by name (KERNEL-432)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    await saveRepoSettings(repo, { tracker: { kind: 'github' }, pr: { mergeMethod: 'rebase' }, mcp: { aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } }, agents: { unlistedTools: 'hide', allow: { kai: ['linear'], noor: ['figma'] } } }, true)
+    const shared = await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')
+    for (const text of ['[tracker]\nkind = "github"', 'merge_method = "rebase"', '[mcp.aliases]\nlinear = "claude_ai_Linear"', '[agents]\nunlisted_tools = "hide"', '[agents.kai]\nallow = [ "linear" ]']) expect(shared).toContain(text)
+    // The personal file overrides one alias and one agent's list, and the shared file's other names show through.
+    let rs = await saveRepoSettings(repo, { tracker: { kind: 'none' }, mcp: { aliases: { linear: 'linear-mine' } }, agents: { allow: { kai: ['sentry'] } } })
+    expect(rs.tracker).toEqual({ kind: 'none' })
+    expect(rs.pr).toEqual({ mergeMethod: 'rebase' })
+    expect(rs.mcp).toEqual({ aliases: { linear: 'linear-mine', figma: 'Figma' } })
+    expect(rs.agents).toEqual({ unlistedTools: 'hide', allow: { kai: ['sentry'], noor: ['figma'] } })
+    expect(rs.sources).toEqual({
+      'tracker.kind': 'override', 'pr.mergeMethod': 'shared', 'mcp.aliases.linear': 'override', 'mcp.aliases.figma': 'shared',
+      'agents.unlistedTools': 'shared', 'agents.allow.kai': 'override', 'agents.allow.noor': 'shared'
+    })
+    // A null, a blank alias or an empty list removes one name, and a table left empty goes.
+    rs = await saveRepoSettings(repo, { mcp: { aliases: { linear: null } }, agents: { allow: { kai: [] } } })
+    expect(rs.mcp).toEqual({ aliases: { linear: 'claude_ai_Linear', figma: 'Figma' } })
+    expect(rs.agents?.allow).toEqual({ kai: ['linear'], noor: ['figma'] })
+    expect((await readFile(join(repo, '.kernel', 'settings.local.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "none"')
+    rs = await saveRepoSettings(repo, { pr: { mergeMethod: null }, mcp: { aliases: { linear: ' ', figma: null } }, agents: { unlistedTools: null, allow: { kai: null, noor: null } } }, true)
+    expect([rs.pr, rs.mcp, rs.agents]).toEqual([undefined, undefined, undefined])
+    expect((await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).trim()).toBe('[tracker]\nkind = "github"')
+  })
+
+  it('leaves out a tracker, merge method, alias or allowance it does not know (KERNEL-432)', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    await mkdir(join(repo, '.kernel'))
+    await writeFile(join(repo, '.kernel', 'settings.toml'), [
+      '[tracker]', 'kind = "trello"', '[pr]', 'merge_method = "fast-forward"', '[mcp.aliases]', 'linear = 3', 'figma = " "', 'sentry = "Sentry"',
+      '[agents]', 'unlisted_tools = "maybe"', '[agents.kai]', 'allow = "linear"', '[agents.noor]', 'allow = ["", "figma"]', ''
+    ].join('\n'))
+    const rs = await loadRepoSettings(repo)
+    expect([rs.tracker, rs.pr]).toEqual([undefined, undefined])
+    expect(rs.mcp).toEqual({ aliases: { sentry: 'Sentry' } })
+    expect(rs.agents).toEqual({ allow: { noor: ['figma'] } })
+    expect(rs.sources).toEqual({ 'mcp.aliases.sentry': 'shared', 'agents.allow.noor': 'shared' })
+  })
+
+  it("reads and writes the team's roster in [team] (KERNEL-432)", async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'kernel-repo-'))
+    expect((await saveTeamSettings(repo, { roster: ['kai', 'noor'] })).team).toEqual({ roster: ['kai', 'noor'] })
+    expect(await readFile(join(repo, '.kernel', 'settings.toml'), 'utf8')).toBe('[team]\nroster = ["kai", "noor"]\n')
+    expect((await loadRepoSettings(repo)).sources).toEqual({ 'team.roster': 'shared' })
+    expect((await saveTeamSettings(repo, { roster: [] })).team).toBeUndefined()
   })
 
   it("picks the room's remote, then the app's, then origin (KERNEL-190)", () => {

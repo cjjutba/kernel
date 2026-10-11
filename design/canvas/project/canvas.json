@@ -485,7 +485,7 @@
       "radius": 12,
       "title": "Setting up a room with two warnings",
       "w": 1440,
-      "x": 16720,
+      "x": 19760,
       "y": 1300
     },
     "Rooms.dc.html": {
@@ -557,7 +557,7 @@
       "radius": 12,
       "title": "Room \u00b7 Files to copy \u00b7 production warning",
       "w": 1440,
-      "x": 33440,
+      "x": 34960,
       "y": 20800
     },
     "SettingsGit.dc.html": {
@@ -638,7 +638,7 @@
       "radius": 12,
       "title": "Room \u00b7 General \u00b7 measuring disk",
       "w": 1440,
-      "x": 31920,
+      "x": 33440,
       "y": 20800
     },
     "SettingsRoomGit.dc.html": {
@@ -656,7 +656,7 @@
       "radius": 12,
       "title": "Room \u00b7 Git \u00b7 push check failed",
       "w": 1440,
-      "x": 28880,
+      "x": 30400,
       "y": 20800
     },
     "SettingsRoomGitUnreachable.dc.html": {
@@ -665,7 +665,7 @@
       "radius": 12,
       "title": "Room \u00b7 Git \u00b7 remote unreachable",
       "w": 1440,
-      "x": 30400,
+      "x": 31920,
       "y": 20800
     },
     "SettingsRoomScripts.dc.html": {
@@ -737,7 +737,7 @@
       "radius": 12,
       "title": "Using Bedrock from your shell",
       "w": 1440,
-      "x": 15200,
+      "x": 18240,
       "y": 1300
     },
     "SetupClaudeMissing.dc.html": {
@@ -764,7 +764,7 @@
       "radius": 12,
       "title": "GitHub CLI login from the keyring",
       "w": 1440,
-      "x": 10640,
+      "x": 13680,
       "y": 1300
     },
     "SetupGhSignedOut.dc.html": {
@@ -782,7 +782,7 @@
       "radius": 12,
       "title": "GitHub CLI login from GH_TOKEN",
       "w": 1440,
-      "x": 12160,
+      "x": 15200,
       "y": 1300
     },
     "SetupPortBusy.dc.html": {
@@ -800,7 +800,7 @@
       "radius": 12,
       "title": "Reading your shell timed out",
       "w": 1440,
-      "x": 13680,
+      "x": 16720,
       "y": 1300
     },
     "SidebarRoomMenu.dc.html": {
@@ -1783,6 +1783,78 @@
       "w": 1440,
       "x": 13680,
       "y": 15600
+    },
+    "SetupPermissions.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Choose how agents ask",
+      "w": 1440,
+      "x": 10640,
+      "y": 1300
+    },
+    "SetupPermissionsNoAuto.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Choose how agents ask, Auto unavailable",
+      "w": 1440,
+      "x": 12160,
+      "y": 1300
+    },
+    "ComposerModes.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission mode label in the composer",
+      "w": 1440,
+      "x": 12160,
+      "y": 13000
+    },
+    "ComposerModeMenu.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission mode menus",
+      "w": 1440,
+      "x": 13680,
+      "y": 13000
+    },
+    "WorkspacePermReason.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission request with its reason",
+      "w": 1440,
+      "x": 15200,
+      "y": 15600
+    },
+    "WorkspacePermReasonCodex.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Permission request, outside Codex’s sandbox",
+      "w": 1440,
+      "x": 16720,
+      "y": 15600
+    },
+    "ConfirmBypass.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Turn on Bypass permissions",
+      "w": 1440,
+      "x": 7600,
+      "y": 18200
+    },
+    "SettingsRoomPermissionsMode.dc.html": {
+      "h": 900,
+      "is_interactive": true,
+      "radius": 12,
+      "title": "Room · Permissions · mode menu",
+      "w": 1440,
+      "x": 28880,
+      "y": 20800
     }
   },
   "createdOnFiles": {
@@ -1986,6 +2058,8 @@
     "RoomSetup.dc.html",
     "RoomSetupTeam.dc.html",
     "RoomSetupWarnings.dc.html",
+    "SetupPermissions.dc.html",
+    "SetupPermissionsNoAuto.dc.html",
     "Home.dc.html",
     "Inbox.dc.html",
     "InboxEmpty.dc.html",
@@ -2062,6 +2136,8 @@
     "WorkspaceHunks.dc.html",
     "WorkspaceLead.dc.html",
     "WorkspaceHire.dc.html",
+    "ComposerModes.dc.html",
+    "ComposerModeMenu.dc.html",
     "WorkspacePRMenu.dc.html",
     "WorkspaceDraftPR.dc.html",
     "WorkspaceCIFailed.dc.html",
@@ -2073,6 +2149,8 @@
     "WorkspaceRunning.dc.html",
     "WorkspacePlan.dc.html",
     "WorkspacePerm.dc.html",
+    "WorkspacePermReason.dc.html",
+    "WorkspacePermReasonCodex.dc.html",
     "WorkspaceQuestion.dc.html",
     "WorkspaceQuestionSteps.dc.html",
     "WorkspaceQuestionOther.dc.html",
@@ -2096,6 +2174,7 @@
     "ConfirmRemoveRoom.dc.html",
     "ConfirmRetire.dc.html",
     "TelemetryAsk.dc.html",
+    "ConfirmBypass.dc.html",
     "Settings.dc.html",
     "SettingsAppearance.dc.html",
     "SettingsNotifications.dc.html",
@@ -2126,6 +2205,7 @@
     "SettingsRoomScripts.dc.html",
     "SettingsRoomInstructions.dc.html",
     "SettingsRoomPermissions.dc.html",
+    "SettingsRoomPermissionsMode.dc.html",
     "SettingsEnvironment.dc.html",
     "SettingsRoomEnvironment.dc.html",
     "SettingsEnvironmentAdd.dc.html",

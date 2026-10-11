@@ -1,4 +1,5 @@
 import type { Effort, Provider } from './chats'
+import type { PermissionMode } from './settings'
 
 export type AgentStatus = 'working' | 'planning' | 'walking' | 'needs' | 'idle' | 'blocked' | 'offline' | 'paused'
 
@@ -24,6 +25,14 @@ export interface AgentDef {
   /** Default effort for this agent's chats. Falls back to Settings > Models. */
   effort?: Effort
   tools?: string[]
+  /** Tools its file takes away, `disallowedTools:` as Claude Code reads it. `mcp__server` takes a whole server (KERNEL-432). */
+  disallowedTools?: string[]
+  /** The MCP servers its file lists under `mcpServers:`, by name. A server the file defines in place is listed by its name too (KERNEL-432). */
+  mcpServers?: string[]
+  /** The mode its file asks for. It can only make the chat's mode stricter, never looser (KERNEL-432). */
+  permissionMode?: AgentPermissionMode
+  /** Where the file came from. Unset reads as `project` (KERNEL-432). */
+  origin?: AgentOrigin
   skills?: string[]
   /** True for the agent that plans and hands out work. */
   lead: boolean
@@ -49,6 +58,15 @@ export interface AgentDef {
 }
 
 /**
+ * The modes an agent file's `permissionMode:` can name, as Claude Code reads them: the app's four, plus `plan` (read only)
+ * and `dontAsk` (anything not already allowed is refused).
+ */
+export type AgentPermissionMode = PermissionMode | 'plan' | 'dontAsk'
+
+/** `project`: the repo's `.claude/agents`. `personal`: `~/.claude/agents`. `plugin`: a Claude Code plugin's, read only. */
+export type AgentOrigin = 'project' | 'personal' | 'plugin'
+
+/**
  * Why Kernel flags an agent file (KERNEL-397):
  * - `no-description`: the Lead can't tell what to hand it.
  * - `cant-open-pr`: its tools line has no Bash, or no Edit or Write, so it doesn't take tasks.
@@ -57,8 +75,17 @@ export interface AgentDef {
  * - `reserved-id`: the file uses an id Kernel's own agents use, so Kernel skips it.
  * - `duplicate-id`: another file has the same `name:`, so Kernel skips this one. `detail` is the file kept.
  * - `looks-like-lead`: its description says it leads, but nothing marks it Lead.
+ *
+ * And since KERNEL-432, with the server's name in `detail` for the `mcp-` kinds:
+ * - `unreadable-file`: Kernel couldn't read or parse the file. `detail` is what went wrong.
+ * - `mcp-missing`: the file lists a server this Mac doesn't have.
+ * - `mcp-failed`: a server it lists failed to start.
+ * - `mcp-needs-auth`: a server it lists needs the user to sign in.
+ * - `mcp-off`: a server it lists is switched off in this room.
  */
-export type AgentWarningKind = 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
+export type AgentWarningKind =
+  | 'no-description' | 'cant-open-pr' | 'second-lead' | 'setting-missing' | 'reserved-id' | 'duplicate-id' | 'looks-like-lead'
+  | 'unreadable-file' | 'mcp-missing' | 'mcp-failed' | 'mcp-needs-auth' | 'mcp-off'
 
 export interface AgentWarning {
   kind: AgentWarningKind
@@ -79,6 +106,8 @@ export interface TeamConfig {
   members?: string[]
   /** Agents that never take tasks. */
   helpers?: string[]
+  /** The agents on this room's team, for a repo with more agent files than one team needs. Unset, every agent is on it (KERNEL-432). */
+  roster?: string[]
 }
 
 /** A change to `[team]`. `null` removes the key, so Kernel works it out from the files again. */

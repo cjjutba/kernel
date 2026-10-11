@@ -17,7 +17,54 @@ describe('agent tools', () => {
 
   it('lets an agent with no tools line use everything', () => {
     expect(toolPolicy(undefined)).toBeUndefined()
-    expect(toolPolicy([])).toBeUndefined()
+    expect(toolPolicy(undefined, { disallowed: [] })).toBeUndefined()
+  })
+
+  // KERNEL-451: an empty tools line is no tools in Claude Code, so the agent keeps only Kernel's tools and the session's.
+  it('leaves an agent with an empty tools line only the tools every agent keeps', () => {
+    const none = toolPolicy([])!
+    expect(none.hidden).toEqual(['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
+    for (const t of ['mcp__kernel__create_workspace', 'ExitPlanMode', 'AskUserQuestion', 'TodoWrite']) expect(none.allows(t), t).toBe(true)
+    for (const t of ['Read', 'Write', 'BashOutput', 'mcp__linear__get_issue']) expect(none.allows(t), t).toBe(false)
+    expect(canOpenPr([])).toBe(false)
+  })
+
+  it('takes away what disallowedTools names, by name, alias, rule or server, and keeps what every agent keeps', () => {
+    const p = toolPolicy(undefined, { disallowed: ['Bash(rm:*)', 'Task', 'WebFetch', 'mcp__github', 'mcp__sentry__*', 'mcp__linear__save_issue', 'ExitPlanMode', 'mcp__kernel__share_file', 'Write'], plans: '/Users/you/.claude/plans' })!
+    expect(p.hidden).toEqual(['Bash', 'WebFetch', 'Agent', 'mcp__github', 'mcp__sentry', 'mcp__linear__save_issue'])
+    for (const t of ['Bash', 'BashOutput', 'KillShell', 'Agent', 'WebFetch', 'Write', 'mcp__github__create_pull_request', 'mcp__sentry__get_issue', 'mcp__linear__save_issue']) {
+      expect(p.allows(t), t).toBe(false)
+      expect(p.disallows(t), t).toBe(true)
+    }
+    for (const t of ['Read', 'Edit', 'mcp__linear__get_issue', 'mcp__githubx__thing', 'ExitPlanMode', 'mcp__kernel__share_file']) expect(p.allows(t), t).toBe(true)
+    expect(p.disallows('ExitPlanMode')).toBe(false)
+    // Plan mode still writes its plan (D-023).
+    expect(p.allows('Write', { file_path: '/Users/you/.claude/plans/quiet-otter.md' })).toBe(true)
+    expect(canOpenPr(undefined, ['Bash'])).toBe(false)
+    expect(canOpenPr(['Read', 'Edit', 'Write', 'Bash'], ['Edit'])).toBe(true)
+    expect(canOpenPr(['Read', 'Edit', 'Bash'], ['MultiEdit'])).toBe(false)
+  })
+
+  it('takes every MCP server but Kernel\'s for mcp__* in disallowedTools, and grants none for it in a tools line', () => {
+    const off = toolPolicy(['Read', 'mcp__linear'], { disallowed: ['mcp__*'] })!
+    expect(off.hidden).not.toContain('mcp__*')
+    for (const t of ['mcp__linear__get_issue', 'mcp__github__search']) expect(off.allows(t), t).toBe(false)
+    expect(off.allows('mcp__kernel__create_workspace')).toBe(true)
+    expect(off.server('linear')).toEqual({ on: false })
+    expect(off.server('kernel')).toEqual({ on: true })
+    const star = toolPolicy(['Read', 'mcp__*'])!
+    expect(star.allows('mcp__linear__get_issue')).toBe(false)
+    expect(missingServers(['mcp__*'], [])).toEqual([])
+  })
+
+  it('says how much of each MCP server a session may reach', () => {
+    const both = toolPolicy(['Read', 'mcp__linear', 'mcp__github__search_code', 'mcp__github__get_file', 'mcp__sentry__get_issue'], { disallowed: ['mcp__linear__delete_issue', 'mcp__sentry'] })!
+    expect(['linear', 'github', 'sentry', 'figma', 'kernel'].map((s) => both.server(s))).toEqual([
+      { on: true, except: ['delete_issue'] }, { on: true, only: ['search_code', 'get_file'] }, { on: false }, { on: false }, { on: true }
+    ])
+    const unlisted = toolPolicy(undefined, { disallowed: ['Bash', 'mcp__github__merge_pull_request'] })!
+    expect(['github', 'linear'].map((s) => unlisted.server(s))).toEqual([{ on: true, except: ['merge_pull_request'] }, { on: true }])
+    expect(toolPolicy(['mcp__github__merge'], { disallowed: ['mcp__github__merge'] })!.server('github')).toEqual({ on: false })
   })
 
   it("allows what the line lists, Kernel's own tools and the session's, and nothing else", () => {
