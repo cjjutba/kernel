@@ -124,7 +124,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
     expect(t.of('note').map((n) => n.text)).toEqual(['Kernel blocks "git push origin main" in every room.'])
   })
 
-  it.each(['acceptEdits', 'bypassInWorktrees'] as const)('asks in %s before any command Codex asks about, which it would run outside its sandbox, the retry after a sandbox failure included', async (mode) => {
+  it.each(['acceptEdits', 'bypassPermissions'] as const)('asks in %s before any command Codex asks about, which it would run outside its sandbox, the retry after a sandbox failure included', async (mode) => {
     const t = track(await setup({ mode }))
     const ask = (id: string, command: string, reason?: string) => ({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: id, startedAtMs: 1, environmentId: 'local', command, ...(reason ? { reason } : {}) } })
     await t.sessions.send('chat', [{ type: 'text', text: script(ask('c1', "/bin/zsh -lc 'touch ../outside.txt'"), ask('c1', "/bin/zsh -lc 'pnpm build'", 'command failed; retry without sandbox?')) }])
@@ -139,7 +139,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
   })
 
   it('asks the user for Always ask commands and for every command in Ask, and saves "Always allow in this room"', async () => {
-    const t = track(await setup({ mode: 'ask' }))
+    const t = track(await setup({ mode: 'default' }))
     await t.sessions.send('chat', [{ type: 'text', text: script({ request: 'item/commandExecution/requestApproval', params: { kind: 'command', threadId: '$thread', turnId: '$turn', itemId: 'c1', startedAtMs: 1, environmentId: 'local', command: '/bin/zsh -lc "pnpm build"' } }) }])
     const card = await t.pending()
     expect(card).toMatchObject({ kind: 'tool', toolName: 'Bash', title: 'Run pnpm build', chatId: 'chat' })
@@ -175,7 +175,7 @@ describe('a chat on Codex (KERNEL-406)', () => {
     await files(edits)
     await edits.idle()
     expect(await edits.answers('item/fileChange/requestApproval')).toEqual([{ decision: 'accept' }])
-    const ask = track(await setup({ mode: 'ask' }))
+    const ask = track(await setup({ mode: 'default' }))
     await files(ask)
     const card = await ask.pending()
     expect(card).toMatchObject({ toolName: 'Write', title: 'Write notes.md' })
