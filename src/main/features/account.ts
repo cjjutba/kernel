@@ -5,6 +5,7 @@ import type { Handlers } from '../kernel'
 import { signOut } from '../services/account'
 import { exec } from '../services/exec'
 import { blockingLimit, NetworkMonitor } from '../services/health'
+import { planOf } from '../services/settings'
 import { Feature } from './feature'
 
 /** While a usage window is rejected, how often Kernel checks whether it lifted. Claude Code answers the usage call from a snapshot under a minute old, so this waits longer than that. */
@@ -70,10 +71,12 @@ export class Account extends Feature {
   }
 
   /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
-  async readAccount() {
-    const account = await this.k.accountReader()
+  async readAccount(): Promise<ClaudeAccount> {
+    const { subscriptionType, ...account } = await this.k.accountReader()
     if (!account.signedIn) return account
     this.account = account
+    // The defaults follow the plan, so a new plan, or the first read of it, changes what the user never set (KERNEL-225).
+    this.k.config.setPlan(planOf(subscriptionType))
     if (this.sessions.heldFor().includes('auth')) {
       clearInterval(this.authTimer); this.authTimer = undefined
       this.sessions.releaseAll('auth')

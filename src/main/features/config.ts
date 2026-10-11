@@ -1,13 +1,22 @@
 import { join } from 'node:path'
-import type { Workspace } from '@shared/types'
+import type { ClaudePlan, DeepPartial, Workspace } from '@shared/types'
 import type { Handlers } from '../kernel'
 import { kernelHooksPresent } from '../services/hooksInstaller'
-import { applySettingsPatch, configuredRemote, loadRepoSettings, remoteOf, saveAppSettings, saveRepoSettings, type AppSettings, type RepoSettings } from '../services/settings'
+import { applySettingsPatch, configuredRemote, DEFAULT_SETTINGS, loadRepoSettings, PLAN_KEYS, remoteOf, saveAppSettings, saveRepoSettings, withPlan, type AppSettings, type RepoSettings } from '../services/settings'
 import { discoverMcp } from '../services/integrations'
 import { discoverSkills } from '../services/files'
 import { resolveFilesToCopy } from '../services/filesToCopy'
 import { listBranches } from '../services/worktrees'
+import { deepMerge } from '../services/settings'
 import { Feature } from './feature'
+
+/** The values `patch` names, as `after` holds them. */
+function picked(after: any, patch: any): any {
+  if (patch === null || typeof patch !== 'object' || Array.isArray(patch)) return after
+  return Object.fromEntries(Object.keys(patch).map((k) => [k, picked(after?.[k], patch[k])]))
+}
+
+const dotted = (o: unknown, path: string): unknown => path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
 
 /** The app's settings, each room's settings file, and the git remote they name (KERNEL-325). */
 export class Config extends Feature {
@@ -17,20 +26,47 @@ export class Config extends Feature {
   get settingsFile() { return join(this.o.dataDir, 'settings.json') }
 
   /**
-   * Settings > any app page. Saves to settings.json and applies at once: running sessions read the permission lists on their
-   * next tool call, the mode moves to them now, a higher limit on agents working at once starts what was waiting, and a new
-   * approval timeout is read per request and rewritten into the installed hooks.
+   * What the user chose, which is all settings.json holds: the keys they changed, or that an older file carried and still
+   * counts as a choice. `k.settings` is these over the plan's defaults over the app's (KERNEL-225).
+   */
+  saved: DeepPartial<AppSettings> = {}
+  /** The Claude plan the defaults follow, as the account last said. Kept under meta `plan`, so a start knows it before the account is read. */
+  plan: ClaudePlan = 'unknown'
+
+  /**
+   * Settings > any app page. Saves what the page changed to settings.json and applies at once: running sessions read the
+   * permission lists on their next tool call, the mode moves to them now, a higher limit on agents working at once starts what
+   * was waiting, and a new approval timeout is read per request and rewritten into the installed hooks. `plan` and
+   * `planDefaulted` are Kernel's to say, so a patch can't set them.
    */
   async setSettings(patch: Parameters<typeof applySettingsPatch>[1]): Promise<AppSettings> {
     const before = this.settings
-    this.k.settings = applySettingsPatch(before, patch)
-    await saveAppSettings(this.settingsFile, this.settings)
+    const { plan: _plan, planDefaulted: _from, ...chosen } = patch
+    const after = applySettingsPatch(before, chosen)
+    // What is saved is the patch's keys with the values the engine kept, such as a limit pulled back into its range.
+    this.saved = deepMerge(this.saved, picked(after, chosen))
+    this.k.settings = { ...after, planDefaulted: PLAN_KEYS.filter((k) => dotted(this.saved, k) === undefined) }
+    await saveAppSettings(this.settingsFile, this.saved)
     this.sessions.applySettings(before)
     this.o.onSettings?.(this.settings)
     if (before.privacy?.telemetry !== this.settings.privacy.telemetry) await this.k.telemetry.settingsChanged()
     // The server reads the timeout per request. Only the copy in the installed hooks needs rewriting.
     if (before.permissions.approvalTimeoutSec !== this.settings.permissions.approvalTimeoutSec && (await kernelHooksPresent(this.k.hooks.claudeSettings).catch(() => false))) await this.k.hooks.writeHooks(this.settings.hookPort)
     return this.settings
+  }
+
+  /**
+   * The account's plan changed, or was read for the first time: the settings the user never set follow it, and what waited on a
+   * limit or a model setting is released. Nothing is written to settings.json, since none of this is a choice (KERNEL-225).
+   */
+  setPlan(plan: ClaudePlan) {
+    if (plan === this.plan) return
+    this.plan = plan
+    this.store.saveMeta('plan', plan)
+    const before = this.settings
+    this.k.settings = withPlan(before, DEFAULT_SETTINGS(this.home), this.saved, plan)
+    this.sessions.applySettings(before)
+    this.o.onSettings?.(this.settings)
   }
 
   /**

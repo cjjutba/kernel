@@ -3,8 +3,11 @@ import { exec } from './exec'
 import { ghUser } from './github'
 import { planName } from './preflight'
 
+/** The account, and the plan type as `claude auth status` says it, which the defaults follow (KERNEL-225). The window never sees the raw type. */
+export type ReadAccount = ClaudeAccount & { subscriptionType?: string }
+
 /** Reads the Claude login the CLI holds. Never throws: a missing CLI or an older one reads as signed out. */
-export async function readAccount(): Promise<ClaudeAccount> {
+export async function readAccount(): Promise<ReadAccount> {
   const a = await exec('claude', ['auth', 'status'], { timeoutMs: 15000 })
   let status: { loggedIn?: boolean; subscriptionType?: unknown; email?: unknown } = {}
   try { status = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
@@ -13,7 +16,7 @@ export async function readAccount(): Promise<ClaudeAccount> {
   const login = (await ghUser().catch(() => null)) ?? email?.split('@')[0]
   const git = await exec('git', ['config', '--global', 'user.name'], { timeoutMs: 5000 })
   const name = git.code === 0 && git.stdout.trim() ? git.stdout.trim() : login
-  return { signedIn: true, name, login, email, plan: planName(status.subscriptionType) }
+  return { signedIn: true, name, login, email, plan: planName(status.subscriptionType), ...(typeof status.subscriptionType === 'string' ? { subscriptionType: status.subscriptionType } : {}) }
 }
 
 /**
@@ -25,7 +28,7 @@ export async function claudeSignedIn(): Promise<boolean> {
   try { return !!JSON.parse(a.stdout).loggedIn } catch { return false }
 }
 
-export async function signOut(): Promise<ClaudeAccount> {
+export async function signOut(): Promise<ReadAccount> {
   await exec('claude', ['auth', 'logout'], { timeoutMs: 15000 })
   return readAccount()
 }

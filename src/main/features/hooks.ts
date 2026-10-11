@@ -7,7 +7,6 @@ import { startHookServer } from '../services/hookServer'
 import { hookToken } from '../services/hookToken'
 import { hookStatus, installHooks, KERNEL_HOOK_EVENTS, kernelHooksPresent, refreshHooks, uninstallHooks } from '../services/hooksInstaller'
 import { nextFreePort, portBusy, runPreflight } from '../services/preflight'
-import { saveAppSettings } from '../services/settings'
 import { Feature } from './feature'
 
 /** How a hook from an outside session moves its agent on the floor. */
@@ -72,10 +71,8 @@ export class Hooks extends Feature {
     await new Promise<void>((r) => (this.hookServer?.listening ? this.hookServer.close(() => r()) : r()))
     this.hookServer = undefined
     if (!(await this.listenHooks(port))) throw new Error(`Port ${port} is in use. Pick another port and try again.`)
-    if (port !== this.settings.hookPort) {
-      this.k.settings = { ...this.settings, hookPort: port }
-      await saveAppSettings(this.k.config.settingsFile, this.settings)
-    }
+    // Saved as a choice, like any other change in Settings (KERNEL-225).
+    if (port !== this.settings.hookPort) await this.k.config.setSettings({ hookPort: port })
     if (wasInstalled) await this.writeHooks(port)
     return this.pushHooks()
   }

@@ -4,7 +4,7 @@ import { appendFile, lstat, readFile, realpath, rm, writeFile, mkdir } from 'nod
 import { join, dirname, relative, resolve, sep } from 'node:path'
 import { exec } from './exec'
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
-import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
+import { isRunName, RUN_SCRIPT_NAME, type AppSettings, type ClaudePlan, type DeepPartial, type PrInstructions, type RoomSettings, type RoomSettingsPatch, type ScriptTrust, type TeamConfig, type TeamPatch } from '@shared/types'
 import { effortMemory } from '@shared/effort'
 import { terminalSettingsOf } from './terminalPresets'
 
@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   usage: { warnBeforeWeekly: true, pauseNearLimit: true },
   workspace: { mode: 'worktree', baseRef: DEFAULT_BASE_REF, remote: 'origin', branchPattern: '{type}/{task}-{slug}', deleteBranchOnArchive: false, archiveOnMerge: true, setUpstream: true, baselineCurrentBranch: true, oneCurrentBranchPerRoom: true, leadBranchPattern: '{lead}/{slug}', leadWaitForSetup: true, archiveChatWorkspaces: true },
   scripts: { setupOnCreate: true, runAfterSetup: false, archiveOnArchive: true, timeoutMinutes: 15 },
-  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-opus-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: true, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
+  models: { lead: 'claude-opus-5-5', engineers: 'claude-sonnet-5-5', qa: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'high', leadPlanMode: true, agentLimit: 0, agentTeams: false, leadUpdates: true, workspacePlanMode: false, effortByModel: {} },
   team: { addNewAgents: true, showNames: true, defaultTemplate: 'starter' },
   permissions: { mode: 'acceptEdits', network: true, alwaysAsk: ['rm -rf', 'git push --force', 'drizzle-kit push', 'pnpm db:reset'], neverAllow: ['git push origin main'], protectedBranches: ['main', 'dev'], approvalTimeoutSec: 300 },
   pr: {
@@ -42,37 +42,130 @@ export const DEFAULT_SETTINGS = (home: string): AppSettings => ({
   privacy: { telemetry: 'ask' }
 })
 
-export async function loadAppSettings(file: string, home: string): Promise<AppSettings> {
-  const defaults = DEFAULT_SETTINGS(home)
-  try {
-    const saved = JSON.parse(await readFile(file, 'utf8'))
-    const s = deepMerge(defaults, saved)
-    // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
-    // The check reads the file, since the merge above always fills openTo. Dropping homeView makes this run once.
-    const old = (s.general as { homeView?: string }).homeView
-    if (old !== undefined) {
-      if (saved?.general?.openTo === undefined) s.general.openTo = old === 'inbox' ? 'inbox' : 'lastPlace'
-      delete (s.general as { homeView?: string }).homeView
-    }
-    // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
-    delete (s.models as { maxConcurrent?: number }).maxConcurrent
-    s.models.effortByModel = effortMemory(s.models.effortByModel)
-    // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
-    if (s.workspace.branchPattern === 'feat/{slug}') s.workspace.branchPattern = defaults.workspace.branchPattern
-    // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
-    const exp = s.experimental as { bigTerminal?: unknown; bigTerminalWorktreeOnly?: unknown }
-    if (typeof exp.bigTerminal === 'boolean' && saved?.terminal?.enabled === undefined) s.terminal.enabled = exp.bigTerminal
-    if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && saved?.terminal?.onlyInWorktrees === undefined) s.terminal.onlyInWorktrees = exp.bigTerminalWorktreeOnly
-    delete exp.bigTerminal
-    delete exp.bigTerminalWorktreeOnly
-    s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
-    return s
-  } catch { return defaults }
+/** The five settings a Claude plan sets a default for. One the user never set follows the plan (KERNEL-225). */
+export const PLAN_KEYS = ['models.lead', 'models.reviewer', 'models.effort', 'models.agentLimit', 'pr.autoReview'] as const
+
+/**
+ * What every launch saved for the plan keys, and for the Address review text, before KERNEL-225. A saved value equal to it was
+ * never a choice, so an existing file's value counts as unset and the plan's default, or the new text, applies. A user who chose Opus for the reviewer back then can't be told
+ * from the default Kernel pinned, and moves to the plan's default too (D-094).
+ */
+const SAVED_BEFORE: Record<string, unknown> = {
+  'models.lead': 'claude-opus-5-5', 'models.reviewer': 'claude-opus-5-5', 'models.effort': 'high', 'models.agentLimit': 0, 'pr.autoReview': true,
+  // The text of Address review before it told the agent to act only on the comments listed (KERNEL-222), likewise saved on every launch.
+  'pr.addressReviewInstructions': '# Address review\n1. Make each requested change below. Ask if one is unclear.\n2. Run the tests and push.\n3. Reply to each comment with what changed.'
 }
 
-export async function saveAppSettings(file: string, s: AppSettings) {
+/** The version a settings.json written by KERNEL-225 or later carries. Older files saved every key, and are read as that. */
+const SAVED_VERSION = 2
+
+/** `claude auth status` says "pro", "max", "team" or "enterprise". Anything else, an API key login included, is `unknown`. */
+export function planOf(subscriptionType: unknown): ClaudePlan {
+  const t = typeof subscriptionType === 'string' ? subscriptionType.trim().toLowerCase() : ''
+  return t === 'pro' || t === 'team' || t === 'enterprise' ? t : t.startsWith('max') ? 'max' : 'unknown'
+}
+
+/**
+ * What the plan changes about the app's defaults. Pro has a much lower 5-hour and weekly limit, so it gets Sonnet for the Lead
+ * and the reviewer, medium effort, two teammates at a time and no automatic review. Every other plan, and one Kernel can't read,
+ * keeps the defaults but for a Sonnet reviewer (KERNEL-225).
+ */
+export function planDefaults(plan: ClaudePlan | undefined): DeepPartial<AppSettings> {
+  if (plan === 'pro') return { models: { lead: 'claude-sonnet-5-5', reviewer: 'claude-sonnet-5-5', effort: 'medium', agentLimit: 2 }, pr: { autoReview: false } }
+  return { models: { reviewer: 'claude-sonnet-5-5' } }
+}
+
+const at = (o: unknown, dotted: string): unknown => dotted.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o)
+
+/** The settings in force: the app's defaults, then the plan's, then what the user saved. `plan` and `planDefaulted` say where each came from. */
+export function resolveSettings(defaults: AppSettings, saved: DeepPartial<AppSettings>, plan: ClaudePlan): AppSettings {
+  const s = deepMerge(deepMerge(defaults, planDefaults(plan)), saved)
+  s.models.effortByModel = effortMemory(s.models.effortByModel)
+  s.terminal = terminalSettingsOf(s.terminal, defaults.terminal)
+  return { ...s, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
+}
+
+/**
+ * The same settings after the plan changed: the keys the user never set take the new plan's values, and nothing else moves
+ * (a value the app or a test put there stays), so `before` is not resolved again from the file.
+ */
+export function withPlan(before: AppSettings, defaults: AppSettings, saved: DeepPartial<AppSettings>, plan: ClaudePlan): AppSettings {
+  const base = deepMerge(defaults, planDefaults(plan))
+  const next = structuredClone(before)
+  for (const key of PLAN_KEYS) {
+    if (at(saved, key) !== undefined) continue
+    const [group, name] = key.split('.') as ['models' | 'pr', string]
+    ;(next[group] as Record<string, unknown>)[name] = at(base, key)
+  }
+  return { ...next, plan, planDefaulted: PLAN_KEYS.filter((k) => at(saved, k) === undefined) }
+}
+
+/** Without the keys whose value is the default, and without the objects that leaves empty. */
+function sparse(value: any, defaults: any, path = ''): any {
+  if (Array.isArray(value) || value === null || typeof value !== 'object') {
+    const unset = JSON.stringify(value) === JSON.stringify(defaults) || (path in SAVED_BEFORE && JSON.stringify(value) === JSON.stringify(SAVED_BEFORE[path]))
+    return unset ? undefined : value
+  }
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(value)) {
+    const kept = sparse(v, defaults?.[k], path ? `${path}.${k}` : k)
+    if (kept !== undefined) out[k] = kept
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+/**
+ * Reads settings.json into what the user chose (`saved`) and the settings in force (`resolved`, which readers use). A file
+ * from before KERNEL-225 saved every key on every launch, so each key equal to its default, and each of the five plan keys
+ * and the Address review text equal to what they used to default to, counts as unset; a file written since keeps what it has. `plan` is the account's, as
+ * Kernel last read it.
+ */
+export async function loadAppSettings(file: string, home: string, plan: ClaudePlan = 'unknown'): Promise<{ saved: DeepPartial<AppSettings>; resolved: AppSettings }> {
+  const defaults = DEFAULT_SETTINGS(home)
+  let raw: any
+  try { raw = JSON.parse(await readFile(file, 'utf8')) } catch { raw = undefined }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { saved: {}, resolved: resolveSettings(defaults, {}, plan) }
+  const { version, plan: _plan, planDefaulted: _from, ...rest } = raw
+  const s = structuredClone(rest) as any
+  const group = (name: string) => (s[name] && typeof s[name] === 'object' && !Array.isArray(s[name]) ? s[name] : undefined)
+  // openTo replaced homeView. Every launch saved homeView: 'home', so nobody really chose it: only Inbox carries over, the rest open where you left off (D-094).
+  // Dropping homeView makes this run once.
+  const general = group('general')
+  if (general && general.homeView !== undefined) {
+    if (general.openTo === undefined) general.openTo = general.homeView === 'inbox' ? 'inbox' : 'lastPlace'
+    delete general.homeView
+  }
+  // Every launch saved the old limit's default of 4, so nobody really chose it. agentLimit starts at no limit (D-094).
+  const models = group('models')
+  if (models) {
+    delete models.maxConcurrent
+    if ('effortByModel' in models) models.effortByModel = effortMemory(models.effortByModel)
+  }
+  // Every launch saved the old default pattern too, so it moves to the new one. A pattern someone typed stays (KERNEL-275).
+  const workspace = group('workspace')
+  if (workspace?.branchPattern === 'feat/{slug}') delete workspace.branchPattern
+  // The big terminal's switches moved out of Experimental. A value the terminal table already has wins (KERNEL-248).
+  const exp = group('experimental')
+  if (exp) {
+    if (typeof exp.bigTerminal === 'boolean' && group('terminal')?.enabled === undefined) s.terminal = { ...group('terminal'), enabled: exp.bigTerminal }
+    if (typeof exp.bigTerminalWorktreeOnly === 'boolean' && group('terminal')?.onlyInWorktrees === undefined) s.terminal = { ...group('terminal'), onlyInWorktrees: exp.bigTerminalWorktreeOnly }
+    delete exp.bigTerminal
+    delete exp.bigTerminalWorktreeOnly
+  }
+  // Checked as a whole, but only the keys the file has stay in `saved`, so a saved preset doesn't pin every other terminal default.
+  const own = group('terminal')
+  if (own) {
+    const checked = terminalSettingsOf(deepMerge(defaults.terminal, own), defaults.terminal) as unknown as Record<string, unknown>
+    s.terminal = Object.fromEntries(Object.keys(own).map((k) => [k, checked[k]]))
+  }
+  const saved: DeepPartial<AppSettings> = (version === SAVED_VERSION ? s : sparse(s, defaults)) ?? {}
+  return { saved, resolved: resolveSettings(defaults, saved, plan) }
+}
+
+/** Writes what the user chose, and nothing else, so a default that changes later still reaches everyone who never set it (KERNEL-225). */
+export async function saveAppSettings(file: string, saved: DeepPartial<AppSettings>) {
   await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(s, null, 2))
+  await writeFile(file, JSON.stringify({ version: SAVED_VERSION, ...saved }, null, 2))
 }
 
 /** Merge a patch from Settings and keep the numbers in a range the engine can use. */
