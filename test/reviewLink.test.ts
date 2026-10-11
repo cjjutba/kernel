@@ -61,14 +61,14 @@ describe('the review link (KERNEL-130)', () => {
     expect(deps.rulesFor(author, agent('kai'))).toBe(TEAMMATE_RULE)
   })
 
-  it('adds share_file to the reviewer and the author only while sharing is on (KERNEL-302)', async () => {
+  it('adds share_file to the reviewer and the author while sharing is on, as it is by default (KERNEL-302, KERNEL-308)', async () => {
     const { k, review, author, agent, deps } = await setup()
     const names = (ws: Workspace, id: string) => k.toolsFor(ws, agent(id), k.store.chats(ws.id)[0]).map((t) => t.name)
-    expect(names(review, 'theo')).toEqual(['submit_review'])
-    expect(names(author, 'kai')).toEqual(['wait_for_merge'])
-    await k.handlers()['settings.set']({ patch: { experimental: { sharing: true } } })
     expect(names(review, 'theo')).toEqual(['submit_review', 'share_file'])
     expect(names(author, 'kai')).toEqual(['wait_for_merge', 'share_file'])
+    await k.handlers()['settings.set']({ patch: { experimental: { sharing: false } } })
+    expect(names(review, 'theo')).toEqual(['submit_review'])
+    expect(names(author, 'kai')).toEqual(['wait_for_merge'])
     expect(deps.mcpFor(review, agent('theo'), k.store.chats(review.id)[0])).toHaveProperty('kernel')
     expect(deps.mcpFor(author, agent('kai'), k.store.chats(author.id)[0])).toHaveProperty('kernel')
   })

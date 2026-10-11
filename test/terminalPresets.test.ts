@@ -177,7 +177,8 @@ describe('terminal settings', () => {
   it('moves the two experimental switches of an existing settings file into terminal', async () => {
     const s = await loadAppSettings(await file({ experimental: { bigTerminal: false, bigTerminalWorktreeOnly: false, walking: false, floor3d: true, voice: true } }), '/home')
     expect(s.terminal).toEqual({ enabled: false, preset: 'claude', onlyInWorktrees: false, custom: [] })
-    expect(s.experimental).toEqual({ walking: false, floor3d: true, voice: true })
+    // sharing was never in a saved file, so it takes the default (KERNEL-308).
+    expect(s.experimental).toEqual({ walking: false, floor3d: true, voice: true, sharing: true })
   })
 
   it('keeps a terminal value already saved over the old switch, and defaults a file without either', async () => {
