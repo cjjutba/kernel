@@ -8,8 +8,11 @@ export interface PrHeaderView {
   link: boolean
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
   state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
-  /** The main button. `busy` shows a spinner and is disabled. */
-  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction }
+  /**
+   * The main button. `busy` shows a spinner and is disabled. `note` is muted text in its place: a merge this header didn't
+   * start, since only the button that was pressed spins (KERNEL-411).
+   */
+  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy' | 'note'; action?: PrAction }
   /** Create PR's caret menu (squared right edge on the button). */
   caret: boolean
   merged: boolean
@@ -46,7 +49,7 @@ export function headerView(state: PrState, changed = true, blocked = false): PrH
     case 'checks': return { ...base, state: { label: 'Open', tone: 'idle', glyph: 'pr' }, button: { label: 'Checks running', kind: 'busy' } }
     case 'conflict': return { ...base, state: conflicts, button: { label: 'Resolve conflicts', kind: 'strong', action: 'resolve' } }
     case 'resolving': return { ...base, state: conflicts, button: { label: 'Resolving', kind: 'busy' } }
-    case 'merging': return { ...base, state: mergeable, button: { label: 'Merging', kind: 'busy' } }
+    case 'merging': return { ...base, state: mergeable, button: { label: 'Merging', kind: 'note' } }
     case 'merged': return { ...base, state: { label: 'Merged', tone: 'merged', glyph: 'merged' }, merged: true }
     case 'draft': return { ...base, state: { label: 'Draft', tone: 'idle', glyph: 'prDraft' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
     case 'cifail': return { ...base, state: { label: 'Checks failed', tone: 'fail', glyph: 'pr' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
@@ -122,4 +125,15 @@ export function afterArchive(ws: Workspace, reviewed: Workspace | undefined, age
   if (!done) return { to: 'history' }
   const after = reviewed.prNumber ? ` after PR #${reviewed.prNumber} ${reviewed.prState === 'merged' ? 'merged' : 'was closed'}` : ''
   return { to: 'room', toast: { title: `Archived ${whose} review${after}`, sub: 'Restore it from History.' } }
+}
+
+/**
+ * A PR's title as the Team update and the PRs tab both show it (KERNEL-411): the workspace's own title, else the PR's without
+ * a Conventional Commits prefix ("feat(workspace): ") or the issue key it ends on (" (KERNEL-395)"), which the row shows apart.
+ */
+export function prDisplayTitle(ws: Pick<Workspace, 'title' | 'prTitle' | 'name'>): string {
+  if (ws.title) return ws.title
+  if (!ws.prTitle) return ws.name
+  const plain = ws.prTitle.replace(/^[a-z]+(\([^)]*\))?!?:\s+/i, '').replace(/\s+\([A-Z][A-Z0-9]+-\d+\)$/, '').trim()
+  return plain ? plain.charAt(0).toUpperCase() + plain.slice(1) : ws.prTitle
 }

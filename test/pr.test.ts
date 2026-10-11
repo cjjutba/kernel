@@ -11,6 +11,7 @@ import { checkOf, infoOf, parseReviews, prNote, prQuery, prStateOf, resolveFile,
 import { afterArchive, headerView, instructionOf, prToast, reviewLines } from '../src/renderer/src/screens/workspace/pr/model'
 import { checkGroups, checkRow } from '../src/renderer/src/screens/workspace/Panels'
 import { Kernel } from '../src/main/kernel'
+import { Prs } from '../src/main/features/prs'
 import { DEFAULT_SETTINGS, prInstructions } from '../src/main/services/settings'
 import { LEAD_REVIEW_RULE, LEAD_RULE } from '../src/main/services/handoff'
 import { mergeBlock, mergeableState } from '@shared/merge'
@@ -418,30 +419,80 @@ describe('PR flow in the kernel (gh and the session stubbed)', () => {
     await k.stop()
   })
 
-  it('reads GitHub before every merge, and refuses a PR that last read ready while GitHub checks it for conflicts (KERNEL-376)', async () => {
+  it('reads GitHub before every merge, and gives up on a PR GitHub is still checking for conflicts after the wait (KERNEL-376, KERNEL-411)', async () => {
     const { k, ws, gh } = await setup()
-    gh.pr = info({ state: 'ready' })
-    await k.prs.refreshPr(ws.id)
-    // Another PR merged since the last poll, so GitHub is working out again whether this one conflicts.
-    gh.pr = info({ state: 'checks', conflictsUnknown: true })
-    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
-    expect(gh.merged).toEqual([])
-    expect(k.store.workspace(ws.id)?.prState).toBe('ready')
-    // Once GitHub settles on mergeable, the merge goes ahead.
-    gh.pr = info({ state: 'ready' })
-    expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
-    expect(gh.merged).toEqual(['squash'])
-    await k.stop()
+    const before = Prs.conflictWait
+    Prs.conflictWait = { every: 10, cap: 40 }
+    try {
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      // Another PR merged since the last poll, so GitHub is working out again whether this one conflicts, and never settles.
+      gh.pr = info({ state: 'checks', conflictsUnknown: true })
+      await expect(k.prs.mergePr(ws.id)).rejects.toThrow('GitHub is still checking #42 for conflicts. Try again in a moment.')
+      expect(gh.merged).toEqual([])
+      expect(k.store.workspace(ws.id)?.prState).toBe('ready')
+      // Once GitHub settles on mergeable, the merge goes ahead.
+      gh.pr = info({ state: 'ready' })
+      expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+      expect(gh.merged).toEqual(['squash'])
+    } finally {
+      Prs.conflictWait = before
+      await k.stop()
+    }
   })
 
-  it('reads GitHub before a merge that neither green checks nor a review needs it for (KERNEL-376)', async () => {
+  it('waits out GitHub working out conflicts after another merge, then merges (KERNEL-411)', async () => {
     const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
-    gh.pr = info({ state: 'ready' })
-    await k.prs.refreshPr(ws.id)
-    gh.pr = info({ state: 'checks', conflictsUnknown: true })
-    await expect(k.prs.mergePr(ws.id)).rejects.toThrow('This pull request is not ready to merge.')
-    expect(gh.merged).toEqual([])
-    await k.stop()
+    const before = Prs.conflictWait
+    Prs.conflictWait = { every: 10, cap: 1000 }
+    try {
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      gh.pr = info({ state: 'checks', conflictsUnknown: true })
+      // GitHub answers while the merge waits: mergeable, so it merges instead of refusing.
+      setTimeout(() => { gh.pr = info({ state: 'ready' }) }, 30)
+      expect(await k.prs.mergePr(ws.id)).toMatchObject({ prState: 'merged' })
+      expect(gh.merged).toEqual(['squash'])
+    } finally {
+      Prs.conflictWait = before
+      await k.stop()
+    }
+  })
+
+  it('merges the PRs of a room in order with Merge all, says each step, and stops at the first that cannot merge (KERNEL-411)', async () => {
+    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+    const queues: PushEvent[] = []
+    const onPush = (e: PushEvent) => { if (e.type === 'pr.queue') queues.push(e) }
+    bus.on('push', onPush)
+    try {
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      const result = await k.prs.mergeAll(ws.roomId, [ws.id, 'gone'])
+      expect(result).toEqual({ merged: [42], stopped: { workspaceId: 'gone', reason: 'It is not an open workspace in this room.' } })
+      expect(gh.merged).toEqual(['squash'])
+      // One push per step, then one that ends the run.
+      expect(queues).toEqual([
+        { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: ws.id } },
+        { type: 'pr.queue', roomId: ws.roomId, queue: { ids: [ws.id, 'gone'], current: 'gone' } },
+        { type: 'pr.queue', roomId: ws.roomId, result }
+      ])
+    } finally {
+      bus.off('push', onPush)
+      await k.stop()
+    }
+  })
+
+  it('refuses a second Merge all in a room while one runs (KERNEL-411)', async () => {
+    const { k, ws, gh } = await setup({ pr: { requireGreen: false, requireReviewer: false } })
+    try {
+      gh.pr = info({ state: 'ready' })
+      await k.prs.refreshPr(ws.id)
+      const first = k.prs.mergeAll(ws.roomId, [ws.id])
+      await expect(k.prs.mergeAll(ws.roomId, [ws.id])).rejects.toThrow('Merge all is already running in this room.')
+      expect(await first).toEqual({ merged: [42] })
+    } finally {
+      await k.stop()
+    }
   })
 
   it('drops the quick read on stop (KERNEL-283)', async () => {

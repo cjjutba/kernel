@@ -1,30 +1,71 @@
-import { go } from '../../../store'
-import { Icon } from '../../../ui'
+import type { ReactNode } from 'react'
+import type { MergeAllResult } from '@shared/types'
+import { call, cleanError } from '../../../api'
+import { actions, go, useStore } from '../../../store'
+import { Button, Icon, useBusy } from '../../../ui'
 import { MergeButton } from './MergeButton'
+import { failTitle, prDisplayTitle } from './model'
 import { useLeadPrs, type LeadPr } from './leadPrList'
 import './pr.css'
 
 /**
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
- * Ready ones come first with Merge, the rest follow muted with what they wait on. Each row opens its workspace.
+ * Ready ones come first with Merge, the rest follow muted with what they wait on. Each row opens its workspace. Two or more
+ * ready PRs get Merge all, which merges them in order and stops at the first that can't merge (KERNEL-411).
  */
 export function LeadPrs({ roomId }: { roomId: string }) {
   const rows = useLeadPrs(roomId)
-  if (!rows.length) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
+  const stop = useStore((s) => s.mergeStops[roomId])
+  const stopped = stop ? stoppedText(stop) : null
+  if (!rows.length && !stopped) return <div className="panel-empty"><span className="ink2" style={{ fontWeight: 500 }}>Nothing to merge</span><span>PRs your agents open appear here.</span></div>
   const ready = rows.filter((r) => r.ready)
   const rest = rows.filter((r) => !r.ready)
   return (
     <div className="panel-scroll" aria-label="Pull requests">
-      {ready.length > 0 && <Section title="Ready to merge" rows={ready} />}
+      {stopped && <p className="lp-notice" role="status">{stopped}</p>}
+      {ready.length > 0 && <Section title="Ready to merge" rows={ready} action={<MergeAll roomId={roomId} rows={ready} />} />}
       {rest.length > 0 && <Section title="Still open" rows={rest} />}
     </div>
   )
 }
 
-function Section({ title, rows }: { title: string; rows: LeadPr[] }) {
+/**
+ * Where a run stopped and why, for one that stopped: "Merged" with the PR numbers it merged, "Stopped at" the one it couldn't,
+ * then the reason. Nothing for a run that merged everything. (PR numbers stay out of this comment: the theme test reads "#" and
+ * three digits as a color.)
+ */
+export function stoppedText(r: MergeAllResult): string | null {
+  if (!r.stopped) return null
+  const merged = r.merged.length ? `Merged ${r.merged.map((n) => `#${n}`).join(', ')}. ` : ''
+  const at = r.stopped.prNumber ? `#${r.stopped.prNumber}` : 'the next pull request'
+  return `${merged}Stopped at ${at}. ${r.stopped.reason}`
+}
+
+/**
+ * Merge all on the Ready to merge heading, with two or more PRs that can merge. While it runs, the button says which PR of how
+ * many is merging, from the run's `pr.queue` pushes, and the rows say Merging and Next without spinning. Where a run stopped
+ * comes back on the last push, so the tab shows it from the store.
+ */
+function MergeAll({ roomId, rows }: { roomId: string; rows: LeadPr[] }) {
+  const queue = useStore((s) => s.mergeQueues[roomId])
+  const [busy, run] = useBusy()
+  const ids = rows.filter((r) => r.ws.prState !== 'merging').map((r) => r.ws.id)
+  if (!queue && !busy && ids.length < 2) return null
+  const label = queue ? `Merging ${queue.ids.indexOf(queue.current ?? '') + 1} of ${queue.ids.length}` : 'Merging'
+  const start = () => void run('all', async () => {
+    try { await call('pr.mergeAll', { roomId, workspaceIds: ids }) } catch (e) { actions.ui.toast({ title: failTitle.merge, sub: cleanError(e) }) }
+  })
+  return (
+    <span className="pr-tone lp-all" data-tone="ready">
+      <Button className="pr-soft tucard-merge" busy={!!busy || !!queue} busyLabel={label} onClick={start}>Merge all</Button>
+    </span>
+  )
+}
+
+function Section({ title, rows, action }: { title: string; rows: LeadPr[]; action?: ReactNode }) {
   return (
     <section>
-      <div className="lp-sec"><h3>{title}</h3><span className="mono">{rows.length}</span></div>
+      <div className="lp-sec"><h3>{title}</h3><span className="mono">{rows.length}</span>{action}</div>
       <ul className="lp-list">{rows.map((r) => <Row key={r.ws.id} row={r} />)}</ul>
     </section>
   )
@@ -48,7 +89,7 @@ function Row({ row }: { row: LeadPr }) {
           </button>
         </span>
       </div>
-      <div className="lp-title ellipsis">{ws.prTitle ?? ws.title ?? ws.name}</div>
+      <div className="lp-title ellipsis">{prDisplayTitle(ws)}</div>
       <div className="lp-l3">
         <span className="lp-review" data-tone={row.review.tone}>{row.review.text}</span>
         {stat && <span className="mono lp-stat"><span className="add">+{stat.added}</span> <span className="del">-{stat.removed}</span></span>}

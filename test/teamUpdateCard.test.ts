@@ -82,6 +82,18 @@ describe('the Team update card', () => {
       events: [{ kind: 'pr.opened', text: 'Opened PR #108', actionable: false }, { kind: 'pr.ready', text: 'Passed checks, no conflicts', actionable: true }] }] }
   }
 
+  it('shows the issue key from the workspace, and the reply with inline code as chips (KERNEL-411)', async () => {
+    const { TeamUpdateView } = await load()
+    const real: ChatItem = { ...item, update: { rows: [{ ...item.update!.rows[0], task: 'Home and Inbox count a workspace waiting for script trust', reply: 'Merged `origin/main` and `pnpm test:changed` passes.' }] } }
+    const workspaceOf = (id: string) => (id === 'w1' ? { id: 'w1', status: 'ready', source: { kind: 'issue', id: 'KERNEL-395', title: 'Home and Inbox' } } : undefined)
+    const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item: real, useNewest: () => false, workspaceOf }))
+    // The task has no key, so it comes from the issue the workspace started on, as the PRs tab reads it.
+    expect(html).toContain('<span class="tucard-key">KERNEL-395</span>')
+    expect(html).toContain('<code class="md-code">origin/main</code>')
+    expect(html).toContain('<code class="md-code">pnpm test:changed</code>')
+    expect(html).not.toContain('`')
+  })
+
   it('draws a card from Kernel with the teammate, its events, the reply and Copy, and no Edit', async () => {
     const { TeamUpdateView } = await load()
     const html = renderToStaticMarkup(React.createElement(TeamUpdateView, { item, useNewest: () => false, workspaceOf: (id) => (id === 'w1' ? { id: 'w1', status: 'ready' } : undefined) }))
@@ -179,8 +191,15 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(mergeView(ws('w1'), pr(), rules)).toEqual({ kind: 'ready' })
     expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules)).toEqual({ kind: 'merging' })
     expect(mergeView(ws('w1', { prState: 'merged' }), pr(), rules)).toEqual({ kind: 'merged' })
-    // A PR with failed checks, or none yet, has nothing to say: the row's events already do.
-    expect(mergeView(ws('w1', { prState: 'cifail' }), pr(), rules)).toEqual({ kind: 'none' })
+    // An open PR that can't merge yet says where it stands, in the PRs tab's words (KERNEL-411). One with no PR yet says nothing.
+    expect(mergeView(ws('w1', { prState: 'cifail', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks failed' })
+    expect(mergeView(ws('w1', { prState: 'checks', prNumber: 7 }), pr(), rules)).toEqual({ kind: 'state', label: 'Checks running' })
+    expect(mergeView(ws('w1', { prState: 'none' }), pr(), rules)).toEqual({ kind: 'none' })
+    // In a Merge all run, a PR whose turn is still to come reads Next; the one merging now reads Merging.
+    const queue = { ids: ['w0', 'w1'], current: 'w0' }
+    expect(mergeView(ws('w1'), pr(), rules, undefined, queue)).toEqual({ kind: 'next' })
+    expect(mergeView(ws('w1', { prState: 'merging' }), pr(), rules, undefined, { ids: ['w1'], current: 'w1' })).toEqual({ kind: 'merging' })
+    expect(mergeView(ws('w1'), pr(), rules, undefined, { ids: ['w1', 'w2'], current: 'w2' })).toEqual({ kind: 'ready' })
     expect(mergeView(ws('w1'), pr({ checks: [{ name: 'ci', state: 'fail' }] }), rules)).toMatchObject({ kind: 'blocked', reason: expect.stringContaining('Checks have not passed') })
     const reviewed = ws('w1', { prHead: 'new', reviews: [{ workspaceId: 'r1', agentId: 'theo', verdict: 'approved', summary: '', sha: 'old', prNumber: 7, ts: 1 }] })
     expect(mergeView(reviewed, pr({ head: 'new' }), rules, () => 'Theo')).toMatchObject({ kind: 'blocked', reason: expect.stringContaining("Theo hasn't approved") })
@@ -195,7 +214,12 @@ describe('Merge on a Team update row (KERNEL-351)', () => {
     expect(spinning).toContain('aria-busy="true"')
     expect(spinning).toContain('disabled')
     expect(spinning).toContain('Merging')
-    expect(draw({ kind: 'merging' })).toMatch(/aria-busy="true"[^>]*>.*Merging/)
+    // Only the button that was pressed spins (KERNEL-411). Anywhere else the same PR shows, and for a merge Rowan or Merge all
+    // started, Merging is muted text with no spinner and nothing to press.
+    expect(draw({ kind: 'merging' }, 'Merging')).toMatch(/aria-busy="true"[^>]*>.*Merging/)
+    expect(draw({ kind: 'merging' })).toBe('<span class="tucard-why">Merging</span>')
+    expect(draw({ kind: 'next' })).toBe('<span class="tucard-why">Next</span>')
+    expect(draw({ kind: 'state', label: 'Checks running' })).toBe('<span class="tucard-why">Checks running</span>')
     expect(draw({ kind: 'blocked', reason: "Theo hasn't approved the latest commit. Merging waits (Settings, Pull requests)." })).toContain("Theo hasn&#x27;t approved the latest commit.</span>")
     expect(draw({ kind: 'blocked', reason: 'x' })).not.toContain('<button')
     expect(draw({ kind: 'merged' })).toContain('tucard-merged')

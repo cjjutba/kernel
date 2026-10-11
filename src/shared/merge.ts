@@ -8,6 +8,16 @@ import type { AppSettings, PrBlocked, PrCheck, PrInfo, PrState, ReviewVerdict, W
 /** The PR states a merge can start from. Any other state, a merge already running included, offers no Merge (KERNEL-349). */
 export const mergeableState = (state: PrState): state is 'ready' | 'open' => state === 'ready' || state === 'open'
 
+/**
+ * Why a PR in this state can't merge, in a few lowercase words for a sentence: Rowan's merge_workspace and Merge all
+ * (KERNEL-411) both say it. Nothing for the states a merge can start from, which `mergeBlock` checks.
+ */
+export const notMergeable: Partial<Record<PrState, string>> = {
+  none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',
+  checks: 'checks are still running', cifail: 'checks failing', changes: 'a review asked for changes', conflict: 'it has merge conflicts',
+  resolving: 'its conflicts are being resolved', merging: 'it is already merging', merged: 'it already merged', closed: 'it was closed'
+}
+
 /** Every check passed or was skipped. A PR with no checks counts as green. */
 export const allGreen = (checks: PrCheck[]) => checks.every((c) => c.state === 'pass' || c.state === 'skipped')
 
@@ -61,4 +71,23 @@ export function mergeBlock(ws: Workspace, pr: PrInfo | null | undefined, rules: 
   const blocking = current.filter((v) => v.verdict === 'blockers')
   const holder = blocking.length ? latest(blocking) : verdicts.length && !current.some((v) => v.verdict === 'approved') ? latest(verdicts) : undefined
   return holder && `${name(holder.agentId)} hasn't approved the latest commit. Merging waits for the reviewer's approval (Settings, Pull requests).`
+}
+
+/** Where a PR's review stands, in the words of the PRs tab and the Team update card. `tone` is the color both draw it in. */
+export interface ReviewPhrase { text: string; tone: 'good' | 'bad' | 'faint' }
+
+/**
+ * One wording for a PR's review wherever it shows (KERNEL-411): "Theo is reviewing", "Theo found 2 blockers", "Theo approved",
+ * "Lumi reviewed an earlier commit" or "Not reviewed". Names come resolved. A review in progress wins, then blockers on the
+ * head commit, then approvals of it, then a review of an earlier commit.
+ */
+export function reviewPhrase(r: { reviewing?: string; blockers?: { name: string; count?: number }; approvedBy?: string[]; stale?: string | true }): ReviewPhrase {
+  if (r.reviewing) return { text: `${r.reviewing} is reviewing`, tone: 'faint' }
+  if (r.blockers) {
+    const n = r.blockers.count
+    return { text: `${r.blockers.name} found ${n ? `${n} ${n === 1 ? 'blocker' : 'blockers'}` : 'blockers'}`, tone: 'bad' }
+  }
+  if (r.approvedBy?.length) return { text: `${r.approvedBy.join(' and ')} approved`, tone: 'good' }
+  if (r.stale) return { text: r.stale === true ? 'Reviewed an earlier commit' : `${r.stale} reviewed an earlier commit`, tone: 'faint' }
+  return { text: 'Not reviewed', tone: 'faint' }
 }

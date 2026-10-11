@@ -2,7 +2,7 @@ import { tool } from '@anthropic-ai/claude-agent-sdk'
 import { z } from 'zod'
 import type { AgentDef, AskedQuestion, Decision, PrState, QueueReason, Workspace, WorkspaceMode } from '@shared/types'
 import { isLeadWorkspace } from '@shared/leadWorkspace'
-import { blockedWhy } from '@shared/merge'
+import { blockedWhy, notMergeable } from '@shared/merge'
 import { isReviewer, RESERVED_AGENT_IDS, takesTasks } from '@shared/team'
 import { bus } from '../bus'
 import { kernelServer } from './kernelServer'
@@ -110,12 +110,8 @@ export const NO_PLAN = 'Not asked: plan is missing. Pass the full plan as markdo
 export const MERGE_OFF = 'Merging is off in Settings, Pull requests. Tell the user they can merge from the PRs tab.'
 export const MERGE_NOT_ASKED = 'Only the user can ask you to merge. Tell them which PRs are ready.'
 
-/** Why merge_workspace skips a PR in this state. Nothing for the states a merge can start from, which `mergePr` checks. */
-const NOT_MERGEABLE: Partial<Record<PrState, string>> = {
-  none: 'it has no pull request yet', creating: 'its pull request is still being opened', draft: 'it is still a draft',
-  checks: 'checks are still running', cifail: 'checks failing', changes: 'a review asked for changes', conflict: 'it has merge conflicts',
-  resolving: 'its conflicts are being resolved', merging: 'it is already merging', merged: 'it already merged', closed: 'it was closed'
-}
+/** Why merge_workspace skips a PR in this state, shared with Merge all (KERNEL-411). */
+const NOT_MERGEABLE = notMergeable
 
 /**
  * The agent `asked` names: its exact id, else the one whose id or name matches ignoring case. A miss or a name two

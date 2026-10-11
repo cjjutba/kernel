@@ -53,6 +53,18 @@ export interface PrInfo {
 /** GitHub's mergeStateStatus on a ready PR: BLOCKED with a review required, BEHIND, or BLOCKED for another rule (KERNEL-388). */
 export type PrBlocked = 'review' | 'behind' | 'rules'
 
+/** A room's Merge all run (KERNEL-411): the PRs it merges in order, by workspace id, and the one merging now. */
+export interface MergeQueue {
+  ids: string[]
+  current?: string
+}
+
+/** How a Merge all run ended: the PR numbers it merged, and where it stopped and why, when it stopped. */
+export interface MergeAllResult {
+  merged: number[]
+  stopped?: { workspaceId: string; prNumber?: number; reason: string }
+}
+
 /** A PR the new workspace modal can start from. */
 export interface PrSummary {
   number: number

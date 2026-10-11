@@ -1,11 +1,11 @@
-import type { PrInfo, PrState, Workspace } from '@shared/types'
+import type { MergeAllResult, MergeQueue, PrInfo, PrState, Workspace } from '@shared/types'
 import { bus } from '../bus'
 import { type AppSettings, loadRepoSettings, prInstructions } from '../services/settings'
 import { branchExists, currentBranch, fetchOrigin, folderGone, freeBranch, stripRemote } from '../services/worktrees'
 import { git } from '../services/exec'
 import { fingerprintOf, GhReadError, prNote, resolveFile } from '../services/github'
 import { PrCadence } from '../services/prCadence'
-import { mergeableState, mergeBlock, mergeNeedsPr } from '@shared/merge'
+import { mergeableState, mergeBlock, mergeNeedsPr, notMergeable } from '@shared/merge'
 import type { Handlers } from '../kernel'
 import { Feature } from './feature'
 
@@ -251,22 +251,31 @@ export class Prs extends Feature {
    * approval of the latest commit, as far as Settings > Pull requests asks for them (KERNEL-115).
    */
   async mergePr(id: string) {
-    const ws = await this.syncBranch(id)
+    let ws = await this.syncBranch(id)
     const rules = this.settings.pr
     // GitHub is read fresh for every PR that last read as mergeable, since another merge may have sent GitHub back to
     // checking it for conflicts (KERNEL-376). One that isn't, mergeBlock refuses anyway.
-    let info: PrInfo | null | undefined
-    if (mergeableState(ws.prState)) {
+    const fresh = async (): Promise<PrInfo | null | undefined> => {
+      if (!mergeableState(ws.prState)) return undefined
       try {
-        info = await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) })
+        return await this.read(ws, ws.path, ws.branch, { remote: await this.k.config.remoteOfWs(ws) })
       } catch (e) {
         if (!(e instanceof GhReadError)) throw e
         // A failed read stops the merge only when a rule needs GitHub's word (KERNEL-376), and says when a rate limit resets.
         const at = e.rateLimited ? this.cadence.resumesAt() : undefined
         if (mergeNeedsPr(ws, rules)) throw new Error(`Could not read the pull request from GitHub.${at ? ` GitHub's rate limit resets at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.` : ''}`)
-        info = null
+        return null
       }
     }
+    let info = await fresh()
+    // Right after another merge GitHub is still working out whether this PR conflicts with the new base. The merge waits
+    // for its answer instead of refusing, so a second Merge, or Merge all's next PR, goes through (KERNEL-411).
+    for (let waited = 0; info?.conflictsUnknown && waited < Prs.conflictWait.cap; waited += Prs.conflictWait.every) {
+      await new Promise((resolve) => setTimeout(resolve, Prs.conflictWait.every))
+      ws = this.mustWs(id)
+      info = await fresh()
+    }
+    if (info?.conflictsUnknown) throw new Error(`GitHub is still checking ${ws.prNumber ? `#${ws.prNumber}` : 'this pull request'} for conflicts. Try again in a moment.`)
     if (info) bus.push({ type: 'pr.info', info })
     const name = (agentId: string) => this.agentsSync(ws.roomId).find((a) => a.id === agentId)?.name ?? agentId
     const block = mergeBlock(ws, info, rules, name)
@@ -286,6 +295,51 @@ export class Prs extends Feature {
     // GitHub works out again whether every other PR into the base conflicts, so the poll follows them closely (KERNEL-388).
     this.pollSoon()
     return this.k.refreshPr(id, { settle: true })
+  }
+
+  /** How often and how long a merge re-reads a PR GitHub is still checking for conflicts, in ms. Tests shorten it. */
+  static conflictWait = { every: 2000, cap: 30_000 }
+
+  /** The Merge all run going in each room, by room id (KERNEL-411). */
+  private queues = new Map<string, MergeQueue>()
+
+  /**
+   * Merges the room's PRs one at a time, in the order given, each through `mergePr` with its fresh read and rules, since every
+   * merge moves the base the next one goes into. Stops at the first PR that can't merge and says why: nothing merges that the
+   * user didn't see first. Each step goes out as `pr.queue`, so the PRs tab shows which PR merges and which come next.
+   */
+  async mergeAll(roomId: string, ids: string[]): Promise<MergeAllResult> {
+    if (this.queues.has(roomId)) throw new Error('Merge all is already running in this room.')
+    const result: MergeAllResult = { merged: [] }
+    const step = (current: string) => {
+      const queue: MergeQueue = { ids, current }
+      this.queues.set(roomId, queue)
+      bus.push({ type: 'pr.queue', roomId, queue })
+    }
+    try {
+      for (const id of ids) {
+        step(id)
+        const ws = this.store.workspace(id)
+        try {
+          if (!ws || ws.roomId !== roomId) throw new Error('It is not an open workspace in this room.')
+          const after = await this.mergePr(id)
+          if (after.prNumber) result.merged.push(after.prNumber)
+        } catch (e) {
+          // The PR is read again, so its row moves to where it now stands and the reason names it: a merge just before often
+          // leaves the next PR conflicting. Otherwise mergeBlock's sentence, or the first line of gh's output.
+          const now = ws ? await this.k.refreshPr(id).catch(() => undefined) : undefined
+          const state = now ? notMergeable[now.prState] : undefined
+          const why = state ? `${state.charAt(0).toUpperCase()}${state.slice(1)}` : (e instanceof Error ? e.message : String(e)).trim().split('\n')[0].trim().slice(0, 240)
+          result.stopped = { workspaceId: id, ...(ws?.prNumber ? { prNumber: ws.prNumber } : {}), reason: /[.!?…]$/.test(why) ? why : `${why}.` }
+          break
+        }
+      }
+      return result
+    } finally {
+      // The end goes out with the result, so the PRs tab says where a run stopped even after the window reloads mid-run.
+      this.queues.delete(roomId)
+      bus.push({ type: 'pr.queue', roomId, result })
+    }
   }
 
   private async readyPr(id: string) { const ws = await this.syncBranch(id); await this.k.github.ready(ws.path, ws.branch); return this.k.refreshPr(id) }
@@ -588,6 +642,7 @@ export class Prs extends Feature {
       'pr.create': async ({ workspaceId, draft }) => this.createPr(workspaceId, draft),
       'pr.refresh': async ({ workspaceId }) => this.k.refreshPr(workspaceId),
       'pr.merge': async ({ workspaceId }) => this.mergePr(workspaceId),
+      'pr.mergeAll': async ({ roomId, workspaceIds }) => this.mergeAll(roomId, workspaceIds),
       'pr.resolve': async ({ workspaceId }) => { await this.resolvePr(workspaceId); return { ok: true } },
       'pr.get': async ({ workspaceId }) => this.getPr(workspaceId),
       'github.status': async () => this.cadence.status(),

@@ -5,6 +5,7 @@ import { KernelNote } from '../KernelNote'
 import { MessageActions } from '../MessageActions'
 import { SharedRow } from './SharedCard'
 import { MergeButton } from '../pr/MergeButton'
+import { inline } from '../markdown'
 import { cardData, eventTone, mergeTargetOf, newestRows, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
 
@@ -56,7 +57,10 @@ function Row({ row, itemId, workspaceOf, useNewest }: { row: TeamUpdateRow; item
   const target = workspaceOf(targetId)
   const merge = useNewest(targetId, itemId) && target && target.status !== 'archived' ? target : undefined
   const archived = ws?.status === 'archived'
-  const { key, title } = taskParts(row.task)
+  // The key from the task, else from the issue the workspace started on, as the PRs tab reads it (KERNEL-411).
+  const parts = taskParts(row.task)
+  const key = parts.key ?? (ws?.source?.kind === 'issue' ? ws.source.id : undefined)
+  const title = parts.title
   return (
     <div className="tucard-row">
       <div className="tucard-line">
@@ -110,7 +114,8 @@ function Reply({ text }: { text: string }) {
   return (
     <>
       {/* Clamped, paragraphs sit on the next line so a blank one doesn't use up the three. */}
-      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{open ? text : text.replace(/\n{2,}/g, '\n')}</blockquote>
+      {/* Inline code, bold and links render as they do in chat, so a reply never shows raw backticks (KERNEL-411). */}
+      <blockquote ref={ref} id={id} className="tucard-quote" data-clamped={open ? undefined : 'true'}>{inline(open ? text : text.replace(/\n{2,}/g, '\n'))}</blockquote>
       {(over || open) && <button type="button" className="tucard-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>{open ? 'Show less' : 'Show more'}</button>}
     </>
   )

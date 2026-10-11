@@ -38,6 +38,8 @@
 /* A busy button keeps the band's tone instead of the grey busy look, so it never reads as a hole in the band (amends D-086). */
 .pr-tone .btn[aria-busy='true']:disabled { background: var(--b-soft); border: 1px solid var(--b-edge); color: color-mix(in srgb, var(--b-fg) 76%, transparent); }
 .pr-tone .btn[aria-busy='true'] .spin { border-color: color-mix(in srgb, var(--b-text) 28%, transparent); border-top-color: var(--b-text); }
+/* A merge another button started: muted text in the button's place, no spinner. Only the pressed button spins (KERNEL-411). */
+.pr-note { font-size: 12px; color: var(--muted); white-space: nowrap; }
 /* A narrow panel drops Continue's word first; the button keeps its aria-label. The merged row, with the panel toggle at its end, needs
    about 372px of the head's content box, which is 377px when the panel is at its widest (400px). */
 @container (max-width: 371px) { .pr-tone .pr-btn-label { display: none; } }
@@ -61,6 +63,10 @@
 .lp-go { margin-left: auto; display: inline-flex; color: var(--b-text); }
 .lp-sec { display: flex; align-items: baseline; gap: 6px; padding: 8px 14px 5px; font-size: 12px; color: var(--faint); }
 .lp-sec h3 { margin: 0; font-size: 12px; font-weight: 500; color: var(--muted); }
+/* Merge all sits at the right of the Ready to merge heading without making it taller (KERNEL-411). */
+.lp-sec > .lp-all > .btn { margin: -4px 0 -4px auto; align-self: center; }
+/* Where a Merge all run stopped, above the lists, until the next run. */
+.lp-notice { margin: 0; padding: 8px 14px 10px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
 .lp-list { list-style: none; margin: 0; padding: 0; }
 .lp-row { padding: 5px 14px 7px; border-top: 1px solid var(--line); }
 .lp-l1 { display: flex; align-items: center; gap: 8px; height: 24px; }

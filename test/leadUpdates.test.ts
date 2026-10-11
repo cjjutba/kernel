@@ -113,7 +113,7 @@ describe('teammate updates to the Lead', () => {
         workspaceId: 'w1', agentId: 'noor', name: 'Noor', task: 'Symlink node_modules', prNumber: 54, reply: REPLY,
         events: [
           { kind: 'pr.opened', text: 'Opened PR #54', actionable: false },
-          { kind: 'pr.ready', text: 'Passed checks, no conflicts', actionable: true },
+          { kind: 'pr.ready', text: 'Ready to merge', actionable: true },
           { kind: 'turn', text: 'Finished a turn', actionable: true }
         ]
       }]
@@ -711,7 +711,11 @@ describe('reviews (KERNEL-130)', () => {
     ])
     expect(sent.todo).toEqual(['- PR #54 passed checks, has no conflicts and Theo approved it. Tell the user it is ready to merge.'])
     expect(s.updates.at(-1)?.rows[1].events).toEqual([{ kind: 'review', text: 'Approved PR #54', actionable: true }])
-    expect(s.updates.at(-1)?.rows[0].events[1].text).toBe('Passed checks, no conflicts. Theo approved it')
+    // On the card, Ready to merge is green on its own and the review follows as a segment of its own (KERNEL-411).
+    expect(s.updates.at(-1)?.rows[0].events.slice(1, 3)).toEqual([
+      { kind: 'pr.ready', text: 'Ready to merge', actionable: true },
+      { kind: 'pr.review', text: 'Theo approved', actionable: false }
+    ])
   })
 
   it('lists the blockers a review found and says who fixes them and who reviews again', async () => {
