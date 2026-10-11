@@ -2,7 +2,7 @@ import { Fragment, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ChatItem, TeamUpdateRow, Workspace } from '@shared/types'
 import { go, useStore } from '../../../store'
 import { KernelNote } from '../KernelNote'
-import { copyText, MessageActions } from '../MessageActions'
+import { MessageActions } from '../MessageActions'
 import { SharedRow } from './SharedCard'
 import { cardData, eventTone, sections, taskParts, textOf } from './teamUpdate'
 import './cards.css'
@@ -37,7 +37,7 @@ export function TeamUpdateView({ item, workspaceOf }: { item: Extract<ChatItem, 
         ))}
         {omitted && <div className="tucard-omitted">{omitted}</div>}
       </section>
-      <MessageActions label="Message actions" items={[{ label: 'Copy', onClick: () => void copyText(textOf(item)) }]} />
+      <MessageActions label="Message actions" copy={textOf(item)} />
     </div>
   )
 }

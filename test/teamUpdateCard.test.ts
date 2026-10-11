@@ -89,8 +89,8 @@ describe('the Team update card', () => {
     expect(html).not.toContain('Show more')
     expect(html).toContain('<h3 class="tucard-title">Team update</h3>')
     expect(html).toContain('Updates on 1 more workspace left out')
-    expect(html).toContain('>Copy<')
-    expect(html).not.toContain('>Edit<')
+    expect(html).toContain('aria-label="Copy"')
+    expect(html).not.toContain('aria-label="Edit"')
     expect(html).toMatch(/<button[^>]*aria-label="Open Kai&#x27;s workspace for Remove the Try section"[^>]*>Open<\/button>/)
   })
 

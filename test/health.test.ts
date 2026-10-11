@@ -617,7 +617,7 @@ describe('kernel recovery paths', () => {
 
   it('keeps a limit pause across a restart while the limit holds, and carries the stopped chat on once it resets', async () => {
     const { k, room, chat, resetsAt } = await limited()
-    const dataDir = (k as unknown as { o: { dataDir: string } }).o.dataDir
+    const dataDir = k.o.dataDir
     await k.stop()
     const again = new Kernel({ dataDir })
     // A start with a cut-off chat checks the sign-in (KERNEL-215). The real one runs `claude auth status`.
@@ -732,7 +732,7 @@ describe('kernel recovery paths', () => {
     k.pauseRoom(room.id, 'limit')
     k.pauseRoom(other.id, 'you')
     await k.stop()
-    const again = new Kernel({ dataDir: (k as unknown as { o: { dataDir: string } }).o.dataDir })
+    const again = new Kernel({ dataDir: k.o.dataDir })
     await again.start()
     expect(again.store.room(room.id)).toMatchObject({ paused: false })
     expect(again.store.room(room.id)?.pausedBy).toBeUndefined()

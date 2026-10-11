@@ -717,6 +717,8 @@ export class Sessions {
   async configure(chatId: string, patch: Partial<Pick<Chat, 'model' | 'effort' | 'plan'>>): Promise<Chat> {
     const chat = { ...this.mustChat(chatId), ...patch }
     this.d.store.saveChat(chat)
+    // The composer follows changes Kernel makes too, like leaving plan mode when a plan is approved.
+    bus.push({ type: 'chat', chat })
     const live = this.live.get(chatId)
     if (live) {
       if (patch.model) await live.query.setModel(patch.model).catch(() => undefined)
@@ -727,6 +729,15 @@ export class Sessions {
     // "Switch to" on a model's limit: the new model picks up where the limit stopped the chat.
     if (patch.model) this.carryOn()
     return chat
+  }
+
+  /**
+   * The user approved this chat's plan, from ExitPlanMode or the Lead's request_plan_approval. The chat leaves plan mode, so a
+   * restart does not put it back (D-074), and a Lead chat owes the hand-off (KERNEL-67).
+   */
+  async planApproved(chatId: string) {
+    await this.configure(chatId, { plan: false }).catch(() => undefined)
+    if (this.isLeadChat(chatId)) this.handoffs.approved(chatId)
   }
 
   stop(chatId: string) {
@@ -1182,9 +1193,7 @@ export class Sessions {
       const result = await decision
       if (!this.showBlocked(ws, chat.id)) this.setStatus(ws, agent, 'working')
       if (!result) return { behavior: 'deny', message: 'No decision was made in time.' }
-      // Once the plan is approved the chat leaves plan mode, so a restart does not put it back.
-      if (isPlan && result.behavior === 'allow') await this.configure(chat.id, { plan: false }).catch(() => undefined)
-      if (isPlan && result.behavior === 'allow' && agent?.lead) this.handoffs.approved(chat.id)
+      if (isPlan && result.behavior === 'allow') await this.planApproved(chat.id)
       if (result.behavior === 'allow' && result.always && command) this.d.allowInRoom(ws.roomId, roomRule(command, suggestions, suppressAlwaysAllowRule))
       if (result.behavior === 'allow') return { behavior: 'allow', updatedInput: input, updatedPermissions: result.always && !command ? suggestions : undefined }
       // Answers go back in the tool's own `answers` field, one per question. A text-only answer fills a lone question.

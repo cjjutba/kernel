@@ -132,7 +132,7 @@ describe('review workspaces, edge cases (KERNEL-131)', () => {
     await settled()
     expect(marked()).toBe(true)
     expect(status(review)).not.toBe('archived')
-    const where = (k as unknown as { o: ConstructorParameters<typeof Kernel>[0] }).o
+    const where = k.o
     await k.stop()
     const k2 = new Kernel(where)
     await k2.start()

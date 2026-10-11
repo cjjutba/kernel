@@ -218,8 +218,8 @@ describe('notes for What\'s new', () => {
   it('keeps a lead without a period in its sentence (0.1.0 style)', () => {
     const r = parseReleaseFile(release010)
     const notes = parseNotesV010(renderApp(r))
-    expect(notes.map((n) => n.title)).toEqual(['The floor', 'Plans you approve', 'Workspaces', 'Inbox', 'Pull requests, end to end', 'Highlights', 'Under the hood'])
-    expect(notes[5]!.body).toBe("Checkpoints after every turn, and your agent's own terminal in a tab. Board, settings and a light theme, plus macOS notifications.")
+    expect(notes.map((n) => n.title)).toEqual(['Statuses from real events', 'Plans you approve', 'Workspaces', 'Inbox', 'Pull requests, end to end', 'Highlights', 'Under the hood'])
+    expect(notes[5]!.body).toBe("Checkpoints after every turn, and your agent's own terminal in a tab. Settings and a light theme, plus macOS notifications.")
   })
 })
 

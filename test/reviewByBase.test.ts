@@ -54,7 +54,7 @@ async function setup() {
   bus.on('activity', onActivity)
   onTestFinished(() => { bus.off('activity', onActivity) })
   const status = (w: Workspace) => k.store.workspace(w.id)!.status
-  return { k, gh, room, lead, author, handOff, notes, status, where: k['o'] as ConstructorParameters<typeof Kernel>[0] }
+  return { k, gh, room, lead, author, handOff, notes, status, where: k.o }
 }
 
 describe('create_workspace with a reviewer on another workspace\'s branch (KERNEL-299)', () => {

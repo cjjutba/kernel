@@ -75,7 +75,7 @@ async function setup(o: { archiveOnMerge?: boolean; room?: boolean; origin?: boo
     const deps = (k.sessions as unknown as { d: { onTurnDone: (ws: Workspace, chat: unknown, t: object) => void } }).d
     deps.onTurnDone(k.store.workspace(w.id)!, k.store.chats(w.id)[0], { ok: true, interrupted: false, by: 'lead' })
   }
-  return { k, gh, repo, room, lead, author, review, notes, status, land, settled, turnDone, where: k['o'] as ConstructorParameters<typeof Kernel>[0] }
+  return { k, gh, repo, room, lead, author, review, notes, status, land, settled, turnDone, where: k.o }
 }
 
 /** Commits a file in the workspace and pushes its branch, as an agent opening a PR does. The commit pushed. */
