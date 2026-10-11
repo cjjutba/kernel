@@ -8,6 +8,7 @@ const entries = Object.entries(fixtures)
 /** Fixtures for states the canvas doesn't draw, kept for screenshots (DECISIONS.md says which). */
 const noCanvas = [
   'WorkspaceTabStates',
+  'WorkspaceRunEmpty', // the Run tab before the script has run, with Run in the header as its only button (KERNEL-423)
   'WorkspaceReplyMenu', // the "..." menu under a finished turn's reply, with Fork into new chat and Fork into new workspace (KERNEL-346)
   'WorkspaceTrustHeld', // the banner KERNEL-209's trust hold shows, with Review (KERNEL-218)
   'TrustScripts', // the dialog Review opens: the scripts and files.copy list to trust (KERNEL-218)
