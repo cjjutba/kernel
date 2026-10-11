@@ -23,6 +23,7 @@ const noCanvas = [
   'WorkspaceFilesTreeLight', // WorkspaceFilesTree in the light theme (KERNEL-399)
   'WorkspaceLeadPlan', // Rowan's plan on the main checkout
   'WorkspaceLeadUpdate', // Kernel's Team update card in Rowan's chat (KERNEL-127, D-128)
+  'TeamUpdatePrStates', // one PR in each state in a Team update and the PRs tab, each said the same way (KERNEL-417)
   'WorkspaceContextRing',
   'WorkspaceContextRingNear',
   'WorkspaceContextPopover',

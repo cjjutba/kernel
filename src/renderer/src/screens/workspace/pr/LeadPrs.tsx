@@ -3,15 +3,16 @@ import type { MergeAllResult } from '@shared/types'
 import { call, cleanError } from '../../../api'
 import { actions, go, useStore } from '../../../store'
 import { Button, Icon, useBusy } from '../../../ui'
-import { MergeButton } from './MergeButton'
+import { MergeButton, PrStatusTag } from './MergeButton'
 import { failTitle, prDisplayTitle } from './model'
 import { useLeadPrs, type LeadPr } from './leadPrList'
 import './pr.css'
 
 /**
  * The Lead's PRs tab (LeadPrs.png, LeadPrsEmpty.png, KERNEL-354): every open PR in the room, so what can merge is in one place.
- * Ready ones come first with Merge, the rest follow muted with what they wait on. Each row opens its workspace. Two or more
- * ready PRs get Merge all, which merges them in order and stops at the first that can't merge (KERNEL-411).
+ * Ready ones come first with Merge, the rest follow muted with what they wait on, in the words every place uses (KERNEL-417).
+ * Each row opens its workspace. Two or more ready PRs get Merge all, which merges them in order and stops at the first that
+ * can't merge (KERNEL-411).
  */
 export function LeadPrs({ roomId }: { roomId: string }) {
   const rows = useLeadPrs(roomId)
@@ -43,8 +44,8 @@ export function stoppedText(r: MergeAllResult): string | null {
 
 /**
  * Merge all on the Ready to merge heading, with two or more PRs that can merge. While it runs, the button says which PR of how
- * many is merging, from the run's `pr.queue` pushes, and the rows say Merging and Next without spinning. Where a run stopped
- * comes back on the last push, so the tab shows it from the store.
+ * many is merging, from the run's `pr.queue` pushes. The row merging spins as every place showing it does (KERNEL-417), and the
+ * rows still to come say Next. Where a run stopped comes back on the last push, so the tab shows it from the store.
  */
 function MergeAll({ roomId, rows }: { roomId: string; rows: LeadPr[] }) {
   const queue = useStore((s) => s.mergeQueues[roomId])
@@ -83,7 +84,7 @@ function Row({ row }: { row: LeadPr }) {
         <span className="lp-act">
           {row.ready
             ? <MergeButton ws={ws} short />
-            : state && <span className="lp-state" data-tone={state.tone} data-tip={state.why}>{state.label}</span>}
+            : state && <PrStatusTag status={state} why={state.why} />}
           <button type="button" className="lp-open" aria-label={`Open ${row.name}'s workspace${row.key ? ` for ${row.key}` : ''}`} onClick={() => go({ name: 'workspace', workspaceId: ws.id })}>
             Open<Icon name="ext" size={11} stroke={1.5} />
           </button>

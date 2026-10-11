@@ -8,11 +8,8 @@ export interface PrHeaderView {
   link: boolean
   /** Where the PR stands, beside the link: its word, icon and the header band's tone (KERNEL-274). The icon never spins. */
   state: { label: string; tone: PrTone; glyph: 'branch' | 'pr' | 'prDraft' | 'prClosed' | 'merged' }
-  /**
-   * The main button. `busy` shows a spinner and is disabled. `note` is muted text in its place: a merge this header didn't
-   * start, since only the button that was pressed spins (KERNEL-411).
-   */
-  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy' | 'note'; action?: PrAction }
+  /** The main button. `busy` shows a spinner and is disabled, whoever started what runs (KERNEL-417). */
+  button?: { label: string; kind: 'primary' | 'secondary' | 'strong' | 'busy'; action?: PrAction }
   /** Create PR's caret menu (squared right edge on the button). */
   caret: boolean
   merged: boolean
@@ -25,6 +22,27 @@ export type PrTone = 'idle' | 'ready' | 'fail' | 'merged'
 
 export type PrAction = 'create' | 'resolve' | 'merge' | 'ready' | 'reopen'
 
+/** An open PR's state in its word and the band's tone. `spin` means something runs: every place draws a spinner with the word. */
+export interface PrStatus { label: string; tone: PrTone; spin: boolean }
+
+/**
+ * The states of an open PR that can't merge yet, or is merging, as every place showing the PR says them: the PR band, the PRs
+ * tab, a Team update row and the sidebar icon (KERNEL-417). One table, so no place can say it another way.
+ */
+export const PR_STATUS = {
+  creating: { label: 'Creating PR', tone: 'idle', spin: true },
+  checks: { label: 'Checks running', tone: 'idle', spin: true },
+  resolving: { label: 'Resolving', tone: 'fail', spin: true },
+  merging: { label: 'Merging', tone: 'ready', spin: true },
+  conflict: { label: 'Merge conflicts', tone: 'fail', spin: false },
+  cifail: { label: 'Checks failed', tone: 'fail', spin: false },
+  changes: { label: 'Changes requested', tone: 'fail', spin: false },
+  draft: { label: 'Draft', tone: 'idle', spin: false }
+} as const satisfies Partial<Record<PrState, PrStatus>>
+
+/** The state's entry in `PR_STATUS`, or nothing for a state without one (none, ready, open, merged, closed). */
+export const prStatus = (state: PrState): PrStatus | undefined => (PR_STATUS as Partial<Record<PrState, PrStatus>>)[state]
+
 /** Kernel saves a workspace's file count whenever it reads the changes. No files, or no count yet, means nothing to put in a PR. */
 export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 
@@ -36,8 +54,10 @@ export const hasChanges = (ws: Workspace) => (ws.stat?.files ?? 0) > 0
 export function headerView(state: PrState, changed = true, blocked = false): PrHeaderView {
   const base = { link: true, caret: false, merged: false, archive: false }
   const noPr = { label: 'No PR yet', tone: 'idle', glyph: 'branch' } as const
-  const conflicts = { label: 'Merge conflicts', tone: 'fail', glyph: 'pr' } as const
+  const conflicts = { label: PR_STATUS.conflict.label, tone: 'fail', glyph: 'pr' } as const
   const mergeable = { label: 'Ready to merge', tone: 'ready', glyph: 'pr' } as const
+  // What runs spins in its own word, as every other place showing the PR draws it (KERNEL-417).
+  const running = (s: 'creating' | 'checks' | 'resolving' | 'merging') => ({ label: PR_STATUS[s].label, kind: 'busy' }) as const
   if (mergeableState(state)) {
     return { ...base, state: state === 'ready' && !blocked ? mergeable : { label: 'Open', tone: 'ready', glyph: 'pr' }, button: { label: 'Merge PR', kind: 'primary', action: 'merge' } }
   }
@@ -45,15 +65,15 @@ export function headerView(state: PrState, changed = true, blocked = false): PrH
     case 'none':
       if (!changed) return { ...base, link: false, state: { label: 'No changes yet', tone: 'idle', glyph: 'branch' } }
       return { ...base, link: false, state: noPr, caret: true, button: { label: 'Create PR', kind: 'primary', action: 'create' } }
-    case 'creating': return { ...base, link: false, state: noPr, button: { label: 'Creating PR', kind: 'busy' } }
-    case 'checks': return { ...base, state: { label: 'Open', tone: 'idle', glyph: 'pr' }, button: { label: 'Checks running', kind: 'busy' } }
+    case 'creating': return { ...base, link: false, state: noPr, button: running('creating') }
+    case 'checks': return { ...base, state: { label: 'Open', tone: 'idle', glyph: 'pr' }, button: running('checks') }
     case 'conflict': return { ...base, state: conflicts, button: { label: 'Resolve conflicts', kind: 'strong', action: 'resolve' } }
-    case 'resolving': return { ...base, state: conflicts, button: { label: 'Resolving', kind: 'busy' } }
-    case 'merging': return { ...base, state: mergeable, button: { label: 'Merging', kind: 'note' } }
+    case 'resolving': return { ...base, state: conflicts, button: running('resolving') }
+    case 'merging': return { ...base, state: mergeable, button: running('merging') }
     case 'merged': return { ...base, state: { label: 'Merged', tone: 'merged', glyph: 'merged' }, merged: true }
-    case 'draft': return { ...base, state: { label: 'Draft', tone: 'idle', glyph: 'prDraft' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
-    case 'cifail': return { ...base, state: { label: 'Checks failed', tone: 'fail', glyph: 'pr' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
-    case 'changes': return { ...base, state: { label: 'Changes requested', tone: 'fail', glyph: 'pr' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
+    case 'draft': return { ...base, state: { label: PR_STATUS.draft.label, tone: 'idle', glyph: 'prDraft' }, button: { label: 'Ready for review', kind: 'secondary', action: 'ready' } }
+    case 'cifail': return { ...base, state: { label: PR_STATUS.cifail.label, tone: 'fail', glyph: 'pr' }, button: { label: 'Fix checks', kind: 'primary', action: 'resolve' } }
+    case 'changes': return { ...base, state: { label: PR_STATUS.changes.label, tone: 'fail', glyph: 'pr' }, button: { label: 'Address review', kind: 'primary', action: 'resolve' } }
     case 'closed': return { ...base, state: { label: 'Closed', tone: 'idle', glyph: 'prClosed' }, button: { label: 'Reopen', kind: 'secondary', action: 'reopen' }, archive: true }
   }
 }

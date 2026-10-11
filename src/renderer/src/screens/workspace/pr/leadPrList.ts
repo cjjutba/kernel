@@ -4,7 +4,8 @@ import { mergeBlock, mergeNeedsPr, mergeableState, reviewPhrase, reviewVerdicts 
 import { call } from '../../../api'
 import { isLeadWorkspace, leadOf } from '../../../lead'
 import { actions, useStore } from '../../../store'
-import { workspaceGlyph, type GlyphTone } from '../../../components/sidebar/workspaceGlyph'
+import { workspaceGlyph } from '../../../components/sidebar/workspaceGlyph'
+import { prStatus, type PrStatus } from './model'
 
 type Rules = Pick<AppSettings['pr'], 'requireGreen' | 'requireReviewer'>
 
@@ -17,8 +18,11 @@ export interface LeadPr {
   key?: string
   /** It can merge, or its merge is running (KERNEL-411). */
   ready: boolean
-  /** What a PR that can't merge yet waits on, in the sidebar icon's words, with the icon's tone and the rule's reason. Ready PRs have none. */
-  state?: { label: string; tone: GlyphTone; why?: string }
+  /**
+   * What a PR that can't merge yet waits on, in the words, tone and spinner every place uses (KERNEL-417), and for one a rule holds
+   * back, the rule's reason. Ready PRs have none.
+   */
+  state?: PrStatus & { why?: string }
   review: { text: string; tone: 'good' | 'bad' | 'faint' }
 }
 
@@ -56,11 +60,12 @@ export function leadPrs(workspaces: Workspace[], o: { leadId: string | undefined
     const base = { ws, name: name(ws.agentId), key: ws.source?.kind === 'issue' ? ws.source.id : undefined, review: reviewLine(ws, pr, name) }
     // A PR merging stays where Merge was pressed, with the ready ones, until GitHub says it merged (KERNEL-411).
     if (!why || ws.prState === 'merging') return { ...base, ready: true }
-    const glyph = workspaceGlyph(ws, { waiting: [], running: false })
-    // A PR GitHub calls open, held back by the reviewer rule alone, waits for the reviewer's approval.
-    const approval = mergeableState(ws.prState) && mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
-    const label = approval ? 'Waiting for approval' : ws.prState === 'draft' ? 'Draft' : glyph.label
-    return { ...base, ready: false, state: { label, tone: glyph.tone, why: mergeableState(ws.prState) ? why : undefined } }
+    const status = prStatus(ws.prState)
+    if (status) return { ...base, ready: false, state: status }
+    // A PR GitHub calls open, held back by a rule. Held back by the reviewer rule alone, it waits for the reviewer's approval.
+    const approval = mergeBlock(ws, pr, { ...o.rules, requireReviewer: false }, name) === undefined
+    const label = approval ? 'Waiting for approval' : workspaceGlyph(ws, { waiting: [], running: false }).label
+    return { ...base, ready: false, state: { label, tone: 'idle', spin: false, why } }
   })
   return [...rows.filter((r) => r.ready), ...rows.filter((r) => !r.ready)]
 }
