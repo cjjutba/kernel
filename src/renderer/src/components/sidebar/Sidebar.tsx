@@ -11,7 +11,8 @@ import { RoomIcon } from '../RoomIcon'
 import { roomInView } from '../../screens/search/model'
 import { archiveByHand } from '../../screens/workspace/byHand'
 import { AccountButton } from './AccountMenu'
-import { LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
+import { chatWaits } from './chatCard'
+import { ChatCard, LeadCard, WorkspaceCard, useHoverCard } from './HoverCard'
 import { PlanButton } from './PlanMenu'
 import { RoomMenu } from './RoomMenu'
 import { ResizeHandle, readWidth } from '../ResizeHandle'
@@ -105,16 +106,15 @@ function LeadItem({ roomId, slot }: { roomId: string; slot?: RowKey }) {
 /**
  * One of the Lead's open chats, however many tabs it holds (KERNEL-338). Its icon is the one a tab would show, for the whole chat: something that
  * needs you in any tab wins, then a running turn in any tab, else the chat icon. They read the same approvals and `running` flags as the tabs.
- * It opens the Lead's workspace on the tab last shown in the chat, and the full title is the tooltip. A chat that handed off workspaces folds
+ * It opens the Lead's workspace on the tab last shown in the chat, and hovering or focusing it shows the chat's card with the full title. A chat that handed off workspaces folds
  * like a room: hovering or tabbing to it swaps its icon for a chevron. While it is folded, the icon also shows what a hidden workspace needs
  * from you, so nothing waits out of sight.
  */
 function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: string; thread: Thread; tabs: Chat[]; owned: Workspace[]; folded: boolean; slot?: RowKey }) {
   const approvals = useStore((s) => s.approvals)
-  const waiting = useMemo(
-    () => approvals.filter((a) => a.status === 'pending' && (tabs.some((c) => c.id === a.chatId) || (folded && owned.some((w) => w.id === a.workspaceId)))),
-    [approvals, tabs, folded, owned]
-  )
+  // The card follows the same rule, and always counts the chat's workspaces: an unfolded one shows its own icon in its own row.
+  const waiting = useMemo(() => chatWaits({ tabs, owned: folded ? owned : [], approvals }).map((w) => w.approval), [approvals, tabs, folded, owned])
+  const card = useHoverCard()
   const running = useStore((s) => tabs.some((c) => s.running[c.id]))
   // The chat the Lead's workspace shows, which stays the one you were on while a file or diff tab is open there.
   const current = useStore((s) => {
@@ -123,20 +123,21 @@ function ChatItem({ roomId, thread, tabs, owned, folded, slot }: { roomId: strin
   })
   const g = chatGlyph({ waiting, running })
   return (
-    <div className="hv chat-row">
+    <div {...card.bind} className="hv chat-row">
       <button
-        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title}
-        aria-keyshortcuts={slot && `Meta+${slot.n}`} data-tip={thread.title} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
+        className="nav-item nav-sub" aria-current={current ? 'page' : undefined} aria-label={g.label ? `${thread.title}, ${g.label}` : thread.title} aria-describedby={card.at ? card.id : undefined}
+        aria-keyshortcuts={slot && `Meta+${slot.n}`} onClick={() => openRow(roomId, { kind: 'chat', thread, tabs, owned, folded })}
       >
         <span className="nav-glyph" data-tone={g.tone} data-owned={owned.length ? '' : undefined} aria-hidden="true">{g.icon === 'spin' ? <span className="spin" /> : <Icon name={g.icon} />}</span>
         <span className="grow ellipsis">{thread.title}</span>
         {slot?.hint && <KeyHint n={slot.n} />}
       </button>
       {owned.length > 0 && (
-        <button className="chat-chev" aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
+        <button className="chat-chev" data-card-off aria-expanded={!folded} aria-label={`${folded ? 'Expand' : 'Collapse'} ${thread.title}`} onClick={() => actions.ui.foldChat(thread.id, !folded, tabs.map((c) => c.id))}>
           <Icon name="right" size={14} />
         </button>
       )}
+      {card.at && <ChatCard roomId={roomId} thread={thread} tabs={tabs} owned={owned} at={card.at} id={card.id} />}
     </div>
   )
 }

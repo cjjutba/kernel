@@ -4,6 +4,7 @@ import { call } from '../../api'
 import { actions, go, useStore } from '../../store'
 import { Button, Icon, useBusy } from '../../ui'
 import { attempt } from '../workspace/MessageActions'
+import { planReadyLine } from '../workspace/cards/steps'
 import { openRoom } from '../../lead'
 import { RoomIcon } from '../../components/RoomIcon'
 import { SortOverlap } from '../inbox/Inbox'
@@ -50,7 +51,7 @@ function NeedsRow({ item }: { item: InboxItem }) {
       </>
     )
   } else if (plan) {
-    text = <><span>{/^Plan\b/i.test(a.title) ? `${a.title} is ready` : `Plan ready: ${a.title}`}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
+    text = <><span>{planReadyLine(a)}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>
     actionsEl = <Button onClick={toItem}>Review plan</Button>
   } else if (a) {
     text = <><span>{a.kind === 'question' ? a.title : n.title}</span><span className="hm-by">{who}{room ? ` · ${room.name}` : ''}</span></>

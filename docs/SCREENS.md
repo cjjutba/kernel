@@ -119,6 +119,9 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 | WorkspaceSharedCommentArchived | Comment popover, sharing workspace archived | [png](../design/screens/WorkspaceSharedCommentArchived.png) | [dc.html](../design/canvas/project/WorkspaceSharedCommentArchived.dc.html) | KERNEL-311 | Workspace | workspace (Lead), tabs shared:{id}, comment mode, sharing workspace archived | `screens/workspace/shared/CommentLayer.tsx` |
 | WorkspaceSharedCommentOlder | Comment popover on an older version | [png](../design/screens/WorkspaceSharedCommentOlder.png) | [dc.html](../design/canvas/project/WorkspaceSharedCommentOlder.dc.html) | KERNEL-311 | Workspace | workspace, tabs shared:{id}, comment mode, older version | `screens/workspace/shared/CommentLayer.tsx` |
 | TeamUpdateShared | Team update with shared file cards | [png](../design/screens/TeamUpdateShared.png) | [dc.html](../design/redesign/canvas/TeamUpdateShared.dc.html) | KERNEL-305 | Workspace | workspace (Lead’s chat) | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| TeamUpdateMerge | Team update with Merge on a ready row | [png](../design/screens/TeamUpdateMerge.png) | [dc.html](../design/redesign/canvas/TeamUpdateMerge.dc.html) | KERNEL-347, KERNEL-351 | Workspace | workspace (Lead’s chat) | `screens/workspace/cards/TeamUpdateCard.tsx` |
+| LeadPrs | Lead’s right panel · PRs tab | [png](../design/screens/LeadPrs.png) | [dc.html](../design/redesign/canvas/LeadPrs.dc.html) | KERNEL-347, KERNEL-354 | Workspace | workspace (Lead), right panel PRs | `screens/workspace/Panels.tsx` |
+| LeadPrsEmpty | Lead’s right panel · No open PRs | [png](../design/screens/LeadPrsEmpty.png) | [dc.html](../design/redesign/canvas/LeadPrsEmpty.dc.html) | KERNEL-347, KERNEL-354 | Workspace | workspace (Lead), right panel PRs, empty | `screens/workspace/Panels.tsx` |
 | GroupedNewChat | Grouped chats · new chat with ⌘N | [png](../design/screens/GroupedNewChat.png) | [dc.html](../design/canvas/project/GroupedNewChat.dc.html) | KERNEL-338 | Workspace | workspace, new chat row, one tab | `screens/workspace/Workspace.tsx` |
 | GroupedTabs | Grouped chats · tabs of this chat | [png](../design/screens/GroupedTabs.png) | [dc.html](../design/canvas/project/GroupedTabs.dc.html) | KERNEL-338 | Workspace | workspace, tabs of the open chat | `screens/workspace/ChatTabs.tsx` |
 | GroupedSwitchChat | Grouped chats · switch chat, file tab stays | [png](../design/screens/GroupedSwitchChat.png) | [dc.html](../design/canvas/project/GroupedSwitchChat.dc.html) | KERNEL-338 | Workspace | workspace, another chat open, tabs file:{path} | `screens/workspace/ChatTabs.tsx` |
@@ -186,6 +189,6 @@ These PNGs come from the app since KERNEL-97 (D-097), not from the canvas: Main,
 
 Every Floor row, plus Board, BoardEmpty and TaskDetail, is hidden (D-104). For SidebarRoomMenu, the app's room menu also has a Team item (KERNEL-165).
 
-TeamUpdateShared is drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and its PNG is also copied to `design/screens/` so `pnpm shots:compare` can find it.
+TeamUpdateShared, TeamUpdateMerge, LeadPrs and LeadPrsEmpty are drawn in `design/redesign/canvas/` like the Team update (KERNEL-274), and their PNGs are also copied to `design/screens/` so `pnpm shots:compare` can find them.
 
 Fixtures for screens the canvas doesn't draw are listed in `noCanvas` in `test/fixtures.test.ts`, each with a comment saying what it shows.
