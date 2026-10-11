@@ -31,7 +31,7 @@
 <div style="display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-top: 1px solid #26272b">
 <sc-if value="{{ hasAlt }}" hint-placeholder-val="{{ false }}"><button type="button" onClick="{{ alt }}" style="height: 32px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: {{ altColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ altLabel }}</button></sc-if>
 <span style="flex: 1"></span>
-<a href="{{ back }}" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: #d0d6e0; text-decoration: none; font-weight: 500">Cancel</a>
+<a href="{{ back }}" style="display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; color: #d0d6e0; text-decoration: none; font-weight: 500">{{ cancelLabel }}</a>
 <button type="button" onClick="{{ confirm }}" style="height: 32px; padding: 0 14px; border: 0; border-radius: 8px; background: {{ confirmBg }}; color: {{ confirmColor }}; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer">{{ confirmLabel }}</button>
 </div>
 </section>
@@ -51,9 +51,11 @@ class Component extends DCLogic {
       archive: { under: 'invoice-table', back: 'WorkspaceMerged.dc.html', title: 'Archive invoice-table?', body: 'This branch has 2 commits that are not on GitHub yet. Archiving removes the worktree. The branch and chat stay, and you can restore it from History.', facts: ['feat/t-14-invoice-table', '2 commits ahead of origin'], option: 'Also delete the local branch', confirm: 'Push and archive', alt: 'Archive anyway', danger: false, doneText: 'Pushed 2 commits and archived invoice-table.', altText: 'Archived without pushing. The commits are on the local branch.' },
       remove: { under: 'Team', back: 'SidebarRoomMenu.dc.html', title: 'Remove Client A?', body: 'Kernel stops 5 agents and archives 3 workspaces. Your repo on disk and .claude/agents are not touched.', facts: ['~/Projects/client-a', '3 workspaces · 5 agents'], option: 'Also delete the worktrees in ~/kernel/worktrees', confirm: 'Remove room', danger: true, doneText: 'Removed Client A. Add it again any time with Open a folder.' },
       discard: { under: 'invoice-table', back: 'Workspace.dc.html', title: 'Discard changes in invoice-table?', body: 'This throws away every uncommitted change in the worktree. Checkpoints keep the last 20 turns if you change your mind.', facts: ['4 files · +412 -38'], confirm: 'Discard changes', danger: true, doneText: 'Discarded. The worktree matches the last commit.' },
-      retire: { under: 'Team', back: 'AgentProfile.dc.html', title: 'Retire Kai?', body: 'Kai finishes the current turn, then leaves the team and the workspace picker. The file moves to .claude/retired-agents so you can bring Kai back.', facts: ['.claude/agents/kai.md', '1 open workspace goes to Rowan'], confirm: 'Retire Kai', danger: false, doneText: 'Kai is retired. Rowan picked up invoice-pdf-button.' }
+      retire: { under: 'Team', back: 'AgentProfile.dc.html', title: 'Retire Kai?', body: 'Kai finishes the current turn, then leaves the team and the workspace picker. The file moves to .claude/retired-agents so you can bring Kai back.', facts: ['.claude/agents/kai.md', '1 open workspace goes to Rowan'], confirm: 'Retire Kai', danger: false, doneText: 'Kai is retired. Rowan picked up invoice-pdf-button.' },
+      telemetry: { under: 'Home', back: 'Home.dc.html', title: 'Share usage data with Kernel?', body: 'Kernel can send anonymous usage data: errors, and counts of what goes wrong, like a task it couldn\u2019t hand off. It never sends code, prompts, file paths or names. You can change this in Settings, Privacy.', confirm: 'Share usage data', cancel: 'Don\u2019t share', alt: 'See what\u2019s sent', altText: 'Settings, Privacy lists every event and what never leaves your Mac.', doneText: 'Thanks. Kernel sends usage data from now on.' },
     }[s.kind];
     return {
+      cancelLabel: K.cancel || 'Cancel',
       under: K.under, back: K.back, title: K.title, body: K.body, facts: K.facts || [], hasFacts: !!K.facts,
       hasOption: !!K.option && !s.done, option: K.option || '', optChecked: s.opt ? 'true' : 'false', mark: s.opt ? '✓' : '',
       boxBg: s.opt ? '#f7f8f8' : 'transparent', boxBorder: s.opt ? '#f7f8f8' : '#4a4c52',

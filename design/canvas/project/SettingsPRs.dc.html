@@ -207,6 +207,7 @@ class Component extends DCLogic {
       integrations: 'M6.8 9.2a2.6 2.6 0 0 0 3.7 0l2-2a2.6 2.6 0 0 0-3.7-3.7l-.7.7M9.2 6.8a2.6 2.6 0 0 0-3.7 0l-2 2a2.6 2.6 0 0 0 3.7 3.7l.7-.7',
       experimental: 'M6 2.5h4M6.8 2.5v4L3.3 12.2a.9.9 0 0 0 .8 1.3h7.8a.9.9 0 0 0 .8-1.3L9.2 6.5v-4M4.8 9.8h6.4',
       about: 'M13.5 8a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0ZM8 7.5v3.5M8 5.2v.1',
+      privacy: 'M4.48 7.2h7.04a1.6 1.6 0 0 1 1.6 1.6v3.52a1.6 1.6 0 0 1-1.6 1.6H4.48a1.6 1.6 0 0 1-1.6-1.6V8.8a1.6 1.6 0 0 1 1.6-1.6ZM5.12 7.2V5.28a2.88 2.88 0 0 1 5.76 0V7.2',
       env: 'M5.5 3.5C4 3.5 4 4.5 4 5.5v1C4 7.3 3.5 8 2.5 8 3.5 8 4 8.7 4 9.5v1c0 1 0 2 1.5 2M10.5 3.5C12 3.5 12 4.5 12 5.5v1c0 .8.5 1.5 1.5 1.5-1 0-1.5.7-1.5 1.5v1c0 1 0 2-1.5 2',
       bigterm: 'M2.5 3.5h11v9h-11ZM5 6.5 7 8.5 5 10.5M8.5 10.5H11'
     };
@@ -220,7 +221,7 @@ class Component extends DCLogic {
       { title: 'Personal', items: [['general', 'General'], ['appearance', 'Appearance'], ['notifications', 'Notifications'], ['account', 'Account and usage'], ['shortcuts', 'Shortcuts']] },
       { title: 'Agents', items: [['models', 'Models and effort'], ['permissions', 'Permissions'], ['env', 'Environment']] },
       { title: 'Workspaces', items: [['git', 'Git and worktrees'], ['scripts', 'Scripts'], ['prs', 'Pull requests']] },
-      { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['about', 'About']] },
+      { title: 'System', items: [['hooks', 'Hooks'], ['integrations', 'Integrations'], ['experimental', 'Experimental'], ['bigterm', 'Big terminal'], ['privacy', 'Privacy'], ['about', 'About']] },
       { title: 'Rooms', items: [['r-general', 'Client A', 'A', 'open']].concat(pages.map(function (p) { return [p[0], p[1], '', 'page']; }), [['room-b', 'Client B', 'B', 'shut']]) }
     ];
   }
@@ -232,6 +233,7 @@ class Component extends DCLogic {
     var btn = function (label, value, desc) { return { label: label, type: 'button', value: value, desc: desc }; };
     var val = function (label, value, desc) { return { label: label, type: 'value', value: value, desc: desc }; };
     var code = function (label, lines, desc) { return { label: label, type: 'code', lines: lines, desc: desc }; };
+    var text = function (label, desc) { return { label: label, type: 'text', desc: desc }; };
     var kbd = function (label, keys) { return { label: label, type: 'kbd', keys: keys }; };
     var meter = function (label, pct, value) { return { label: label, type: 'meter', pct: pct, value: value }; };
     // A value comes from settings.toml, or the personal file overrides it and the row gets Reset. No source line means the app default.
@@ -297,7 +299,7 @@ class Component extends DCLogic {
         { title: 'Automation', rows: [tog('autosetup', 'Run setup when a workspace is created', true, 'New workspaces are ready before the first message'), tog('autorun', 'Start the run script after setup', false, 'Each workspace gets its own port'), tog('autoarchive', 'Run archive script on archive', true)] }
       ] },
       prs: { title: 'Pull requests', intro: 'How pull requests are merged, and the default instructions agents get. Each room can override the instructions on its own Instructions page.', sections: [
-        { title: 'Merging', rows: [seg('merge', 'Merge method', ['Squash', 'Merge', 'Rebase']), tog('draft', 'Open as draft', false), tog('green', 'Require green checks to merge', true), tog('autoreview', 'Review every pull request automatically', true, 'The Lead hands each PR that passes checks to the reviewer. Off saves usage, and you can still ask for a review.'), tog('revok', 'Wait for the reviewer\'s approval to merge, when a review ran', true), tog('leadmerge', 'Let the Lead merge when you ask', false, 'The Lead merges only when your own message asks. Each merge still needs passing checks and any reviewer\'s approval.')] },
+        { title: 'Merging', rows: [seg('merge', 'Merge method', ['Squash', 'Merge', 'Rebase']), tog('draft', 'Open as draft', false), tog('green', 'Require green checks to merge', true), tog('revok', 'Require Reviewer approval', true), tog('leadmerge', 'Let the Lead merge when you ask', false, 'The Lead merges only when your own message asks. Each merge still needs passing checks and any reviewer\'s approval.')] },
         { title: 'Instructions', rows: [code('Create PR', ['# Create a pull request', '1. Rebase on origin/main and run pnpm test', '2. Title it as a Conventional Commit', '3. Fill in summary, scope and risk'], 'Sent to the agent when you press Create PR'), code('Resolve conflicts', ['# Resolve conflicts', '1. Rebase on origin/main', '2. Re-run pnpm test and pnpm typecheck'], 'Sent when you press Resolve conflicts'), code('Fix checks', ['# Fix failing checks', '1. Read the failing job log', '2. Fix the cause, not the test', '3. Push and wait for the checks'], 'Sent when you press Fix checks'), code('Address review', ['# Address review comments', '1. Read every open thread', '2. Change the code or reply with a reason', '3. Push and resolve the threads'], 'Sent when you press Address review')] }
       ] },
       hooks: { title: 'Hooks', sections: [
@@ -324,6 +326,12 @@ class Component extends DCLogic {
       ] },
       experimental: { title: 'Experimental', intro: 'Early features. They may change or go away.', sections: [
         { title: 'Voice', rows: [tog('voice', 'Voice briefs', false, 'Hold Fn and talk to Rowan')] }
+      ] },
+      privacy: { title: 'Privacy', intro: 'Kernel can send anonymous usage data, so problems on other Macs show up without anyone filing a bug. Nothing is sent until you turn it on.', sections: [
+        { title: 'Usage data', rows: [tog('telemetry', 'Share usage data', false, 'Errors, and counts of what goes wrong, like a task Kernel couldn\u2019t hand off. Sent once a minute.')] },
+        { title: 'What\u2019s sent', rows: [text('With every event', 'Kernel\u2019s version, your Mac\u2019s macOS version and chip, and a random install id tied to no account'), text('In each event', 'Its name and a few fixed values, such as why a hand-off was refused. Never free text.')] },
+        { title: 'Never sent', rows: [text('Your work', 'Code, diffs and file contents, prompts, chats and plans, and anything Claude Code prints'), text('Names', 'File paths, repo, room, branch and agent names, issue keys, emails and GitHub usernames')] },
+        { title: 'Latest events', note: 'Kept on this Mac whether sharing is on or off. Sent means it left this Mac.', rows: [code('Newest first', ['10:42  team.resolved  leadFrom builtin, reviewerFrom file   kept', '10:42  agent.warning  kind cant-open-pr                       kept', '10:41  room.created   source folder                            kept', '10:40  app.started                                             kept'])] }
       ] },
       about: { title: 'About', sections: [
         { title: 'Kernel', rows: [val('Version', '0.1.0'), btn('Updates', 'Check for updates'), val('Data', '~/Library/Application Support/Kernel'), btn('Logs', 'Export logs'), btn('Onboarding', 'Show again')] }
@@ -388,6 +396,8 @@ class Component extends DCLogic {
         ] }
       ]),
       'r-agents': roomPage('Agents', 'Every agent is a Claude Code subagent file in .claude/agents. Add a file, or ask Rowan to write one, and it joins the team.', [
+        { title: 'Who leads and reviews', note: 'A change is saved in settings.toml, so everyone on the repo gets it.', rows: [sel('ra-lead', 'Lead', ['Rowan', 'Kernel\u2019s Rowan'], 'Plans with you and hands out every task'), sel('ra-rev', 'Reviewer', ['Theo', 'Kernel\u2019s Theo', 'No reviewer'], 'Reviews each pull request before it merges')] },
+        { title: 'Who takes tasks', note: 'Rowan hands tasks only to these agents. One whose tools can\u2019t edit files and run git starts off.', rows: [tog('ra-kai', 'Kai · Frontend', true), tog('ra-noor', 'Noor · Backend', true), tog('ra-ivy', 'Ivy · QA', true), tog('ra-theo', 'Theo · Reviewer', false), tog('ra-lumi', 'Lumi · Designer', true)] },
         { title: 'In this room', rows: [btn('Rowan · Lead', 'Edit', '.claude/agents/rowan.md · Plans and hands out tasks'), btn('Kai · Frontend', 'Edit', '.claude/agents/kai.md · UI work, follows DESIGN.md'), btn('Noor · Backend', 'Edit', '.claude/agents/noor.md · Schema, API, migrations'), btn('Ivy · QA', 'Edit', '.claude/agents/ivy.md · Runs tests, attaches output'), btn('Theo · Reviewer', 'Edit', '.claude/agents/theo.md · Types, security, tenancy'), btn('Lumi · Designer', 'Edit', '.claude/agents/lumi.md · Joined today')] },
         { title: 'Sync', rows: [val('Agents folder', '.claude/agents')] }
       ]),
@@ -447,6 +457,8 @@ class Component extends DCLogic {
           hasHint: !!r.hint, hint: (r.hint || []).map(function (h) { return { t: h[0], style: h[1] ? "font-family: 'Geist Mono', ui-monospace, monospace; font-size: 12px; color: #d0d6e0" : '' }; }), isPreset: false, isCommand: false, isNote: false, hasTag: false, tag: '', hasActions: false, actions: [],
           isIcon: false, isPreview: false, files: r.files || []
         };
+        if (r.tag) { o.hasTag = true; o.tag = r.tag; }
+        if (r.edit) { o.isButton = true; o.value = 'Edit'; }
         if (r.actions) { o.hasActions = true; o.actions = (r.reset ? ['Reset'].concat(r.actions) : r.actions).map(function (l) { return { label: l }; }); o.hasReset = false; o.wrap = 'nowrap'; o.basis = '120px'; }
         if (r.type === 'var') {
           o.labelStyle = LABEL + "; font-family: 'Geist Mono', ui-monospace, monospace; font-size: 13px";
@@ -520,7 +532,7 @@ class Component extends DCLogic {
       accent: accent,
       q: s.q, onQ: function (e) { self.setState({ q: e.target.value }); },
       groups: groups,
-      navShift: inRoom ? '-142px' : '0',
+      navShift: inRoom ? '-170px' : '0',
       modal: P.modal || {},
       page: {
         title: P.title, intro: P.intro || '', hasIntro: !!P.intro, sections: sections,

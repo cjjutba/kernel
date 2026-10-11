@@ -85,6 +85,7 @@
 </button>
 </sc-for>
 </div>
+<p style="margin: 0; font-size: 12px; color: #8a8f98">Rowan and Theo are built into Kernel. The others are copied into .claude/agents.</p>
 </div>
 </div>
 
@@ -140,7 +141,7 @@ class Component extends DCLogic {
       { id: 'fe', label: 'Kai', av: 'K', model: 'Frontend' },
       { id: 'be', label: 'Noor', av: 'N', model: 'Backend' },
       { id: 'qa', label: 'Ivy', av: 'I', model: 'QA' },
-      { id: 'rev', label: 'Theo', av: 'T', model: 'Reviewer' },
+      { id: 'rev', label: 'Theo', av: 'T', model: 'Reviewer', locked: true },
       { id: 'des', label: 'Lumi', av: 'L', model: 'Designer' }
     ];
     var team = defs.map(function (d) {
