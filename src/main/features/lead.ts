@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { cp } from 'node:fs/promises'
+import { cp, mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AgentDef, Approval, Chat, ChatArchivePreview, ChatPart, Effort, Provider, QueuedMessage, Room, Thread, Workspace } from '@shared/types'
 import { isLeadChatWorkspace, leadChatWorkspaceOf } from '@shared/leadWorkspace'
@@ -17,7 +17,8 @@ import { firstLine } from '../services/text'
 import { isNudge } from '../services/sessions'
 import { DEFAULT_OPEN_CAP, kernelMcpServer, type KernelToolDeps, queuedNote } from '../services/kernelMcp'
 import type { From } from '../services/leadUpdates'
-import { branchName, fastForward, fetchOrigin, folderGone, freeBranch, leadBase, renameBranch, shortSlug, slugify } from '../services/worktrees'
+import { fastForward, fetchOrigin, folderGone, freeBranch, freeWorktreePath, leadBase, leadBranch, moveWorktree, renameBranch, roomWorktreeRoot, slugify, worktreeFolder } from '../services/worktrees'
+import { runningRuns } from '../services/scripts'
 import { exec, git } from '../services/exec'
 import { messageOf, NEW_CHAT, NEW_TAB } from './shared'
 import type { Handlers } from '../kernel'
@@ -108,7 +109,9 @@ export class Lead extends Feature {
     let cut: Awaited<ReturnType<Workspaces['cutWorkspace']>>
     try { cut = await this.k.workspaces.cutWorkspace(roomId, { prompt: o.prompt, parts: o.parts, ...pick, baseRef: o.baseRef, lead: { threadId: thread.id } }) }
     catch (e) { this.store.deleteThread(thread.id); throw e }
-    const { ws, room, repo } = cut
+    const { room, repo } = cut
+    // Its branch and folder take their names from the chat's first title, once (KERNEL-424).
+    const ws = cut.ws.mode === 'worktree' ? this.updateWs(cut.ws.id, { naming: 'branch' }) : cut.ws
     const chat = this.saveChat(cut.chat)
     this.userSpoke(chat.id)
     const parts = messageOf(o.prompt, o.parts)
@@ -149,12 +152,67 @@ export class Lead extends Feature {
     }
     if (this.k.stopped) return
     const ids = o.workspaceId ? [o.workspaceId] : this.chatWorkspaces(roomId).map((w) => w.id)
-    await Promise.all(ids.map((id) => {
-      const next = (this.syncing.get(id) ?? Promise.resolve()).then(() => this.syncNow(id)).catch(failed)
-      this.syncing.set(id, next)
-      void next.finally(() => { if (this.syncing.get(id) === next) this.syncing.delete(id) })
-      return next
-    }))
+    // A folder that waits to move to match its branch moves first, while the chat is idle (KERNEL-424).
+    await Promise.all(ids.map((id) => this.inOrder(id, async () => { await this.moveNow(id); await this.syncNow(id) }).catch(failed)))
+  }
+
+  /** Runs `step` after the git work already queued for the chat's worktree, so two never run git in it at once. */
+  private inOrder(id: string, step: () => Promise<void>): Promise<void> {
+    const next = (this.syncing.get(id) ?? Promise.resolve()).then(step)
+    const settled = next.catch(() => undefined)
+    this.syncing.set(id, settled)
+    void settled.finally(() => { if (this.syncing.get(id) === settled) this.syncing.delete(id) })
+    return next
+  }
+
+  /**
+   * Moves a chat with Rowan's worktree folder to match the branch its first title named, once (KERNEL-424): the branch's
+   * folder name under the room's worktree root, `rowan-setup-script-tab-run-button-redundancy`, with the free-name suffix when
+   * that is taken. Only while the chat is ready and nothing runs in its folder (`folderBusy`), after the turn's checkpoint is
+   * saved. Its tabs wait through the move, so a message sent meanwhile goes out from the new folder. Idle processes end, and
+   * the next message resumes each session by its id there, on Claude and on Codex. Running terminals start again there. A move
+   * git refuses leaves the folder where it is, and Kernel doesn't try again.
+   */
+  private async moveNow(id: string) {
+    const ws = this.k.stopped ? undefined : this.store.workspace(id)
+    const room = ws && this.store.room(ws.roomId)
+    if (!ws || !room || ws.naming !== 'folder' || ws.status !== 'ready' || ws.mode !== 'worktree' || ws.folderGone || this.folderBusy(id)) return
+    const root = roomWorktreeRoot(this.settings.worktreeRoot, room)
+    if (join(root, worktreeFolder(ws.branch)) === ws.path) { this.updateWs(id, { naming: undefined }); return }
+    const held: string[] = []
+    try {
+      await this.k.checkpoints.settled(id)
+      // Two chats moving at once could pick the same free folder, as new workspaces could, so the pick and the move take the
+      // room's lock (KERNEL-231).
+      await this.k.workspaces.withBranchLock(room.id, async () => {
+        await mkdir(root, { recursive: true })
+        const to = await freeWorktreePath(room.path, root, ws.branch)
+        // Read again after each wait: a turn may have started, or the chat been archived.
+        const now = this.k.stopped ? undefined : this.store.workspace(id)
+        if (!now || now.path !== ws.path || now.naming !== 'folder' || now.status !== 'ready' || this.folderBusy(id)) return
+        for (const c of this.chatTabs(id)) if (c.kind !== 'terminal') { this.sessions.hold(c.id); held.push(c.id) }
+        await moveWorktree(room.path, ws.path, to)
+        this.updateWs(id, { path: to, naming: undefined })
+        this.sessions.restartIdle([id])
+        this.k.chats.restartTerminals(id)
+        void this.k.workspaces.changes(id).catch(() => undefined)
+      })
+    } catch (e) {
+      if (this.k.stopped) return
+      console.warn(`[lead] could not move ${ws.path} to match ${ws.branch}`, e)
+      this.updateWs(id, { naming: undefined })
+    } finally {
+      for (const c of held) this.sessions.release(c)
+    }
+  }
+
+  /**
+   * Something runs in the workspace's folder, or waits to: a turn, a background task, a queued or held message, setup run again,
+   * a run script or a terminal command.
+   */
+  private folderBusy(id: string) {
+    return this.k.setup.settingUp.has(id) || runningRuns(id).length > 0 || this.k.chats.busyTerminals(id)
+      || this.store.chats(id).some((c) => this.sessions.isRunning(c.id) || this.sessions.hasTasks(c.id) || this.sessions.queued(c.id).length > 0 || this.sessions.isHeld(c.id))
   }
 
   private async syncNow(id: string) {
@@ -313,48 +371,63 @@ export class Lead extends Feature {
   }
 
   /**
-   * Kernel named a Lead tab. The first tab of a Lead chat names the chat too, until the user names the chat (KERNEL-337), and
-   * the chat's branch follows the name while it was never pushed and has no PR (KERNEL-405).
+   * Kernel named a Lead tab. The first tab of a Lead chat names the chat too, until the user names the chat (KERNEL-337). The
+   * first tab's first name also names a new chat's branch and folder, once, whatever the user called the chat (KERNEL-424).
    */
   tabNamed(chat: Chat) {
     const t = chat.threadId ? this.store.thread(chat.threadId) : undefined
-    if (!t || t.renamed || t.title === chat.title || this.store.threadTabs(chat.id)[0]?.id !== chat.id) return
-    this.pushThread({ ...t, title: chat.title })
+    if (!t || this.store.threadTabs(chat.id)[0]?.id !== chat.id) return
     const ws = this.store.workspace(chat.workspaceId)
-    if (ws && isLeadChatWorkspace(ws) && ws.threadId === t.id) void this.renameChatBranch(ws.id, chat.title).catch((e) => { if (!this.stopped) console.warn(`[lead] could not rename ${ws.branch}`, e) })
+    if (ws?.naming === 'branch' && isLeadChatWorkspace(ws) && ws.threadId === t.id) void this.nameChatBranch(ws.id, chat.title).catch((e) => { if (!this.stopped) console.warn(`[lead] could not rename ${ws.branch}`, e) })
+    if (!t.renamed && t.title !== chat.title) this.retitle({ ...t, title: chat.title })
+  }
+
+  /**
+   * Saves the chat's name, and the title of the workspace it hosts follows, which the breadcrumb reads. Its branch and folder
+   * keep their names (KERNEL-424).
+   */
+  private retitle(t: Thread): Thread {
+    this.pushThread(t)
+    const ws = leadChatWorkspaceOf(this.store.workspaces(t.roomId), t.id)
+    if (ws && ws.title !== t.title) this.updateWs(ws.id, { title: t.title })
+    return t
   }
 
   /** Branch renames under way, by workspace, so two names arriving together run one after the other. */
   private renaming = new Map<string, Promise<void>>()
 
   /**
-   * Names a chat with Rowan's branch from the chat's title, `rowan/plan-wave-3` (KERNEL-405), as long as it was never pushed and
-   * has no PR: a branch on GitHub or behind a PR keeps its name. The workspace's name follows.
+   * Names a new chat with Rowan's branch from the chat's first title, once (KERNEL-424): every word of it, cut to 60
+   * characters, `rowan/setup-script-tab-run-button-redundancy`, with a free-name suffix when that is taken. The workspace's name
+   * follows, and its folder moves to match once the chat is idle (`moveNow`). A branch that was pushed or has a PR keeps its
+   * name and folder. Later names, Kernel's or the user's, name only the chat.
    */
-  renameChatBranch(id: string, title: string): Promise<void> {
+  nameChatBranch(id: string, title: string): Promise<void> {
     const next = (this.renaming.get(id) ?? Promise.resolve()).catch(() => undefined).then(async () => {
       const ws = this.store.workspace(id)
-      if (!ws || this.stopped || ws.status === 'archived' || ws.mode !== 'worktree' || ws.branch === 'HEAD' || ws.prNumber || ws.prState !== 'none') return
+      if (!ws || this.stopped || ws.naming !== 'branch' || ws.status === 'archived') return
+      if (ws.mode !== 'worktree' || ws.branch === 'HEAD' || ws.prNumber || ws.prState !== 'none') { this.updateWs(id, { naming: undefined }); return }
       const room = this.mustRoom(ws.roomId)
       const repo = await loadRepoSettings(room.path)
       const lead = this.agentsSync(room.id).find((a) => a.lead)
-      const wanted = branchName(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, { slug: shortSlug(title), lead: lead?.name })
-      if (wanted === ws.branch) return
+      const wanted = leadBranch(repo.workspace.leadBranchPattern || this.settings.workspace.leadBranchPattern, title, lead?.name)
       // Pushed under its name, or tracking anything but the base it was cut from, which git sets as its upstream.
       const remote = await this.k.config.remoteFor(room.path, repo)
       const upstream = await exec('git', ['-C', room.path, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', `${ws.branch}@{u}`])
       const pushed = (await exec('git', ['-C', room.path, 'rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${ws.branch}`])).code === 0
         || (upstream.code === 0 && upstream.stdout.trim() !== ws.baseRef)
-      if (pushed) return
+      if (pushed) { this.updateWs(id, { naming: undefined }); return }
       // Two chats with Rowan named at once could pick the same free name, so the pick and the rename take the room's lock (KERNEL-231).
-      const to = await this.k.workspaces.withBranchLock(room.id, async () => {
+      const to = wanted === ws.branch ? wanted : await this.k.workspaces.withBranchLock(room.id, async () => {
         const free = await freeBranch(room.path, wanted)
         if (this.stopped || this.store.workspace(id)?.branch !== ws.branch) return undefined
         await renameBranch(ws.path, free)
         return free
       })
       if (!to) return
-      this.updateWs(id, { branch: to, name: slugify(title) })
+      this.updateWs(id, { branch: to, name: slugify(title), naming: 'folder' })
+      // The folder moves now if the chat is idle, else when its turn ends.
+      void this.syncLead(ws.roomId, { workspaceId: id })
     })
     this.renaming.set(id, next)
     void next.finally(() => { if (this.renaming.get(id) === next) this.renaming.delete(id) }).catch(() => undefined)
@@ -366,7 +439,7 @@ export class Lead extends Feature {
     if (!t) throw new Error('That chat no longer exists.')
     const name = title.trim()
     if (!name) throw new Error('Give the chat a name.')
-    return this.pushThread({ ...t, title: name, renamed: true })
+    return this.retitle({ ...t, title: name, renamed: true })
   }
 
   /** The Lead chat a tab is in, for the "From" line: its thread's title, or the tab's when it has none. */

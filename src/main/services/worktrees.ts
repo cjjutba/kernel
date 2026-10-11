@@ -57,6 +57,14 @@ export function branchName(pattern: string, vars: { slug: string; task?: string;
 }
 
 /**
+ * A chat with Rowan's branch from the chat's first title (KERNEL-424): every word of it, cut only by `branchName`'s 60
+ * characters. "Setup script tab Run button redundancy" -> `rowan/setup-script-tab-run-button-redundancy`.
+ */
+export function leadBranch(pattern: string, title: string, lead?: string): string {
+  return branchName(pattern, { slug: slugify(title.replace(/['’]/g, ''), Infinity), lead })
+}
+
+/**
  * The branch for a task. With a task id (a Linear issue) the id leads the slug, `feat/{task}-{slug}`,
  * even when the configured pattern only has `{slug}`.
  */
@@ -228,21 +236,35 @@ export async function freeBranch(repo: string, wanted: string): Promise<string> 
  */
 export interface CreateWorktree { repo: string; root: string; branch: string; baseRef: string; detach?: boolean; path?: string }
 
+const FOLDER_MAX = 80
+
+/** The folder name a branch's worktree gets when it is free: `rowan/plan-wave-3` -> `rowan-plan-wave-3`. */
+export const worktreeFolder = (branch: string) => slugify(branch.replace(/\//g, '-'), FOLDER_MAX)
+
 /**
  * A folder under `root` for `branch` that is neither on disk nor in git's worktree list: the branch slug, else the slug
  * cut short with -2, -3... Branches that share their first 80 characters, like a long branch and its `-review`, would
  * otherwise get the same folder (KERNEL-267).
  */
 export async function freeWorktreePath(repo: string, root: string, branch: string): Promise<string> {
-  const max = 80
   const stem = branch.replace(/\//g, '-')
   const registered = new Set((await listWorktrees(repo)).map((w) => w.path))
   // git may list a worktree by its real path (/private/var/... for /var/... on macOS).
   const real = await realpath(root)
   for (let i = 1; ; i++) {
-    const name = i === 1 ? slugify(stem, max) : `${slugify(stem, max - `-${i}`.length)}-${i}`
+    const name = i === 1 ? worktreeFolder(branch) : `${slugify(stem, FOLDER_MAX - `-${i}`.length)}-${i}`
     if (!registered.has(join(root, name)) && !registered.has(join(real, name)) && await folderGone(join(root, name))) return join(root, name)
   }
+}
+
+/**
+ * Moves a worktree's folder to `to` with `git worktree move`, which updates git's record of it, for a chat with Rowan whose
+ * branch took its name from the chat's title (KERNEL-424). git refuses a locked worktree, one with submodules, and a `to` that
+ * exists.
+ */
+export async function moveWorktree(repo: string, from: string, to: string): Promise<void> {
+  await mkdir(dirname(to), { recursive: true })
+  await git(repo, 'worktree', 'move', from, to)
 }
 
 /**

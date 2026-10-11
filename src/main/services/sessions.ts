@@ -421,6 +421,9 @@ export class Sessions {
   /** Session ids started by Kernel. The hook server ignores these because in-process hooks already report them. */
   isManaged(sessionId: string) { return this.managedIds.has(sessionId) }
   isRunning(chatId: string) { return this.live.get(chatId)?.running ?? false }
+
+  /** The chat's process still runs background tasks it started: shells, subagents or monitors. */
+  hasTasks(chatId: string) { return (this.live.get(chatId)?.tasks.size ?? 0) > 0 }
   /** The chats with a turn running, for a window that loads while they work (KERNEL-340). */
   runningIds(): string[] { return [...this.live].filter(([, l]) => l.running).map(([id]) => id) }
   /** The chats whose session is retrying an overloaded API, with the countdown their banner shows (KERNEL-340). */

@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { basename } from 'node:path'
 import * as pty from 'node-pty'
 import { TERMINAL_KEEP } from '@shared/scriptLog'
 import { bus } from '../bus'
@@ -55,6 +56,26 @@ export class Ptys {
   }
 
   write(id: string, data: string) { this.procs.get(id)?.write(data) }
+
+  /** The terminal runs a command: its foreground process isn't the shell, which node-pty reads from the tty. */
+  busy(id: string): boolean {
+    const proc = this.procs.get(id)
+    if (!proc) return false
+    try { return proc.process !== basename(loginShell(process.env)) } catch { return false }
+  }
+
+  /**
+   * Starts a running terminal again with `o`, at the size it has, as when its folder moved (KERNEL-424). What it printed so far
+   * stays, and the new shell goes on below it.
+   */
+  restart(id: string, o: PtyOptions) {
+    const old = this.procs.get(id)
+    if (!old) return
+    this.procs.delete(id)
+    try { old.kill() } catch { /* already gone */ }
+    this.send(id, '\r\n')
+    this.start(id, { ...o, cols: old.cols, rows: old.rows })
+  }
 
   /** Pushes output, and keeps it for a window that loads later. A killed terminal's late output isn't kept. */
   private send(id: string, data: string) {

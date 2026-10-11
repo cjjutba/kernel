@@ -184,29 +184,7 @@ describe('a workspace per chat with Rowan (KERNEL-405)', () => {
     await setUp(k, chat.id)
   })
 
-  it("names the branch from the chat's title until it is pushed, and keeps the name once it is", async () => {
-    const { repo } = await withOrigin()
-    const k = await boot(await dirs())
-    const room = await k.addRoom(repo)
-    const chat = await k.lead.startLeadChat(room.id, { prompt: 'Hello' })
-    const ws = await setUp(k, chat.id)
-    expect(ws.branch).toBe('rowan/hello')
-    // Claude Code titles the chat (D-089), and the chat takes its first tab's name.
-    k.lead.tabNamed(k.store.saveChat({ ...k.store.chat(chat.id)!, title: 'Plan wave 3' }))
-    await vi.waitFor(() => expect(k.store.workspace(ws.id)).toMatchObject({ branch: 'rowan/plan-wave-3', name: 'plan-wave-3' }))
-    expect(await branchOf(ws.path)).toBe('rowan/plan-wave-3')
-    expect(await git(repo, 'branch', '--list', 'rowan/hello')).toBe('')
-    expect(k.store.thread(chat.threadId!)!.title).toBe('Plan wave 3')
-    // Pushed, it keeps its name.
-    await run('git', ['-C', ws.path, 'push', '-q', '-u', 'origin', 'rowan/plan-wave-3'])
-    await k.lead.renameChatBranch(ws.id, 'Something else')
-    expect(k.store.workspace(ws.id)!.branch).toBe('rowan/plan-wave-3')
-    // So does one with a PR, pushed or not.
-    const other = await setUp(k, (await k.lead.startLeadChat(room.id, { prompt: 'Other' })).id)
-    k.store.saveWorkspace({ ...other, prNumber: 9, prState: 'open' })
-    await k.lead.renameChatBranch(other.id, 'Renamed')
-    expect(k.store.workspace(other.id)!.branch).toBe('rowan/other')
-  })
+  // Naming the branch and folder from the chat's title: leadNaming.test.ts (KERNEL-424).
 
   it('follows its own branch pattern, from Settings or the room', async () => {
     const repo = await tempRepo({ ...REPO, '.kernel/settings.local.toml': '[workspace]\nlead_branch_pattern = "plans/{lead}-{slug}"\n' })
