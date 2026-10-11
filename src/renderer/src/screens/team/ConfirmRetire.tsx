@@ -12,6 +12,7 @@ import './team.css'
 export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: string }) {
   const agents = useStore((s) => s.agents[roomId])
   const open = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived' && w.name !== 'lead').length)
+  const reviews = useStore((s) => s.workspaces.filter((w) => w.roomId === roomId && w.agentId === agentId && w.status !== 'archived' && !!w.reviewOf).length)
   const [busy, run] = useBusy()
   const [error, setError] = useState<string | null>(null)
   const agent = agents?.find((a) => a.id === agentId)
@@ -29,8 +30,12 @@ export function ConfirmRetire({ roomId, agentId }: { roomId: string; agentId: st
       actions.ui.toast({ title: `${agent.name} retired`, sub: 'The file is in .claude/retired-agents' })
     } catch (e) { setError(cleanError(e)) }
   })
-  const heir = agent.reviewer ? 'the next reviewer' : lead?.name ?? 'the Lead'
-  const handoff = open === 0 ? 'No open workspaces' : `${open} open ${open === 1 ? 'workspace goes' : 'workspaces go'} to ${heir}`
+  const leadName = lead?.name ?? 'the Lead'
+  const others = agent.reviewer ? open - reviews : open
+  const handoff = open === 0 ? 'No open workspaces' : [
+    agent.reviewer && reviews ? `${reviews} open ${reviews === 1 ? 'review goes' : 'reviews go'} to the next reviewer` : '',
+    others ? `${others} open ${others === 1 ? 'workspace goes' : 'workspaces go'} to ${leadName}` : ''
+  ].filter(Boolean).join(', ')
 
   return (
     <ConfirmDialog

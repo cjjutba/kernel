@@ -513,7 +513,7 @@ describe("an agent file's tools line (KERNEL-397)", () => {
 
   it('leaves out the built-in tools the file leaves out, and refuses any other tool it does not list', async () => {
     const { options } = await setup('acceptEdits', { agent: theo })
-    expect(options.disallowedTools).toEqual(['Write', 'Edit', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
+    expect(options.disallowedTools).toEqual(['WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
     const gate = gateOf(options)!
     expect(await use(gate, 'mcp__linear__save_issue')).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: "Your agent file doesn't list mcp__linear__save_issue. Use another tool, or ask the user to add mcp__linear__save_issue to the tools line in your agent file." } })
     expect(await use(gate, 'Write')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })

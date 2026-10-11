@@ -21,10 +21,14 @@ describe('agent tools', () => {
   })
 
   it("allows what the line lists, Kernel's own tools and the session's, and nothing else", () => {
-    const theo = toolPolicy(['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear__get_issue'])!
-    expect(theo.hidden).toEqual(['Write', 'Edit', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
+    const theo = toolPolicy(['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear__get_issue'], { plans: '/Users/you/.claude/plans' })!
+    expect(theo.hidden).toEqual(['WebFetch', 'WebSearch', 'NotebookEdit', 'Agent'])
     for (const t of ['Read', 'Bash', 'mcp__linear__get_issue', 'mcp__kernel__submit_review', 'mcp__kernel__share_file', 'ExitPlanMode', 'ToolSearch', 'Skill', 'TodoWrite']) expect(theo.allows(t), t).toBe(true)
     for (const t of ['Write', 'Edit', 'mcp__linear__save_issue', 'mcp__github__create_pull_request', 'WebFetch']) expect(theo.allows(t), t).toBe(false)
+    // Plan mode writes its plan to ~/.claude/plans before it asks, whatever the tools line says (D-023).
+    expect(theo.allows('Write', { file_path: '/Users/you/.claude/plans/quiet-otter.md' })).toBe(true)
+    expect(theo.allows('Edit', { file_path: '/Users/you/.claude/plans/quiet-otter.md' })).toBe(true)
+    for (const file_path of ['/Users/you/.claude/plans/sub/x.md', '/Users/you/.claude/plans/../settings.json', '/Users/you/.claude/plans/x.json', '/repo/src/index.ts']) expect(theo.allows('Write', { file_path }), file_path).toBe(false)
     const rowan = toolPolicy(['Read', 'Grep', 'Glob', 'Bash', 'mcp__linear'])!
     expect(rowan.allows('mcp__linear__save_issue')).toBe(true)
     expect(rowan.allows('mcp__linearx__thing')).toBe(false)

@@ -179,8 +179,8 @@ export class Team extends Feature {
   }
 
   /**
-   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo`, else the reviewer that
-   * takes over for a retired reviewer, else the Lead, and the desk frees up. A turn already running keeps its own copy of
+   * Retire: the file moves to .claude/retired-agents (D-003), open workspaces go to `handoffTo`, else the Lead, and a retired
+   * reviewer's reviews to whoever reviews next, and the desk frees up. A turn already running keeps its own copy of
    * the agent and finishes. The Lead cannot be retired, because nobody would plan, and Kernel's own agents have no file.
    */
   private async retire(roomId: string, agentId: string, handoffTo?: string): Promise<void> {
@@ -192,8 +192,11 @@ export class Team extends Feature {
     if (agent.lead) throw new Error(`${agent.name} leads this room. Pick another Lead in Settings, Agents first.`)
     await retireAgent(room.path, agentId)
     const list = await this.agents(roomId)
-    const heir = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId) ?? (isReviewer(agent) ? list.find(isReviewer) : undefined) ?? list.find((a) => a.lead)
+    const chosen = list.find((a) => a.id === (handoffTo ?? '') && a.id !== agentId)
+    const reviewer = isReviewer(agent) ? list.find(isReviewer) : undefined
+    const lead = list.find((a) => a.lead)
     for (const ws of this.store.workspaces(roomId)) {
+      const heir = chosen ?? (ws.reviewOf && reviewer ? reviewer : lead)
       if (ws.agentId === agentId && ws.status !== 'archived' && heir) this.saveWs({ ...ws, agentId: heir.id })
     }
     if (room.desks?.includes(agentId)) await this.k.rooms.updateRoom(roomId, { desks: room.desks.filter((d) => d !== agentId) })
@@ -221,6 +224,9 @@ export class Team extends Feature {
     if (want.lead && want.lead !== KERNEL_LEAD && !ids.has(want.lead)) throw new Error(`${want.lead} is not on this team.`)
     if (want.reviewer && want.reviewer !== KERNEL_REVIEWER && want.reviewer !== NO_REVIEWER && !ids.has(want.reviewer)) throw new Error(`${want.reviewer} is not on this team.`)
     if (want.reviewer && want.reviewer === want.lead) throw new Error("The Lead can't also review. Pick another reviewer.")
+    // A teammate's open work would run as the Lead's, with the Lead's tools and none of its updates.
+    const busy = want.lead && want.lead !== repo.team?.lead ? this.store.workspaces(roomId).filter((w) => w.agentId === want.lead && !w.lead && w.status !== 'archived').length : 0
+    if (busy) throw new Error(`${files.find((a) => a.id === want.lead)?.name ?? want.lead} has ${busy === 1 ? 'an open workspace' : `${busy} open workspaces`}. Archive ${busy === 1 ? 'it' : 'them'} first, or pick another Lead.`)
     // A choice Kernel would make anyway is left out, so the file only holds what the team decided.
     if (want.lead && (await this.resolve(roomId, { ...want, lead: undefined })).agents.find((a) => a.lead)?.id === want.lead) delete want.lead
     if (want.reviewer && ((await this.resolve(roomId, { ...want, reviewer: undefined })).agents.find((a) => a.reviewer)?.id ?? NO_REVIEWER) === want.reviewer) delete want.reviewer

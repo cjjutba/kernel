@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { basename, dirname, join, resolve } from 'node:path'
 import { TOOL_KINDS } from '@shared/telemetry'
 
 // What an agent file's `tools:` line lets the agent do (KERNEL-397).
@@ -21,8 +23,15 @@ export function canOpenPr(tools: string[] | undefined): boolean {
   return names.has('Bash') && (names.has('Edit') || names.has('Write'))
 }
 
-/** Claude Code's own tools Kernel takes out of a session whose agent file leaves them out, so the model never reaches for them. */
-const HIDEABLE = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent']
+/**
+ * Claude Code's own tools Kernel takes out of a session whose agent file leaves them out, so the model never reaches for them.
+ * Write and Edit stay in: plan mode writes its plan to `~/.claude/plans` before it asks for approval, and without that file
+ * the plan comes up empty (D-023). The gate lets them reach that folder only.
+ */
+const HIDEABLE = ['Read', 'Bash', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'NotebookEdit', 'Agent']
+
+/** The tools that write a file, which every agent may still use for its plan. */
+const WRITERS = ['Write', 'Edit', 'MultiEdit']
 
 /**
  * Tools every agent keeps, whatever its file lists: plan mode and its approval, questions to the user, finding deferred
@@ -37,21 +46,27 @@ const BASH_COMPANIONS = ['BashOutput', 'KillShell', 'KillBash']
 export interface ToolPolicy {
   /** Built-in tools to leave out of the session. */
   hidden: string[]
-  allows(tool: string): boolean
+  /** `input` is the call's input, which says where a write goes. */
+  allows(tool: string, input?: unknown): boolean
 }
+
+/** A `.md` file right in Claude Code's plans folder, where plan mode writes its plan. */
+const isPlanFile = (path: unknown, plans: string) => typeof path === 'string' && path.endsWith('.md') && dirname(resolve(path)) === plans && !!basename(path)
 
 /**
  * The tools line as Claude Code reads it for a subagent: the tools it names, `Bash(git:*)` as Bash, `mcp__linear` or
  * `mcp__linear__*` for every tool of that server. Nothing for an agent with no tools line, which may use every tool.
  */
-export function toolPolicy(tools: string[] | undefined): ToolPolicy | undefined {
+export function toolPolicy(tools: string[] | undefined, o: { plans?: string } = {}): ToolPolicy | undefined {
   if (!tools?.length) return undefined
+  const plans = resolve(o.plans ?? join(homedir(), '.claude', 'plans'))
   const names = new Set(tools.map(toolName))
   const servers = new Set([...names].map((n) => n.split('__')).filter((p) => p[0] === 'mcp' && p[1] && (p.length === 2 || (p.length === 3 && p[2] === '*'))).map((p) => p[1]))
   // A background command's output and its stop belong to Bash.
-  const allows = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool))
+  const listed = (tool: string) => tool.startsWith('mcp__kernel__') || ALWAYS.includes(tool) || names.has(toolName(tool))
     || (BASH_COMPANIONS.includes(tool) && names.has('Bash')) || (tool.startsWith('mcp__') && servers.has(tool.split('__')[1]))
-  return { hidden: HIDEABLE.filter((t) => !allows(t)), allows }
+  const allows = (tool: string, input?: unknown) => listed(tool) || (WRITERS.includes(tool) && isPlanFile((input as { file_path?: unknown } | undefined)?.file_path, plans))
+  return { hidden: HIDEABLE.filter((t) => !listed(t)), allows }
 }
 
 /** A tool as usage data names it: a built-in by name, any MCP tool as `mcp`, since server names are the user's own. */

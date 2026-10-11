@@ -115,6 +115,9 @@ describe("a repo's own agents (KERNEL-397)", () => {
     expect(await readFile(settings, 'utf8')).toBe(before)
     expect(k.store.workspace(chat.workspaceId)?.agentId).toBe('kernel-lead')
     await expect(h['agents.setTeam']({ roomId: room.id, team: { lead: 'ghost' } })).rejects.toThrow('ghost is not on this team.')
+    // An agent with open work of its own can't lead: that work would run as the Lead's.
+    await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'web', title: 'Cart' })
+    await expect(h['agents.setTeam']({ roomId: room.id, team: { lead: 'web' } })).rejects.toThrow('Web has an open workspace. Archive it first, or pick another Lead.')
     await expect(h['agents.setTeam']({ roomId: room.id, team: { lead: 'web', reviewer: 'web' } })).rejects.toThrow("can't also review")
   })
 
@@ -148,9 +151,13 @@ describe("a repo's own agents (KERNEL-397)", () => {
   it("hands a retired reviewer's open reviews to the reviewer that takes over", async () => {
     const { k, h, room } = await boot({ ...AGENTS, '.claude/agents/checker.md': '---\nname: checker\ndescription: Reviews PRs.\nrole: Reviewer\ntools: Read, Grep\n---\nYou review.' })
     expect((await k.agents(room.id)).find((a) => a.reviewer)?.id).toBe('checker')
-    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'checker', title: 'Review' })
+    const work = await k.createWorkspace(room.id, { prompt: 'Build it', agentId: 'web', title: 'Cart' })
+    const review = await k.createWorkspace(room.id, { prompt: 'Review it', agentId: 'checker', title: 'Review', reviewOf: work.id })
+    const chore = await k.createWorkspace(room.id, { prompt: 'Tidy the docs', agentId: 'checker', title: 'Docs' })
     await h['agents.retire']({ roomId: room.id, agentId: 'checker' })
+    // The review goes to the next reviewer, Kernel's read-only Theo, and anything else to the Lead.
     expect(k.store.workspace(review.id)?.agentId).toBe('kernel-reviewer')
+    expect(k.store.workspace(chore.id)?.agentId).toBe('kernel-lead')
     await expect(h['agents.retire']({ roomId: room.id, agentId: 'kernel-lead' })).rejects.toThrow(/Kernel's own Lead/)
   })
 

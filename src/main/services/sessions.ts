@@ -1563,8 +1563,8 @@ function kernelHooks(o: {
   // A tool the agent file doesn't list is refused with the reason, here and in any subagent it starts (KERNEL-397).
   if (tools) {
     const gate: HookCallback = async (input) => {
-      const tool = (input as PreToolUseHookInput).tool_name
-      if (tools.allows(tool)) return {}
+      const { tool_name: tool, tool_input } = input as PreToolUseHookInput
+      if (tools.allows(tool, tool_input)) return {}
       bus.track({ name: 'tool.blocked_by_agent_file', tool: toolKind(tool) })
       return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: `Your agent file doesn't list ${tool}. Use another tool, or ask the user to add ${tool} to the tools line in your agent file.` } }
     }
