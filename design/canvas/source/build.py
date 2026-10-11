@@ -71,7 +71,9 @@ LMAP={'#08090a':'#f3f3f4','#0f1011':'#ffffff','#0b0c0d':'#fafafa','#0a0b0c':'#f5
 def lighten(t):
     return re.sub(r'#[0-9a-fA-F]{6}\b', lambda m: LMAP.get(m.group(0).lower(), m.group(0)), t)
 simple={'Home':'home','Rooms':None,'NewRoom':None,'HomeEmpty':'home','Welcome':None,'CommandPalette':'search','Team':None,'AgentProfile':None,'History':'history','LoadingApp':None}
-for n,a in simple.items(): emit(n, rd(n+'.dc.html'), a, empty=(n=='HomeEmpty'))
+# KERNEL-301: the palette lists a Shared group only where files were shared. SearchShared draws it; CommandPalette stays as it was.
+for n,a in simple.items(): emit(n, rd(n+'.dc.html').replace('%%SHARED%%','off'), a, empty=(n=='HomeEmpty'))
+emit('SearchShared', rd('CommandPalette.dc.html').replace('%%SHARED%%','on'), 'search')
 emit('WhatsNew', rd('WhatsNew.dc.html'), 'home', update=True)
 emit('UpdateReady', rd('Home.dc.html'), 'home', update=True)
 emit('HomeLight', rd('Home.dc.html'), 'home', light=True)
@@ -99,8 +101,9 @@ emit('SidebarRoomMenu', rd('Team.dc.html'), None, menu='room')
 emit('QuickAsk', rd('Home.dc.html'), 'home', menu='ask')
 ws=rd('Workspace.dc.html')
 WS=[('Workspace','done'),('WorkspaceMerged','merged'),('WorkspacePaste','paste'),('WorkspaceRunning','running'),('WorkspacePlan','plan'),('WorkspacePerm','perm'),('WorkspaceQuestion','question'),('WorkspaceQuestionSteps','questionsteps'),('WorkspaceQuestionAnswers','questionanswers'),('WorkspaceInterrupted','interrupted'),('WorkspaceError','error'),('WorkspaceSessionLimit','session'),('WorkspaceWeeklyLimit','weekly'),('WorkspaceModelLimit','model'),('WorkspaceContext','context'),('WorkspaceOverloaded','overloaded'),('WorkspaceOffline','offline'),('WorkspaceSignedOut','signedout'),('WorkspaceSetupFailed','setupfail'),('WorkspaceHooksDown','hooks'),('WorkspaceNewChat','newchat'),('WorkspaceTerminal','terminal'),('WorkspaceLead','lead'),('WorkspaceHire','hire'),
-    ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading'),('WorkspaceIssue','issue')]
-for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire') else 'ws', hooks_down=sc=='hooks')
+    ('WorkspaceToolCalls','tools'),('WorkspaceCheckpoints','checkpoints'),('WorkspaceCIFailed','cifail'),('WorkspaceChangesRequested','changes'),('WorkspaceDraftPR','draft'),('WorkspacePRClosed','closed'),('WorkspacePRMenu','prmenu'),('WorkspaceFile','file'),('WorkspaceMention','mention'),('WorkspaceSlash','slash'),('WorkspaceActions','actions'),('WorkspaceQueued','queued'),('WorkspaceTabMenu','tabmenu'),('WorkspaceHunks','hunks'),('WorkspaceToast','toast'),('WorkspaceLoading','loading'),('WorkspaceIssue','issue'),
+    ('WorkspaceSharedCard','sharedcard'),('WorkspaceSharedHtml','sharedhtml'),('WorkspaceSharedPhone','sharedphone'),('WorkspaceSharedImage','sharedimage'),('WorkspaceSharedMarkdown','sharedmd'),('WorkspaceSharedPdf','sharedpdf'),('WorkspaceSharedVersions','sharedversions'),('WorkspaceSharedCrashed','sharedcrashed'),('WorkspaceSharedPanel','sharedpanel'),('WorkspaceSharedPanelEmpty','sharedpanelempty')]
+for n,sc in WS: emit(n, ws.replace('%%SCENARIO%%',sc), 'lead' if sc in ('lead','hire','sharedpanel') else 'ws', hooks_down=sc=='hooks')
 emit('WorkspaceFocus', ws.replace('%%SCENARIO%%','focus'), 'ws', rail=True)
 # KERNEL-258: the workspace pieces for run scripts, Open preview and terminal presets, drawn in the KERNEL-274 look. The page brings its own sidebar.
 wp=rd('WorkspacePanels.dc.html')
