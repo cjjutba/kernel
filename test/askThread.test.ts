@@ -14,7 +14,7 @@ const at = (route: { name: 'workspace'; workspaceId: string } | { name: 'home' }
 beforeEach(() => {
   setState({
     rooms: [room], agents: { r1: [rowan] },
-    workspaces: [ws('lead', { name: 'lead', mode: 'current', agentId: 'rowan' }), ws('under-t2', { threadId: 't2' }), ws('under-tab', { leadChatId: 'c1' }), ws('loose'), ws('under-closed', { threadId: 't3' })],
+    workspaces: [ws('lead', { name: 'lead', mode: 'current', lead: true, agentId: 'rowan' }), ws('under-t2', { threadId: 't2' }), ws('under-tab', { leadChatId: 'c1' }), ws('loose'), ws('under-closed', { threadId: 't3' })],
     chats: { lead: [chat('c1', 't1'), chat('c2', 't2')] },
     threads: { t1: thread('t1'), t2: thread('t2'), t3: thread('t3', { closedAt: 5 }) }
   })
