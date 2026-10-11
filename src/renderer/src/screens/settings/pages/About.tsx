@@ -5,9 +5,13 @@ import { actions, go, useStore } from '../../../store'
 import { Button, useBusy } from '../../../ui'
 import { Page, Row, Section } from '../kit'
 
-/** What Check for updates says. A failed check (offline, or no releases reachable) is not "up to date". */
-const checkResult = (u: AppUpdate) =>
-  u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? 'Could not check for updates' : 'Kernel is up to date'
+/**
+ * What Check for updates says. A failed check (offline, or no releases reachable) is not "up to date", and a copy outside
+ * Applications says why it never checks (KERNEL-443).
+ */
+const checkResult = (u: AppUpdate): { title: string; sub?: string } =>
+  u.blocked ? { title: "Kernel can't update itself", sub: u.blocked }
+    : { title: u.status === 'ready' ? `Version ${u.version} is ready` : u.status === 'downloading' ? `Downloading version ${u.version}` : u.error ? 'Could not check for updates' : 'Kernel is up to date' }
 
 const fail = (title: string) => (e: unknown) => actions.ui.toast({ title, sub: cleanError(e) })
 
@@ -23,7 +27,7 @@ export function About() {
         <Row label="Version"><span className="set-value">{info?.version ?? ''}</span></Row>
         {claude?.ok && claude.meta && <Row label="Claude Code"><span className="set-value">{claude.meta}</span></Row>}
         <Row label="Updates">
-          <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => actions.ui.toast({ title: checkResult(u) })).catch(fail('Could not check for updates')))}>Check for updates</Button>
+          <Button busy={busy === 'check'} busyLabel="Checking" disabled={busy !== null} onClick={() => void run('check', () => call('update.check', undefined).then((u) => actions.ui.toast(checkResult(u))).catch(fail('Could not check for updates')))}>Check for updates</Button>
         </Row>
         <Row label="Data"><span className="set-value selectable">{info?.dataDir ?? ''}</span></Row>
         <Row label="Logs">
