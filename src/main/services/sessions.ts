@@ -429,13 +429,20 @@ export class Sessions {
   billingOf(chatId: string) { return this.billing.get(chatId) }
 
   /**
-   * 5-hour and weekly windows, fetched only when asked. A live session answers the experimental usage call.
-   * Without one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last rate_limit_event numbers stand.
+   * 5-hour and weekly windows, fetched only when asked. A live session of each provider answers its usage call. Without a
+   * live Claude one, `probeIn` starts a short session there to ask; otherwise, or when the call fails, the last
+   * rate_limit_event numbers stand. A Claude account Kernel added runs on a `setup-token` token, which the usage call
+   * answers nothing for, so it is never asked: its numbers come from its turns' rate_limit_event (KERNEL-406).
    */
   async usage(o: { probeIn?: string } = {}): Promise<RateLimit[]> {
-    const live = [...this.live.values()].find((l) => !l.runner.closed)
-    if (live) await live.runner.usage()
-    else if (o.probeIn) await probeClaudeUsage(o.probeIn, (p) => this.mergeLimits(p))
+    const open = [...this.live.values()].filter((l) => !l.runner.closed)
+    const other = open.find((l) => !(l.runner instanceof ClaudeRunner))
+    if (other) await other.runner.usage()
+    if (this.d.accountFor?.('claude') === undefined) {
+      const claude = open.find((l) => l.runner instanceof ClaudeRunner && !l.account)
+      if (claude) await claude.runner.usage()
+      else if (o.probeIn) await probeClaudeUsage(o.probeIn, (p) => this.mergeLimits(p))
+    }
     return [...this.limits.values()]
   }
 
@@ -1271,7 +1278,8 @@ export class Sessions {
     for (const l of next) {
       const key = limitKey(l)
       // Claude's per-model windows name their model. Codex's windows are the account's.
-      this.limits.set(key, mergeLimit(this.limits.get(key), limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, Date.now()))
+      const now = Date.now()
+      this.limits.set(key, { ...mergeLimit(this.limits.get(key), limitProvider(l) === 'claude' ? { ...l, model: l.model ?? WINDOW_MODEL[l.type] } : l, now), readAt: now })
     }
     this.pushLimits()
   }

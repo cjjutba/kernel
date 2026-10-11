@@ -8,6 +8,7 @@ import type { PushEvent } from '@shared/ipc'
 import { bus } from '../src/main/bus'
 import { Kernel } from '../src/main/kernel'
 import { fakeCodex } from './helpers/fakeCodex'
+import { fakeClaude, TOKEN } from './helpers/fakeClaude'
 import { tempRepo } from './helpers'
 
 /** Encrypts by reversing, so a test can tell a stored token from the plain one. */
@@ -114,6 +115,80 @@ describe('Codex accounts (KERNEL-406)', () => {
 })
 
 describe('Claude accounts (KERNEL-406)', () => {
+  const fakeEnv = { wrap: process.env.FAKE_WRAP, none: process.env.FAKE_NO_TOKEN, code: process.env.FAKE_CODE_FILE }
+  afterEach(() => {
+    for (const [key, value] of [['FAKE_WRAP', fakeEnv.wrap], ['FAKE_NO_TOKEN', fakeEnv.none], ['FAKE_CODE_FILE', fakeEnv.code]] as const) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value
+    }
+  })
+
+  /** A Kernel whose Claude is a fake `setup-token`, and whose CLI login reads as a Max plan. */
+  async function claudeKernel() {
+    const t = await kernel()
+    t.k.accountReader = async () => ({ signedIn: true, name: 'CJ', email: 'cj@example.com', subscriptionType: 'max' })
+    await t.k.providers.setPath('claude', { path: await fakeClaude() })
+    const steps: AccountAddStep[] = []
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add') steps.push(e.add) })
+    return { ...t, h: t.k.handlers(), steps }
+  }
+
+  it('adds an account from claude setup-token with the name and plan given, and the plan defaults follow it once in use', async () => {
+    const { k, h, steps } = await claudeKernel()
+    process.env.FAKE_WRAP = '60'
+    await expect(h['accounts.add']({ provider: 'claude', plan: 'pro' })).rejects.toThrow('Give the account a name.')
+    await expect(h['accounts.add']({ provider: 'claude', label: 'Side' })).rejects.toThrow("Pick the account's plan.")
+    const added = await h['accounts.add']({ provider: 'claude', label: ' Side ', plan: 'pro' })
+    expect(added).toMatchObject({ label: 'Side', plan: 'Claude Pro', cli: false, active: false, signedIn: true, usageFromTurns: true })
+    expect(steps.map((s) => s.step)).toEqual(['browser', 'done'])
+    expect(steps[0].url).toMatch(/^https:\/\/claude\.ai\/oauth\/authorize/)
+    expect((await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude').map((a) => a.label)).toEqual(['Claude Code’s own login', 'Side'])
+    // On the CLI's own login, the plan is the CLI's.
+    await h['account.get'](undefined)
+    expect(k.settings.plan).toBe('max')
+    await h['accounts.switch']({ provider: 'claude', accountId: added.id })
+    expect(k.providers.claudeEnv()).toEqual({ CLAUDE_CODE_OAUTH_TOKEN: TOKEN })
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: true, name: 'Side', plan: 'Claude Pro' })
+    expect(k.settings.plan).toBe('pro')
+    expect(k.settings.models.roles.lead.model).toBe('claude-sonnet-5-5')
+    expect(await k.providers.status('claude')).toMatchObject({ signedIn: true, loginMethod: 'Token from claude setup-token', plan: 'Claude Pro' })
+    expect((await k.providers.status('claude')).email).toBeUndefined()
+    await h['accounts.switch']({ provider: 'claude', accountId: 'cli' })
+    expect(k.settings.plan).toBe('max')
+    await k.stop()
+  })
+
+  it('says why when no token came, adds nothing, and can be tried again', async () => {
+    const { k, h, steps } = await claudeKernel()
+    process.env.FAKE_NO_TOKEN = '1'
+    await expect(h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'max' })).rejects.toThrow("Kernel couldn't read a token from claude setup-token.")
+    expect(steps.at(-1)).toMatchObject({ step: 'failed', error: "Kernel couldn't read a token from claude setup-token." })
+    expect((await h['accounts.list'](undefined)).filter((a) => a.provider === 'claude')).toHaveLength(1)
+    delete process.env.FAKE_NO_TOKEN
+    expect(await h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'max' })).toMatchObject({ label: 'Side', plan: 'Claude Max' })
+    await k.stop()
+  })
+
+  it('keeps an account whose token a session refused signed out until Run login gets a new one, with the code its page shows', async () => {
+    const { k, h, steps } = await claudeKernel()
+    const added = await h['accounts.add']({ provider: 'claude', label: 'Side', plan: 'team' })
+    await h['accounts.switch']({ provider: 'claude', accountId: added.id })
+    k.account.signedOut('claude')
+    expect((await h['accounts.list'](undefined)).find((a) => a.id === added.id)?.signedIn).toBe(false)
+    expect(await h['account.get'](undefined)).toMatchObject({ signedIn: false })
+    expect(k.sessions.heldFor('claude')).toContain('auth')
+    // Run login on the added account runs setup-token again; this time its page shows a code.
+    const codeFile = join(await mkdtemp(join(tmpdir(), 'kernel-code-')), 'code')
+    process.env.FAKE_CODE_FILE = codeFile
+    bus.on('push', (e: PushEvent) => { if (e.type === 'account.add' && e.add.step === 'code') void h['accounts.code']({ provider: 'claude', code: 'xyz-789' }) })
+    await expect(h['accounts.code']({ provider: 'claude', code: 'early' })).rejects.toThrow('No sign-in is waiting for a code.')
+    await h['providers.signIn']({ provider: 'claude' })
+    expect(steps.map((s) => s.step).slice(-3)).toEqual(['browser', 'code', 'done'])
+    expect((await (await import('node:fs/promises')).readFile(codeFile, 'utf8')).trim()).toBe('xyz-789')
+    expect((await h['accounts.list'](undefined)).find((a) => a.id === added.id)?.signedIn).toBe(true)
+    expect(k.sessions.heldFor('claude')).not.toContain('auth')
+    await k.stop()
+  })
+
   it("passes the active account's token to Claude sessions, kept encrypted on disk, and nothing for the CLI login", async () => {
     const { k } = await kernel()
     const p = k.providers as unknown as { load: () => { claude: { accounts: { id: string; label: string; createdAt: number }[] } }; save: () => Promise<void>; saveToken: (id: string, t?: string) => Promise<void>; tokensFile: string }

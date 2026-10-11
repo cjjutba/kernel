@@ -73,6 +73,8 @@ export class Account extends Feature {
    */
   signedOut(provider: Provider = 'claude') {
     if (provider === 'codex') return this.codexSignedOut()
+    // An added account's token was refused. It reads as signed out until Run login gets a new one, or the next check would lift the hold at once.
+    this.k.providers.tokenRefused()
     this.sessions.holdAll('auth', { provider: 'claude' })
     bus.push({ type: 'account', account: { ...this.account, signedIn: false } })
     if (this.authTimer) return
@@ -97,9 +99,12 @@ export class Account extends Feature {
     void this.k.providers.pushAccounts()
   }
 
-  /** Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. */
+  /**
+   * Every read of the account can end a sign-out: a signed-in answer lifts the hold and tells the renderer. An account Kernel
+   * added is what the user said when adding it, since its token can't say (KERNEL-406). The CLI's own login is read from the CLI.
+   */
   async readAccount(): Promise<ClaudeAccount> {
-    const { subscriptionType, ...account } = await this.k.accountReader()
+    const { subscriptionType, ...account } = this.k.providers.claudeTokenAccount() ?? await this.k.accountReader()
     if (!account.signedIn) return account
     this.account = account
     // The defaults follow the plan, so a new plan, or the first read of it, changes what the user never set (KERNEL-225).
@@ -110,6 +115,13 @@ export class Account extends Feature {
       bus.push({ type: 'account', account })
     }
     return account
+  }
+
+  /** Claude runs on another account, or the active one has a new token: read it, and tell the account menu. */
+  async accountChanged() {
+    const account = await this.readAccount()
+    this.account = account
+    bus.push({ type: 'account', account })
   }
 
   /** Runs Claude Code's own login with Kernel's own copy (it opens the browser), then reads the account back (KERNEL-277). */

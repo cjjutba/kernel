@@ -63,6 +63,18 @@ describe('Settings, Providers text (KERNEL-406)', () => {
     expect(tilde('/Users/cj/.codex/config.toml')).toBe('~/.codex/config.toml')
   })
 
+  it("gives a token account's meters as of its last turn, with when that was", () => {
+    const token: AccountProfile = { id: 'side', provider: 'claude', label: 'Side', plan: 'Claude Pro', cli: false, active: true, signedIn: true, usageFromTurns: true }
+    const at = new Date(2026, 9, 11, 14, 10).getTime()
+    const usage: RateLimit[] = [
+      { type: 'five_hour', status: 'allowed', utilization: 0.12, accountId: 'side', readAt: at },
+      { type: 'seven_day', status: 'allowed', utilization: 0.3, accountId: 'side', readAt: at - 60_000 }
+    ]
+    expect(accountLine(token, usage, at + 3600_000)).toBe('Claude Pro · 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn at 2:10 PM')
+    expect(accountLine(token, usage, at + 2 * 86400_000)).toBe('Claude Pro · 12% of the 5-hour limit and 30% of the weekly limit used, as of its last turn on Oct 11')
+    expect(accountLine(token, [], at)).toBe('Claude Pro · Usage shows after its first turn')
+  })
+
   it("keeps an effort the new model takes, and cycles through the model's own levels", () => {
     const models = [{ provider: 'codex' as const, id: 'gpt-5.6-luna', label: 'Luna', efforts: ['low', 'medium', 'high', 'xhigh', 'max'] as const, defaultEffort: 'medium' as const }].map((m) => ({ ...m, efforts: [...m.efforts] }))
     expect(fitEffort('high', 'gpt-5.6-luna', models)).toBe('high')

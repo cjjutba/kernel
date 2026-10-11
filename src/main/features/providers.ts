@@ -2,13 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { lstat, mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountProfile, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit } from '@shared/types'
+import { CLAUDE_PLANS, EFFORT_LABELS, EFFORTS, MODELS, PROVIDERS, type AccountAddStep, type AccountProfile, type ClaudePlan, type Effort, type Provider, type ProviderBinary, type ProviderModel, type ProviderStatus, type RateLimit } from '@shared/types'
 import { bus } from '../bus'
 import type { Handlers } from '../kernel'
-import { signOut as claudeSignOut } from '../services/account'
+import { signOut as claudeSignOut, type ReadAccount } from '../services/account'
 import { exec } from '../services/exec'
 import { planName } from '../services/preflight'
 import { resolveBinary } from '../services/providers/binary'
+import { captureClaudeToken } from '../services/providers/claudeToken'
+import { sessionEnv } from '../services/providers/claude'
 import { codexPlan, readCodexAccount, readCodexModels, withCodex } from '../services/providers/codex/client'
 import type { Rpc } from '../services/providers/codex/rpc'
 import type { AccountLoginCompletedNotification } from '../services/providers/codex/protocol/v2/AccountLoginCompletedNotification'
@@ -19,8 +21,11 @@ import { Feature } from './feature'
 /** "codex-cli 0.153.4" or "2.1.292 (Claude Code)" to the version alone. */
 export const versionOf = (out: string) => /(\d+\.\d+\.\d+)/.exec(out)?.[1]
 
-/** An account Kernel added. Its credential lives apart: Claude's token in `claude-tokens.json`, Codex's `auth.json` in its home. */
-interface StoredAccount { id: string; label: string; email?: string; plan?: string; createdAt: number }
+/**
+ * An account Kernel added. Its credential lives apart: Claude's token in `claude-tokens.json`, Codex's `auth.json` in its home.
+ * A Claude account's plan is the one the user picked, since its token can't read it (`claudePlan`).
+ */
+interface StoredAccount { id: string; label: string; email?: string; plan?: string; claudePlan?: Exclude<ClaudePlan, 'unknown'>; createdAt: number }
 /** Each provider's added accounts and the one it runs on. No `active` is the CLI's own login. */
 type AccountsFile = Record<Provider, { active?: string; accounts: StoredAccount[] }>
 
@@ -43,8 +48,10 @@ export class Providers extends Feature {
   /** Codex's models, read once per launch from `model/list`. A failed read is tried again next time. */
   private codexModels?: Promise<ProviderModel[]>
   private accounts?: AccountsFile
-  /** The sign-in Add account or Run login is waiting on, per provider, so Cancel can stop it. */
-  private adding = new Map<Provider, { cancel: () => void }>()
+  /** The sign-in Add account or Run login is waiting on, per provider, so Cancel can stop it and a code can reach it. */
+  private adding = new Map<Provider, { cancel: () => void; code?: (code: string) => void }>()
+  /** Added Claude accounts whose token a session refused. They read as signed out until a new token replaces it. */
+  private refused = new Set<string>()
 
   // ---------- models
 
@@ -110,8 +117,10 @@ export class Providers extends Feature {
   /** Who an account is signed in as, read through `bin`. An API key login reads as signed out, since Kernel never bills one (D-018). */
   private async identity(provider: Provider, accountId: string | undefined, bin: string): Promise<Pick<ProviderStatus, 'signedIn' | 'loginMethod' | 'plan' | 'email' | 'error'>> {
     if (provider === 'claude') {
-      const env = this.claudeEnv(accountId)
-      const a = await exec(bin, ['auth', 'status'], { timeoutMs: 15_000, ...(Object.keys(env).length ? { env: { ...process.env, ...env } } : {}) })
+      // A token can't say who it belongs to or which plan, so an added account is what the user said when adding it.
+      const added = accountId ? this.load().claude.accounts.find((a) => a.id === accountId) : undefined
+      if (added) return this.tokenSignedIn(added.id) ? { signedIn: true, loginMethod: 'Token from claude setup-token', plan: added.plan } : { signedIn: false }
+      const a = await exec(bin, ['auth', 'status'], { timeoutMs: 15_000 })
       let s: { loggedIn?: boolean; email?: unknown; subscriptionType?: unknown } = {}
       try { s = JSON.parse(a.stdout) } catch { /* not signed in, or an older CLI */ }
       if (!s.loggedIn) return { signedIn: false }
@@ -183,12 +192,35 @@ export class Providers extends Feature {
     try { return { CLAUDE_CODE_OAUTH_TOKEN: this.o.cipher.decrypt(token) } } catch { return {} }
   }
 
+  /** An added Claude account has a token no session has refused. */
+  private tokenSignedIn(id: string) { return !!this.tokens()[id] && !this.refused.has(id) }
+
+  /**
+   * The Claude account sessions run on, when it is one Kernel added: its name and the plan the user picked, which the plan
+   * defaults follow (KERNEL-225). Undefined for the CLI's own login, which Kernel reads from the CLI.
+   */
+  claudeTokenAccount(): ReadAccount | undefined {
+    const id = this.active('claude')
+    const a = id ? this.load().claude.accounts.find((x) => x.id === id) : undefined
+    if (!a) return undefined
+    return { signedIn: this.tokenSignedIn(a.id), name: a.label, ...(a.plan ? { plan: a.plan } : {}), ...(a.claudePlan ? { subscriptionType: a.claudePlan } : {}) }
+  }
+
+  /** A session on the active added Claude account was refused: its token stays signed out until Run login replaces it. */
+  tokenRefused() {
+    const id = this.active('claude')
+    if (!id || this.refused.has(id)) return
+    this.refused.add(id)
+    void this.pushAccounts()
+  }
+
   private tokens(): Record<string, string> {
     try { return JSON.parse(readFileSync(this.tokensFile, 'utf8')) as Record<string, string> } catch { return {} }
   }
 
   private async saveToken(id: string, token: string | undefined) {
     const all = this.tokens()
+    this.refused.delete(id)
     if (token === undefined) delete all[id]
     else {
       if (!this.o.cipher) throw new Error("Kernel can't keep the token safe on this Mac, so it can't add the account.")
@@ -224,8 +256,8 @@ export class Providers extends Feature {
       const own = provider === 'claude' ? 'Claude Code’s own login' : 'Codex’s own login'
       out.push({ id: CLI_ACCOUNT, provider, label: cli.email ?? own, email: cli.email, plan: cli.plan, cli: true, active: !file[provider].active, signedIn: cli.signedIn })
       for (const a of file[provider].accounts) {
-        const signedIn = provider === 'claude' ? !!this.tokens()[a.id] : existsSync(join(this.codexHome(a.id)!, 'auth.json'))
-        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, active: file[provider].active === a.id, signedIn })
+        const signedIn = provider === 'claude' ? this.tokenSignedIn(a.id) : existsSync(join(this.codexHome(a.id)!, 'auth.json'))
+        out.push({ id: a.id, provider, label: a.label, email: a.email, plan: a.plan, cli: false, active: file[provider].active === a.id, signedIn, ...(provider === 'claude' ? { usageFromTurns: true } : {}) })
       }
     }
     return out
@@ -240,12 +272,13 @@ export class Providers extends Feature {
   private step(add: AccountAddStep) { if (!this.stopped) bus.push({ type: 'account.add', add }) }
 
   /**
-   * Add account (KERNEL-406). Codex signs in with ChatGPT in a new home of its own. Claude runs `claude setup-token`. The
-   * new account is added but not used until the user switches to it: switching is always a click.
+   * Add account (KERNEL-406). Codex signs in with ChatGPT in a new home of its own. Claude runs `claude setup-token` and
+   * keeps the token it prints, with the name and plan the user gave, which the token can't tell. The new account is added
+   * but not used until the user switches to it: switching is always a click.
    */
-  async add(provider: Provider, label?: string): Promise<AccountProfile> {
+  async add(provider: Provider, label?: string, plan?: Exclude<ClaudePlan, 'unknown'>): Promise<AccountProfile> {
     if (this.adding.has(provider)) throw new Error('A sign-in is already open. Finish or cancel it first.')
-    if (provider === 'claude') throw new Error('Adding a Claude account is not ready yet.')
+    if (provider === 'claude') return this.addClaude(label, plan)
     const id = randomUUID()
     const home = this.codexHome(id)!
     await this.linkCodexHome(home)
@@ -263,6 +296,52 @@ export class Providers extends Feature {
       this.step({ provider, step: 'failed', error: (e as Error).message })
       throw e
     }
+  }
+
+  private async addClaude(label: string | undefined, plan: Exclude<ClaudePlan, 'unknown'> | undefined): Promise<AccountProfile> {
+    const name = label?.trim()
+    const tier = CLAUDE_PLANS.find((p) => p.id === plan)
+    if (!name) throw new Error('Give the account a name.')
+    if (!tier) throw new Error("Pick the account's plan.")
+    try {
+      const token = await this.claudeSignIn()
+      const id = randomUUID()
+      await this.saveToken(id, token)
+      const stored: StoredAccount = { id, label: name, plan: `Claude ${tier.label}`, claudePlan: tier.id, createdAt: Date.now() }
+      this.load().claude.accounts.push(stored)
+      await this.save()
+      const profile: AccountProfile = { id, provider: 'claude', label: name, plan: stored.plan, cli: false, active: false, signedIn: true, usageFromTurns: true }
+      this.step({ provider: 'claude', step: 'done', account: profile })
+      void this.pushAccounts()
+      return profile
+    } catch (e) {
+      this.step({ provider: 'claude', step: 'failed', error: (e as Error).message })
+      throw e
+    }
+  }
+
+  /**
+   * `claude setup-token` in a pty wide enough for its token (`captureClaudeToken`). The CLI opens its sign-in in the
+   * browser, and Kernel passes the link on in case it didn't. A code the page shows reaches the CLI through `accounts.code`.
+   * Resolves with the token. Never an API key: the session env drops those (D-018).
+   */
+  private async claudeSignIn(): Promise<string> {
+    const env = sessionEnv(process.env, {})
+    delete env.CLAUDE_CODE_OAUTH_TOKEN
+    const capture = captureClaudeToken(this.mustBinary('claude'), {
+      env, cwd: this.home, timeoutMs: SIGN_IN_MS,
+      onLink: (url) => this.step({ provider: 'claude', step: 'browser', url }),
+      onCode: () => this.step({ provider: 'claude', step: 'code' })
+    })
+    this.adding.set('claude', { cancel: capture.cancel, code: capture.sendCode })
+    try { return await capture.token } finally { this.adding.delete('claude') }
+  }
+
+  /** The code the sign-in page showed, for the CLI that asked for it. */
+  sendCode(provider: Provider, code: string) {
+    const send = this.adding.get(provider)?.code
+    if (!send) throw new Error('No sign-in is waiting for a code.')
+    send(code)
   }
 
   /**
@@ -315,6 +394,8 @@ export class Providers extends Feature {
     if (provider === 'codex') this.codexModels = undefined
     this.sessions.restartProvider(provider)
     this.k.account.applyLimits(this.store.meta<RateLimit[]>('limits') ?? [])
+    // The account menu shows the new account, and the plan defaults follow its plan (KERNEL-225).
+    if (provider === 'claude') await this.k.account.accountChanged()
     this.sessions.drainWaiting()
     const accounts = await this.list()
     if (!this.stopped) bus.push({ type: 'accounts', accounts })
@@ -355,10 +436,18 @@ export class Providers extends Feature {
       if (id) await this.linkCodexHome(this.codexHome(id)!)
       await this.codexSignIn(this.codexHome(id))
       this.step({ provider, step: 'done' })
-    } else {
-      if (this.active('claude')) throw new Error('Signing in again to an added Claude account is not ready yet.')
-      await exec(this.mustBinary('claude'), ['auth', 'login'], { timeoutMs: 5 * 60_000 })
-    }
+    } else if (this.active('claude')) {
+      // An added account signs in again with a new token from `claude setup-token`, in place of the old one.
+      const id = this.active('claude')!
+      try {
+        await this.saveToken(id, await this.claudeSignIn())
+        this.step({ provider, step: 'done' })
+      } catch (e) {
+        this.step({ provider, step: 'failed', error: (e as Error).message })
+        throw e
+      }
+      await this.k.account.accountChanged()
+    } else await exec(this.mustBinary('claude'), ['auth', 'login'], { timeoutMs: 5 * 60_000 })
     void this.pushAccounts()
     return this.status(provider)
   }
@@ -370,8 +459,8 @@ export class Providers extends Feature {
       'providers.signIn': async ({ provider }) => this.signIn(provider),
       'providers.openConfig': async ({ provider }) => { await this.o.openFile?.(this.configFile(provider)); return { ok: true as const } },
       'accounts.list': async () => this.list(),
-      'accounts.add': async ({ provider, label }) => this.add(provider, label),
-      'accounts.code': async () => { throw new Error('No sign-in is waiting for a code.') },
+      'accounts.add': async ({ provider, label, plan }) => this.add(provider, label, plan),
+      'accounts.code': async ({ provider, code }) => { this.sendCode(provider, code); return { ok: true as const } },
       'accounts.cancelAdd': async ({ provider }) => { this.cancelAdd(provider); return { ok: true as const } },
       'accounts.switch': async ({ provider, accountId }) => this.switchTo(provider, accountId),
       'accounts.signOut': async ({ provider, accountId }) => this.signOut(provider, accountId),
